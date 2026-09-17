@@ -30,7 +30,7 @@ _REPO_ROOT = _SELF.parent.parent
 def count_findings() -> int:
     """Number of ruff findings across the linted tree."""
     result = subprocess.run(
-        [sys.executable, "-m", "ruff", "check", "src", "tests", "--output-format", "concise"],
+        [sys.executable, "-m", "ruff", "check", "magenticx", "tests", "--output-format", "concise"],
         cwd=_REPO_ROOT,
         capture_output=True,
         text=True,

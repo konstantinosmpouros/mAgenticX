@@ -8,7 +8,7 @@ The `dialogue_bridge` service is the backend-for-frontend layer for the Agentic 
 - agent catalog caching and tool catalog proxying
 - detached inference run lifecycle — server-owned asyncio tasks with WebSocket observers backed by per-run Redis Streams
 
-This README documents the current implementation under `src/dialogue_bridge`.
+This README documents the current implementation under `magenticx/dialogue_bridge`.
 
 ## 1. What This Service Owns
 
@@ -229,14 +229,14 @@ The baseline migration ([`0001_baseline.py`](migrations/versions/0001_baseline.p
 **Authoring a new migration** after changing a model in `core/database.py`:
 
 ```bash
-docker compose -f src/docker-compose.yaml exec dialogue_bridge \
+docker compose -f magenticx/docker-compose.yaml exec dialogue_bridge \
     alembic revision --autogenerate -m "add_foo_column_to_conversations"
 ```
 
-Review the generated file under `src/dialogue_bridge/migrations/versions/`. Autogenerate is good but not perfect — hand-tune for server-side defaults, partial indexes, enum changes, and any data backfill (`op.execute("UPDATE ...")`). Then apply:
+Review the generated file under `magenticx/dialogue_bridge/migrations/versions/`. Autogenerate is good but not perfect — hand-tune for server-side defaults, partial indexes, enum changes, and any data backfill (`op.execute("UPDATE ...")`). Then apply:
 
 ```bash
-docker compose -f src/docker-compose.yaml exec dialogue_bridge alembic upgrade head
+docker compose -f magenticx/docker-compose.yaml exec dialogue_bridge alembic upgrade head
 ```
 
 **Useful commands**:
@@ -779,7 +779,7 @@ Defaults allow local origins around ports `8080` and `8050`. See `core/settings.
 ## 18. Directory Map
 
 ```text
-src/dialogue_bridge/
+magenticx/dialogue_bridge/
 ├── main.py                        FastAPI app bootstrap and router wiring
 ├── core/
 │   ├── settings.py                Environment-driven settings (pydantic-settings)
@@ -823,7 +823,7 @@ src/dialogue_bridge/
 ## 19. Local Development
 
 ```bash
-cd src/dialogue_bridge
+cd magenticx/dialogue_bridge
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -857,7 +857,7 @@ The image:
 
 ### Compose wiring
 
-From `src/docker-compose.yaml`:
+From `magenticx/docker-compose.yaml`:
 
 - `dialogue_bridge` depends on:
   - `agents`

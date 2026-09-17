@@ -28,13 +28,13 @@ Behavioural tests for the logic with the most invariants and the least visibilit
 the run-timeline reducer, the wire→app transforms, and session/consent storage.
 
 ```bash
-cd src/agentic_ui
+cd magenticx/agentic_ui
 npm run test            # once
 npm run test:watch      # watch mode
 npm run test:coverage    # v8 coverage, scoped to the modules under test
 ```
 
-Config is `src/agentic_ui/vitest.config.ts` — deliberately separate from
+Config is `magenticx/agentic_ui/vitest.config.ts` — deliberately separate from
 `vite.config.ts` so the app build never loads the test toolchain. It points
 `include` and `setupFiles` back at this folder and re-declares the `@/` alias,
 which is what lets a test two directories up import `@/features/...`.

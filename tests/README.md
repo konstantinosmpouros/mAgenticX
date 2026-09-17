@@ -23,9 +23,9 @@ Install the Python test dependencies with:
 
 ```bash
 python -m pip install -r tests/requirements.txt
-python -m pip install -r src/dialogue_bridge/requirements.txt
-python -m pip install -r src/rag_service/requirements.txt
-python -m pip install -r src/agents/requirements.txt
+python -m pip install -r magenticx/dialogue_bridge/requirements.txt
+python -m pip install -r magenticx/rag_service/requirements.txt
+python -m pip install -r magenticx/agents/requirements.txt
 ```
 
 ## Run

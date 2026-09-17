@@ -579,7 +579,7 @@ Key files and folders:
 ## Development
 
 ```bash
-cd src/agentic_ui
+cd magenticx/agentic_ui
 npm install
 npm run dev
 ```

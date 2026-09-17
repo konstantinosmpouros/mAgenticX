@@ -12,7 +12,7 @@ from httpx import ASGITransport, AsyncClient
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SERVICE_ROOT = ROOT / "src" / "rag_service"
+SERVICE_ROOT = ROOT / "magenticx" / "rag_service"
 
 
 def _purge_modules_under_paths(*roots: str | Path) -> None:
@@ -33,7 +33,7 @@ def _purge_modules_under_paths(*roots: str | Path) -> None:
 
 
 def _load_rag_service(monkeypatch, tmp_path):
-    _purge_modules_under_paths(ROOT / "src" / "dialogue_bridge", ROOT / "src" / "rag_service", ROOT / "src" / "agents")
+    _purge_modules_under_paths(ROOT / "magenticx" / "dialogue_bridge", ROOT / "magenticx" / "rag_service", ROOT / "magenticx" / "agents")
 
     monkeypatch.syspath_prepend(str(SERVICE_ROOT))
 

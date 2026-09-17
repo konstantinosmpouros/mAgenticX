@@ -185,7 +185,7 @@ flowchart LR
 ## Sharp edges
 
 - **Mid-conversation saves apply on the *next* conversation.** `AGENTS.md` is injected into context at build time (start of a conversation). A `remember` commits immediately, but the agent only *reads it as always-on context* next time. Within the same chat it can still `read_file /memories/AGENTS.md` — and because the index is derived, that read reflects the save straight away.
-- **60-entry hard cap per (user, agent).** New saves beyond `MEMORY_MAX_ENTRIES` are refused (updates still allowed), so the index stays context-cheap. Counted in rows. There is no automatic eviction/decay yet (tracked under *Memory lifecycle* in `src/TODO`).
+- **60-entry hard cap per (user, agent).** New saves beyond `MEMORY_MAX_ENTRIES` are refused (updates still allowed), so the index stays context-cheap. Counted in rows. There is no automatic eviction/decay yet (tracked under *Memory lifecycle* in `magenticx/TODO`).
 - **Delete is one row.** The index is derived from what remains, so it can never
   be left pointing at a memory that is gone — which the previous two-file version
   had to keep in step by hand. Idempotent.
@@ -199,7 +199,7 @@ flowchart LR
   thread, where it would deadlock.
 - **No FK to `users`** — that table is in `chat_db`, a different database. Deleting
   a user does **not** cascade to their memories; that needs an explicit sweep.
-- **Per-(user, agent) isolation.** Memory is keyed by agent slug — switching agents shows a different memory set. The workspace-scoped tier is future work (see *Projects / Workspaces* in `src/TODO`).
+- **Per-(user, agent) isolation.** Memory is keyed by agent slug — switching agents shows a different memory set. The workspace-scoped tier is future work (see *Projects / Workspaces* in `magenticx/TODO`).
 - **No create/update endpoint by design.** The user can only inspect and delete; the agent owns writes via `remember`.
 - **`use_memory` off ⇒ nothing.** Mount dropped, `AGENTS.md` not injected, `remember` not attached — and the system prompt's memory instructions are omitted, so the agent won't claim a memory it doesn't have.
 
@@ -209,19 +209,19 @@ flowchart LR
 
 | Concern | File |
 | --- | --- |
-| The store (`BaseStore` over `agent_memories`, DDL, typed CRUD) | [src/agents/harness/memory/store.py](../../src/agents/harness/memory/store.py) |
-| Shared connection pool handle | [src/agents/harness/memory/pool.py](../../src/agents/harness/memory/pool.py) |
-| `AGENTS.md` index row format | [src/agents/harness/memory/index.py](../../src/agents/harness/memory/index.py) |
-| `AGENTS.md` template (the prose the model reads) | [src/agents/harness/memory/template.py](../../src/agents/harness/memory/template.py) |
-| The `/memories/` route wiring | [src/agents/harness/filesystem/workspace.py](../../src/agents/harness/filesystem/workspace.py) |
-| Pool install + table creation on boot | [src/agents/harness/checkpointer/bootstrap.py](../../src/agents/harness/checkpointer/bootstrap.py) |
-| `remember` write tool (slugify, cap, upsert) | [src/agents/harness/tools/remember/tool.py](../../src/agents/harness/tools/remember/tool.py) |
-| Provenance plumbing (`run_id`, `thread_id`, `trust_level`) | [src/agents/harness/tools/registry.py](../../src/agents/harness/tools/registry.py) · [src/agents/harness/abstractions/deep_agent.py](../../src/agents/harness/abstractions/deep_agent.py) (`_trust_level`) |
-| Memory gating | [src/agents/harness/abstractions/deep_agent.py](../../src/agents/harness/abstractions/deep_agent.py) (`_builtin_tools`, `load_agent_md`, `prompt_context`) |
-| Memory system-prompt block | [src/agents/harness/prompt_engineering/prompts/memory_prompt.py](../../src/agents/harness/prompt_engineering/prompts/memory_prompt.py) |
-| Cap setting (`MEMORY_MAX_ENTRIES`) | [src/agents/core/settings.py](../../src/agents/core/settings.py) (`FilesystemSettings`) |
-| Agents inspector endpoints | [src/agents/router/memories.py](../../src/agents/router/memories.py) |
-| Bridge proxy + router | [src/dialogue_bridge/utils/memories.py](../../src/dialogue_bridge/utils/memories.py) · [src/dialogue_bridge/router/memories.py](../../src/dialogue_bridge/router/memories.py) |
-| Frontend API + hook + tab | [src/agentic_ui/src/shared/lib/api/](../../src/agentic_ui/src/shared/lib/api/) · [src/agentic_ui/src/features/settings/hooks/useMemories.ts](../../src/agentic_ui/src/features/settings/hooks/useMemories.ts) · [src/agentic_ui/src/features/settings/components/profile_parts/MemoriesTab.tsx](../../src/agentic_ui/src/features/settings/components/profile_parts/MemoriesTab.tsx) |
+| The store (`BaseStore` over `agent_memories`, DDL, typed CRUD) | [magenticx/agents/harness/memory/store.py](../../magenticx/agents/harness/memory/store.py) |
+| Shared connection pool handle | [magenticx/agents/harness/memory/pool.py](../../magenticx/agents/harness/memory/pool.py) |
+| `AGENTS.md` index row format | [magenticx/agents/harness/memory/index.py](../../magenticx/agents/harness/memory/index.py) |
+| `AGENTS.md` template (the prose the model reads) | [magenticx/agents/harness/memory/template.py](../../magenticx/agents/harness/memory/template.py) |
+| The `/memories/` route wiring | [magenticx/agents/harness/filesystem/workspace.py](../../magenticx/agents/harness/filesystem/workspace.py) |
+| Pool install + table creation on boot | [magenticx/agents/harness/checkpointer/bootstrap.py](../../magenticx/agents/harness/checkpointer/bootstrap.py) |
+| `remember` write tool (slugify, cap, upsert) | [magenticx/agents/harness/tools/remember/tool.py](../../magenticx/agents/harness/tools/remember/tool.py) |
+| Provenance plumbing (`run_id`, `thread_id`, `trust_level`) | [magenticx/agents/harness/tools/registry.py](../../magenticx/agents/harness/tools/registry.py) · [magenticx/agents/harness/abstractions/deep_agent.py](../../magenticx/agents/harness/abstractions/deep_agent.py) (`_trust_level`) |
+| Memory gating | [magenticx/agents/harness/abstractions/deep_agent.py](../../magenticx/agents/harness/abstractions/deep_agent.py) (`_builtin_tools`, `load_agent_md`, `prompt_context`) |
+| Memory system-prompt block | [magenticx/agents/harness/prompt_engineering/prompts/memory_prompt.py](../../magenticx/agents/harness/prompt_engineering/prompts/memory_prompt.py) |
+| Cap setting (`MEMORY_MAX_ENTRIES`) | [magenticx/agents/core/settings.py](../../magenticx/agents/core/settings.py) (`FilesystemSettings`) |
+| Agents inspector endpoints | [magenticx/agents/router/memories.py](../../magenticx/agents/router/memories.py) |
+| Bridge proxy + router | [magenticx/dialogue_bridge/utils/memories.py](../../magenticx/dialogue_bridge/utils/memories.py) · [magenticx/dialogue_bridge/router/memories.py](../../magenticx/dialogue_bridge/router/memories.py) |
+| Frontend API + hook + tab | [magenticx/agentic_ui/src/shared/lib/api/](../../magenticx/agentic_ui/src/shared/lib/api/) · [magenticx/agentic_ui/src/features/settings/hooks/useMemories.ts](../../magenticx/agentic_ui/src/features/settings/hooks/useMemories.ts) · [magenticx/agentic_ui/src/features/settings/components/profile_parts/MemoriesTab.tsx](../../magenticx/agentic_ui/src/features/settings/components/profile_parts/MemoriesTab.tsx) |
 
 See also: [user-preferences](user-preferences.md#agent-memory) (the `use_memory` gate), [conversation-embeddings](conversation-embeddings.md) (the separate `search_past_conversations` recall tool), [agent-development](../development/agent-development.md#per-user-agent-long-term-memory).

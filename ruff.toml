@@ -16,11 +16,11 @@ line-length = 100
 extend-exclude = [
     # Vendored skill content — third-party scripts shipped inside SKILL folders.
     # Ours to distribute, not ours to restyle.
-    "src/agents/harness/skill_registry",
+    "magenticx/agents/harness/skill_registry",
     # Alembic revisions are generated and then frozen: an applied migration must
     # never be edited (see CLAUDE.md § Schema Changes), so linting them would
     # produce findings that cannot be acted on.
-    "src/dialogue_bridge/core/database/migrations/versions",
+    "magenticx/dialogue_bridge/core/database/migrations/versions",
 ]
 
 [lint]
@@ -50,7 +50,7 @@ ignore = [
 "tests/**" = ["B011"]
 # Each service puts its own package root on sys.path before importing anything
 # first-party. The ordering is load-bearing, not a style slip.
-"src/*/main.py" = ["E402"]
+"magenticx/*/main.py" = ["E402"]
 
 [lint.flake8-bugbear]
 # FastAPI's whole dependency-injection API is a call in a default argument.

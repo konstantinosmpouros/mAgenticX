@@ -57,14 +57,14 @@ and its **numerator** (used) must be a real occupancy number, not the inflated s
 ### Phase 1 — Agents: publish model facts in the manifest
 
 - Add a model registry map in the agents service (new
-  `src/agents/harness/model_registry.py`): `MODEL_CONTEXT_WINDOWS: dict[str,int]`
+  `magenticx/agents/harness/model_registry.py`): `MODEL_CONTEXT_WINDOWS: dict[str,int]`
   and `MODEL_PRICING: dict[str, {input, output}]` (per-MTok USD). **Values must be
   verified against current model docs at implementation time.**
 - Give every agent a declared **primary model**:
   - Deep agents: reuse the existing `main_model`.
   - LangGraph agents (HR / Orthodox / Retail): declare one representative model
     (the answer/generation model).
-- Extend `BaseAgent.manifest()` (`src/agents/harness/base_agent.py:99`) to emit:
+- Extend `BaseAgent.manifest()` (`magenticx/agents/harness/base_agent.py:99`) to emit:
   `mainModel: str`, `contextWindow: int`, `inputPricePerMTok: float`,
   `outputPricePerMTok: float` (resolved from the registry for the agent's
   primary model). Nullable-safe: unknown model → omit window/price (UI hides ring).
@@ -73,7 +73,7 @@ and its **numerator** (used) must be a real occupancy number, not the inflated s
 
 - **Migration A — `agents` table:** add `main_model` (str, null), `context_window`
   (int, null), `input_price` (numeric, null), `output_price` (numeric, null).
-  Populate in `sync_agents_with_service()` (`src/dialogue_bridge/utils/agents.py:129`;
+  Populate in `sync_agents_with_service()` (`magenticx/dialogue_bridge/utils/agents.py:129`;
   manifest validation at `:197`) — read the new manifest fields and write the
   columns on upsert. Extend the manifest DTO in `schemas/__init__.py` accordingly.
 - **Migration B — `messages` table:** add `context_tokens` (int, null) = peak
@@ -90,14 +90,14 @@ and its **numerator** (used) must be a real occupancy number, not the inflated s
 
 ### Phase 3 — Frontend: the composer indicator
 
-- New `src/agentic_ui/src/shared/ui/ai-elements/context.tsx` — shadcn-Context-style
+- New `magenticx/agentic_ui/src/shared/ui/ai-elements/context.tsx` — shadcn-Context-style
   ring + Radix hover/popover breakdown. Semantic tokens only, light+dark, Framer
   Motion ≤400ms with `useReducedMotion`, `aria-label` on the trigger, ring
   `aria-hidden` with a text equivalent in the popover.
 - Wire new fields through `shared/lib/schemas.ts` → `types.ts` (Zod contract for
   `AgentOut`/`MessageOut`) and `shared/lib/consts.ts` if a fallback price/window
   map is wanted for agents that don't publish one.
-- Mount in `src/agentic_ui/src/features/chat/components/ChatInputBar.tsx`:
+- Mount in `magenticx/agentic_ui/src/features/chat/components/ChatInputBar.tsx`:
   - **Ring** = latest active-branch AI message's `contextTokens ÷ agent.contextWindow`
     (hide when either is unknown). Colour: `primary` → `warning` → `destructive`
     as it approaches full.

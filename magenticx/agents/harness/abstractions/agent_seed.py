@@ -1,7 +1,7 @@
 """Seed built-in declarative agents from the image into the global volume.
 
 The image ships built-in agent definitions at ``/opt/agents_seed/`` (copied by
-the Dockerfile from ``src/agents/harness/agents_seed/``). At boot we copy each agent
+the Dockerfile from ``magenticx/agents/harness/agents_seed/``). At boot we copy each agent
 folder into ``<global_root>/agents/`` with ``cp -rn`` semantics — existing
 folders on the volume win, so an admin's out-of-band edit to a built-in agent
 persists across restarts, while a brand-new built-in appears on upgrade.

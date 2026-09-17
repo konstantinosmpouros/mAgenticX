@@ -9,6 +9,6 @@ pytest-timeout==2.4.0
 
 # Async SQLite driver — the bridge suite builds its schema on sqlite so tests
 # need no live Postgres. Test-only on purpose: it used to sit in
-# src/dialogue_bridge/requirements.txt and therefore shipped in the production
+# magenticx/dialogue_bridge/requirements.txt and therefore shipped in the production
 # image, where nothing can reach it (production is always Postgres).
 aiosqlite==0.21.0

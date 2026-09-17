@@ -268,7 +268,7 @@ sequenceDiagram
 
 ### Auto-Refresh Scheduling
 
-Silent refresh has **two triggers**, both routed through the single `ensureFreshSession()` primitive ([shared/lib/sessionRefresh.ts](../../src/agentic_ui/src/shared/lib/sessionRefresh.ts)):
+Silent refresh has **two triggers**, both routed through the single `ensureFreshSession()` primitive ([shared/lib/sessionRefresh.ts](../../magenticx/agentic_ui/src/shared/lib/sessionRefresh.ts)):
 
 1. **Proactive (timer).** `useSessionAutoRefreshEffect` schedules a `setTimeout` to fire **10 minutes** before `expiresAt` (a 2-minute margin is too thin on an 8-hour token). Because browsers throttle/suspend timers in a backgrounded tab (and a slept device pauses them), the hook also re-evaluates on **`visibilitychange`/`focus`**: via the same scheduler it refreshes immediately if the access token already expired or is about to, otherwise re-arms the drifted timer.
 
@@ -292,7 +292,7 @@ Silent refresh has **two triggers**, both routed through the single `ensureFresh
        end
    ```
 
-2. **Reactive (401 interceptor).** Every API call goes through `requestRaw` ([shared/lib/http.ts](../../src/agentic_ui/src/shared/lib/http.ts)); a `401` triggers **one** silent refresh and **one** retry of the original request (rebuilt so it picks up the rotated CSRF cookie) before the app gives up. The inference **WebSocket** mirrors this: a `4401` close refreshes once and reconnects with the fresh cookie. This is what stops a stale access token — after device sleep, or a request racing the expiry — from bouncing an otherwise-valid session to the login screen. Only when the refresh **itself** fails (idle > 12 d, absolute > 20 d, or the `sid` was revoked) does the app emit `mx:unauthorized` and return to login.
+2. **Reactive (401 interceptor).** Every API call goes through `requestRaw` ([shared/lib/http.ts](../../magenticx/agentic_ui/src/shared/lib/http.ts)); a `401` triggers **one** silent refresh and **one** retry of the original request (rebuilt so it picks up the rotated CSRF cookie) before the app gives up. The inference **WebSocket** mirrors this: a `4401` close refreshes once and reconnects with the fresh cookie. This is what stops a stale access token — after device sleep, or a request racing the expiry — from bouncing an otherwise-valid session to the login screen. Only when the refresh **itself** fails (idle > 12 d, absolute > 20 d, or the `sid` was revoked) does the app emit `mx:unauthorized` and return to login.
 
    ```mermaid
    sequenceDiagram
@@ -559,20 +559,20 @@ holding dormant logins.
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| Vault credential check | [src/dialogue_bridge/core/auth_client.py](../../src/dialogue_bridge/core/auth_client.py) | `VaultAuthenticator.authenticate()` |
-| Bridge Vault identity + Transit signing | [src/dialogue_bridge/core/vault_service.py](../../src/dialogue_bridge/core/vault_service.py) | `VaultServiceClient` — AppRole login, `sign()`, `public_key_pem()`, `current_sign_version()` |
-| JWT mint / verify | [src/dialogue_bridge/core/auth/tokens.py](../../src/dialogue_bridge/core/auth/tokens.py) | `mint_tokens()`, `verify()`, claim model |
-| Session deps + cookies | [src/dialogue_bridge/core/auth/session.py](../../src/dialogue_bridge/core/auth/session.py) | `require_session`, `require_current_user`, `require_refresh_session`, `require_csrf_protection`, `issue_session_cookies`, `revoke_current_session` |
-| Instant-logout denylist | [src/dialogue_bridge/core/logout_denylist.py](../../src/dialogue_bridge/core/logout_denylist.py) | `LogoutDenylist` (fail-open) |
-| Auth endpoints | [src/dialogue_bridge/router/auth.py](../../src/dialogue_bridge/router/auth.py) | `authenticate`, `session_me`, `refresh_session`, `logout`, `auth_config`, `oidc_login`, `oidc_callback` |
-| Entra OIDC flow (MSAL) | [src/dialogue_bridge/core/auth/oidc.py](../../src/dialogue_bridge/core/auth/oidc.py) | `begin_login`, `complete_login`, group gate |
-| Identity link/upsert | [src/dialogue_bridge/core/database/models.py](../../src/dialogue_bridge/core/database/models.py) | `upsert_user_from_identity` (link-by-email), `IdentityConflictError` |
-| User upsert from Vault | [src/dialogue_bridge/core/database/models.py](../../src/dialogue_bridge/core/database/models.py) | `upsert_user_from_vault()` |
-| Settings | [src/dialogue_bridge/core/settings.py](../../src/dialogue_bridge/core/settings.py) | `JWTSettings`, `VaultSettings` (AppRole + Transit), `EntraSettings` (OIDC) |
-| Vault setup runbook | [src/vault/vault_init.sh](../../src/vault/vault_init.sh) | Transit key + AppRole role + policy |
-| Rate limiting | [src/dialogue_bridge/core/security/rate_limit.py](../../src/dialogue_bridge/core/security/rate_limit.py) | `AUTHENTICATE_LIMIT`, `limiter` |
-| localStorage marker | [src/agentic_ui/src/shared/lib/authStorage.ts](../../src/agentic_ui/src/shared/lib/authStorage.ts) | `StoredSession`, `saveSession()`, `loadSession()` |
-| Silent-refresh primitive | [src/agentic_ui/src/shared/lib/sessionRefresh.ts](../../src/agentic_ui/src/shared/lib/sessionRefresh.ts) | `ensureFreshSession()` — single-flight + cross-tab refresh, shared by both triggers |
-| 401 refresh-and-retry interceptor | [src/agentic_ui/src/shared/lib/http.ts](../../src/agentic_ui/src/shared/lib/http.ts) | `requestRaw` (reactive trigger; `skipAuthRetry` opt-out) |
-| Auto-refresh scheduling | [src/agentic_ui/src/features/auth/hooks/useSessionEffects.ts](../../src/agentic_ui/src/features/auth/hooks/useSessionEffects.ts) | `useSessionAutoRefreshEffect` (proactive trigger, 10-min buffer) |
-| Login / logout handlers | [src/agentic_ui/src/features/auth/handlers/auth.ts](../../src/agentic_ui/src/features/auth/handlers/auth.ts) | `handleLogin`, `handleLogout` |
+| Vault credential check | [magenticx/dialogue_bridge/core/auth_client.py](../../magenticx/dialogue_bridge/core/auth_client.py) | `VaultAuthenticator.authenticate()` |
+| Bridge Vault identity + Transit signing | [magenticx/dialogue_bridge/core/vault_service.py](../../magenticx/dialogue_bridge/core/vault_service.py) | `VaultServiceClient` — AppRole login, `sign()`, `public_key_pem()`, `current_sign_version()` |
+| JWT mint / verify | [magenticx/dialogue_bridge/core/auth/tokens.py](../../magenticx/dialogue_bridge/core/auth/tokens.py) | `mint_tokens()`, `verify()`, claim model |
+| Session deps + cookies | [magenticx/dialogue_bridge/core/auth/session.py](../../magenticx/dialogue_bridge/core/auth/session.py) | `require_session`, `require_current_user`, `require_refresh_session`, `require_csrf_protection`, `issue_session_cookies`, `revoke_current_session` |
+| Instant-logout denylist | [magenticx/dialogue_bridge/core/logout_denylist.py](../../magenticx/dialogue_bridge/core/logout_denylist.py) | `LogoutDenylist` (fail-open) |
+| Auth endpoints | [magenticx/dialogue_bridge/router/auth.py](../../magenticx/dialogue_bridge/router/auth.py) | `authenticate`, `session_me`, `refresh_session`, `logout`, `auth_config`, `oidc_login`, `oidc_callback` |
+| Entra OIDC flow (MSAL) | [magenticx/dialogue_bridge/core/auth/oidc.py](../../magenticx/dialogue_bridge/core/auth/oidc.py) | `begin_login`, `complete_login`, group gate |
+| Identity link/upsert | [magenticx/dialogue_bridge/core/database/models.py](../../magenticx/dialogue_bridge/core/database/models.py) | `upsert_user_from_identity` (link-by-email), `IdentityConflictError` |
+| User upsert from Vault | [magenticx/dialogue_bridge/core/database/models.py](../../magenticx/dialogue_bridge/core/database/models.py) | `upsert_user_from_vault()` |
+| Settings | [magenticx/dialogue_bridge/core/settings.py](../../magenticx/dialogue_bridge/core/settings.py) | `JWTSettings`, `VaultSettings` (AppRole + Transit), `EntraSettings` (OIDC) |
+| Vault setup runbook | [magenticx/vault/vault_init.sh](../../magenticx/vault/vault_init.sh) | Transit key + AppRole role + policy |
+| Rate limiting | [magenticx/dialogue_bridge/core/security/rate_limit.py](../../magenticx/dialogue_bridge/core/security/rate_limit.py) | `AUTHENTICATE_LIMIT`, `limiter` |
+| localStorage marker | [magenticx/agentic_ui/src/shared/lib/authStorage.ts](../../magenticx/agentic_ui/src/shared/lib/authStorage.ts) | `StoredSession`, `saveSession()`, `loadSession()` |
+| Silent-refresh primitive | [magenticx/agentic_ui/src/shared/lib/sessionRefresh.ts](../../magenticx/agentic_ui/src/shared/lib/sessionRefresh.ts) | `ensureFreshSession()` — single-flight + cross-tab refresh, shared by both triggers |
+| 401 refresh-and-retry interceptor | [magenticx/agentic_ui/src/shared/lib/http.ts](../../magenticx/agentic_ui/src/shared/lib/http.ts) | `requestRaw` (reactive trigger; `skipAuthRetry` opt-out) |
+| Auto-refresh scheduling | [magenticx/agentic_ui/src/features/auth/hooks/useSessionEffects.ts](../../magenticx/agentic_ui/src/features/auth/hooks/useSessionEffects.ts) | `useSessionAutoRefreshEffect` (proactive trigger, 10-min buffer) |
+| Login / logout handlers | [magenticx/agentic_ui/src/features/auth/handlers/auth.ts](../../magenticx/agentic_ui/src/features/auth/handlers/auth.ts) | `handleLogin`, `handleLogout` |

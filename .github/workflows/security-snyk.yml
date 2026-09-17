@@ -47,11 +47,11 @@ jobs:
           node-version: "20"
 
       - name: Install Node dependencies
-        working-directory: src/agentic_ui
+        working-directory: magenticx/agentic_ui
         run: npm ci
 
       - name: Snyk monitor - Node UI
-        run: snyk monitor --file=src/agentic_ui/package-lock.json --project-name=agentic_ui
+        run: snyk monitor --file=magenticx/agentic_ui/package-lock.json --project-name=agentic_ui
 
       # Python projects
       - name: Setup Python
@@ -62,18 +62,18 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r src/agents/requirements.txt
-          pip install -r src/dialogue_bridge/requirements.txt
-          pip install -r src/rag_service/requirements.txt
+          pip install -r magenticx/agents/requirements.txt
+          pip install -r magenticx/dialogue_bridge/requirements.txt
+          pip install -r magenticx/rag_service/requirements.txt
 
       - name: Snyk monitor - agents requirements
-        run: snyk monitor --file=src/agents/requirements.txt --package-manager=pip --project-name=agents
+        run: snyk monitor --file=magenticx/agents/requirements.txt --package-manager=pip --project-name=agents
 
       - name: Snyk monitor - dialogue_bridge requirements
-        run: snyk monitor --file=src/dialogue_bridge/requirements.txt --package-manager=pip --project-name=dialogue_bridge
+        run: snyk monitor --file=magenticx/dialogue_bridge/requirements.txt --package-manager=pip --project-name=dialogue_bridge
 
       - name: Snyk monitor - rag_service requirements
-        run: snyk monitor --file=src/rag_service/requirements.txt --package-manager=pip --project-name=rag_service
+        run: snyk monitor --file=magenticx/rag_service/requirements.txt --package-manager=pip --project-name=rag_service
 
 
       # ---------- IaC ----------
@@ -84,25 +84,25 @@ jobs:
 
       # ---------- CONTAINER ----------
       - name: Build agents image
-        run: docker build -t magenticx/agents:ci -f src/agents/Dockerfile src/agents
+        run: docker build -t magenticx/agents:ci -f magenticx/agents/Dockerfile magenticx/agents
 
       - name: Build dialogue_bridge image
-        run: docker build -t magenticx/dialogue_bridge:ci -f src/dialogue_bridge/Dockerfile src/dialogue_bridge
+        run: docker build -t magenticx/dialogue_bridge:ci -f magenticx/dialogue_bridge/Dockerfile magenticx/dialogue_bridge
 
       - name: Build rag_service image
-        run: docker build -t magenticx/rag_service:ci -f src/rag_service/Dockerfile src/rag_service
+        run: docker build -t magenticx/rag_service:ci -f magenticx/rag_service/Dockerfile magenticx/rag_service
 
       - name: Build agentic_ui image
-        run: docker build -t magenticx/agentic_ui:ci -f src/agentic_ui/Dockerfile src/agentic_ui
+        run: docker build -t magenticx/agentic_ui:ci -f magenticx/agentic_ui/Dockerfile magenticx/agentic_ui
 
       - name: Snyk container monitor - agents
-        run: snyk container monitor magenticx/agents:ci --file=src/agents/Dockerfile
+        run: snyk container monitor magenticx/agents:ci --file=magenticx/agents/Dockerfile
 
       - name: Snyk container monitor - dialogue_bridge
-        run: snyk container monitor magenticx/dialogue_bridge:ci --file=src/dialogue_bridge/Dockerfile
+        run: snyk container monitor magenticx/dialogue_bridge:ci --file=magenticx/dialogue_bridge/Dockerfile
 
       - name: Snyk container monitor - rag_service
-        run: snyk container monitor magenticx/rag_service:ci --file=src/rag_service/Dockerfile
+        run: snyk container monitor magenticx/rag_service:ci --file=magenticx/rag_service/Dockerfile
 
       - name: Snyk container monitor - agentic_ui
-        run: snyk container monitor magenticx/agentic_ui:ci --file=src/agentic_ui/Dockerfile
+        run: snyk container monitor magenticx/agentic_ui:ci --file=magenticx/agentic_ui/Dockerfile

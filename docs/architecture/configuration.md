@@ -1,6 +1,6 @@
 # Configuration — Every Environment Variable, Per Service
 
-Each Python service is configured entirely through environment variables read by **Pydantic `BaseSettings`** classes in its `core/settings.py`; the infrastructure services (Postgres, Redis, Chroma, nginx, Vault, the monitoring stack) are configured by image env vars and command flags. This document is the exhaustive reference for *how much you can tune each service without touching code* — every var, its default, and what it does. For the inverse — the short list of *what each service cannot boot without* — see its companion, [service-startup.md](service-startup.md). Defaults shown are the **in-code defaults**; the production compose overrides only a handful (mostly URLs, TLS paths, `LOG_FORMAT=json`, and `*_FILE` secret pointers). Settings are **case-insensitive**, load from `src/.env` in local dev, and ignore unknown vars (`extra="ignore"`). Anything backed by a secret follows the `<NAME>_FILE` indirection documented in [secrets.md](secrets.md).
+Each Python service is configured entirely through environment variables read by **Pydantic `BaseSettings`** classes in its `core/settings.py`; the infrastructure services (Postgres, Redis, Chroma, nginx, Vault, the monitoring stack) are configured by image env vars and command flags. This document is the exhaustive reference for *how much you can tune each service without touching code* — every var, its default, and what it does. For the inverse — the short list of *what each service cannot boot without* — see its companion, [service-startup.md](service-startup.md). Defaults shown are the **in-code defaults**; the production compose overrides only a handful (mostly URLs, TLS paths, `LOG_FORMAT=json`, and `*_FILE` secret pointers). Settings are **case-insensitive**, load from `magenticx/.env` in local dev, and ignore unknown vars (`extra="ignore"`). Anything backed by a secret follows the `<NAME>_FILE` indirection documented in [secrets.md](secrets.md).
 
 ---
 
@@ -444,13 +444,13 @@ These flip behavior at boot; all are **fail-closed by default** (secure unless e
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| bridge settings | [src/dialogue_bridge/core/settings.py](../../src/dialogue_bridge/core/settings.py) | every `*Settings` class + `validation_alias` |
-| agents settings | [src/agents/core/settings.py](../../src/agents/core/settings.py) | checkpointer, workflows, deep-agents, filesystem |
-| rag settings | [src/rag_service/core/settings.py](../../src/rag_service/core/settings.py) | `AppSettings`, `RagSettings`, `ProxySettings` |
-| TLS toggles | [src/tls/entrypoint-tls.sh](../../src/tls/entrypoint-tls.sh) | `REQUIRE_TLS`, `REQUIRE_MTLS` |
-| nginx env substitution | [src/agentic_ui/nginx.conf.template](../../src/agentic_ui/nginx.conf.template) | `BFF_BASE_URL`, `TRUSTED_PROXY_SECRET` |
-| core stack compose | [src/docker-compose-denis.yaml](../../src/docker-compose-denis.yaml) | per-service `environment:` overrides |
-| monitoring compose | [src/docker-compose-denis-monitoring.yml](../../src/docker-compose-denis-monitoring.yml) | grafana/prometheus env + flags |
+| bridge settings | [magenticx/dialogue_bridge/core/settings.py](../../magenticx/dialogue_bridge/core/settings.py) | every `*Settings` class + `validation_alias` |
+| agents settings | [magenticx/agents/core/settings.py](../../magenticx/agents/core/settings.py) | checkpointer, workflows, deep-agents, filesystem |
+| rag settings | [magenticx/rag_service/core/settings.py](../../magenticx/rag_service/core/settings.py) | `AppSettings`, `RagSettings`, `ProxySettings` |
+| TLS toggles | [magenticx/tls/entrypoint-tls.sh](../../magenticx/tls/entrypoint-tls.sh) | `REQUIRE_TLS`, `REQUIRE_MTLS` |
+| nginx env substitution | [magenticx/agentic_ui/nginx.conf.template](../../magenticx/agentic_ui/nginx.conf.template) | `BFF_BASE_URL`, `TRUSTED_PROXY_SECRET` |
+| core stack compose | [magenticx/docker-compose-denis.yaml](../../magenticx/docker-compose-denis.yaml) | per-service `environment:` overrides |
+| monitoring compose | [magenticx/docker-compose-denis-monitoring.yml](../../magenticx/docker-compose-denis-monitoring.yml) | grafana/prometheus env + flags |
 | secret delivery | [docs/architecture/secrets.md](secrets.md) | which var is backed by which secret |
 
 ### Multi-account sign-in (dialogue_bridge)

@@ -280,7 +280,7 @@ This matters for branching: editing and retrying should create siblings, not ove
 
 ## Delta-Payload Inference & Durable Checkpoint Resume
 
-The agents service keeps a **durable LangGraph checkpoint** per branch (an `AsyncPostgresSaver` over the `agent_runtime` database — see [agent-development.md](../development/agent-development.md)). Because the branch's graph state survives across turns, the bridge no longer re-sends the full reconstructed conversation on every turn. `InferenceRunManager._run` ([`inference_runs.py`](../../src/dialogue_bridge/utils/inference_runs.py)) chooses a payload mode, re-derived from the message tree via `nearest_committed_ai` ([`inference.py`](../../src/dialogue_bridge/utils/inference.py)):
+The agents service keeps a **durable LangGraph checkpoint** per branch (an `AsyncPostgresSaver` over the `agent_runtime` database — see [agent-development.md](../development/agent-development.md)). Because the branch's graph state survives across turns, the bridge no longer re-sends the full reconstructed conversation on every turn. `InferenceRunManager._run` ([`inference_runs.py`](../../magenticx/dialogue_bridge/utils/inference_runs.py)) chooses a payload mode, re-derived from the message tree via `nearest_committed_ai` ([`inference.py`](../../magenticx/dialogue_bridge/utils/inference.py)):
 
 | Payload mode | When | What the bridge sends to `/agents/{slug}/stream` |
 | --- | --- | --- |
@@ -292,7 +292,7 @@ The agents service keeps a **durable LangGraph checkpoint** per branch (an `Asyn
 
 ### Capture-back — `CHECKPOINT_COMMITTED`
 
-So the bridge can record which durable checkpoint a run produced (for the next turn's resume/fork), the agent emits a **terminal AG-UI custom event** `CHECKPOINT_COMMITTED {thread_id, checkpoint_id}` (emitter method `checkpoint_committed`, type `CHECKPOINT_COMMITTED` in [`events.py`](../../src/agents/harness/agui/events.py)). `InferenceRunRuntime.apply_event` captures it, and `_finish_run` persists `checkpoint_id` (alongside the already-stamped `checkpoint_thread_id`) on the AI message row. A branch's leaf AI message therefore always carries the head its next turn resumes from.
+So the bridge can record which durable checkpoint a run produced (for the next turn's resume/fork), the agent emits a **terminal AG-UI custom event** `CHECKPOINT_COMMITTED {thread_id, checkpoint_id}` (emitter method `checkpoint_committed`, type `CHECKPOINT_COMMITTED` in [`events.py`](../../magenticx/agents/harness/agui/events.py)). `InferenceRunRuntime.apply_event` captures it, and `_finish_run` persists `checkpoint_id` (alongside the already-stamped `checkpoint_thread_id`) on the AI message row. A branch's leaf AI message therefore always carries the head its next turn resumes from.
 
 ---
 
@@ -504,7 +504,7 @@ sequenceDiagram
 
 The agents service compiles every `/stream` and `/resume` request against **one process-wide `AsyncPostgresSaver`** (accessor in `harness/checkpointer/store.py`: `get_checkpointer()`), opened in the FastAPI lifespan over a durable connection pool. The resume request — which creates a fresh agent instance — just selects the same `thread_id` and `aget_state` returns the paused state from the `agent_runtime` database. If the targeted interrupt is no longer pending (advanced/duplicate click) the resume endpoint returns 409 and the bridge marks the run failed with a user-readable message.
 
-**`thread_id` is the branch-scoped `checkpoint_thread_id`, not `run.id`.** The bridge sets `configurable.thread_id = run.checkpoint_thread_id` ([`inference_runs.py`](../../src/dialogue_bridge/utils/inference_runs.py)) — durable and **shared by every run on a branch**, so a continue resumes the branch's prior state and a HITL resume rehydrates the same paused checkpoint. Edit/retry mint a fresh thread (seeded copy-on-fork from the parent), keeping sibling branches isolated. The per-run identity — AG-UI `message_id`, the `_THREAD_NAMESPACE_BINDINGS` key, the WebSocket/Redis run key — is `run.id`, passed separately as `context.run_id`. (Keying the checkpoint by `conversation_id` was the original "agent sees every branch" bug; keying it by `run.id` then prevented any cross-turn resume, which the branch-scoped thread now restores without leaking across branches.)
+**`thread_id` is the branch-scoped `checkpoint_thread_id`, not `run.id`.** The bridge sets `configurable.thread_id = run.checkpoint_thread_id` ([`inference_runs.py`](../../magenticx/dialogue_bridge/utils/inference_runs.py)) — durable and **shared by every run on a branch**, so a continue resumes the branch's prior state and a HITL resume rehydrates the same paused checkpoint. Edit/retry mint a fresh thread (seeded copy-on-fork from the parent), keeping sibling branches isolated. The per-run identity — AG-UI `message_id`, the `_THREAD_NAMESPACE_BINDINGS` key, the WebSocket/Redis run key — is `run.id`, passed separately as `context.run_id`. (Keying the checkpoint by `conversation_id` was the original "agent sees every branch" bug; keying it by `run.id` then prevented any cross-turn resume, which the branch-scoped thread now restores without leaking across branches.)
 
 **Checkpoint lifecycle — durable, reaped only on conversation delete.** The checkpoint is durable history, not scratch space:
 
@@ -522,11 +522,11 @@ LangChain's `HumanInTheLoopMiddleware` expects `Command(resume={"decisions": [..
 
 ### interrupt_id contract
 
-Every `HITL_INTERRUPT` event carries `value.interrupt.id` — the LangGraph interrupt's unique id, captured in [`normalizer.py`](../../src/agents/harness/agui/normalizer.py). The full chain uses this id, **not** `thread_id`, for dedup and resolution tracking:
+Every `HITL_INTERRUPT` event carries `value.interrupt.id` — the LangGraph interrupt's unique id, captured in [`normalizer.py`](../../magenticx/agents/harness/agui/normalizer.py). The full chain uses this id, **not** `thread_id`, for dedup and resolution tracking:
 
-- UI: the timeline reducer ([`lib/timeline.ts`](../../src/agentic_ui/src/features/inference/timeline.ts)) dedupes interrupts on `interrupt.id` and flips their status when the `BRIDGE_HITL_RESOLVED` marker arrives; `useInferenceRuns.resolvedInterrupts` (keyed `${runId}:${interruptId}`) is the instant client-side overlay for the round-trip window between the resume HTTP response and the marker frame.
+- UI: the timeline reducer ([`lib/timeline.ts`](../../magenticx/agentic_ui/src/features/inference/timeline.ts)) dedupes interrupts on `interrupt.id` and flips their status when the `BRIDGE_HITL_RESOLVED` marker arrives; `useInferenceRuns.resolvedInterrupts` (keyed `${runId}:${interruptId}`) is the instant client-side overlay for the round-trip window between the resume HTTP response and the marker frame.
 - Bridge → agents: `ResumeInferenceRunBody.interruptId` (`api.ts`) → `InferenceRunResumeIn.interruptId` → `_do_resume` body field `interrupt_id` → `AgentResumeRequest.interrupt_id`.
-- Agents: [`main.py`](../../src/agents/main.py) compares `req.interrupt_id` against `snapshot.interrupts[0].id` and returns 409 if the user's clicked card is no longer pending (e.g., a duplicate click after the run advanced).
+- Agents: [`main.py`](../../magenticx/agents/main.py) compares `req.interrupt_id` against `snapshot.interrupts[0].id` and returns 409 if the user's clicked card is no longer pending (e.g., a duplicate click after the run advanced).
 
 Why this matters: every HITL within a single run shares that run's checkpoint `thread_id` (now the branch-scoped `checkpoint_thread_id`). Deduping on `thread_id` would silently drop every interrupt after the first in a multi-interrupt run — exactly the "second HITL never shows" bug.
 
@@ -573,9 +573,9 @@ One helper still bridges branching:
 
 Call sites:
 
-- [`handlers/conversations.ts::handleConversationSelect`](../../src/agentic_ui/src/features/chat/handlers/conversations.ts) — branch-snap runs between `getConversationDetail` and `setCurrentConversation` so the very first render is on the right path.
-- [`ChatPage.tsx`](../../src/agentic_ui/src/pages/ChatPage.tsx) session-restore effect — same snap, for users reopening the app on a mid-stream conversation.
-- [`ChatPage.tsx`](../../src/agentic_ui/src/pages/ChatPage.tsx) once-per-run effect — guarded by `snappedRunIdRef`, fires when `runsByConversation` populates *after* the conversation is already mounted. Closes the race in the session-restore case where `getConversationDetail` returns before `getActiveInferenceRuns` does. The ref guard ensures the user is free to navigate branches manually after the initial snap; a brand-new run later in the same session gets its own snap.
+- [`handlers/conversations.ts::handleConversationSelect`](../../magenticx/agentic_ui/src/features/chat/handlers/conversations.ts) — branch-snap runs between `getConversationDetail` and `setCurrentConversation` so the very first render is on the right path.
+- [`ChatPage.tsx`](../../magenticx/agentic_ui/src/pages/ChatPage.tsx) session-restore effect — same snap, for users reopening the app on a mid-stream conversation.
+- [`ChatPage.tsx`](../../magenticx/agentic_ui/src/pages/ChatPage.tsx) once-per-run effect — guarded by `snappedRunIdRef`, fires when `runsByConversation` populates *after* the conversation is already mounted. Closes the race in the session-restore case where `getConversationDetail` returns before `getActiveInferenceRuns` does. The ref guard ensures the user is free to navigate branches manually after the initial snap; a brand-new run later in the same session gets its own snap.
 
 The IndexedDB UI snapshot intentionally does not persist transient streaming state. Serialized and deserialized conversation summaries force `activeRunId: null` and `isStreaming: false`; after rehydrating a snapshot, the app fetches fresh conversations and active runs from the backend.
 
@@ -620,42 +620,42 @@ The original shared conversation is not mutated. The copied conversation belongs
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| Start endpoint | [src/dialogue_bridge/router/inference.py](../../src/dialogue_bridge/router/inference.py) | `startInferenceFlow()` |
-| Backend start orchestration | [src/dialogue_bridge/utils/inference_start.py](../../src/dialogue_bridge/utils/inference_start.py) | `start_inference_flow()` and mode helpers |
-| Run creation and lineage | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `create_inference_run_record()` |
-| Lineage validation | [src/dialogue_bridge/utils/inference.py](../../src/dialogue_bridge/utils/inference.py) | `resolve_inference_message_path()` |
-| Task lifecycle | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `InferenceRunManager._run()` |
-| Stream loop | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `InferenceRunManager._do_stream()` |
-| Runtime accumulator | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `InferenceRunRuntime.apply_event()` |
-| Terminal write | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `_finish_run()` |
-| Observer generator | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `stream_run_events()`, `SNAPSHOT_SEQ_SENTINEL`, `InferenceRunManager.build_live_snapshot()` |
-| Redis event log | [src/dialogue_bridge/utils/event_log.py](../../src/dialogue_bridge/utils/event_log.py) | `RedisEventLog.append()`, `.read_since()`, `.last_entry_id()`, `.mark_terminal()` |
-| WebSocket endpoint | [src/dialogue_bridge/router/inference.py](../../src/dialogue_bridge/router/inference.py) | `inference_run_websocket()` |
-| Cancel path | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `request_run_cancel()`, `InferenceRunManager.publish_run_status()` |
-| HITL resume path | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `InferenceRunRuntime.pending_interrupts`, `InferenceRunManager.request_resume()`, `_do_resume()`, `request_run_resume()` |
-| Bridge resume route | [src/dialogue_bridge/router/inference.py](../../src/dialogue_bridge/router/inference.py) | `resumeInferenceRun()` route |
-| Agents resume endpoint | [src/agents/main.py](../../src/agents/main.py) | `resume_agent()` route |
-| Durable checkpointer accessor | [src/agents/harness/checkpointer/store.py](../../src/agents/harness/checkpointer/store.py) | `set_checkpointer()`, `get_checkpointer()`, `has_checkpointer_initialized()` — single process-wide `AsyncPostgresSaver` |
-| Copy-on-fork seeding | [src/agents/harness/checkpointer/fork.py](../../src/agents/harness/checkpointer/fork.py) | `seed_thread_from_checkpoint()` (used by `/stream` on `fork_from`) |
-| Namespace-cache release | [src/agents/utils/checkpointer.py](../../src/agents/utils/checkpointer.py) | `release_checkpoint_unless_paused()` — drops the per-`run_id` namespace cache only; never deletes Postgres |
-| Payload-mode decision + thread allocation | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `_run()` (delta_resume / delta_fork / full_seed), `create_inference_run_record(mode=...)` |
-| Committed-ancestor lookup | [src/dialogue_bridge/utils/inference.py](../../src/dialogue_bridge/utils/inference.py) | `nearest_committed_ai()`, `prepare_inference_history()` |
-| Conversation reap (checkpoints + filesystem) | [src/agents/main.py](../../src/agents/main.py) | `reap_conversation()` route |
-| Run shape builder | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `build_run_out_from_message()` |
-| Orphaned-run cleanup | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `cleanup_orphaned_inference_runs()` |
-| Shared clone helper | [src/dialogue_bridge/utils/shared_conv.py](../../src/dialogue_bridge/utils/shared_conv.py) | `create_conversation_from_share_record()` |
-| Redis settings | [src/dialogue_bridge/core/settings.py](../../src/dialogue_bridge/core/settings.py) | `RedisSettings` — `url`, `password`, `stream_maxlen`, `terminal_ttl_seconds`, `read_block_ms` |
-| WebSocket auth | [src/dialogue_bridge/core/auth/session.py](../../src/dialogue_bridge/core/auth/session.py) | `authenticate_websocket_user()` |
-| Frontend inference runtime | [src/agentic_ui/src/features/inference/inference.ts](../../src/agentic_ui/src/features/inference/inference.ts) | `handleSendMessage()`, edit/retry/shared continue start requests |
-| Frontend observer hook | [src/agentic_ui/src/features/inference/useInferenceRuns.ts](../../src/agentic_ui/src/features/inference/useInferenceRuns.ts) | `beginRun()`, `applyRunEvent()`, `mergeRunEvent()`, `observeRunId()`, `deriveBranchSelectionsForActiveRun()` |
-| Timeline reducer | [src/agentic_ui/src/features/inference/timeline.ts](../../src/agentic_ui/src/features/inference/timeline.ts) | `reduceTimelineEvents()`, `foldTimeline()`, `finalizeTimeline()`, `pendingTimelineInterrupts()` — one fold for live and hydrated |
-| Settled-message timeline | [src/agentic_ui/src/features/inference/useRunTimeline.ts](../../src/agentic_ui/src/features/inference/useRunTimeline.ts) | memoized replay of `message.rawEvents` |
-| Mid-stream branch snap | [src/agentic_ui/src/features/chat/handlers/conversations.ts](../../src/agentic_ui/src/features/chat/handlers/conversations.ts) + [src/agentic_ui/src/pages/ChatPage.tsx](../../src/agentic_ui/src/pages/ChatPage.tsx) | `handleConversationSelect` branch snap, session-restore snap, once-per-run snap effect |
-| Frontend WebSocket client | [src/agentic_ui/src/shared/lib/api/](../../src/agentic_ui/src/shared/lib/api/) | `connectInferenceWebSocket()`, `lastSeenInferenceSeq`, `PermanentInferenceWebSocketError` |
-| Frontend API calls | [src/agentic_ui/src/shared/lib/api/](../../src/agentic_ui/src/shared/lib/api/) | `startInference()`, `getActiveInferenceRuns()`, `resumeInferenceRun()` |
-| Frontend HITL UI | [src/agentic_ui/src/features/chat/components/HitlInputTakeover.tsx](../../src/agentic_ui/src/features/chat/components/HitlInputTakeover.tsx) + [src/agentic_ui/src/features/chat/components/message_parts/HitlInterruptCard.tsx](../../src/agentic_ui/src/features/chat/components/message_parts/HitlInterruptCard.tsx) | `<HitlInputTakeover>` composer takeover + `<HitlInterruptCard>` inline timeline card |
-| Frontend HITL context | [src/agentic_ui/src/features/inference/hitl-context.tsx](../../src/agentic_ui/src/features/inference/hitl-context.tsx) | `<HitlProvider>`, `useHitl()` — shares `resumeRun` + `isInterruptResolved` |
-| Agent run timeline | [src/agentic_ui/src/features/chat/components/AgentRunTimeline.tsx](../../src/agentic_ui/src/features/chat/components/AgentRunTimeline.tsx) + [message_parts/TimelineBlocks.tsx](../../src/agentic_ui/src/features/chat/components/message_parts/TimelineSequence.tsx) | block sequence renderer: Thinking/Content/Subagent blocks, Done sentinel |
-| Post-run side panels | [src/agentic_ui/src/features/chat/components/message_parts/RunSidePanels.tsx](../../src/agentic_ui/src/features/chat/components/message_parts/RunSidePanels.tsx) | `<PlanSidePanel>`, `<SubagentsSidePanel>` behind the AI action-bar buttons |
-| Nginx WebSocket upgrade | [src/agentic_ui/nginx.conf.template](../../src/agentic_ui/nginx.conf.template) | `$connection_upgrade` map + `^~ /api/v1/inference/runs/` location |
-| UI snapshot storage | [src/agentic_ui/src/shared/lib/uiStateStorage.ts](../../src/agentic_ui/src/shared/lib/uiStateStorage.ts) | transient run flags are stripped |
+| Start endpoint | [magenticx/dialogue_bridge/router/inference.py](../../magenticx/dialogue_bridge/router/inference.py) | `startInferenceFlow()` |
+| Backend start orchestration | [magenticx/dialogue_bridge/utils/inference_start.py](../../magenticx/dialogue_bridge/utils/inference_start.py) | `start_inference_flow()` and mode helpers |
+| Run creation and lineage | [magenticx/dialogue_bridge/utils/inference_runs.py](../../magenticx/dialogue_bridge/utils/inference_runs.py) | `create_inference_run_record()` |
+| Lineage validation | [magenticx/dialogue_bridge/utils/inference.py](../../magenticx/dialogue_bridge/utils/inference.py) | `resolve_inference_message_path()` |
+| Task lifecycle | [magenticx/dialogue_bridge/utils/inference_runs.py](../../magenticx/dialogue_bridge/utils/inference_runs.py) | `InferenceRunManager._run()` |
+| Stream loop | [magenticx/dialogue_bridge/utils/inference_runs.py](../../magenticx/dialogue_bridge/utils/inference_runs.py) | `InferenceRunManager._do_stream()` |
+| Runtime accumulator | [magenticx/dialogue_bridge/utils/inference_runs.py](../../magenticx/dialogue_bridge/utils/inference_runs.py) | `InferenceRunRuntime.apply_event()` |
+| Terminal write | [magenticx/dialogue_bridge/utils/inference_runs.py](../../magenticx/dialogue_bridge/utils/inference_runs.py) | `_finish_run()` |
+| Observer generator | [magenticx/dialogue_bridge/utils/inference_runs.py](../../magenticx/dialogue_bridge/utils/inference_runs.py) | `stream_run_events()`, `SNAPSHOT_SEQ_SENTINEL`, `InferenceRunManager.build_live_snapshot()` |
+| Redis event log | [magenticx/dialogue_bridge/utils/event_log.py](../../magenticx/dialogue_bridge/utils/event_log.py) | `RedisEventLog.append()`, `.read_since()`, `.last_entry_id()`, `.mark_terminal()` |
+| WebSocket endpoint | [magenticx/dialogue_bridge/router/inference.py](../../magenticx/dialogue_bridge/router/inference.py) | `inference_run_websocket()` |
+| Cancel path | [magenticx/dialogue_bridge/utils/inference_runs.py](../../magenticx/dialogue_bridge/utils/inference_runs.py) | `request_run_cancel()`, `InferenceRunManager.publish_run_status()` |
+| HITL resume path | [magenticx/dialogue_bridge/utils/inference_runs.py](../../magenticx/dialogue_bridge/utils/inference_runs.py) | `InferenceRunRuntime.pending_interrupts`, `InferenceRunManager.request_resume()`, `_do_resume()`, `request_run_resume()` |
+| Bridge resume route | [magenticx/dialogue_bridge/router/inference.py](../../magenticx/dialogue_bridge/router/inference.py) | `resumeInferenceRun()` route |
+| Agents resume endpoint | [magenticx/agents/main.py](../../magenticx/agents/main.py) | `resume_agent()` route |
+| Durable checkpointer accessor | [magenticx/agents/harness/checkpointer/store.py](../../magenticx/agents/harness/checkpointer/store.py) | `set_checkpointer()`, `get_checkpointer()`, `has_checkpointer_initialized()` — single process-wide `AsyncPostgresSaver` |
+| Copy-on-fork seeding | [magenticx/agents/harness/checkpointer/fork.py](../../magenticx/agents/harness/checkpointer/fork.py) | `seed_thread_from_checkpoint()` (used by `/stream` on `fork_from`) |
+| Namespace-cache release | [magenticx/agents/utils/checkpointer.py](../../magenticx/agents/utils/checkpointer.py) | `release_checkpoint_unless_paused()` — drops the per-`run_id` namespace cache only; never deletes Postgres |
+| Payload-mode decision + thread allocation | [magenticx/dialogue_bridge/utils/inference_runs.py](../../magenticx/dialogue_bridge/utils/inference_runs.py) | `_run()` (delta_resume / delta_fork / full_seed), `create_inference_run_record(mode=...)` |
+| Committed-ancestor lookup | [magenticx/dialogue_bridge/utils/inference.py](../../magenticx/dialogue_bridge/utils/inference.py) | `nearest_committed_ai()`, `prepare_inference_history()` |
+| Conversation reap (checkpoints + filesystem) | [magenticx/agents/main.py](../../magenticx/agents/main.py) | `reap_conversation()` route |
+| Run shape builder | [magenticx/dialogue_bridge/utils/inference_runs.py](../../magenticx/dialogue_bridge/utils/inference_runs.py) | `build_run_out_from_message()` |
+| Orphaned-run cleanup | [magenticx/dialogue_bridge/utils/inference_runs.py](../../magenticx/dialogue_bridge/utils/inference_runs.py) | `cleanup_orphaned_inference_runs()` |
+| Shared clone helper | [magenticx/dialogue_bridge/utils/shared_conv.py](../../magenticx/dialogue_bridge/utils/shared_conv.py) | `create_conversation_from_share_record()` |
+| Redis settings | [magenticx/dialogue_bridge/core/settings.py](../../magenticx/dialogue_bridge/core/settings.py) | `RedisSettings` — `url`, `password`, `stream_maxlen`, `terminal_ttl_seconds`, `read_block_ms` |
+| WebSocket auth | [magenticx/dialogue_bridge/core/auth/session.py](../../magenticx/dialogue_bridge/core/auth/session.py) | `authenticate_websocket_user()` |
+| Frontend inference runtime | [magenticx/agentic_ui/src/features/inference/inference.ts](../../magenticx/agentic_ui/src/features/inference/inference.ts) | `handleSendMessage()`, edit/retry/shared continue start requests |
+| Frontend observer hook | [magenticx/agentic_ui/src/features/inference/useInferenceRuns.ts](../../magenticx/agentic_ui/src/features/inference/useInferenceRuns.ts) | `beginRun()`, `applyRunEvent()`, `mergeRunEvent()`, `observeRunId()`, `deriveBranchSelectionsForActiveRun()` |
+| Timeline reducer | [magenticx/agentic_ui/src/features/inference/timeline.ts](../../magenticx/agentic_ui/src/features/inference/timeline.ts) | `reduceTimelineEvents()`, `foldTimeline()`, `finalizeTimeline()`, `pendingTimelineInterrupts()` — one fold for live and hydrated |
+| Settled-message timeline | [magenticx/agentic_ui/src/features/inference/useRunTimeline.ts](../../magenticx/agentic_ui/src/features/inference/useRunTimeline.ts) | memoized replay of `message.rawEvents` |
+| Mid-stream branch snap | [magenticx/agentic_ui/src/features/chat/handlers/conversations.ts](../../magenticx/agentic_ui/src/features/chat/handlers/conversations.ts) + [magenticx/agentic_ui/src/pages/ChatPage.tsx](../../magenticx/agentic_ui/src/pages/ChatPage.tsx) | `handleConversationSelect` branch snap, session-restore snap, once-per-run snap effect |
+| Frontend WebSocket client | [magenticx/agentic_ui/src/shared/lib/api/](../../magenticx/agentic_ui/src/shared/lib/api/) | `connectInferenceWebSocket()`, `lastSeenInferenceSeq`, `PermanentInferenceWebSocketError` |
+| Frontend API calls | [magenticx/agentic_ui/src/shared/lib/api/](../../magenticx/agentic_ui/src/shared/lib/api/) | `startInference()`, `getActiveInferenceRuns()`, `resumeInferenceRun()` |
+| Frontend HITL UI | [magenticx/agentic_ui/src/features/chat/components/HitlInputTakeover.tsx](../../magenticx/agentic_ui/src/features/chat/components/HitlInputTakeover.tsx) + [magenticx/agentic_ui/src/features/chat/components/message_parts/HitlInterruptCard.tsx](../../magenticx/agentic_ui/src/features/chat/components/message_parts/HitlInterruptCard.tsx) | `<HitlInputTakeover>` composer takeover + `<HitlInterruptCard>` inline timeline card |
+| Frontend HITL context | [magenticx/agentic_ui/src/features/inference/hitl-context.tsx](../../magenticx/agentic_ui/src/features/inference/hitl-context.tsx) | `<HitlProvider>`, `useHitl()` — shares `resumeRun` + `isInterruptResolved` |
+| Agent run timeline | [magenticx/agentic_ui/src/features/chat/components/AgentRunTimeline.tsx](../../magenticx/agentic_ui/src/features/chat/components/AgentRunTimeline.tsx) + [message_parts/TimelineBlocks.tsx](../../magenticx/agentic_ui/src/features/chat/components/message_parts/TimelineSequence.tsx) | block sequence renderer: Thinking/Content/Subagent blocks, Done sentinel |
+| Post-run side panels | [magenticx/agentic_ui/src/features/chat/components/message_parts/RunSidePanels.tsx](../../magenticx/agentic_ui/src/features/chat/components/message_parts/RunSidePanels.tsx) | `<PlanSidePanel>`, `<SubagentsSidePanel>` behind the AI action-bar buttons |
+| Nginx WebSocket upgrade | [magenticx/agentic_ui/nginx.conf.template](../../magenticx/agentic_ui/nginx.conf.template) | `$connection_upgrade` map + `^~ /api/v1/inference/runs/` location |
+| UI snapshot storage | [magenticx/agentic_ui/src/shared/lib/uiStateStorage.ts](../../magenticx/agentic_ui/src/shared/lib/uiStateStorage.ts) | transient run flags are stripped |

@@ -41,7 +41,7 @@ jobs:
           # Excluded from the scan:
           # - ./tests — bare `assert` is the pytest idiom; Bandit's B101 flagged
           #   every test assertion (~1.2K alerts of pure noise).
-          # - ./src/agents/runtime/skill_registry/registry — the vendored skills
+          # - ./magenticx/agents/harness/skill_registry/registry — the vendored skills
           #   catalog (third-party skill folders seeded from upstream). Their
           #   scripts legitimately shell out / download / parse XML, and we don't
           #   maintain that code; findings there are unactionable. The registry
@@ -52,7 +52,7 @@ jobs:
           # this value unquoted into the bandit command line, so a shell glob like
           # ./tests/* expands into the directory listing and breaks the invocation.
           # Bandit appends /* to directory entries itself (manager.discover_files).
-          excluded_paths: "./tests,./src/agents/runtime/skill_registry/registry"
+          excluded_paths: "./tests,./magenticx/agents/harness/skill_registry/registry"
           # comma-separated list of test IDs to skip
           # skips: # optional, default is DEFAULT
           # path to a .bandit file that supplies command line arguments

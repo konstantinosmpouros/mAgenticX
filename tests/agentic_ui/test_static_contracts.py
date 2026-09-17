@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-UI_ROOT = ROOT / "src" / "agentic_ui"
+UI_ROOT = ROOT / "magenticx" / "agentic_ui"
 
 # Feature-first layout (see docs/development/frontend-architecture.md):
 # cross-cutting contracts live in shared/lib, feature code under features/<name>.

@@ -334,18 +334,18 @@ The two lists must stay in sync. An id the bridge rejects silently falls back to
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| Realtime session endpoint (bridge) | [src/dialogue_bridge/router/voice.py](../../src/dialogue_bridge/router/voice.py) | `createRealtimeVoiceSession()`, `persistRealtimeVoiceConversationEvent()`, `endRealtimeVoiceSession()` |
-| Voice instruction builder | [src/dialogue_bridge/utils/voice.py](../../src/dialogue_bridge/utils/voice.py) | `build_voice_instructions()`, `recent_history_for_voice_instructions()` |
-| Voice preference resolution | [src/dialogue_bridge/utils/voice.py](../../src/dialogue_bridge/utils/voice.py) | `preferred_realtime_voice()`, `preferred_voice_mode_language()`, `normalize_realtime_voice()` |
-| Read-aloud endpoints (bridge) | [src/dialogue_bridge/router/speech.py](../../src/dialogue_bridge/router/speech.py) | `readMessageAloud()`, `previewReadAloudVoice()` |
-| Dictation endpoint (bridge) | [src/dialogue_bridge/router/speech.py](../../src/dialogue_bridge/router/speech.py) | `transcribe_dictation()` |
-| Realtime session endpoint (agents) | [src/agents/main.py](../../src/agents/main.py) | `create_realtime_session()` |
-| TTS endpoint (agents) | [src/agents/main.py](../../src/agents/main.py) | `generate_read_aloud_speech()` |
-| Whisper endpoint (agents) | [src/agents/main.py](../../src/agents/main.py) | `transcribe_audio()` |
-| WebRTC session hook | [src/agentic_ui/src/features/voice/hooks/useRealtimeVoiceSession.ts](../../src/agentic_ui/src/features/voice/hooks/useRealtimeVoiceSession.ts) | `start()`, `close()`, `toggleMute()`, `interrupt()`, `handleRealtimeEvent()` |
-| Voice mode chat hook | [src/agentic_ui/src/features/voice/hooks/useChatVoiceMode.ts](../../src/agentic_ui/src/features/voice/hooks/useChatVoiceMode.ts) | `handleStartVoiceMode()` |
-| Voice mode status type | [src/agentic_ui/src/shared/lib/types/](../../src/agentic_ui/src/shared/lib/types/) | `VoiceModeStatus` |
-| Voice catalogs | [src/agentic_ui/src/shared/lib/consts/voice.ts](../../src/agentic_ui/src/shared/lib/consts/voice.ts) | `REALTIME_VOICES`, `VOICE_MODE_LANGUAGES` |
-| Voice API calls | [src/agentic_ui/src/shared/lib/api/](../../src/agentic_ui/src/shared/lib/api/) | `createRealtimeVoiceSession()`, `persistRealtimeVoiceConversationEvent()`, `transcribeDictation()`, `generateMessageReadAloudAudio()` |
-| Voice normalization (frontend) | [src/agentic_ui/src/shared/lib/api/](../../src/agentic_ui/src/shared/lib/api/) | `normalizeRealtimeVoice()`, `normalizeVoiceModeLanguage()` |
-| Voice selector component | [src/agentic_ui/src/shared/ui/ai-elements/voice-selector.tsx](../../src/agentic_ui/src/shared/ui/ai-elements/voice-selector.tsx) | `VoiceSelector`, `VoiceSelectorItem`, `VoiceSelectorPreview` |
+| Realtime session endpoint (bridge) | [magenticx/dialogue_bridge/router/voice.py](../../magenticx/dialogue_bridge/router/voice.py) | `createRealtimeVoiceSession()`, `persistRealtimeVoiceConversationEvent()`, `endRealtimeVoiceSession()` |
+| Voice instruction builder | [magenticx/dialogue_bridge/utils/voice.py](../../magenticx/dialogue_bridge/utils/voice.py) | `build_voice_instructions()`, `recent_history_for_voice_instructions()` |
+| Voice preference resolution | [magenticx/dialogue_bridge/utils/voice.py](../../magenticx/dialogue_bridge/utils/voice.py) | `preferred_realtime_voice()`, `preferred_voice_mode_language()`, `normalize_realtime_voice()` |
+| Read-aloud endpoints (bridge) | [magenticx/dialogue_bridge/router/speech.py](../../magenticx/dialogue_bridge/router/speech.py) | `readMessageAloud()`, `previewReadAloudVoice()` |
+| Dictation endpoint (bridge) | [magenticx/dialogue_bridge/router/speech.py](../../magenticx/dialogue_bridge/router/speech.py) | `transcribe_dictation()` |
+| Realtime session endpoint (agents) | [magenticx/agents/main.py](../../magenticx/agents/main.py) | `create_realtime_session()` |
+| TTS endpoint (agents) | [magenticx/agents/main.py](../../magenticx/agents/main.py) | `generate_read_aloud_speech()` |
+| Whisper endpoint (agents) | [magenticx/agents/main.py](../../magenticx/agents/main.py) | `transcribe_audio()` |
+| WebRTC session hook | [magenticx/agentic_ui/src/features/voice/hooks/useRealtimeVoiceSession.ts](../../magenticx/agentic_ui/src/features/voice/hooks/useRealtimeVoiceSession.ts) | `start()`, `close()`, `toggleMute()`, `interrupt()`, `handleRealtimeEvent()` |
+| Voice mode chat hook | [magenticx/agentic_ui/src/features/voice/hooks/useChatVoiceMode.ts](../../magenticx/agentic_ui/src/features/voice/hooks/useChatVoiceMode.ts) | `handleStartVoiceMode()` |
+| Voice mode status type | [magenticx/agentic_ui/src/shared/lib/types/](../../magenticx/agentic_ui/src/shared/lib/types/) | `VoiceModeStatus` |
+| Voice catalogs | [magenticx/agentic_ui/src/shared/lib/consts/voice.ts](../../magenticx/agentic_ui/src/shared/lib/consts/voice.ts) | `REALTIME_VOICES`, `VOICE_MODE_LANGUAGES` |
+| Voice API calls | [magenticx/agentic_ui/src/shared/lib/api/](../../magenticx/agentic_ui/src/shared/lib/api/) | `createRealtimeVoiceSession()`, `persistRealtimeVoiceConversationEvent()`, `transcribeDictation()`, `generateMessageReadAloudAudio()` |
+| Voice normalization (frontend) | [magenticx/agentic_ui/src/shared/lib/api/](../../magenticx/agentic_ui/src/shared/lib/api/) | `normalizeRealtimeVoice()`, `normalizeVoiceModeLanguage()` |
+| Voice selector component | [magenticx/agentic_ui/src/shared/ui/ai-elements/voice-selector.tsx](../../magenticx/agentic_ui/src/shared/ui/ai-elements/voice-selector.tsx) | `VoiceSelector`, `VoiceSelectorItem`, `VoiceSelectorPreview` |

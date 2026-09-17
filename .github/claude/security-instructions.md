@@ -204,7 +204,7 @@ Important context:
 
 ## Service Notes
 
-### `src/agentic_ui`
+### `magenticx/agentic_ui`
 
 Description:
 
@@ -217,7 +217,7 @@ Key concepts:
 - SSE / AG-UI stream rendering
 - Attachments and dictation UX Cookies, CSRF-related request behavior, and streamed content rendering
 
-### `src/dialogue_bridge`
+### `magenticx/dialogue_bridge`
 
 Description:
 
@@ -233,7 +233,7 @@ Key concepts:
 - SSE proxying from `agents`
 - Header handling, client IP / proxy trust, and inter-service communication
 
-### `src/agents`
+### `magenticx/agents`
 
 Description:
 
@@ -249,7 +249,7 @@ Key concepts:
 - Dictation and title-generation adjacent endpoints
 - Logging, redaction, and event emission
 
-### `src/rag_service`
+### `magenticx/rag_service`
 
 Description:
 
@@ -263,7 +263,7 @@ Key concepts:
 - Returned schemas, records, and data access behavior
 - Service-to-service calls from `agents`
 
-### `src/mcp_gateway`
+### `magenticx/mcp_gateway`
 
 Description:
 

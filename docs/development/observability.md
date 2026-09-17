@@ -189,7 +189,7 @@ flowchart TD
 | --- | --- |
 | Shared secret | `magenticx_log_redaction_secret` Swarm secret → `LOG_REDACTION_SECRET_FILE=/run/secrets/log_redaction_secret` on all 3 services |
 | Resolution | each `core/settings.py` `LoggingSettings.redaction_secret` reads the file, then env `LOG_REDACTION_SECRET`, then falls back to a **random per-process key** (one-way; correlation disabled) |
-| Local dev | set `LOG_REDACTION_SECRET` in `src/.env` to make the `client_ip` hash correlate across the three local containers (optional) |
+| Local dev | set `LOG_REDACTION_SECRET` in `magenticx/.env` to make the `client_ip` hash correlate across the three local containers (optional) |
 | Content stance | LLM prompts/completions and retrieved documents are **never** logged — the drop set blocks the field names and the upstream services don't pass raw content as log fields |
 
 ---
@@ -204,7 +204,7 @@ flowchart TD
 
 | Key fact | Value / detail |
 | --- | --- |
-| File | [src/docker-compose-denis.yaml](../../src/docker-compose-denis.yaml) |
+| File | [magenticx/docker-compose-denis.yaml](../../magenticx/docker-compose-denis.yaml) |
 | Added per service | `deploy.update_config.order: start-first`, `monitor: 30s`, `failure_action: pause` |
 | Services | `rag_service`, `agents`, `dialogue_bridge` |
 | On a bad rollout | the update **pauses**, old version keeps serving; operator decides fix-forward vs a coordinated manual rollback |
@@ -226,14 +226,14 @@ The content drop-set was also expanded in all three services to cover LLM/RAG co
 
 | Concept | File | Change |
 | --- | --- | --- |
-| rag redaction (new) | [src/rag_service/core/logging/redaction.py](../../src/rag_service/core/logging/redaction.py) | ported `sanitize_for_logging` / `sanitize_context_value` |
-| rag operations (new) | [src/rag_service/core/logging/operations.py](../../src/rag_service/core/logging/operations.py) | `elapsed_ms`, `logged_operation` |
-| rag formatters | [src/rag_service/core/logging/formatters.py](../../src/rag_service/core/logging/formatters.py) | sanitize `event_data` in JSON + console |
-| rag settings | [src/rag_service/core/settings.py](../../src/rag_service/core/settings.py) | `LoggingSettings.redaction_secret` + random-fallback hardening |
-| rag retrieval/SQL timing | [src/rag_service/main.py](../../src/rag_service/main.py) | `duration_ms` on retrieval + DuckDB events |
-| bridge secret resolution | [src/dialogue_bridge/core/settings.py](../../src/dialogue_bridge/core/settings.py) | `_load_redaction_secret` reads `LOG_REDACTION_SECRET_FILE` |
-| drop-set expansion | [src/dialogue_bridge/core/logging/redaction.py](../../src/dialogue_bridge/core/logging/redaction.py), [src/agents/core/logging/redaction.py](../../src/agents/core/logging/redaction.py) | content keys added |
-| compose wiring | [src/docker-compose-denis.yaml](../../src/docker-compose-denis.yaml) | `LOG_REDACTION_SECRET_FILE` env + `log_redaction_secret` secret on all 3 |
+| rag redaction (new) | [magenticx/rag_service/core/logging/redaction.py](../../magenticx/rag_service/core/logging/redaction.py) | ported `sanitize_for_logging` / `sanitize_context_value` |
+| rag operations (new) | [magenticx/rag_service/core/logging/operations.py](../../magenticx/rag_service/core/logging/operations.py) | `elapsed_ms`, `logged_operation` |
+| rag formatters | [magenticx/rag_service/core/logging/formatters.py](../../magenticx/rag_service/core/logging/formatters.py) | sanitize `event_data` in JSON + console |
+| rag settings | [magenticx/rag_service/core/settings.py](../../magenticx/rag_service/core/settings.py) | `LoggingSettings.redaction_secret` + random-fallback hardening |
+| rag retrieval/SQL timing | [magenticx/rag_service/main.py](../../magenticx/rag_service/main.py) | `duration_ms` on retrieval + DuckDB events |
+| bridge secret resolution | [magenticx/dialogue_bridge/core/settings.py](../../magenticx/dialogue_bridge/core/settings.py) | `_load_redaction_secret` reads `LOG_REDACTION_SECRET_FILE` |
+| drop-set expansion | [magenticx/dialogue_bridge/core/logging/redaction.py](../../magenticx/dialogue_bridge/core/logging/redaction.py), [magenticx/agents/core/logging/redaction.py](../../magenticx/agents/core/logging/redaction.py) | content keys added |
+| compose wiring | [magenticx/docker-compose-denis.yaml](../../magenticx/docker-compose-denis.yaml) | `LOG_REDACTION_SECRET_FILE` env + `log_redaction_secret` secret on all 3 |
 
 > **Operator step:** create the Swarm secret `magenticx_log_redaction_secret` (32-byte hex) in Portainer **before** deploying this stack revision, exactly like the other `magenticx_*` secrets.
 
@@ -299,20 +299,20 @@ flowchart TD
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| Logging setup (bridge) | [src/dialogue_bridge/core/logging/config.py](../../src/dialogue_bridge/core/logging/config.py) | `configure_logging`, queue handler |
-| Event API | [src/dialogue_bridge/core/logging/events.py](../../src/dialogue_bridge/core/logging/events.py) | `EventLogger`, `get_logger`, `log_event` |
-| Request context | [src/dialogue_bridge/core/logging/context.py](../../src/dialogue_bridge/core/logging/context.py) | `set_context` / `get_context` / `clear_context` |
-| Request middleware | [src/dialogue_bridge/core/logging/middleware.py](../../src/dialogue_bridge/core/logging/middleware.py) | `RequestLoggingMiddleware`, `duration_ms` |
-| Context binding | [src/dialogue_bridge/core/logging/filters.py](../../src/dialogue_bridge/core/logging/filters.py) | `RequestContextFilter.filter` |
-| Formatters | [src/dialogue_bridge/core/logging/formatters.py](../../src/dialogue_bridge/core/logging/formatters.py) | `JsonFormatter`, `ConsoleFormatter` |
-| Redaction | [src/dialogue_bridge/core/logging/redaction.py](../../src/dialogue_bridge/core/logging/redaction.py) | `sanitize_for_logging`, `_stable_hash`, drop set |
-| DB operation timing | [src/dialogue_bridge/core/logging/operations.py](../../src/dialogue_bridge/core/logging/operations.py) | `logged_db_operation`, `elapsed_ms` |
-| Stream metrics | [src/dialogue_bridge/core/logging/stream_metrics.py](../../src/dialogue_bridge/core/logging/stream_metrics.py) | `StreamMetrics`, `first_byte_latency_ms` |
-| Cross-service headers | [src/dialogue_bridge/core/security/internal_trust.py](../../src/dialogue_bridge/core/security/internal_trust.py) | `internal_service_headers` (X-Request-ID injection) |
-| agents run-lifecycle logs | [src/agents/router/inference.py](../../src/agents/router/inference.py) | `agent_stream_*`, mcp + checkpoint events |
-| agents redaction | [src/agents/core/logging/redaction.py](../../src/agents/core/logging/redaction.py) | drop set, `_harden_redaction_secret` (settings) |
-| rag redaction (Phase 1) | [src/rag_service/core/logging/redaction.py](../../src/rag_service/core/logging/redaction.py) | ported sanitizer |
-| rag retrieval/SQL logging | [src/rag_service/main.py](../../src/rag_service/main.py) | `retrieval_*`, `sql_query_*`, `duration_ms` |
-| Redaction secret (all) | [src/dialogue_bridge/core/settings.py](../../src/dialogue_bridge/core/settings.py) | `LoggingSettings.redaction_secret` |
-| Deploy + secret wiring | [src/docker-compose-denis.yaml](../../src/docker-compose-denis.yaml) | `deploy.update_config`, `log_redaction_secret` |
-| Monitoring stack | [src/docker-compose-denis-monitoring.yml](../../src/docker-compose-denis-monitoring.yml) | Grafana, Prometheus, cAdvisor, node-exporter (+ Phase 2 additions) |
+| Logging setup (bridge) | [magenticx/dialogue_bridge/core/logging/config.py](../../magenticx/dialogue_bridge/core/logging/config.py) | `configure_logging`, queue handler |
+| Event API | [magenticx/dialogue_bridge/core/logging/events.py](../../magenticx/dialogue_bridge/core/logging/events.py) | `EventLogger`, `get_logger`, `log_event` |
+| Request context | [magenticx/dialogue_bridge/core/logging/context.py](../../magenticx/dialogue_bridge/core/logging/context.py) | `set_context` / `get_context` / `clear_context` |
+| Request middleware | [magenticx/dialogue_bridge/core/logging/middleware.py](../../magenticx/dialogue_bridge/core/logging/middleware.py) | `RequestLoggingMiddleware`, `duration_ms` |
+| Context binding | [magenticx/dialogue_bridge/core/logging/filters.py](../../magenticx/dialogue_bridge/core/logging/filters.py) | `RequestContextFilter.filter` |
+| Formatters | [magenticx/dialogue_bridge/core/logging/formatters.py](../../magenticx/dialogue_bridge/core/logging/formatters.py) | `JsonFormatter`, `ConsoleFormatter` |
+| Redaction | [magenticx/dialogue_bridge/core/logging/redaction.py](../../magenticx/dialogue_bridge/core/logging/redaction.py) | `sanitize_for_logging`, `_stable_hash`, drop set |
+| DB operation timing | [magenticx/dialogue_bridge/core/logging/operations.py](../../magenticx/dialogue_bridge/core/logging/operations.py) | `logged_db_operation`, `elapsed_ms` |
+| Stream metrics | [magenticx/dialogue_bridge/core/logging/stream_metrics.py](../../magenticx/dialogue_bridge/core/logging/stream_metrics.py) | `StreamMetrics`, `first_byte_latency_ms` |
+| Cross-service headers | [magenticx/dialogue_bridge/core/security/internal_trust.py](../../magenticx/dialogue_bridge/core/security/internal_trust.py) | `internal_service_headers` (X-Request-ID injection) |
+| agents run-lifecycle logs | [magenticx/agents/router/inference.py](../../magenticx/agents/router/inference.py) | `agent_stream_*`, mcp + checkpoint events |
+| agents redaction | [magenticx/agents/core/logging/redaction.py](../../magenticx/agents/core/logging/redaction.py) | drop set, `_harden_redaction_secret` (settings) |
+| rag redaction (Phase 1) | [magenticx/rag_service/core/logging/redaction.py](../../magenticx/rag_service/core/logging/redaction.py) | ported sanitizer |
+| rag retrieval/SQL logging | [magenticx/rag_service/main.py](../../magenticx/rag_service/main.py) | `retrieval_*`, `sql_query_*`, `duration_ms` |
+| Redaction secret (all) | [magenticx/dialogue_bridge/core/settings.py](../../magenticx/dialogue_bridge/core/settings.py) | `LoggingSettings.redaction_secret` |
+| Deploy + secret wiring | [magenticx/docker-compose-denis.yaml](../../magenticx/docker-compose-denis.yaml) | `deploy.update_config`, `log_redaction_secret` |
+| Monitoring stack | [magenticx/docker-compose-denis-monitoring.yml](../../magenticx/docker-compose-denis-monitoring.yml) | Grafana, Prometheus, cAdvisor, node-exporter (+ Phase 2 additions) |

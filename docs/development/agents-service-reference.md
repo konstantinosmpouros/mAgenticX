@@ -1,6 +1,6 @@
 # Agents Service — Complete Reference (Replication Guide)
 
-This is an exhaustive, replicate-from-scratch reference for the **`agents`** service (`src/agents/`) — the inference and orchestration layer of mAgenticX. It is written so you can lift the whole service into another project and modify it with full understanding of every moving part. Everything here reflects the **current shipped code**, not the checked-in `README.md`, which is stale in several places (it claims in-memory checkpointing when the service now runs a durable `AsyncPostgresSaver`; it points at `runtime/protocols/agui/` when the real path is `harness/agui/`; it lists 4 endpoints when there are 24 across 7 routers; and it describes co-located `AGENT.md`/`skills/` files for deep agents when those are actually runtime *virtual mounts*).
+This is an exhaustive, replicate-from-scratch reference for the **`agents`** service (`magenticx/agents/`) — the inference and orchestration layer of mAgenticX. It is written so you can lift the whole service into another project and modify it with full understanding of every moving part. Everything here reflects the **current shipped code**, not the checked-in `README.md`, which is stale in several places (it claims in-memory checkpointing when the service now runs a durable `AsyncPostgresSaver`; it points at `runtime/protocols/agui/` when the real path is `harness/agui/`; it lists 4 endpoints when there are 24 across 7 routers; and it describes co-located `AGENT.md`/`skills/` files for deep agents when those are actually runtime *virtual mounts*).
 
 **Stack:** Python 3.12 · FastAPI `0.135.3` · uvicorn `0.32.0` · LangGraph `1.2.5` · LangChain `1.3.9` · deepagents `0.6.10` · port **8003** · runs as non-root `1000:1000`.
 
@@ -61,7 +61,7 @@ flowchart LR
 ## 2. Directory structure (actual)
 
 ```text
-src/agents/
+magenticx/agents/
 ├── main.py                     App factory, lifespan, durable checkpointer, /health, router registration
 ├── schema/                     one module per concept (inference, embeddings, generation, voice, catalog, skills, user_agents, memories, agent_tools) + re-exporting __init__.py
 ├── Dockerfile                  python:3.12-slim image; plain uvicorn CMD on :8003
@@ -549,7 +549,7 @@ Structured, async, per-request-context logging.
 ## 22. Replication checklist & sharp edges
 
 **To stand up a replica:**
-1. Copy the whole `src/agents/` tree.
+1. Copy the whole `magenticx/agents/` tree.
 2. Provision `TRUSTED_PROXY_SECRET` (mandatory — won't boot without it), `OPENAI_API_KEY`, `AGENT_RUNTIME_DATABASE_URL` (a reachable Postgres — the service creates the DB but not the server), and `MCP_GATEWAY_URL`/`RAG_BASE_URL` if you keep those integrations.
 3. Keep the `load-secrets-and-exec.sh` shim if secrets are file-mounted (OpenAI SDK reads env directly).
 4. For a fresh agent: subclass `LangGraphAgent`/`DeepAgent`, set identity attrs, re-export from the package `__init__.py`, restart.
@@ -573,4 +573,4 @@ Structured, async, per-request-context logging.
 
 ---
 
-*Generated from a full read of the current `src/agents/` source. All `file:line` references are accurate as of this writing; verify against the tree before relying on exact line numbers.*
+*Generated from a full read of the current `magenticx/agents/` source. All `file:line` references are accurate as of this writing; verify against the tree before relying on exact line numbers.*

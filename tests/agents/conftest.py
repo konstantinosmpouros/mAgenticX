@@ -14,7 +14,7 @@ from httpx import ASGITransport, AsyncClient
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SERVICE_ROOT = ROOT / "src" / "agents"
+SERVICE_ROOT = ROOT / "magenticx" / "agents"
 
 if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
@@ -45,7 +45,7 @@ def _purge_modules_under_paths(*roots: str | Path) -> None:
 
 
 def _load_agents_service(monkeypatch):
-    _purge_modules_under_paths(ROOT / "src" / "dialogue_bridge", ROOT / "src" / "rag_service", ROOT / "src" / "agents")
+    _purge_modules_under_paths(ROOT / "magenticx" / "dialogue_bridge", ROOT / "magenticx" / "rag_service", ROOT / "magenticx" / "agents")
 
     monkeypatch.syspath_prepend(str(SERVICE_ROOT))
 
@@ -214,7 +214,7 @@ def _reset_service_caches() -> None:
 def _service_is_live(service: SimpleNamespace) -> bool:
     """Whether the cached modules are still the ones an `import` would resolve to.
 
-    `tests/rag_service/conftest.py` purges `src/agents` out of `sys.modules` when
+    `tests/rag_service/conftest.py` purges `magenticx/agents` out of `sys.modules` when
     it loads its own service, so a full-tree local run can evict what we cached.
     Anything imported lazily afterwards (e.g. the retention module in
     test_workspace_retention.py) would then bind a *second* copy of

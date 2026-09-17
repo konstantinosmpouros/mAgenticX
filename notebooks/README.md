@@ -37,4 +37,4 @@ Set `OPENAI_API_KEY` (and any other provider keys) in your shell before running 
 
 - Notebooks may write temporary files into `logs/` or `vectorstore/`; clear these directories if you want a clean slate.
 - Keep large datasets out of version control. Store source documents under `knowledge_base/` and reference them from the notebooks.
-- When an experiment yields production-ready logic, port the code into the appropriate service (`src/agents`, `src/rag_service`, etc.) and keep the notebook as documentation.
+- When an experiment yields production-ready logic, port the code into the appropriate service (`magenticx/agents`, `magenticx/rag_service`, etc.) and keep the notebook as documentation.

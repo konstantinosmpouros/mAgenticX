@@ -19,7 +19,7 @@ Wrapper around the `docker/mcp-gateway` image that serves a curated Model Contex
 
 - Docker Compose starts the container with `--transport=sse --port=8005 --servers=tavily,arxiv-mcp-server --catalog=./app/mcp_catalog.yaml --config=./app/mcp_config.yaml --secrets=/app/secrets/mcp_secret.env` and mounts the Docker socket for servers that require it.
 - Agents use `http://mcp_gateway:8005/sse`; adjust `MCP_GATEWAY_URL` in the agents service if you change the port or transport.
-- To enable more MCP servers, add them to `mcp_catalog.yaml`, supply any required credentials in `mcp_secret.env`, and append their ids to the `--servers` flag in `src/docker-compose.yaml`.
+- To enable more MCP servers, add them to `mcp_catalog.yaml`, supply any required credentials in `mcp_secret.env`, and append their ids to the `--servers` flag in `magenticx/docker-compose.yaml`.
 
 ## Security — trust boundary
 

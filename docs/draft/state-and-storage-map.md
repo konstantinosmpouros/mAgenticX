@@ -243,16 +243,16 @@ than arriving at.
 
 | Concern | File |
 | --- | --- |
-| Bridge tables | `src/dialogue_bridge/core/database/models.py` |
-| Checkpointer config | `src/agents/core/settings.py` (`CheckpointerSettings`) |
-| Checkpointer access | `src/agents/utils/checkpointer.py` |
-| Path authority (every volume path) | `src/agents/harness/filesystem/layout.py` |
-| Workspace mounts + write-deny | `src/agents/harness/filesystem/workspace.py` |
-| Input/output TTL sweeper | `src/agents/harness/filesystem/retention.py` |
-| Skill pools ①–④ | `src/agents/harness/skill_registry/` |
-| Custom agent CRUD + validation | `src/agents/harness/abstractions/user_agents.py` |
-| YAML agent engine | `src/agents/harness/abstractions/yaml_agent.py` |
-| Agent resolution (platform vs user) | `src/agents/utils/agents.py` |
-| Run event log | `src/dialogue_bridge/utils/event_log.py` |
-| Redis cache policies | `src/dialogue_bridge/core/cache/policies.py` |
-| Artifact capture at finalize | `src/dialogue_bridge/utils/inference_runs.py` |
+| Bridge tables | `magenticx/dialogue_bridge/core/database/models.py` |
+| Checkpointer config | `magenticx/agents/core/settings.py` (`CheckpointerSettings`) |
+| Checkpointer access | `magenticx/agents/utils/checkpointer.py` |
+| Path authority (every volume path) | `magenticx/agents/harness/filesystem/layout.py` |
+| Workspace mounts + write-deny | `magenticx/agents/harness/filesystem/workspace.py` |
+| Input/output TTL sweeper | `magenticx/agents/harness/filesystem/retention.py` |
+| Skill pools ①–④ | `magenticx/agents/harness/skill_registry/` |
+| Custom agent CRUD + validation | `magenticx/agents/harness/abstractions/user_agents.py` |
+| YAML agent engine | `magenticx/agents/harness/abstractions/yaml_agent.py` |
+| Agent resolution (platform vs user) | `magenticx/agents/utils/agents.py` |
+| Run event log | `magenticx/dialogue_bridge/utils/event_log.py` |
+| Redis cache policies | `magenticx/dialogue_bridge/core/cache/policies.py` |
+| Artifact capture at finalize | `magenticx/dialogue_bridge/utils/inference_runs.py` |

@@ -113,18 +113,18 @@ The tool is built **per run**, closing over the current `user_id` + `conversatio
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| Embed endpoint (provider call) | [src/agents/router/embeddings.py](../../src/agents/router/embeddings.py) | `POST /embed`, `OpenAIEmbeddings.aembed_documents` |
-| Embed request/response schema | [src/agents/schemas.py](../../src/agents/schemas.py) | `EmbedRequest`, `EmbedResponse` |
-| Embedding model config (agents) | [src/agents/core/settings.py](../../src/agents/core/settings.py) | `RuntimeModelsSettings.embedding`, `embedding_dimensions` |
-| Agent memory tool | [src/agents/harness/tools/memory_search/tool.py](../../src/agents/harness/tools/memory_search/tool.py) | `build_memory_search_tool`, `search_past_conversations` |
-| Tool injection into deep agents | [src/agents/harness/abstractions/deep_agent.py](../../src/agents/harness/abstractions/deep_agent.py) | `DeepAgent._builtin_tools`, `build_deep_agent(tools=...)` |
-| Bridge URL config (agents) | [src/agents/core/settings.py](../../src/agents/core/settings.py) | `BridgeSettings.memory_search_url`, `DIALOGUE_BRIDGE_URL` |
-| Sweeper + message search + agents client | [src/dialogue_bridge/utils/embeddings.py](../../src/dialogue_bridge/utils/embeddings.py) | `run_embedding_sweeper`, `search_user_messages`, `embed_texts` |
-| ORM model | [src/dialogue_bridge/core/database/models.py](../../src/dialogue_bridge/core/database/models.py) | `MessageEmbeddingTable`, `EMBEDDING_DIMENSIONS` |
-| Migration | [src/dialogue_bridge/core/database/migrations/versions/0010_message_embeddings.py](../../src/dialogue_bridge/core/database/migrations/versions/0010_message_embeddings.py) | `CREATE EXTENSION`, table, HNSW index |
-| Internal search endpoint | [src/dialogue_bridge/router/internal_memory.py](../../src/dialogue_bridge/router/internal_memory.py) | `searchUserMemory` (`POST /v1/internal/memory/search`) |
-| Internal-caller guard | [src/dialogue_bridge/core/security/internal_trust.py](../../src/dialogue_bridge/core/security/internal_trust.py) | `require_internal_caller` |
-| nginx edge deny | [src/agentic_ui/nginx.conf.template](../../src/agentic_ui/nginx.conf.template) | `location ^~ /api/v1/internal/` |
-| Pipeline config (bridge) | [src/dialogue_bridge/core/settings.py](../../src/dialogue_bridge/core/settings.py) | `EmbeddingsSettings`, `HttpTimeoutSettings.embeddings_timeout` |
-| Sweeper lifecycle | [src/dialogue_bridge/main.py](../../src/dialogue_bridge/main.py) | lifespan: `run_embedding_sweeper` start/stop |
-| Request / result schemas | [src/dialogue_bridge/schema/internal_memory.py](../../src/dialogue_bridge/schema/internal_memory.py) | `MemorySearchRequest`, `MemoryMessageMatch` |
+| Embed endpoint (provider call) | [magenticx/agents/router/embeddings.py](../../magenticx/agents/router/embeddings.py) | `POST /embed`, `OpenAIEmbeddings.aembed_documents` |
+| Embed request/response schema | [magenticx/agents/schemas.py](../../magenticx/agents/schemas.py) | `EmbedRequest`, `EmbedResponse` |
+| Embedding model config (agents) | [magenticx/agents/core/settings.py](../../magenticx/agents/core/settings.py) | `RuntimeModelsSettings.embedding`, `embedding_dimensions` |
+| Agent memory tool | [magenticx/agents/harness/tools/memory_search/tool.py](../../magenticx/agents/harness/tools/memory_search/tool.py) | `build_memory_search_tool`, `search_past_conversations` |
+| Tool injection into deep agents | [magenticx/agents/harness/abstractions/deep_agent.py](../../magenticx/agents/harness/abstractions/deep_agent.py) | `DeepAgent._builtin_tools`, `build_deep_agent(tools=...)` |
+| Bridge URL config (agents) | [magenticx/agents/core/settings.py](../../magenticx/agents/core/settings.py) | `BridgeSettings.memory_search_url`, `DIALOGUE_BRIDGE_URL` |
+| Sweeper + message search + agents client | [magenticx/dialogue_bridge/utils/embeddings.py](../../magenticx/dialogue_bridge/utils/embeddings.py) | `run_embedding_sweeper`, `search_user_messages`, `embed_texts` |
+| ORM model | [magenticx/dialogue_bridge/core/database/models.py](../../magenticx/dialogue_bridge/core/database/models.py) | `MessageEmbeddingTable`, `EMBEDDING_DIMENSIONS` |
+| Migration | [magenticx/dialogue_bridge/core/database/migrations/versions/0010_message_embeddings.py](../../magenticx/dialogue_bridge/core/database/migrations/versions/0010_message_embeddings.py) | `CREATE EXTENSION`, table, HNSW index |
+| Internal search endpoint | [magenticx/dialogue_bridge/router/internal_memory.py](../../magenticx/dialogue_bridge/router/internal_memory.py) | `searchUserMemory` (`POST /v1/internal/memory/search`) |
+| Internal-caller guard | [magenticx/dialogue_bridge/core/security/internal_trust.py](../../magenticx/dialogue_bridge/core/security/internal_trust.py) | `require_internal_caller` |
+| nginx edge deny | [magenticx/agentic_ui/nginx.conf.template](../../magenticx/agentic_ui/nginx.conf.template) | `location ^~ /api/v1/internal/` |
+| Pipeline config (bridge) | [magenticx/dialogue_bridge/core/settings.py](../../magenticx/dialogue_bridge/core/settings.py) | `EmbeddingsSettings`, `HttpTimeoutSettings.embeddings_timeout` |
+| Sweeper lifecycle | [magenticx/dialogue_bridge/main.py](../../magenticx/dialogue_bridge/main.py) | lifespan: `run_embedding_sweeper` start/stop |
+| Request / result schemas | [magenticx/dialogue_bridge/schema/internal_memory.py](../../magenticx/dialogue_bridge/schema/internal_memory.py) | `MemorySearchRequest`, `MemoryMessageMatch` |

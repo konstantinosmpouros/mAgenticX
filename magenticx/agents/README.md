@@ -8,7 +8,7 @@ The `agents` service is the inference and orchestration layer for the project. I
 - delegates retrieval and SQL execution to the RAG service
 - provides utility endpoints for speech-to-text and conversation title generation
 
-This README documents the current implementation under `src/agents`, not an abstract target architecture.
+This README documents the current implementation under `magenticx/agents`, not an abstract target architecture.
 
 ## 1. What This Service Owns
 
@@ -241,8 +241,8 @@ flowchart TD
 
 The current registry is built from imports in:
 
-- `src/agents/langgraph_agents/__init__.py`
-- `src/agents/deep_agents/__init__.py`
+- `magenticx/agents/langgraph_agents/__init__.py`
+- `magenticx/agents/deep_agents/__init__.py`
 
 Current agents:
 
@@ -395,7 +395,7 @@ flowchart LR
 
 ## 10. Observability and Request Context
 
-The service includes a dedicated observability layer under `src/agents/observability`.
+The service includes a dedicated observability layer under `magenticx/agents/observability`.
 
 ### What it does
 
@@ -477,12 +477,12 @@ The service also supports many workflow tuning variables. The naming is consiste
 - `RETAIL_*` for source table naming, SQL timeouts, and model choices
 - `OMNI_*` for deep-agent model choices
 
-For the authoritative list, read `src/agents/core/settings.py`.
+For the authoritative list, read `magenticx/agents/core/settings.py`.
 
 ## 12. Directory Map
 
 ```text
-src/agents/
+magenticx/agents/
 ├── main.py                         FastAPI entrypoint and routes
 ├── schemas.py                      Request/response schemas and agent definitions
 ├── core/
@@ -518,7 +518,7 @@ src/agents/
 ## 13. Local Development
 
 ```bash
-cd src/agents
+cd magenticx/agents
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -554,7 +554,7 @@ The service image:
 
 ### Compose wiring
 
-From `src/docker-compose.yaml`:
+From `magenticx/docker-compose.yaml`:
 
 - the service is exposed on `8003:8003`
 - it depends on `rag_service`
@@ -565,7 +565,7 @@ From `src/docker-compose.yaml`:
   - `MCP_GATEWAY_URL=http://mcp_gateway:8005/sse`
   - `DISABLED_AGENT_SLUGS`
 
-From `src/docker-compose-mcp.yaml`:
+From `magenticx/docker-compose-mcp.yaml`:
 
 - the MCP gateway is exposed on `8005`
 - it runs in SSE mode

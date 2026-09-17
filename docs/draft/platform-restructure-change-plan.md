@@ -263,7 +263,7 @@ def resolve(uid, slug): return user_agents(uid).get(slug) or GLOBAL_AGENTS.get(s
 
 ### 5.1 Sources (platform-owned)
 
-- **Native**: Python tools in `src/agents/harness/tools/`. Add a **registry** so each native tool declares metadata in code (no YAML):
+- **Native**: Python tools in `magenticx/agents/harness/tools/`. Add a **registry** so each native tool declares metadata in code (no YAML):
 
 ```python
 @native_tool(name="render_chart", description="Render an interactive chart",
@@ -331,19 +331,19 @@ memory    : workspaces/<user>/memory/<slug>/AGENTS.md   (workspace-only; gated b
 
 ## 8. Changes by service — file by file
 
-**Agents service (`src/agents/`)**
+**Agents service (`magenticx/agents/`)**
 - **New** `runtime/agent_spec.py` (AgentSpec + validators), `runtime/yaml_agent.py` (`YamlDeepAgent`), `harness/tools/registry.py` (native-tool registry + `@native_tool`), `runtime/tool_catalog.py` (native ∪ live MCP), tool resolver + `agents_seed/` seeder.
 - **Changed** `utils/agents.py` (dir-scan owner-aware discoverer; `AgentDefinition.cls→factory`), `router/inference.py:63` (factory call; drop request `config.tools`, resolve server-side), `runtime/base_agent.py` (`attach_tools` takes the resolved set), `harness/filesystem/{provisioner,workspace}.py` (roots → `/var/magenticx/{global,workspaces}`, add `manifest.json` reader for `disabledTools`), `harness/skill_registry/*` (roots), `runtime/deep_agent.py` (prompts from `AGENT.md`), `main.py`/lifespan (seed agents + skills; refreshable registry).
 - **New in-image** `agents_seed/<slug>/{agent.yaml,AGENT.md,subagents/*}` (built-ins); `Dockerfile` bakes it like the skills seed. Convert `omni_agent` first.
 
-**dialogue_bridge (`src/dialogue_bridge/`)**
+**dialogue_bridge (`magenticx/dialogue_bridge/`)**
 - `core/database/models.py`: `AgentTable + owner_user_id` (null=global), unique `(owner_user_id, slug)`; **retire** `UserPreferencesTable.tools` usage.
 - `schemas/__init__.py`: `AgentOut + owner/mainModel/contextWindow`; new tool-catalog + per-agent-tool DTOs; deprecate `ToolsPreferences`.
 - `utils/agents.py:129-251`: sync global agents (owner=null); per-request resolve for user agents.
 - `router/*`: new endpoints (§5.4) + custom-agent upload/list; drop `enabledTools` from the inference request handling.
 - **Migrations**: (a) `agents.owner_user_id`; (b) backfill/drop `user_preferences.tools`.
 
-**agentic_ui (`src/agentic_ui/`)**
+**agentic_ui (`magenticx/agentic_ui/`)**
 - `McpServersTab.tsx`: **remove** `onToggleToolPreference` + the `useToolStatus` disable path → read-only inspect (servers/tools/counts). 
 - **New** `AgentsTab.tsx` + `ProfileSidebar` entry: list agents; per agent show tools (native+MCP) + model; **disable per agent** (calls the new endpoints).
 - Remove client `enabledTools` compute + `preferences.tools.disabled` wiring; stop sending the tool list on inference (`ChatPage`/`useInferenceRuns`/`inference.ts`).

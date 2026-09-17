@@ -336,13 +336,13 @@ There are no endpoints to list or resolve reports via the public API. Report man
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| DB tables (shares + reports) | [src/dialogue_bridge/core/database/models.py](../../src/dialogue_bridge/core/database/models.py) | `ConversationShareTable`, `ConversationReportTable` |
-| Public share endpoint | [src/dialogue_bridge/router/shared_conv.py](../../src/dialogue_bridge/router/shared_conv.py) | `getSharedConversation()` |
-| Shared inference continuation | [src/dialogue_bridge/utils/inference_start.py](../../src/dialogue_bridge/utils/inference_start.py) | `mode == "shared_continue"` |
-| Owner share endpoints | [src/dialogue_bridge/router/conversations.py](../../src/dialogue_bridge/router/conversations.py) | `shareConversation()`, `revokeConversationShare()`, `getConversationShares()`, `exportConversationPdf()` |
-| Snapshot builder | [src/dialogue_bridge/utils/conversations.py](../../src/dialogue_bridge/utils/conversations.py) | `build_share_snapshot()`, `build_message_lineage()`, `clone_branch_to_conversation()` |
-| Scoped message selection + PDF | [src/dialogue_bridge/utils/share_export.py](../../src/dialogue_bridge/utils/share_export.py) | `select_scoped_messages()`, `render_conversation_pdf()`, `_PdfDocument`, `_FontRegistry` |
-| Pydantic schemas | [src/dialogue_bridge/schema/sharing.py](../../src/dialogue_bridge/schema/sharing.py) | `ConversationShareIn`, `ConversationShareResponse`, `SharedConversationDetail` |
-| Frontend API calls | [src/agentic_ui/src/shared/lib/api/](../../src/agentic_ui/src/shared/lib/api/) | `shareConversation()`, `revokeSharedConversationLink()`, `getSharedConversation()`, `startInference()`, `downloadConversationPdfExport()` |
-| Frontend types | [src/agentic_ui/src/shared/lib/types/](../../src/agentic_ui/src/shared/lib/types/) | `ConversationShareMode`, `ConversationShareResponse`, `SharedConversationDetail` |
-| Share UI handlers | [src/agentic_ui/src/features/sharing/handlers/share.ts](../../src/agentic_ui/src/features/sharing/handlers/share.ts) | `handleCreateShareLink()`, `handleRevokeSharedConversation()`, `loadSharedConversationPage()` |
+| DB tables (shares + reports) | [magenticx/dialogue_bridge/core/database/models.py](../../magenticx/dialogue_bridge/core/database/models.py) | `ConversationShareTable`, `ConversationReportTable` |
+| Public share endpoint | [magenticx/dialogue_bridge/router/shared_conv.py](../../magenticx/dialogue_bridge/router/shared_conv.py) | `getSharedConversation()` |
+| Shared inference continuation | [magenticx/dialogue_bridge/utils/inference_start.py](../../magenticx/dialogue_bridge/utils/inference_start.py) | `mode == "shared_continue"` |
+| Owner share endpoints | [magenticx/dialogue_bridge/router/conversations.py](../../magenticx/dialogue_bridge/router/conversations.py) | `shareConversation()`, `revokeConversationShare()`, `getConversationShares()`, `exportConversationPdf()` |
+| Snapshot builder | [magenticx/dialogue_bridge/utils/conversations.py](../../magenticx/dialogue_bridge/utils/conversations.py) | `build_share_snapshot()`, `build_message_lineage()`, `clone_branch_to_conversation()` |
+| Scoped message selection + PDF | [magenticx/dialogue_bridge/utils/share_export.py](../../magenticx/dialogue_bridge/utils/share_export.py) | `select_scoped_messages()`, `render_conversation_pdf()`, `_PdfDocument`, `_FontRegistry` |
+| Pydantic schemas | [magenticx/dialogue_bridge/schema/sharing.py](../../magenticx/dialogue_bridge/schema/sharing.py) | `ConversationShareIn`, `ConversationShareResponse`, `SharedConversationDetail` |
+| Frontend API calls | [magenticx/agentic_ui/src/shared/lib/api/](../../magenticx/agentic_ui/src/shared/lib/api/) | `shareConversation()`, `revokeSharedConversationLink()`, `getSharedConversation()`, `startInference()`, `downloadConversationPdfExport()` |
+| Frontend types | [magenticx/agentic_ui/src/shared/lib/types/](../../magenticx/agentic_ui/src/shared/lib/types/) | `ConversationShareMode`, `ConversationShareResponse`, `SharedConversationDetail` |
+| Share UI handlers | [magenticx/agentic_ui/src/features/sharing/handlers/share.ts](../../magenticx/agentic_ui/src/features/sharing/handlers/share.ts) | `handleCreateShareLink()`, `handleRevokeSharedConversation()`, `loadSharedConversationPage()` |

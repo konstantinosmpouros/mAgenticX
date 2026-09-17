@@ -25,7 +25,7 @@ def _sqlite_encode(data: bytes, encoding: str) -> str:
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SERVICE_ROOT = ROOT / "src" / "dialogue_bridge"
+SERVICE_ROOT = ROOT / "magenticx" / "dialogue_bridge"
 
 if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))

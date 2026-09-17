@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-AGENTS_SRC = ROOT / "src" / "agents"
+AGENTS_SRC = ROOT / "magenticx" / "agents"
 
 # Import statements are banned; comments explaining the ban are fine.
 _IMPORT_RE = re.compile(r"^\s*(from\s+\S+\s+import\s+.*LocalShellBackend|import\s+.*LocalShellBackend)", re.MULTILINE)

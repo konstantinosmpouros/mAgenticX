@@ -42,18 +42,18 @@ jobs:
           cache: pip
           cache-dependency-path: |
             tests/requirements.txt
-            src/${{ matrix.service }}/requirements.txt
+            magenticx/${{ matrix.service }}/requirements.txt
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r tests/requirements.txt
-          python -m pip install -r src/${{ matrix.service }}/requirements.txt
+          python -m pip install -r magenticx/${{ matrix.service }}/requirements.txt
 
       - name: Run tests with coverage
         run: >-
           python -m pytest ${{ matrix.tests }}
-          --cov=src/${{ matrix.service }}
+          --cov=magenticx/${{ matrix.service }}
           --cov-report=term-missing
           --cov-report=xml:coverage-${{ matrix.service }}.xml
 
@@ -81,10 +81,10 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: src/agentic_ui/package-lock.json
+          cache-dependency-path: magenticx/agentic_ui/package-lock.json
 
       - name: Install frontend dependencies
-        working-directory: src/agentic_ui
+        working-directory: magenticx/agentic_ui
         run: npm ci
 
       # `lint:ceiling` is `eslint .` with --max-warnings pinned to the measured
@@ -93,23 +93,23 @@ jobs:
       # and the warning count was free to climb. The ceiling only ever goes DOWN:
       # when you remove warnings, lower the number in package.json to lock it in.
       - name: Lint frontend (warning ceiling)
-        working-directory: src/agentic_ui
+        working-directory: magenticx/agentic_ui
         run: npm run lint:ceiling
 
       # `npm run build` is `vite build`, which does NOT type-check — esbuild strips
       # types without reading them. Without this step a type error reaches Docker.
       - name: Type-check frontend
-        working-directory: src/agentic_ui
+        working-directory: magenticx/agentic_ui
         run: npm run typecheck
 
       # Vitest suite lives in tests/agentic_ui/ alongside the Python contract
       # tests, not beside the source it exercises.
       - name: Test frontend
-        working-directory: src/agentic_ui
+        working-directory: magenticx/agentic_ui
         run: npm run test
 
       - name: Build frontend
-        working-directory: src/agentic_ui
+        working-directory: magenticx/agentic_ui
         run: npm run build
 
       - name: Set up Python

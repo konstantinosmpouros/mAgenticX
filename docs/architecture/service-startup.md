@@ -108,7 +108,7 @@ These have no `settings.py`; they boot from image env vars + command flags. Thei
 
 ## Fail-closed transport — the cross-cutting boot gate
 
-The single most common "service won't boot" cause after secrets is TLS. The `src/tls/entrypoint-*.sh` scripts default `REQUIRE_TLS=true` and `REQUIRE_MTLS=true`, and test **readability** (`-r`), so a cert that exists but is `root:600`-owned (unreadable by the UID-1000 container user) crash-loops the service instead of silently downgrading to plaintext. After copying or rotating any TLS file on the production VM, fix ownership/permissions (the `chown -R 1000:1000` + `chmod` recipe lives in the deployment guide) or the affected service will refuse to start. Local dev never runs these entrypoints, so it stays HTTP-only with no certs and no flags.
+The single most common "service won't boot" cause after secrets is TLS. The `magenticx/tls/entrypoint-*.sh` scripts default `REQUIRE_TLS=true` and `REQUIRE_MTLS=true`, and test **readability** (`-r`), so a cert that exists but is `root:600`-owned (unreadable by the UID-1000 container user) crash-loops the service instead of silently downgrading to plaintext. After copying or rotating any TLS file on the production VM, fix ownership/permissions (the `chown -R 1000:1000` + `chmod` recipe lives in the deployment guide) or the affected service will refuse to start. Local dev never runs these entrypoints, so it stays HTTP-only with no certs and no flags.
 
 ---
 
@@ -128,13 +128,13 @@ The single most common "service won't boot" cause after secrets is TLS. The `src
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| bridge start gates | [src/dialogue_bridge/core/settings.py](../../src/dialogue_bridge/core/settings.py) | `_finalize_secrets` (`TRUSTED_PROXY_SECRET`, Vault trio, `SESSION_TOKEN_SECRET`); `DatabaseSettings.url = Field(...)` |
-| bridge migration lifespan | [src/dialogue_bridge/main.py](../../src/dialogue_bridge/main.py) | `lifespan` → `_run_alembic_upgrade`, `RUN_MIGRATIONS_ON_STARTUP` |
-| agents proxy gate | [src/agents/core/settings.py](../../src/agents/core/settings.py) | `_require_proxy_secret` |
-| agents checkpointer boot | [src/agents/main.py](../../src/agents/main.py) | `_init_durable_checkpointer`, `_ensure_checkpointer_database` (fail-fast) |
-| rag start gate | [src/rag_service/core/settings.py](../../src/rag_service/core/settings.py) | `_require_proxy_secret` |
-| rag DuckDB load | [src/rag_service/core/database/duck_db.py](../../src/rag_service/core/database/duck_db.py) | `TABLES` loaded from `data/` at import |
-| TLS fail-closed | [src/tls/entrypoint-tls.sh](../../src/tls/entrypoint-tls.sh) | `REQUIRE_TLS`, `REQUIRE_MTLS`, `-r` readability check |
+| bridge start gates | [magenticx/dialogue_bridge/core/settings.py](../../magenticx/dialogue_bridge/core/settings.py) | `_finalize_secrets` (`TRUSTED_PROXY_SECRET`, Vault trio, `SESSION_TOKEN_SECRET`); `DatabaseSettings.url = Field(...)` |
+| bridge migration lifespan | [magenticx/dialogue_bridge/main.py](../../magenticx/dialogue_bridge/main.py) | `lifespan` → `_run_alembic_upgrade`, `RUN_MIGRATIONS_ON_STARTUP` |
+| agents proxy gate | [magenticx/agents/core/settings.py](../../magenticx/agents/core/settings.py) | `_require_proxy_secret` |
+| agents checkpointer boot | [magenticx/agents/main.py](../../magenticx/agents/main.py) | `_init_durable_checkpointer`, `_ensure_checkpointer_database` (fail-fast) |
+| rag start gate | [magenticx/rag_service/core/settings.py](../../magenticx/rag_service/core/settings.py) | `_require_proxy_secret` |
+| rag DuckDB load | [magenticx/rag_service/core/database/duck_db.py](../../magenticx/rag_service/core/database/duck_db.py) | `TABLES` loaded from `data/` at import |
+| TLS fail-closed | [magenticx/tls/entrypoint-tls.sh](../../magenticx/tls/entrypoint-tls.sh) | `REQUIRE_TLS`, `REQUIRE_MTLS`, `-r` readability check |
 | full tunable surface | [docs/architecture/configuration.md](configuration.md) | every env var, per service |
 | secret delivery | [docs/architecture/secrets.md](secrets.md) | which var is backed by which secret |
 </content>

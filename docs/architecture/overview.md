@@ -78,10 +78,10 @@ The browser application is a React 18 SPA built with Vite and served in producti
 
 ### State architecture & routing
 
-The chat workspace is a **layout-route shell + route views**, with shared state in a **Zustand store** (`src/agentic_ui/src/shared/stores/workspaceStore.ts`):
+The chat workspace is a **layout-route shell + route views**, with shared state in a **Zustand store** (`magenticx/agentic_ui/src/shared/stores/workspaceStore.ts`):
 
-- **`ChatShell`** ([pages/ChatPage.tsx](../../src/agentic_ui/src/pages/ChatPage.tsx)) is the persistent shell — sidebar, search, profile/dialog modals, and the chrome. It renders `<Outlet/>` and **never unmounts** across the chat routes. All workspace logic (state, hooks, handlers, effects) lives in the `useChatWorkspace` hook it calls.
-- **Route views** render in the Outlet: [`pages/ChatView.tsx`](../../src/agentic_ui/src/pages/ChatView.tsx) for `/` and `/c/:conversationId` (header + message body + composer), [`pages/TasksView.tsx`](../../src/agentic_ui/src/pages/TasksView.tsx) for `/tasks`. `SharedConvPage` renders the shell directly with `<ChatShell><ChatView/></ChatShell>` (the `children ?? <Outlet/>` slot) for full shared conversations.
+- **`ChatShell`** ([pages/ChatPage.tsx](../../magenticx/agentic_ui/src/pages/ChatPage.tsx)) is the persistent shell — sidebar, search, profile/dialog modals, and the chrome. It renders `<Outlet/>` and **never unmounts** across the chat routes. All workspace logic (state, hooks, handlers, effects) lives in the `useChatWorkspace` hook it calls.
+- **Route views** render in the Outlet: [`pages/ChatView.tsx`](../../magenticx/agentic_ui/src/pages/ChatView.tsx) for `/` and `/c/:conversationId` (header + message body + composer), [`pages/TasksView.tsx`](../../magenticx/agentic_ui/src/pages/TasksView.tsx) for `/tasks`. `SharedConvPage` renders the shell directly with `<ChatShell><ChatView/></ChatShell>` (the `children ?? <Outlet/>` slot) for full shared conversations.
 - **`workspaceStore` (Zustand)** holds the shared reactive data (auth/user, agents, conversations + pagination, the open conversation, selected agent, preferences, tools/skills, sidebar/profile UI) with **setState-compatible setters**, so the existing hooks and `create*Handlers` factories consume them unchanged. Consumers subscribe with selectors. The store also carries the per-render **workspace bundle** (`workspace` slice) that `ChatShell` writes each render and the views read via `useChatWorkspaceContext()` — one state mechanism, no parallel React context.
 - The **URL is the single source of truth** for the open conversation (see [conversation-management.md](../flows/conversation-management.md)). Voice mode is in-component state with no route.
 
@@ -179,8 +179,8 @@ In production this application-layer credential is backed by **transport-layer m
 On startup, `_discover_agents()` scans two Python modules:
 
 ```text
-src/agents/langgraph_agents/   ← LangGraphAgent subclasses
-src/agents/deep_agents/        ← DeepAgent subclasses
+magenticx/agents/langgraph_agents/   ← LangGraphAgent subclasses
+magenticx/agents/deep_agents/        ← DeepAgent subclasses
 ```
 
 Each discovered agent class is registered by its `agent_id` slug. The `DISABLED_AGENT_SLUGS` env var (comma-separated list) prevents specific agents from loading. Duplicate slugs raise an error at startup.
@@ -252,9 +252,9 @@ Redis 7.4 (alpine) backs the durable per-run AG-UI event log used by the WebSock
 
 The MCP gateway is a Docker-hosted MCP server (from `ghcr.io/github/mcp-server-docker-remote` or similar) that wraps external MCP servers (Tavily, arxiv-mcp-server, etc.) into a single SSE endpoint. The agents service treats it as a single MCP origin. It is activated by including `docker-compose-mcp.yaml` in the compose invocation.
 
-Tool catalog: `src/mcp_gateway/mcp_catalog.yaml`
-Tool configuration: `src/mcp_gateway/mcp_config.yaml`
-Secrets (API keys for MCP tools): `src/mcp_gateway/mcp_secret.env`
+Tool catalog: `magenticx/mcp_gateway/mcp_catalog.yaml`
+Tool configuration: `magenticx/mcp_gateway/mcp_config.yaml`
+Secrets (API keys for MCP tools): `magenticx/mcp_gateway/mcp_secret.env`
 
 ### vault (Optional)
 
@@ -333,18 +333,18 @@ sequenceDiagram
 The platform uses a layered compose setup. Services are started by combining compose files:
 
 ```text
-src/docker-compose.yaml              ← core: ui, bridge, agents, rag, chroma, postgres
-src/docker-compose-mcp.yaml          ← optional: mcp_gateway
-src/docker-compose-hashicorp.yaml    ← optional: vault
+magenticx/docker-compose.yaml              ← core: ui, bridge, agents, rag, chroma, postgres
+magenticx/docker-compose-mcp.yaml          ← optional: mcp_gateway
+magenticx/docker-compose-hashicorp.yaml    ← optional: vault
 ```
 
 Example for full stack:
 
 ```bash
 docker compose \
-  -f src/docker-compose.yaml \
-  -f src/docker-compose-mcp.yaml \
-  -f src/docker-compose-hashicorp.yaml \
+  -f magenticx/docker-compose.yaml \
+  -f magenticx/docker-compose-mcp.yaml \
+  -f magenticx/docker-compose-hashicorp.yaml \
   up -d
 ```
 
@@ -450,19 +450,19 @@ Only `agentic_ui` (port 8050) is bound to the host. All other services are inter
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| Core compose (services, networks, volumes) | [src/docker-compose.yaml](../../src/docker-compose.yaml) | port bindings, environment variable names, volume mounts |
-| MCP gateway compose | [src/docker-compose-mcp.yaml](../../src/docker-compose-mcp.yaml) | mcp_gateway service definition, mcp_net network |
-| Vault compose | [src/docker-compose-hashicorp.yaml](../../src/docker-compose-hashicorp.yaml) | vault service definition, hashicorp_vault network |
-| nginx config template | [src/agentic_ui/nginx.conf.template](../../src/agentic_ui/nginx.conf.template) | proxy_pass rules, header injection, buffer settings |
-| Vite dev config | [src/agentic_ui/vite.config.ts](../../src/agentic_ui/vite.config.ts) | dev server port, API proxy target |
-| dialogue_bridge FastAPI app | [src/dialogue_bridge/main.py](../../src/dialogue_bridge/main.py) | router registrations, middleware, startup events |
-| dialogue_bridge settings | [src/dialogue_bridge/core/settings.py](../../src/dialogue_bridge/core/settings.py) | all env vars consumed by the bridge |
-| Agents FastAPI app | [src/agents/main.py](../../src/agents/main.py) | router registrations, startup agent discovery |
-| Agents settings | [src/agents/core/settings.py](../../src/agents/core/settings.py) | LLM API keys, RAG URL, MCP URL, disabled slugs |
-| Agent discovery | [src/agents/utils/agents.py](../../src/agents/utils/agents.py) | `_discover_agents()`, `DISABLED_AGENT_SLUGS` |
-| RAG service app | [src/rag_service/main.py](../../src/rag_service/main.py) | endpoint definitions, DuckDB table loading |
-| RAG settings | [src/rag_service/core/settings.py](../../src/rag_service/core/settings.py) | Chroma host/port, proxy secret |
-| Internal proxy trust | [src/dialogue_bridge/core/security/internal_trust.py](../../src/dialogue_bridge/core/security/internal_trust.py) | `require_internal_caller` dependency |
-| MCP tool catalog | [src/mcp_gateway/mcp_catalog.yaml](../../src/mcp_gateway/mcp_catalog.yaml) | list of registered MCP servers |
-| Frontend API client | [src/agentic_ui/src/shared/lib/api/](../../src/agentic_ui/src/shared/lib/api/) | all REST call definitions, base URL construction |
-| Frontend constants | [src/agentic_ui/src/shared/lib/consts/](../../src/agentic_ui/src/shared/lib/consts/) | `API_BASE`, feature flags |
+| Core compose (services, networks, volumes) | [magenticx/docker-compose.yaml](../../magenticx/docker-compose.yaml) | port bindings, environment variable names, volume mounts |
+| MCP gateway compose | [magenticx/docker-compose-mcp.yaml](../../magenticx/docker-compose-mcp.yaml) | mcp_gateway service definition, mcp_net network |
+| Vault compose | [magenticx/docker-compose-hashicorp.yaml](../../magenticx/docker-compose-hashicorp.yaml) | vault service definition, hashicorp_vault network |
+| nginx config template | [magenticx/agentic_ui/nginx.conf.template](../../magenticx/agentic_ui/nginx.conf.template) | proxy_pass rules, header injection, buffer settings |
+| Vite dev config | [magenticx/agentic_ui/vite.config.ts](../../magenticx/agentic_ui/vite.config.ts) | dev server port, API proxy target |
+| dialogue_bridge FastAPI app | [magenticx/dialogue_bridge/main.py](../../magenticx/dialogue_bridge/main.py) | router registrations, middleware, startup events |
+| dialogue_bridge settings | [magenticx/dialogue_bridge/core/settings.py](../../magenticx/dialogue_bridge/core/settings.py) | all env vars consumed by the bridge |
+| Agents FastAPI app | [magenticx/agents/main.py](../../magenticx/agents/main.py) | router registrations, startup agent discovery |
+| Agents settings | [magenticx/agents/core/settings.py](../../magenticx/agents/core/settings.py) | LLM API keys, RAG URL, MCP URL, disabled slugs |
+| Agent discovery | [magenticx/agents/utils/agents.py](../../magenticx/agents/utils/agents.py) | `_discover_agents()`, `DISABLED_AGENT_SLUGS` |
+| RAG service app | [magenticx/rag_service/main.py](../../magenticx/rag_service/main.py) | endpoint definitions, DuckDB table loading |
+| RAG settings | [magenticx/rag_service/core/settings.py](../../magenticx/rag_service/core/settings.py) | Chroma host/port, proxy secret |
+| Internal proxy trust | [magenticx/dialogue_bridge/core/security/internal_trust.py](../../magenticx/dialogue_bridge/core/security/internal_trust.py) | `require_internal_caller` dependency |
+| MCP tool catalog | [magenticx/mcp_gateway/mcp_catalog.yaml](../../magenticx/mcp_gateway/mcp_catalog.yaml) | list of registered MCP servers |
+| Frontend API client | [magenticx/agentic_ui/src/shared/lib/api/](../../magenticx/agentic_ui/src/shared/lib/api/) | all REST call definitions, base URL construction |
+| Frontend constants | [magenticx/agentic_ui/src/shared/lib/consts/](../../magenticx/agentic_ui/src/shared/lib/consts/) | `API_BASE`, feature flags |

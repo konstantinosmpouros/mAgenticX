@@ -6,7 +6,7 @@ The `rag_service` is the project's retrieval and tabular analytics backend. It e
 - schema inspection for Excel-backed tables
 - SQL execution against Excel data loaded into DuckDB
 
-This README documents the current implementation under `src/rag_service`.
+This README documents the current implementation under `magenticx/rag_service`.
 
 ## 1. What This Service Owns
 
@@ -292,7 +292,7 @@ This service queries Chroma collections but does not create or ingest them. Popu
 
 ## 9. Observability
 
-The service includes a lightweight observability layer under `src/rag_service/observability`.
+The service includes a lightweight observability layer under `magenticx/rag_service/observability`.
 
 ### What it logs
 
@@ -356,7 +356,7 @@ Formatting is handled by the observability formatter builder. The current loggin
 ## 12. Directory Map
 
 ```text
-src/rag_service/
+magenticx/rag_service/
 ├── main.py                 FastAPI routes and runtime entrypoint
 ├── schemas.py              Request models
 ├── core/
@@ -378,7 +378,7 @@ src/rag_service/
 ## 13. Local Development
 
 ```bash
-cd src/rag_service
+cd magenticx/rag_service
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -410,7 +410,7 @@ The current image:
 
 ### Compose wiring
 
-From `src/docker-compose.yaml`:
+From `magenticx/docker-compose.yaml`:
 
 - service name: `rag_service`
 - container port: `8001`

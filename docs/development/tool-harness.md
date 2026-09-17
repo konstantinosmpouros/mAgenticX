@@ -268,19 +268,19 @@ See [database-schema](../architecture/database-schema.md#agent_runtime-tables) f
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| Native-tool registry + builtins + gates | [src/agents/harness/tools/registry.py](../../src/agents/harness/tools/registry.py) | `NATIVE_TOOLS`, `build_auto_attach_tools`, `resolve_native_tool`, `native_catalog` |
-| Gate + selection rules | [src/agents/harness/tools/gates.py](../../src/agents/harness/tools/gates.py) | `resolve_interrupt_on` (the four-layer merge, locked last), `user_gates` (cache key → tool name), `strip_reserved_names` (an MCP tool may not shadow a prebuilt one), `trust_level`, `key_set`/`approval_map` |
-| Builtin implementations | [src/agents/harness/tools/](../../src/agents/harness/tools/) | One folder per tool — `<name>/tool.py` plus a barrel fixing `harness.tools.<name>` as the import path: `remember/`, `forget/`, `memory_search/`, `charts/`, `view_image/`, `present_artifact/`, `create_skill/`. The two cross-cutting modules stay at the package level: `builtins.py` and `registry.py`. |
-| Assembly + builtins + disable filter | [src/agents/harness/abstractions/deep_agent.py](../../src/agents/harness/abstractions/deep_agent.py) | `build_deep_agent`, `_builtin_tools`, `_apply_tool_disables`, `_apply_live_tools` |
-| MCP filter (`attach_tools`, cache keys) | [src/agents/harness/abstractions/base_agent.py](../../src/agents/harness/abstractions/base_agent.py) | `attach_tools`, `_filter_live_tools`, `_build_tool_key_from_config` |
-| YAML → spec tools (native + MCP) | [src/agents/harness/abstractions/yaml_agent.py](../../src/agents/harness/abstractions/yaml_agent.py) | `config_tool_names` seed, `_resolve_native_tools` |
-| Per-(user, agent) override store | [src/dialogue_bridge/utils/agent_tool_prefs.py](../../src/dialogue_bridge/utils/agent_tool_prefs.py) | `read_pair`, `apply_toggle`, `adopt_pair`, `apply_to_rows` |
-| Agents-tab list / toggle | [src/agents/utils/agent_tools.py](../../src/agents/utils/agent_tools.py) · [router/agent_tools.py](../../src/agents/router/agent_tools.py) | `list_agent_tools`, `toggle_agent_tool` |
-| Live MCP manifest load | [src/agents/utils/mcp_tools.py](../../src/agents/utils/mcp_tools.py) · [router/inference.py](../../src/agents/router/inference.py) | `load_mcp_tools`, `mcp_session_context`, `attach_tools` call |
-| Bridge proxy | [src/dialogue_bridge/router/agent_tools.py](../../src/dialogue_bridge/router/agent_tools.py) | GET list + POST toggle (CSRF) |
-| User-agent spec validation (tool refs, HITL floor, quotas) | [src/agents/harness/abstractions/user_agents.py](../../src/agents/harness/abstractions/user_agents.py) | `validate_write`, `_HITL_FLOOR`, `_ALLOWED_EXTENSIONS` |
-| Ownership-aware resolution | [src/agents/utils/agents.py](../../src/agents/utils/agents.py) | `resolve_agent_definition`, `_load_user_agent`, `_USER_AGENT_CACHE` |
-| Frontend Agents tab | [src/agentic_ui/src/features/settings/components/profile_parts/AgentsTab.tsx](../../src/agentic_ui/src/features/settings/components/profile_parts/AgentsTab.tsx) | optimistic toggle, `getAgentTools` / `toggleAgentTool` |
+| Native-tool registry + builtins + gates | [magenticx/agents/harness/tools/registry.py](../../magenticx/agents/harness/tools/registry.py) | `NATIVE_TOOLS`, `build_auto_attach_tools`, `resolve_native_tool`, `native_catalog` |
+| Gate + selection rules | [magenticx/agents/harness/tools/gates.py](../../magenticx/agents/harness/tools/gates.py) | `resolve_interrupt_on` (the four-layer merge, locked last), `user_gates` (cache key → tool name), `strip_reserved_names` (an MCP tool may not shadow a prebuilt one), `trust_level`, `key_set`/`approval_map` |
+| Builtin implementations | [magenticx/agents/harness/tools/](../../magenticx/agents/harness/tools/) | One folder per tool — `<name>/tool.py` plus a barrel fixing `harness.tools.<name>` as the import path: `remember/`, `forget/`, `memory_search/`, `charts/`, `view_image/`, `present_artifact/`, `create_skill/`. The two cross-cutting modules stay at the package level: `builtins.py` and `registry.py`. |
+| Assembly + builtins + disable filter | [magenticx/agents/harness/abstractions/deep_agent.py](../../magenticx/agents/harness/abstractions/deep_agent.py) | `build_deep_agent`, `_builtin_tools`, `_apply_tool_disables`, `_apply_live_tools` |
+| MCP filter (`attach_tools`, cache keys) | [magenticx/agents/harness/abstractions/base_agent.py](../../magenticx/agents/harness/abstractions/base_agent.py) | `attach_tools`, `_filter_live_tools`, `_build_tool_key_from_config` |
+| YAML → spec tools (native + MCP) | [magenticx/agents/harness/abstractions/yaml_agent.py](../../magenticx/agents/harness/abstractions/yaml_agent.py) | `config_tool_names` seed, `_resolve_native_tools` |
+| Per-(user, agent) override store | [magenticx/dialogue_bridge/utils/agent_tool_prefs.py](../../magenticx/dialogue_bridge/utils/agent_tool_prefs.py) | `read_pair`, `apply_toggle`, `adopt_pair`, `apply_to_rows` |
+| Agents-tab list / toggle | [magenticx/agents/utils/agent_tools.py](../../magenticx/agents/utils/agent_tools.py) · [router/agent_tools.py](../../magenticx/agents/router/agent_tools.py) | `list_agent_tools`, `toggle_agent_tool` |
+| Live MCP manifest load | [magenticx/agents/utils/mcp_tools.py](../../magenticx/agents/utils/mcp_tools.py) · [router/inference.py](../../magenticx/agents/router/inference.py) | `load_mcp_tools`, `mcp_session_context`, `attach_tools` call |
+| Bridge proxy | [magenticx/dialogue_bridge/router/agent_tools.py](../../magenticx/dialogue_bridge/router/agent_tools.py) | GET list + POST toggle (CSRF) |
+| User-agent spec validation (tool refs, HITL floor, quotas) | [magenticx/agents/harness/abstractions/user_agents.py](../../magenticx/agents/harness/abstractions/user_agents.py) | `validate_write`, `_HITL_FLOOR`, `_ALLOWED_EXTENSIONS` |
+| Ownership-aware resolution | [magenticx/agents/utils/agents.py](../../magenticx/agents/utils/agents.py) | `resolve_agent_definition`, `_load_user_agent`, `_USER_AGENT_CACHE` |
+| Frontend Agents tab | [magenticx/agentic_ui/src/features/settings/components/profile_parts/AgentsTab.tsx](../../magenticx/agentic_ui/src/features/settings/components/profile_parts/AgentsTab.tsx) | optimistic toggle, `getAgentTools` / `toggleAgentTool` |
 
 ---
 
@@ -399,11 +399,11 @@ over `GET /catalog/tools`. It has no per-agent state and is not involved here.
 
 | Concern | File |
 | --- | --- |
-| Prebuilt roster | [src/agents/harness/tools/builtins.py](../../src/agents/harness/tools/builtins.py) |
-| Native builders | [src/agents/harness/tools/registry.py](../../src/agents/harness/tools/registry.py) |
-| MCP selection | [src/agents/harness/abstractions/base_agent.py](../../src/agents/harness/abstractions/base_agent.py) — `ToolConfig`, `_filter_live_tools` |
-| Gate merge | [src/agents/harness/abstractions/deep_agent.py](../../src/agents/harness/abstractions/deep_agent.py) — `_user_hitl_gates`, `build_deep_agent` |
-| Baseline catalog | [src/agents/utils/agent_tools.py](../../src/agents/utils/agent_tools.py) |
-| Stored choices | [src/dialogue_bridge/utils/agent_tool_prefs.py](../../src/dialogue_bridge/utils/agent_tool_prefs.py) |
-| Overlay + guards | [src/dialogue_bridge/utils/agents.py](../../src/dialogue_bridge/utils/agents.py) |
-| UI | [ToolList.tsx](../../src/agentic_ui/src/features/settings/components/profile_parts/agents_parts/ToolList.tsx) · [agentTools.ts](../../src/agentic_ui/src/features/settings/lib/agentTools.ts) |
+| Prebuilt roster | [magenticx/agents/harness/tools/builtins.py](../../magenticx/agents/harness/tools/builtins.py) |
+| Native builders | [magenticx/agents/harness/tools/registry.py](../../magenticx/agents/harness/tools/registry.py) |
+| MCP selection | [magenticx/agents/harness/abstractions/base_agent.py](../../magenticx/agents/harness/abstractions/base_agent.py) — `ToolConfig`, `_filter_live_tools` |
+| Gate merge | [magenticx/agents/harness/abstractions/deep_agent.py](../../magenticx/agents/harness/abstractions/deep_agent.py) — `_user_hitl_gates`, `build_deep_agent` |
+| Baseline catalog | [magenticx/agents/utils/agent_tools.py](../../magenticx/agents/utils/agent_tools.py) |
+| Stored choices | [magenticx/dialogue_bridge/utils/agent_tool_prefs.py](../../magenticx/dialogue_bridge/utils/agent_tool_prefs.py) |
+| Overlay + guards | [magenticx/dialogue_bridge/utils/agents.py](../../magenticx/dialogue_bridge/utils/agents.py) |
+| UI | [ToolList.tsx](../../magenticx/agentic_ui/src/features/settings/components/profile_parts/agents_parts/ToolList.tsx) · [agentTools.ts](../../magenticx/agentic_ui/src/features/settings/lib/agentTools.ts) |

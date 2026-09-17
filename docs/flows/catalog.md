@@ -168,7 +168,7 @@ type ToolMetadata = {
 
 ### MCP gateway tool registration
 
-Tools are registered in two files in `src/mcp_gateway/`:
+Tools are registered in two files in `magenticx/mcp_gateway/`:
 
 - **`mcp_catalog.yaml`** — the registry of available MCP server metadata (names, descriptions, tool lists, icons). Large file (~506 KB); used for discovery.
 - **`mcp_config.yaml`** — runtime parameters for each server (e.g., `storage_path` for the arxiv server).
@@ -337,16 +337,16 @@ Edit, retry, and shared conversation continuation use the same `/start` endpoint
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| Catalog endpoints | [src/dialogue_bridge/router/catalog.py](../../src/dialogue_bridge/router/catalog.py) | `GET /agents`, `GET /tools`, `GET /{userId}/suggestions` handlers |
-| Agent sync + cache | [src/dialogue_bridge/utils/agents.py](../../src/dialogue_bridge/utils/agents.py) | `_AGENT_CACHE`, `get_cached_agents()`, `sync_agents_with_service()`, `prime_agent_cache()` |
-| Agent DB table | [src/dialogue_bridge/core/database/models.py](../../src/dialogue_bridge/core/database/models.py) | `AgentTable`, `is_active` column |
-| Pydantic schemas | [src/dialogue_bridge/schema/catalog.py](../../src/dialogue_bridge/schema/catalog.py) | `AgentPublic`, `ToolManifest` |
-| Suggestion generation | [src/dialogue_bridge/utils/conversations.py](../../src/dialogue_bridge/utils/conversations.py) | `generate_conversation_suggestions()` |
-| MCP catalog registry | [src/mcp_gateway/mcp_catalog.yaml](../../src/mcp_gateway/mcp_catalog.yaml) | registered MCP servers and tool lists |
-| MCP server config | [src/mcp_gateway/mcp_config.yaml](../../src/mcp_gateway/mcp_config.yaml) | runtime parameters per server |
-| Frontend API calls | [src/agentic_ui/src/shared/lib/api/](../../src/agentic_ui/src/shared/lib/api/) | `getAgents()`, `getTools()`, `getSuggestions()` |
-| Frontend types | [src/agentic_ui/src/shared/lib/types/](../../src/agentic_ui/src/shared/lib/types/) | `Agent`, `ToolMetadata` (the `ToolPreference` type was deleted) |
-| Icon mapping | [src/agentic_ui/src/shared/lib/consts/](../../src/agentic_ui/src/shared/lib/consts/) | `mapIcon()`, icon name → LucideIcon lookup |
-| Startup hydration | [src/agentic_ui/src/features/auth/hooks/useSessionEffects.ts](../../src/agentic_ui/src/features/auth/hooks/useSessionEffects.ts) | `useAuthRehydrateEffect`, parallel catalog fetches |
-| IndexedDB snapshot | [src/agentic_ui/src/shared/lib/uiStateStorage.ts](../../src/agentic_ui/src/shared/lib/uiStateStorage.ts) | `UISnapshotSerializable`, `agents`, `availableTools` fields |
-| Inference request building | [src/agentic_ui/src/features/inference/inference.ts](../../src/agentic_ui/src/features/inference/inference.ts) | `agentId` and start-mode payloads (no tool list is computed or sent) |
+| Catalog endpoints | [magenticx/dialogue_bridge/router/catalog.py](../../magenticx/dialogue_bridge/router/catalog.py) | `GET /agents`, `GET /tools`, `GET /{userId}/suggestions` handlers |
+| Agent sync + cache | [magenticx/dialogue_bridge/utils/agents.py](../../magenticx/dialogue_bridge/utils/agents.py) | `_AGENT_CACHE`, `get_cached_agents()`, `sync_agents_with_service()`, `prime_agent_cache()` |
+| Agent DB table | [magenticx/dialogue_bridge/core/database/models.py](../../magenticx/dialogue_bridge/core/database/models.py) | `AgentTable`, `is_active` column |
+| Pydantic schemas | [magenticx/dialogue_bridge/schema/catalog.py](../../magenticx/dialogue_bridge/schema/catalog.py) | `AgentPublic`, `ToolManifest` |
+| Suggestion generation | [magenticx/dialogue_bridge/utils/conversations.py](../../magenticx/dialogue_bridge/utils/conversations.py) | `generate_conversation_suggestions()` |
+| MCP catalog registry | [magenticx/mcp_gateway/mcp_catalog.yaml](../../magenticx/mcp_gateway/mcp_catalog.yaml) | registered MCP servers and tool lists |
+| MCP server config | [magenticx/mcp_gateway/mcp_config.yaml](../../magenticx/mcp_gateway/mcp_config.yaml) | runtime parameters per server |
+| Frontend API calls | [magenticx/agentic_ui/src/shared/lib/api/](../../magenticx/agentic_ui/src/shared/lib/api/) | `getAgents()`, `getTools()`, `getSuggestions()` |
+| Frontend types | [magenticx/agentic_ui/src/shared/lib/types/](../../magenticx/agentic_ui/src/shared/lib/types/) | `Agent`, `ToolMetadata` (the `ToolPreference` type was deleted) |
+| Icon mapping | [magenticx/agentic_ui/src/shared/lib/consts/](../../magenticx/agentic_ui/src/shared/lib/consts/) | `mapIcon()`, icon name → LucideIcon lookup |
+| Startup hydration | [magenticx/agentic_ui/src/features/auth/hooks/useSessionEffects.ts](../../magenticx/agentic_ui/src/features/auth/hooks/useSessionEffects.ts) | `useAuthRehydrateEffect`, parallel catalog fetches |
+| IndexedDB snapshot | [magenticx/agentic_ui/src/shared/lib/uiStateStorage.ts](../../magenticx/agentic_ui/src/shared/lib/uiStateStorage.ts) | `UISnapshotSerializable`, `agents`, `availableTools` fields |
+| Inference request building | [magenticx/agentic_ui/src/features/inference/inference.ts](../../magenticx/agentic_ui/src/features/inference/inference.ts) | `agentId` and start-mode payloads (no tool list is computed or sent) |

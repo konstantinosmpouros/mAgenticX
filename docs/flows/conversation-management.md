@@ -6,13 +6,13 @@ A conversation is the top-level container for every chat session — it owns a m
 
 ## Client-side routing — the URL is the source of truth
 
-The browser URL decides which view is shown. `App.tsx` is a **layout route**: a persistent `ChatShell` ([pages/ChatPage.tsx](../../src/agentic_ui/src/pages/ChatPage.tsx)) wraps an `<Outlet/>` and **never unmounts** across the chat routes; only the routed view inside it changes:
+The browser URL decides which view is shown. `App.tsx` is a **layout route**: a persistent `ChatShell` ([pages/ChatPage.tsx](../../magenticx/agentic_ui/src/pages/ChatPage.tsx)) wraps an `<Outlet/>` and **never unmounts** across the chat routes; only the routed view inside it changes:
 
 | Route | View (in the shell's `<Outlet/>`) |
 | --- | --- |
-| `/` | [`ChatView`](../../src/agentic_ui/src/pages/ChatView.tsx) — empty **new-chat** state |
+| `/` | [`ChatView`](../../magenticx/agentic_ui/src/pages/ChatView.tsx) — empty **new-chat** state |
 | `/c/:conversationId` | `ChatView` — that conversation |
-| `/tasks` | [`TasksView`](../../src/agentic_ui/src/pages/TasksView.tsx) — the scheduled-tasks page (see [scheduled-tasks.md](scheduled-tasks.md)) |
+| `/tasks` | [`TasksView`](../../magenticx/agentic_ui/src/pages/TasksView.tsx) — the scheduled-tasks page (see [scheduled-tasks.md](scheduled-tasks.md)) |
 | `/login`, `/share/:token`, … | their own pages |
 
 The shell's workspace logic lives in the `useChatWorkspace` hook; shared state is in the Zustand `workspaceStore` and the per-render bundle is read by the views via `useChatWorkspaceContext()` (see [architecture/overview.md](../architecture/overview.md#state-architecture--routing)). `SharedConvPage` renders `<ChatShell><ChatView/></ChatShell>` directly for full shared conversations.
@@ -153,7 +153,7 @@ A branch with no committed checkpoint yet (new conversation, pre-migration branc
 
 A run lives on a specific path through the message tree — `MessageTable.streaming_message_path` records the root-to-running-AI-message lineage, exposed to the frontend as `InferenceRun.messagePath`. When the user re-enters a conversation that has an active run, the run's branch may not be the default branch (e.g., they retried an AI message, putting the streaming reply on a sibling), so the default `branchSelections` (index 0 at every fork) would hide the running message.
 
-`useInferenceRuns.deriveBranchSelectionsForActiveRun(detail)` walks `run.messagePath` against the fetched `messages` list and returns the `{parentId → childIndex}` map that puts the running message on the visible path. It's called in two spots in [`pages/ChatPage.tsx`](../../src/agentic_ui/src/pages/ChatPage.tsx):
+`useInferenceRuns.deriveBranchSelectionsForActiveRun(detail)` walks `run.messagePath` against the fetched `messages` list and returns the `{parentId → childIndex}` map that puts the running message on the visible path. It's called in two spots in [`pages/ChatPage.tsx`](../../magenticx/agentic_ui/src/pages/ChatPage.tsx):
 
 1. **The URL-driven load effect** — when the route's `:conversationId` resolves to a fetched detail, right before `setCurrentConversation`. Combined with `hydrateConversationDetailFromLiveRun` (which overlays in-memory `rawEvents`/`content`/`plan`/`subagents`) the conversation opens on the running branch with the live state already populated. This single effect covers both clicking a sidebar row and a fresh page load / refresh on `/c/:id` (the old separate "session restore on mount" path is gone).
 2. **`snappedRunIdRef`-guarded effect** — fires when `runsByConversation` populates *after* the conversation is already mounted (the race condition: on a refresh the conversation detail can arrive before `getActiveInferenceRuns` does, so the first snap runs with an empty map). The ref ensures the snap fires exactly once per run id — the user can then navigate branches manually without being snapped back.
@@ -328,17 +328,17 @@ When a conversation reaches its first AI response, the bridge calls the agents s
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| Conversation CRUD endpoints | [src/dialogue_bridge/router/conversations.py](../../src/dialogue_bridge/router/conversations.py) | All route handlers, `init_conv()`, `validate_convId_full()` |
-| Message CRUD endpoints | [src/dialogue_bridge/router/messages.py](../../src/dialogue_bridge/router/messages.py) | `addMessage`, `updateMessage`, `likeMessage`, `dislikeMessage` |
-| Share snapshot builder | [src/dialogue_bridge/utils/share_export.py](../../src/dialogue_bridge/utils/share_export.py) | `build_share_snapshot()`, `select_scoped_messages()`, `render_conversation_pdf()` |
-| Message lineage builder | [src/dialogue_bridge/router/conversations.py](../../src/dialogue_bridge/router/conversations.py) | `build_message_lineage()`, `clone_branch_to_conversation()` |
-| Title generation proxy | [src/dialogue_bridge/router/conversations.py](../../src/dialogue_bridge/router/conversations.py) | `generate_conversation_title()` call to agents service |
-| Pydantic schemas | [src/dialogue_bridge/schema/](../../src/dialogue_bridge/schema/) | `ConversationIn`, `ConversationDetail`, `ConversationSummary`, `MessageIn`, `MessageOut`, `ConversationShareResponse` |
-| Conversation ORM models | [src/dialogue_bridge/core/database/models.py](../../src/dialogue_bridge/core/database/models.py) | `ConversationTable`, `MessageTable` (incl. `checkpoint_thread_id` / `checkpoint_id`), `ConversationShareTable`, `ConversationReportTable` |
-| Checkpoint-thread allocation per mode | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `create_inference_run_record(mode=...)`, `nearest_committed_ai()` |
-| Conversation reap (checkpoints + filesystem) | [src/agents/main.py](../../src/agents/main.py) | `reap_conversation()` route, `adelete_thread`, `delete_conversation_files` |
-| Conversation API calls (frontend) | [src/agentic_ui/src/shared/lib/api/](../../src/agentic_ui/src/shared/lib/api/) | `createConversation`, `getConversations`, `deleteConversation`, `forkConversation`, `shareConversation`, `addMessageToConversation` |
-| Conversation action handlers | [src/agentic_ui/src/features/chat/handlers/conversations.ts](../../src/agentic_ui/src/features/chat/handlers/conversations.ts) | `handleConversationSelect`, `handleForkConversation`, `handleDeleteConversation`, `clearChatAndStopThinking` |
-| Send message flow | [src/agentic_ui/src/features/inference/inference.ts](../../src/agentic_ui/src/features/inference/inference.ts) | `handleSendMessage()` — new, existing, edit, retry, shared continuation start modes |
-| Sidebar rendering | [src/agentic_ui/src/features/chat/components/ChatSidebar.tsx](../../src/agentic_ui/src/features/chat/components/ChatSidebar.tsx) | Scroll trigger, auto-load, rename inline edit, action menu |
-| Conversation state | [src/agentic_ui/src/pages/ChatPage.tsx](../../src/agentic_ui/src/pages/ChatPage.tsx) | `currentConversation`, `conversations`, `branchSelections`, pagination state |
+| Conversation CRUD endpoints | [magenticx/dialogue_bridge/router/conversations.py](../../magenticx/dialogue_bridge/router/conversations.py) | All route handlers, `init_conv()`, `validate_convId_full()` |
+| Message CRUD endpoints | [magenticx/dialogue_bridge/router/messages.py](../../magenticx/dialogue_bridge/router/messages.py) | `addMessage`, `updateMessage`, `likeMessage`, `dislikeMessage` |
+| Share snapshot builder | [magenticx/dialogue_bridge/utils/share_export.py](../../magenticx/dialogue_bridge/utils/share_export.py) | `build_share_snapshot()`, `select_scoped_messages()`, `render_conversation_pdf()` |
+| Message lineage builder | [magenticx/dialogue_bridge/router/conversations.py](../../magenticx/dialogue_bridge/router/conversations.py) | `build_message_lineage()`, `clone_branch_to_conversation()` |
+| Title generation proxy | [magenticx/dialogue_bridge/router/conversations.py](../../magenticx/dialogue_bridge/router/conversations.py) | `generate_conversation_title()` call to agents service |
+| Pydantic schemas | [magenticx/dialogue_bridge/schema/](../../magenticx/dialogue_bridge/schema/) | `ConversationIn`, `ConversationDetail`, `ConversationSummary`, `MessageIn`, `MessageOut`, `ConversationShareResponse` |
+| Conversation ORM models | [magenticx/dialogue_bridge/core/database/models.py](../../magenticx/dialogue_bridge/core/database/models.py) | `ConversationTable`, `MessageTable` (incl. `checkpoint_thread_id` / `checkpoint_id`), `ConversationShareTable`, `ConversationReportTable` |
+| Checkpoint-thread allocation per mode | [magenticx/dialogue_bridge/utils/inference_runs.py](../../magenticx/dialogue_bridge/utils/inference_runs.py) | `create_inference_run_record(mode=...)`, `nearest_committed_ai()` |
+| Conversation reap (checkpoints + filesystem) | [magenticx/agents/main.py](../../magenticx/agents/main.py) | `reap_conversation()` route, `adelete_thread`, `delete_conversation_files` |
+| Conversation API calls (frontend) | [magenticx/agentic_ui/src/shared/lib/api/](../../magenticx/agentic_ui/src/shared/lib/api/) | `createConversation`, `getConversations`, `deleteConversation`, `forkConversation`, `shareConversation`, `addMessageToConversation` |
+| Conversation action handlers | [magenticx/agentic_ui/src/features/chat/handlers/conversations.ts](../../magenticx/agentic_ui/src/features/chat/handlers/conversations.ts) | `handleConversationSelect`, `handleForkConversation`, `handleDeleteConversation`, `clearChatAndStopThinking` |
+| Send message flow | [magenticx/agentic_ui/src/features/inference/inference.ts](../../magenticx/agentic_ui/src/features/inference/inference.ts) | `handleSendMessage()` — new, existing, edit, retry, shared continuation start modes |
+| Sidebar rendering | [magenticx/agentic_ui/src/features/chat/components/ChatSidebar.tsx](../../magenticx/agentic_ui/src/features/chat/components/ChatSidebar.tsx) | Scroll trigger, auto-load, rename inline edit, action menu |
+| Conversation state | [magenticx/agentic_ui/src/pages/ChatPage.tsx](../../magenticx/agentic_ui/src/pages/ChatPage.tsx) | `currentConversation`, `conversations`, `branchSelections`, pagination state |

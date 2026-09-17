@@ -80,5 +80,5 @@ flowchart TD
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| [concept] | [src/service/path/file.py](../src/service/path/file.py) | [function / class / constant] |
-| [concept] | [src/service/path/file.ts](../src/service/path/file.ts) | [hook / handler / type] |
+| [concept] | [magenticx/service/path/file.py](../magenticx/service/path/file.py) | [function / class / constant] |
+| [concept] | [magenticx/service/path/file.ts](../magenticx/service/path/file.ts) | [hook / handler / type] |

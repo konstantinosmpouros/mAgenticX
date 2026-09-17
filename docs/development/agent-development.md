@@ -119,7 +119,7 @@ A LangGraph agent expresses its logic as a directed graph: nodes do work, edges 
 #### 1. Create the module
 
 ```text
-src/agents/langgraph_agents/my_agent/
+magenticx/agents/langgraph_agents/my_agent/
     __init__.py       ← agent class (exported here)
     agents.py         ← LLM chain builders
     nodes.py          ← node callables + state type
@@ -235,7 +235,7 @@ and let the normalizer handle all event synthesis from the raw LangGraph chunk s
 #### 5. Export the class
 
 ```python
-# src/agents/langgraph_agents/__init__.py
+# magenticx/agents/langgraph_agents/__init__.py
 from .my_agent import MyAgent
 
 __all__ = ["MyAgent", ...]
@@ -254,7 +254,7 @@ A Deep agent uses the `deepagents` library's autonomous agent factory. The platf
 #### 1. Create the agent module
 
 ```text
-src/agents/deep_agents/my_deep_agent/
+magenticx/agents/deep_agents/my_deep_agent/
     __init__.py       ← agent class (exported here)
     AGENT.md          ← system prompt / behavioral instructions (auto-discovered)
     skills/           ← skill subdirectories (auto-discovered)
@@ -338,7 +338,7 @@ The user inspects and corrects this memory in the **ProfilePanel → Memories ta
 
 ##### Per-user personalization (personality + custom instructions)
 
-Separate from memory, every run may carry the user's **personalization** — a personality preset plus user-authored custom instructions (Settings → Personalization) — threaded by the bridge as `context.personalization`, present only when effective. The main logic lives in [`harness/personalization/personalization.py`](../../src/agents/harness/personalization/personalization.py):
+Separate from memory, every run may carry the user's **personalization** — a personality preset plus user-authored custom instructions (Settings → Personalization) — threaded by the bridge as `context.personalization`, present only when effective. The main logic lives in [`harness/personalization/personalization.py`](../../magenticx/agents/harness/personalization/personalization.py):
 
 - `_PERSONALITY_DIRECTIVES` — the preset registry (`professional`, `friendly`, `candid`, `quirky`, `efficient`, `cynical`, `nerdy`; `default` means "inject nothing").
 - `parse_personalization(context)` — **fail-closed** re-validation at the service boundary (the bridge already validated, but agents don't trust it): unknown preset → `default`, text stripped of control chars and re-capped.
@@ -455,7 +455,7 @@ All three are created automatically if they do not exist. `FilesystemBackend(roo
 
 #### 7b. Customize the middleware stack
 
-Deep-agent middleware lives in [`src/agents/harness/middlewares/`](../../src/agents/harness/middlewares/) — **one module per middleware**:
+Deep-agent middleware lives in [`magenticx/agents/harness/middlewares/`](../../magenticx/agents/harness/middlewares/) — **one module per middleware**:
 
 - `tool_error.py` — `ToolErrorMiddleware`: a tool exception becomes an error `ToolMessage` instead of aborting the run (also injected into every sub-agent via `_inject_tool_error_middleware`).
 - `summarization.py` — `ConfigurableSummarizationMiddleware` + `build_summarization_middleware()` + `exclude_stock_summarization()`.
@@ -489,7 +489,7 @@ If an MCP server provides a tool named `grep`, it will be silently excluded and 
 #### 9. Export the class
 
 ```python
-# src/agents/deep_agents/__init__.py
+# magenticx/agents/deep_agents/__init__.py
 from .my_deep_agent import MyDeepAgent
 
 __all__ = ["MyDeepAgent", ...]
@@ -692,7 +692,7 @@ agui.hitl_interrupt(
 
 DeepAgents (built on `create_deep_agent`) can opt-in tools for HITL approval declaratively. Pass a `dict[str, bool]` to `interrupt_on` — keys are tool names, values mark them as gated. LangChain's `HumanInTheLoopMiddleware` then pauses the graph before any gated tool runs and surfaces a `HITLInterruptEvent` with one entry per pending call inside `value.action_requests`.
 
-Example from [`omni_agent/__init__.py`](../../src/agents/deep_agents/omni_agent/__init__.py):
+Example from [`omni_agent/__init__.py`](../../magenticx/agents/deep_agents/omni_agent/__init__.py):
 
 ```python
 HITL_GATED_TOOLS: dict[str, bool] = {
@@ -734,16 +734,16 @@ Decision dicts:
 
 #### Durable Postgres checkpointer
 
-Each `/stream` and `/resume` request creates a fresh agent instance (`cls(config=config)`), but they all compile against **one shared process-wide `AsyncPostgresSaver`** opened in `main._lifespan` over a long-lived `psycopg_pool.AsyncConnectionPool` and installed via `set_checkpointer()`. [`harness/checkpointer/store.py`](../../src/agents/harness/checkpointer/store.py) is just the accessor: `set_checkpointer()` / `get_checkpointer()` / `has_checkpointer_initialized()`. There is no per-thread cache and no LRU — checkpoints live durably in the `agent_runtime` Postgres database, keyed by `thread_id`. `.setup()` runs once at startup (advisory-locked). At-rest encryption (`EncryptedSerializer`) is enabled in prod via `LANGGRAPH_AES_KEY_FILE`. Both `LangGraphAgent.build()` and `DeepAgent.build()` compile against this shared saver.
+Each `/stream` and `/resume` request creates a fresh agent instance (`cls(config=config)`), but they all compile against **one shared process-wide `AsyncPostgresSaver`** opened in `main._lifespan` over a long-lived `psycopg_pool.AsyncConnectionPool` and installed via `set_checkpointer()`. [`harness/checkpointer/store.py`](../../magenticx/agents/harness/checkpointer/store.py) is just the accessor: `set_checkpointer()` / `get_checkpointer()` / `has_checkpointer_initialized()`. There is no per-thread cache and no LRU — checkpoints live durably in the `agent_runtime` Postgres database, keyed by `thread_id`. `.setup()` runs once at startup (advisory-locked). At-rest encryption (`EncryptedSerializer`) is enabled in prod via `LANGGRAPH_AES_KEY_FILE`. Both `LangGraphAgent.build()` and `DeepAgent.build()` compile against this shared saver.
 
 **`thread_id` and `run_id` are now two distinct ids.** Previously a single `run.id` was the checkpoint key, the AG-UI `message_id`, and the namespace-binding key. They are now split:
 
 - **`run_config.configurable.thread_id`** is a **branch-scoped `checkpoint_thread_id`** — durable and **shared across every run on a branch** (a continue resumes the same thread; an edit/retry mints a fresh one). This is the LangGraph checkpoint key.
 - **`context.run_id`** is the per-run assistant-message id. The normalizer uses it for the AG-UI `message_id` and for the in-process `_THREAD_NAMESPACE_BINDINGS` key.
 
-**Copy-on-fork for edit/retry.** A fresh thread does not start empty: the bridge passes `fork_from: {thread_id, checkpoint_id}` in the stream config, and `/stream` seeds the new thread from the parent branch's committed checkpoint via [`harness/checkpointer/fork.py`](../../src/agents/harness/checkpointer/fork.py) `seed_thread_from_checkpoint()` (`aget_state` → `aupdate_state`) before running — so the new branch inherits the parent's state without mutating it.
+**Copy-on-fork for edit/retry.** A fresh thread does not start empty: the bridge passes `fork_from: {thread_id, checkpoint_id}` in the stream config, and `/stream` seeds the new thread from the parent branch's committed checkpoint via [`harness/checkpointer/fork.py`](../../magenticx/agents/harness/checkpointer/fork.py) `seed_thread_from_checkpoint()` (`aget_state` → `aupdate_state`) before running — so the new branch inherits the parent's state without mutating it.
 
-**Threads persist; the stream no longer wipes them.** Durable threads have no TTL and are reaped only on conversation delete (`adelete_thread`), so the old "release stale entry on `/stream` entry" line was removed — a re-issued run must keep its committed history. At the end of every `/stream` / `/resume` leg [`utils.release_checkpoint_unless_paused`](../../src/agents/utils/checkpointer.py) now probes `compiled.aget_state(run_config).interrupts` (async, since the saver is async) and **only drops the in-process namespace-binding cache** (keyed by `run_id`) when not paused — it **never deletes the Postgres checkpoint**.
+**Threads persist; the stream no longer wipes them.** Durable threads have no TTL and are reaped only on conversation delete (`adelete_thread`), so the old "release stale entry on `/stream` entry" line was removed — a re-issued run must keep its committed history. At the end of every `/stream` / `/resume` leg [`utils.release_checkpoint_unless_paused`](../../magenticx/agents/utils/checkpointer.py) now probes `compiled.aget_state(run_config).interrupts` (async, since the saver is async) and **only drops the in-process namespace-binding cache** (keyed by `run_id`) when not paused — it **never deletes the Postgres checkpoint**.
 
 ---
 
@@ -872,31 +872,31 @@ Each lifecycle hook runs exactly once per instance. Exceptions in `register_agen
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| Base agent class | [src/agents/harness/abstractions/base_agent.py](../../src/agents/harness/abstractions/base_agent.py) | `BaseAgent`, `attach_tools()`, `_validate_config()`, `_encode_run_error()` |
-| LangGraph agent base | [src/agents/harness/abstractions/langgraph_agent.py](../../src/agents/harness/abstractions/langgraph_agent.py) | `LangGraphAgent`, `build()`, `astream()`, abstract method list |
-| Deep agent base | [src/agents/harness/abstractions/deep_agent.py](../../src/agents/harness/abstractions/deep_agent.py) | `DeepAgent`, lifecycle hooks, `default_middleware()`, `build_deep_agent()`, `RESERVED_DEEPAGENT_TOOL_NAMES`, `_apply_live_tools()`, `_build_composite_backend()` (delegates to workspace) |
-| Filesystem layout (paths + provisioning) | [src/agents/harness/filesystem/provisioner.py](../../src/agents/harness/filesystem/provisioner.py) | path helpers (`memory_root()`, `skills_root()`, `conversation_root()`…), `ensure_user_agent_filesystem()`; deepagents-free |
-| Filesystem workspace (mounts + permissions) | [src/agents/harness/filesystem/workspace.py](../../src/agents/harness/filesystem/workspace.py) | `build_workspace_backend()` (CompositeBackend route map, incl. the optional read-only `/reference/` definition mount), `workspace_write_deny()`, sandbox-execution guard (`SANDBOX_EXECUTION_ENABLED`, fail-closed) |
-| Workspace retention (TTL caches) | [src/agents/harness/filesystem/retention.py](../../src/agents/harness/filesystem/retention.py) | `/conversation/input/` (72h) and `/conversation/output/` (168h) are TTL-erased caches — blobs in Postgres are the source of truth; agents must not treat old workspace files as durable |
-| Memory store ops (list/read/delete + row format) | [src/agents/harness/memory/store.py](../../src/agents/harness/memory/store.py) | `index_line()` / `index_line_pattern()`, `list_memories()`, `read_memory()`, `delete_memory()` |
-| Memory inspector endpoints | [src/agents/router/memories.py](../../src/agents/router/memories.py) → bridge [src/dialogue_bridge/router/memories.py](../../src/dialogue_bridge/router/memories.py) (`/v1/memories`) → UI [MemoriesTab.tsx](../../src/agentic_ui/src/features/settings/components/profile_parts/MemoriesTab.tsx) + [useMemories.ts](../../src/agentic_ui/src/features/settings/hooks/useMemories.ts) | list / preview / delete a (user, agent)'s memories |
-| Agent middleware | [src/agents/harness/middlewares/](../../src/agents/harness/middlewares/) | `tool_error.py` (`ToolErrorMiddleware`), `summarization.py` (`ConfigurableSummarizationMiddleware`, `build_summarization_middleware()`, `exclude_stock_summarization()`) |
-| Shared tools | [src/agents/harness/tools/](../../src/agents/harness/tools/) | Custom tool definitions attached via `attach_tools()`; `remember.py` (per-agent memory write), `memory_search.py` (`search_past_conversations`) |
-| Summarization settings | [src/agents/core/settings.py](../../src/agents/core/settings.py) | `SummarizationSettings` — `SUMMARIZATION_TRIGGER_FRACTION`, `_KEEP_FRACTION`, `_TRIGGER_TOKENS`, `_KEEP_MESSAGES` |
-| Durable checkpointer accessor | [src/agents/harness/checkpointer/store.py](../../src/agents/harness/checkpointer/store.py) | `set_checkpointer()`, `get_checkpointer()`, `has_checkpointer_initialized()` |
-| Copy-on-fork seeding | [src/agents/harness/checkpointer/fork.py](../../src/agents/harness/checkpointer/fork.py) | `seed_thread_from_checkpoint()` |
-| Checkpointer lifespan + setup | [src/agents/main.py](../../src/agents/main.py) | `_lifespan` — pool open, `set_checkpointer`, `.setup()` |
-| Checkpointer settings | [src/agents/core/settings.py](../../src/agents/core/settings.py) | `CheckpointerSettings` — `AGENT_RUNTIME_DATABASE_URL`, `LANGGRAPH_STRICT_MSGPACK`, `LANGGRAPH_AES_KEY_FILE` |
-| Namespace-cache release | [src/agents/utils/checkpointer.py](../../src/agents/utils/checkpointer.py) | `release_checkpoint_unless_paused()` (RAM cache only; never deletes Postgres) |
-| Agent discovery | [src/agents/utils/agents.py](../../src/agents/utils/agents.py) | `_discover_agents()`, `AGENT_REGISTRY`, `AgentDefinition` |
-| Tool cache key logic | [src/agents/utils/mcp_tools.py](../../src/agents/utils/mcp_tools.py) | `build_tool_cache_key()`, `_TOOL_SERVER_OVERRIDES`, `mcp_session_context()` |
-| AG-UI event emitter | [src/agents/harness/agui/emitter.py](../../src/agents/harness/agui/emitter.py) | `AGUIEmitter` — all emit methods |
-| AG-UI normalizer | [src/agents/harness/agui/normalizer.py](../../src/agents/harness/agui/normalizer.py) | `AGUIStreamNormalizer.handle_chunk()` |
-| Custom event types | [src/agents/harness/agui/events.py](../../src/agents/harness/agui/events.py) | `PlanItem`, `PlanSnapshot`, `TaskSubAgentEvent`, `HITLInterruptEvent` |
-| Stream endpoint | [src/agents/main.py](../../src/agents/main.py) | `POST /agents/{slug}/stream` — full instantiation + attach + stream flow |
-| Agent settings | [src/agents/core/settings.py](../../src/agents/core/settings.py) | `AgentRegistrySettings.disabled_agent_slugs`, `McpSettings`, `RuntimeModelsSettings` |
-| LangGraph agent exports | [src/agents/langgraph_agents/\_\_init\_\_.py](../../src/agents/langgraph_agents/__init__.py) | `__all__` — agents that will be discovered |
-| Deep agent exports | [src/agents/deep_agents/\_\_init\_\_.py](../../src/agents/deep_agents/__init__.py) | `__all__` — agents that will be discovered |
+| Base agent class | [magenticx/agents/harness/abstractions/base_agent.py](../../magenticx/agents/harness/abstractions/base_agent.py) | `BaseAgent`, `attach_tools()`, `_validate_config()`, `_encode_run_error()` |
+| LangGraph agent base | [magenticx/agents/harness/abstractions/langgraph_agent.py](../../magenticx/agents/harness/abstractions/langgraph_agent.py) | `LangGraphAgent`, `build()`, `astream()`, abstract method list |
+| Deep agent base | [magenticx/agents/harness/abstractions/deep_agent.py](../../magenticx/agents/harness/abstractions/deep_agent.py) | `DeepAgent`, lifecycle hooks, `default_middleware()`, `build_deep_agent()`, `RESERVED_DEEPAGENT_TOOL_NAMES`, `_apply_live_tools()`, `_build_composite_backend()` (delegates to workspace) |
+| Filesystem layout (paths + provisioning) | [magenticx/agents/harness/filesystem/provisioner.py](../../magenticx/agents/harness/filesystem/provisioner.py) | path helpers (`memory_root()`, `skills_root()`, `conversation_root()`…), `ensure_user_agent_filesystem()`; deepagents-free |
+| Filesystem workspace (mounts + permissions) | [magenticx/agents/harness/filesystem/workspace.py](../../magenticx/agents/harness/filesystem/workspace.py) | `build_workspace_backend()` (CompositeBackend route map, incl. the optional read-only `/reference/` definition mount), `workspace_write_deny()`, sandbox-execution guard (`SANDBOX_EXECUTION_ENABLED`, fail-closed) |
+| Workspace retention (TTL caches) | [magenticx/agents/harness/filesystem/retention.py](../../magenticx/agents/harness/filesystem/retention.py) | `/conversation/input/` (72h) and `/conversation/output/` (168h) are TTL-erased caches — blobs in Postgres are the source of truth; agents must not treat old workspace files as durable |
+| Memory store ops (list/read/delete + row format) | [magenticx/agents/harness/memory/store.py](../../magenticx/agents/harness/memory/store.py) | `index_line()` / `index_line_pattern()`, `list_memories()`, `read_memory()`, `delete_memory()` |
+| Memory inspector endpoints | [magenticx/agents/router/memories.py](../../magenticx/agents/router/memories.py) → bridge [magenticx/dialogue_bridge/router/memories.py](../../magenticx/dialogue_bridge/router/memories.py) (`/v1/memories`) → UI [MemoriesTab.tsx](../../magenticx/agentic_ui/src/features/settings/components/profile_parts/MemoriesTab.tsx) + [useMemories.ts](../../magenticx/agentic_ui/src/features/settings/hooks/useMemories.ts) | list / preview / delete a (user, agent)'s memories |
+| Agent middleware | [magenticx/agents/harness/middlewares/](../../magenticx/agents/harness/middlewares/) | `tool_error.py` (`ToolErrorMiddleware`), `summarization.py` (`ConfigurableSummarizationMiddleware`, `build_summarization_middleware()`, `exclude_stock_summarization()`) |
+| Shared tools | [magenticx/agents/harness/tools/](../../magenticx/agents/harness/tools/) | Custom tool definitions attached via `attach_tools()`; `remember.py` (per-agent memory write), `memory_search.py` (`search_past_conversations`) |
+| Summarization settings | [magenticx/agents/core/settings.py](../../magenticx/agents/core/settings.py) | `SummarizationSettings` — `SUMMARIZATION_TRIGGER_FRACTION`, `_KEEP_FRACTION`, `_TRIGGER_TOKENS`, `_KEEP_MESSAGES` |
+| Durable checkpointer accessor | [magenticx/agents/harness/checkpointer/store.py](../../magenticx/agents/harness/checkpointer/store.py) | `set_checkpointer()`, `get_checkpointer()`, `has_checkpointer_initialized()` |
+| Copy-on-fork seeding | [magenticx/agents/harness/checkpointer/fork.py](../../magenticx/agents/harness/checkpointer/fork.py) | `seed_thread_from_checkpoint()` |
+| Checkpointer lifespan + setup | [magenticx/agents/main.py](../../magenticx/agents/main.py) | `_lifespan` — pool open, `set_checkpointer`, `.setup()` |
+| Checkpointer settings | [magenticx/agents/core/settings.py](../../magenticx/agents/core/settings.py) | `CheckpointerSettings` — `AGENT_RUNTIME_DATABASE_URL`, `LANGGRAPH_STRICT_MSGPACK`, `LANGGRAPH_AES_KEY_FILE` |
+| Namespace-cache release | [magenticx/agents/utils/checkpointer.py](../../magenticx/agents/utils/checkpointer.py) | `release_checkpoint_unless_paused()` (RAM cache only; never deletes Postgres) |
+| Agent discovery | [magenticx/agents/utils/agents.py](../../magenticx/agents/utils/agents.py) | `_discover_agents()`, `AGENT_REGISTRY`, `AgentDefinition` |
+| Tool cache key logic | [magenticx/agents/utils/mcp_tools.py](../../magenticx/agents/utils/mcp_tools.py) | `build_tool_cache_key()`, `_TOOL_SERVER_OVERRIDES`, `mcp_session_context()` |
+| AG-UI event emitter | [magenticx/agents/harness/agui/emitter.py](../../magenticx/agents/harness/agui/emitter.py) | `AGUIEmitter` — all emit methods |
+| AG-UI normalizer | [magenticx/agents/harness/agui/normalizer.py](../../magenticx/agents/harness/agui/normalizer.py) | `AGUIStreamNormalizer.handle_chunk()` |
+| Custom event types | [magenticx/agents/harness/agui/events.py](../../magenticx/agents/harness/agui/events.py) | `PlanItem`, `PlanSnapshot`, `TaskSubAgentEvent`, `HITLInterruptEvent` |
+| Stream endpoint | [magenticx/agents/main.py](../../magenticx/agents/main.py) | `POST /agents/{slug}/stream` — full instantiation + attach + stream flow |
+| Agent settings | [magenticx/agents/core/settings.py](../../magenticx/agents/core/settings.py) | `AgentRegistrySettings.disabled_agent_slugs`, `McpSettings`, `RuntimeModelsSettings` |
+| LangGraph agent exports | [magenticx/agents/langgraph_agents/\_\_init\_\_.py](../../magenticx/agents/langgraph_agents/__init__.py) | `__all__` — agents that will be discovered |
+| Deep agent exports | [magenticx/agents/deep_agents/\_\_init\_\_.py](../../magenticx/agents/deep_agents/__init__.py) | `__all__` — agents that will be discovered |
 
 ---
 

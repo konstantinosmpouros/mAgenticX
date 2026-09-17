@@ -357,27 +357,27 @@ This is the only point in the pipeline where blob storage is accessed for infere
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| RAG service entry & endpoints | [src/rag_service/main.py](../../src/rag_service/main.py) | `retrieve`, `schema`, `sql_query` route handlers |
-| Vector retrieval | [src/rag_service/main.py](../../src/rag_service/main.py) | `POST /retrieve/{collection_name}` handler |
-| Chroma configuration | [src/rag_service/core/clients/chroma.py](../../src/rag_service/core/clients/chroma.py) | `chroma_settings` |
-| OpenAI embeddings client | [src/rag_service/core/clients/openai.py](../../src/rag_service/core/clients/openai.py) | `embeddings_model` |
-| DuckDB ingestion | [src/rag_service/core/database/duck_db.py](../../src/rag_service/core/database/duck_db.py) | `db`, `TABLES`, Excel loading loop |
-| SQL validation | [src/rag_service/main.py](../../src/rag_service/main.py) | `_validate_read_only_sql()` |
-| RAG service settings | [src/rag_service/core/settings.py](../../src/rag_service/core/settings.py) | `RagSettings`, `ApiKeysSettings`, `ProxySettings` |
-| RAG error handling | [src/rag_service/core/error_handling.py](../../src/rag_service/core/error_handling.py) | `RagOperationErrorHandler`, `register_exception_handlers` |
-| MCP tool cache & manifest | [src/agents/utils/mcp_tools.py](../../src/agents/utils/mcp_tools.py) | `_MCP_TOOL_MANIFEST_CACHE`, `list_mcp_tools()`, `_prime_manifest_cache()` |
-| MCP session per request | [src/agents/utils/mcp_tools.py](../../src/agents/utils/mcp_tools.py) | `mcp_session_context()`, `load_mcp_tools()` |
-| Tool server ID overrides | [src/agents/utils/mcp_tools.py](../../src/agents/utils/mcp_tools.py) | `_TOOL_SERVER_OVERRIDES` |
-| Agent base (tool filtering) | [src/agents/harness/abstractions/base_agent.py](../../src/agents/harness/abstractions/base_agent.py) | `attach_tools()`; `config_tools`/`config_tool_names` now default empty (no longer seeded from the request config) |
-| Per-(user, agent) tool disables | [src/dialogue_bridge/utils/agent_tool_prefs.py](../../src/dialogue_bridge/utils/agent_tool_prefs.py) | `tool_prefs.json` load/save, `_apply_tool_disables()` (declared − disabled) |
-| LangGraph agent build & stream | [src/agents/harness/abstractions/langgraph_agent.py](../../src/agents/harness/abstractions/langgraph_agent.py) | `build()`, `astream()` |
-| Deep agent build lifecycle | [src/agents/harness/abstractions/deep_agent.py](../../src/agents/harness/abstractions/deep_agent.py) | `build()`, `register_agent()`, asset discovery |
-| Tool call lifecycle events | [src/agents/harness/agui/emitter.py](../../src/agents/harness/agui/emitter.py) | `tool_call_start()`, `tool_call_args()`, `tool_call_result()`, `tool_call_end()` |
-| Stream normalization & routing | [src/agents/harness/agui/normalizer.py](../../src/agents/harness/agui/normalizer.py) | `handle_chunk()`, `_handle_updates_payload()`, `_handle_messages_payload()` |
-| Special tool handling | [src/agents/harness/agui/normalizer.py](../../src/agents/harness/agui/normalizer.py) | `write_todos` branch, `task` branch, `__interrupt__` priority check |
-| HITL, plan, sub-agent event models | [src/agents/harness/agui/events.py](../../src/agents/harness/agui/events.py) | `HITLInterruptEvent`, `PlanSnapshot`, `TaskSubAgentEvent`, `SubAgentEvent` |
-| Agent stream endpoint | [src/agents/main.py](../../src/agents/main.py) | `POST /agents/{agent_slug}/stream` |
-| Agent catalog endpoints | [src/agents/main.py](../../src/agents/main.py) | `GET /agents`, `GET /tools` |
-| Inference runs (bridge) | [src/dialogue_bridge/router/inference.py](../../src/dialogue_bridge/router/inference.py) | `startInferenceFlow()`, `inference_run_websocket()`, `cancelInferenceRun()` |
-| Message history serialization | [src/dialogue_bridge/utils/inference.py](../../src/dialogue_bridge/utils/inference.py) | `prepare_inference_history()`, `serialise_message_with_images_for_agent()` |
-| Internal caller auth | [src/agents/core/security/internal_trust.py](../../src/agents/core/security/internal_trust.py) | `require_internal_caller()` |
+| RAG service entry & endpoints | [magenticx/rag_service/main.py](../../magenticx/rag_service/main.py) | `retrieve`, `schema`, `sql_query` route handlers |
+| Vector retrieval | [magenticx/rag_service/main.py](../../magenticx/rag_service/main.py) | `POST /retrieve/{collection_name}` handler |
+| Chroma configuration | [magenticx/rag_service/core/clients/chroma.py](../../magenticx/rag_service/core/clients/chroma.py) | `chroma_settings` |
+| OpenAI embeddings client | [magenticx/rag_service/core/clients/openai.py](../../magenticx/rag_service/core/clients/openai.py) | `embeddings_model` |
+| DuckDB ingestion | [magenticx/rag_service/core/database/duck_db.py](../../magenticx/rag_service/core/database/duck_db.py) | `db`, `TABLES`, Excel loading loop |
+| SQL validation | [magenticx/rag_service/main.py](../../magenticx/rag_service/main.py) | `_validate_read_only_sql()` |
+| RAG service settings | [magenticx/rag_service/core/settings.py](../../magenticx/rag_service/core/settings.py) | `RagSettings`, `ApiKeysSettings`, `ProxySettings` |
+| RAG error handling | [magenticx/rag_service/core/error_handling.py](../../magenticx/rag_service/core/error_handling.py) | `RagOperationErrorHandler`, `register_exception_handlers` |
+| MCP tool cache & manifest | [magenticx/agents/utils/mcp_tools.py](../../magenticx/agents/utils/mcp_tools.py) | `_MCP_TOOL_MANIFEST_CACHE`, `list_mcp_tools()`, `_prime_manifest_cache()` |
+| MCP session per request | [magenticx/agents/utils/mcp_tools.py](../../magenticx/agents/utils/mcp_tools.py) | `mcp_session_context()`, `load_mcp_tools()` |
+| Tool server ID overrides | [magenticx/agents/utils/mcp_tools.py](../../magenticx/agents/utils/mcp_tools.py) | `_TOOL_SERVER_OVERRIDES` |
+| Agent base (tool filtering) | [magenticx/agents/harness/abstractions/base_agent.py](../../magenticx/agents/harness/abstractions/base_agent.py) | `attach_tools()`; `config_tools`/`config_tool_names` now default empty (no longer seeded from the request config) |
+| Per-(user, agent) tool disables | [magenticx/dialogue_bridge/utils/agent_tool_prefs.py](../../magenticx/dialogue_bridge/utils/agent_tool_prefs.py) | `tool_prefs.json` load/save, `_apply_tool_disables()` (declared − disabled) |
+| LangGraph agent build & stream | [magenticx/agents/harness/abstractions/langgraph_agent.py](../../magenticx/agents/harness/abstractions/langgraph_agent.py) | `build()`, `astream()` |
+| Deep agent build lifecycle | [magenticx/agents/harness/abstractions/deep_agent.py](../../magenticx/agents/harness/abstractions/deep_agent.py) | `build()`, `register_agent()`, asset discovery |
+| Tool call lifecycle events | [magenticx/agents/harness/agui/emitter.py](../../magenticx/agents/harness/agui/emitter.py) | `tool_call_start()`, `tool_call_args()`, `tool_call_result()`, `tool_call_end()` |
+| Stream normalization & routing | [magenticx/agents/harness/agui/normalizer.py](../../magenticx/agents/harness/agui/normalizer.py) | `handle_chunk()`, `_handle_updates_payload()`, `_handle_messages_payload()` |
+| Special tool handling | [magenticx/agents/harness/agui/normalizer.py](../../magenticx/agents/harness/agui/normalizer.py) | `write_todos` branch, `task` branch, `__interrupt__` priority check |
+| HITL, plan, sub-agent event models | [magenticx/agents/harness/agui/events.py](../../magenticx/agents/harness/agui/events.py) | `HITLInterruptEvent`, `PlanSnapshot`, `TaskSubAgentEvent`, `SubAgentEvent` |
+| Agent stream endpoint | [magenticx/agents/main.py](../../magenticx/agents/main.py) | `POST /agents/{agent_slug}/stream` |
+| Agent catalog endpoints | [magenticx/agents/main.py](../../magenticx/agents/main.py) | `GET /agents`, `GET /tools` |
+| Inference runs (bridge) | [magenticx/dialogue_bridge/router/inference.py](../../magenticx/dialogue_bridge/router/inference.py) | `startInferenceFlow()`, `inference_run_websocket()`, `cancelInferenceRun()` |
+| Message history serialization | [magenticx/dialogue_bridge/utils/inference.py](../../magenticx/dialogue_bridge/utils/inference.py) | `prepare_inference_history()`, `serialise_message_with_images_for_agent()` |
+| Internal caller auth | [magenticx/agents/core/security/internal_trust.py](../../magenticx/agents/core/security/internal_trust.py) | `require_internal_caller()` |

@@ -115,7 +115,7 @@ Rotation of a key/cert is a file copy + `chown 1000:1000` + container restart �
 - **An unreadable `*_FILE` is fail-loud.** `_resolve_file_backed_secret()` raises if the `*_FILE` path is set but unreadable, rather than silently falling through to a plain env var — so a permission slip surfaces as a startup crash, not a silent wrong-value boot.
 - **The log-redaction secret is fail-safe, not fail-loud.** Without it each service hardens to a random per-process key; logs stay private but the `client_ip` hash stops correlating across services/restarts. Provision it.
 - **Blast radius, highest first:** `magenticx_postgres_password` (all chat + agent state), the Vault unseal keys / Transit key (every session JWT), `magenticx_openai_api_key` (cost + data egress), `magenticx_trusted_proxy_secret` (internal trust boundary), `magenticx_agent_runtime_aes_key` (checkpoint confidentiality). Rotate these first on any suspected exposure.
-- **Local dev needs none of this.** With no `*_FILE` vars set, settings fall back to plain env vars from `src/.env`, and the dev defaults fill in the rest (random session/redaction secrets, no Vault). See `CLAUDE.md` § Local Development Setup.
+- **Local dev needs none of this.** With no `*_FILE` vars set, settings fall back to plain env vars from `magenticx/.env`, and the dev defaults fill in the rest (random session/redaction secrets, no Vault). See `CLAUDE.md` § Local Development Setup.
 
 ---
 
@@ -123,12 +123,12 @@ Rotation of a key/cert is a file copy + `chown 1000:1000` + container restart �
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| Core stack secret declarations | [src/docker-compose-denis.yaml](../../src/docker-compose-denis.yaml) | top-level `secrets:` block, per-service `secrets:` lists |
-| Monitoring stack secrets | [src/docker-compose-denis-monitoring.yml](../../src/docker-compose-denis-monitoring.yml) | `grafana_admin_password`, `alert_smtp_password` |
-| MCP gateway secret file | [src/docker-compose-denis-mcp.yaml](../../src/docker-compose-denis-mcp.yaml) | `--secrets` flag + `mcp_secret.env` bind mount |
-| Vault server | [src/docker-compose-denis-hashicorp.yaml](../../src/docker-compose-denis-hashicorp.yaml) | listener TLS, raft storage; Transit/AppRole set up via `src/vault/` |
-| File-backed secret resolution | [src/dialogue_bridge/core/settings.py](../../src/dialogue_bridge/core/settings.py) | `_resolve_file_backed_secret` |
-| nginx secret shim | [src/agentic_ui/load-secrets-and-exec.sh](../../src/agentic_ui/load-secrets-and-exec.sh) | `/run/secrets/trusted_proxy_secret` → env |
-| Vault setup scripts | [src/vault/](../../src/vault/) | Transit + AppRole + userpass init, RBAC scripts |
+| Core stack secret declarations | [magenticx/docker-compose-denis.yaml](../../magenticx/docker-compose-denis.yaml) | top-level `secrets:` block, per-service `secrets:` lists |
+| Monitoring stack secrets | [magenticx/docker-compose-denis-monitoring.yml](../../magenticx/docker-compose-denis-monitoring.yml) | `grafana_admin_password`, `alert_smtp_password` |
+| MCP gateway secret file | [magenticx/docker-compose-denis-mcp.yaml](../../magenticx/docker-compose-denis-mcp.yaml) | `--secrets` flag + `mcp_secret.env` bind mount |
+| Vault server | [magenticx/docker-compose-denis-hashicorp.yaml](../../magenticx/docker-compose-denis-hashicorp.yaml) | listener TLS, raft storage; Transit/AppRole set up via `magenticx/vault/` |
+| File-backed secret resolution | [magenticx/dialogue_bridge/core/settings.py](../../magenticx/dialogue_bridge/core/settings.py) | `_resolve_file_backed_secret` |
+| nginx secret shim | [magenticx/agentic_ui/load-secrets-and-exec.sh](../../magenticx/agentic_ui/load-secrets-and-exec.sh) | `/run/secrets/trusted_proxy_secret` → env |
+| Vault setup scripts | [magenticx/vault/](../../magenticx/vault/) | Transit + AppRole + userpass init, RBAC scripts |
 | Env var reference | [docs/architecture/configuration.md](configuration.md) | which env var points at each secret |
 | `PARKED_TOKEN_KEY` | dialogue_bridge | AES-GCM key (**at least** 32 bytes, base64 or hex; longer is condensed with HKDF) encrypting the refresh tokens of *parked* accounts in Redis, so a Redis-only compromise yields no usable credential. On Dennis it is the Swarm secret **`magenticx_parked_token_key`**, consumed as `PARKED_TOKEN_KEY_FILE=/run/secrets/parked_token_key`. Dedicated rather than derived from `session_token_secret` so it rotates on its own — rotating it signs every parked account out, which must not be a side effect of rotating an unrelated key. Omitted locally: the bridge then derives it from `SESSION_TOKEN_SECRET` (HKDF) rather than ever storing tokens unencrypted. |

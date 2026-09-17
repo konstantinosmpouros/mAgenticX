@@ -1,6 +1,6 @@
 # Dialogue Bridge — Complete Reference (Replication Guide, Inference-Focused)
 
-This is an exhaustive, replicate-from-scratch reference for the **`dialogue_bridge`** service (`src/dialogue_bridge/`) — the backend-for-frontend (BFF) of mAgenticX and the only service the browser talks to. It reflects the **current shipped code**. The bridge's headline responsibility, and the deepest section here (§10–§12), is **how it handles inference**: detached server-owned runs, a per-run Redis-Streams event log, and WebSocket observers with cursor replay.
+This is an exhaustive, replicate-from-scratch reference for the **`dialogue_bridge`** service (`magenticx/dialogue_bridge/`) — the backend-for-frontend (BFF) of mAgenticX and the only service the browser talks to. It reflects the **current shipped code**. The bridge's headline responsibility, and the deepest section here (§10–§12), is **how it handles inference**: detached server-owned runs, a per-run Redis-Streams event log, and WebSocket observers with cursor replay.
 
 **Stack:** Python 3.12 · FastAPI · uvicorn (port **8002**) · SQLAlchemy async + asyncpg · Pydantic v2 · Redis (event log + skills cache) · Alembic · pgvector · runs as non-root `1000:1000`.
 
@@ -59,7 +59,7 @@ flowchart LR
 ## 2. Directory structure (actual)
 
 ```text
-src/dialogue_bridge/
+magenticx/dialogue_bridge/
 ├── main.py                     App factory, lifespan (alembic → orphan-reap → scheduler → embed sweeper), router wiring, /health
 ├── alembic.ini                 sqlalchemy.url blank (env.py sources it from settings at runtime)
 ├── core/
@@ -462,4 +462,4 @@ Queue-based structured logging (mirrors the agents service): a non-blocking `Que
 
 ---
 
-*Generated from a full parallel read of the current `src/dialogue_bridge/` source (bootstrap/DB, both inference paths, routers/schemas) plus the README and observability layer. `file:line` references in the source are accurate as of this writing; verify before relying on exact line numbers.*
+*Generated from a full parallel read of the current `magenticx/dialogue_bridge/` source (bootstrap/DB, both inference paths, routers/schemas) plus the README and observability layer. `file:line` references in the source are accurate as of this writing; verify before relying on exact line numbers.*

@@ -31,7 +31,7 @@ Two schema changes (migration `0009_add_scheduled_tasks`):
 
 `scheduled_tasks.last_run_message_id` is a **plain String, not an FK** — an FK there would close a `messages → scheduled_tasks → conversations → messages` cycle. The latest fire's true status is derived by looking that message up, so the task row never goes stale.
 
-Model: [`core/database/models.py`](../../src/dialogue_bridge/core/database/models.py) (`ScheduledTaskTable`). Schemas: [`schema/scheduled_tasks.py`](../../src/dialogue_bridge/schema/scheduled_tasks.py) (`ScheduledTaskCreate` / `ScheduledTaskUpdate` / `ScheduledTaskOut`).
+Model: [`core/database/models.py`](../../magenticx/dialogue_bridge/core/database/models.py) (`ScheduledTaskTable`). Schemas: [`schema/scheduled_tasks.py`](../../magenticx/dialogue_bridge/schema/scheduled_tasks.py) (`ScheduledTaskCreate` / `ScheduledTaskUpdate` / `ScheduledTaskOut`).
 
 ---
 
@@ -52,7 +52,7 @@ In `bound` mode, while a fire is running the conversation has an active run, so 
 
 ### Create
 
-`POST /v1/scheduled-tasks/{user_id}` → `create_scheduled_task` ([`utils/scheduled_tasks.py`](../../src/dialogue_bridge/utils/scheduled_tasks.py)). Validates the agent, caps per-user task count (`SCHEDULER_MAX_TASKS_PER_USER`), and computes the initial `next_run_at` via `compute_next_run_at`. A task no longer snapshots a tool list — the retired `enabled_tools` column (migration `0016_retire_enabled_tools`) is gone. When a fire runs, the agent resolves its own tools (declared in `agent.yaml`, minus the owner's per-(user, agent) disables), exactly as an interactive run does.
+`POST /v1/scheduled-tasks/{user_id}` → `create_scheduled_task` ([`utils/scheduled_tasks.py`](../../magenticx/dialogue_bridge/utils/scheduled_tasks.py)). Validates the agent, caps per-user task count (`SCHEDULER_MAX_TASKS_PER_USER`), and computes the initial `next_run_at` via `compute_next_run_at`. A task no longer snapshots a tool list — the retired `enabled_tools` column (migration `0016_retire_enabled_tools`) is gone. When a fire runs, the agent resolves its own tools (declared in `agent.yaml`, minus the owner's per-(user, agent) disables), exactly as an interactive run does.
 
 ### Claim (single-fire safe)
 
@@ -108,15 +108,15 @@ The management page shows two layers, both built on the durable tag:
 | `PATCH` | `/v1/scheduled-tasks/{user_id}/{task_id}` | `ScheduledTaskUpdate` (pause/resume, label, prompt) | `ScheduledTaskOut` |
 | `DELETE` | `/v1/scheduled-tasks/{user_id}/{task_id}` | — | `204` |
 
-Mutations require the CSRF token; all are scoped to the authenticated user. Router: [`router/scheduled_tasks.py`](../../src/dialogue_bridge/router/scheduled_tasks.py).
+Mutations require the CSRF token; all are scoped to the authenticated user. Router: [`router/scheduled_tasks.py`](../../magenticx/dialogue_bridge/router/scheduled_tasks.py).
 
 ---
 
 ## Frontend
 
-- Types + API: [`lib/types.ts`](../../src/agentic_ui/src/shared/lib/types/), [`lib/api.ts`](../../src/agentic_ui/src/shared/lib/api/) (`listScheduledTasks` / `createScheduledTask` / `updateScheduledTask` / `deleteScheduledTask`), transform in [`lib/consts.ts`](../../src/agentic_ui/src/shared/lib/consts/).
-- Hook: [`hooks/useScheduledTasks.ts`](../../src/agentic_ui/src/features/tasks/hooks/useScheduledTasks.ts) — load, cadence-switching poll (driven by an `active` flag = the `/tasks` route), optimistic create/update/delete, running-count badge. The hook no longer owns open/close state — the page is URL-driven.
-- UI: a **Tasks** entry in the sidebar header (with a running badge) navigates to the **`/tasks`** route, which renders [`ScheduledTasksPage`](../../src/agentic_ui/src/features/tasks/components/ScheduledTasksPage.tsx) — a full page (My Tasks / Templates tabs) that replaces the chat body while the sidebar stays, cross-fading on enter/leave. List/create/edit/pause/resume/delete/open-result, with the create/edit form in [`scheduled_tasks_parts/ScheduledTaskForm.tsx`](../../src/agentic_ui/src/features/tasks/components/scheduled_tasks_parts/ScheduledTaskForm.tsx). Opening a task's result and closing the page are `navigate(...)` calls, so browser back/forward work.
+- Types + API: [`lib/types.ts`](../../magenticx/agentic_ui/src/shared/lib/types/), [`lib/api.ts`](../../magenticx/agentic_ui/src/shared/lib/api/) (`listScheduledTasks` / `createScheduledTask` / `updateScheduledTask` / `deleteScheduledTask`), transform in [`lib/consts.ts`](../../magenticx/agentic_ui/src/shared/lib/consts/).
+- Hook: [`hooks/useScheduledTasks.ts`](../../magenticx/agentic_ui/src/features/tasks/hooks/useScheduledTasks.ts) — load, cadence-switching poll (driven by an `active` flag = the `/tasks` route), optimistic create/update/delete, running-count badge. The hook no longer owns open/close state — the page is URL-driven.
+- UI: a **Tasks** entry in the sidebar header (with a running badge) navigates to the **`/tasks`** route, which renders [`ScheduledTasksPage`](../../magenticx/agentic_ui/src/features/tasks/components/ScheduledTasksPage.tsx) — a full page (My Tasks / Templates tabs) that replaces the chat body while the sidebar stays, cross-fading on enter/leave. List/create/edit/pause/resume/delete/open-result, with the create/edit form in [`scheduled_tasks_parts/ScheduledTaskForm.tsx`](../../magenticx/agentic_ui/src/features/tasks/components/scheduled_tasks_parts/ScheduledTaskForm.tsx). Opening a task's result and closing the page are `navigate(...)` calls, so browser back/forward work.
 
 Tasks are fetched fresh (not cached in the IndexedDB UI snapshot), so no snapshot-version bump was needed.
 
@@ -124,7 +124,7 @@ Tasks are fetched fresh (not cached in the IndexedDB UI snapshot), so no snapsho
 
 ## Configuration
 
-`SchedulerSettings` ([`core/settings.py`](../../src/dialogue_bridge/core/settings.py)):
+`SchedulerSettings` ([`core/settings.py`](../../magenticx/dialogue_bridge/core/settings.py)):
 
 | Env var | Default | Purpose |
 | --- | --- | --- |

@@ -1,5 +1,5 @@
 <p align="center">
-    <img src="src/agentic_ui/public/logo2.png" alt="mAgenticX logo" width="120" />
+    <img src="magenticx/agentic_ui/public/logo2.png" alt="mAgenticX logo" width="120" />
 </p>
 
 <h1 align="center">mAgenticX</h1>
@@ -211,11 +211,11 @@ Representative use cases supported by the current codebase:
 
 | Service | Role | Default Port | Main Stack | Docs |
 | --- | --- | ---: | --- | --- |
-| `agentic_ui` | Browser chat app and reverse proxy entrypoint | `8050` | React, Vite, nginx | [UI README](src/agentic_ui/README.md) |
-| `dialogue_bridge` | Authenticated BFF, persistence layer, detached run manager | `8002` | FastAPI, SQLAlchemy, Postgres | [Bridge README](src/dialogue_bridge/README.md) |
-| `agents` | Streaming agent runtime and AG-UI normalization | `8003` | FastAPI, LangGraph, OpenAI | [Agents README](src/agents/README.md) |
-| `rag_service` | Retrieval and SQL over spreadsheet-backed data | `8001` | FastAPI, Chroma, DuckDB | [RAG README](src/rag_service/README.md) |
-| `mcp_gateway` | Tool catalog and MCP SSE endpoint | `8005` | docker/mcp-gateway | [MCP Gateway README](src/mcp_gateway/README.md) |
+| `agentic_ui` | Browser chat app and reverse proxy entrypoint | `8050` | React, Vite, nginx | [UI README](magenticx/agentic_ui/README.md) |
+| `dialogue_bridge` | Authenticated BFF, persistence layer, detached run manager | `8002` | FastAPI, SQLAlchemy, Postgres | [Bridge README](magenticx/dialogue_bridge/README.md) |
+| `agents` | Streaming agent runtime and AG-UI normalization | `8003` | FastAPI, LangGraph, OpenAI | [Agents README](magenticx/agents/README.md) |
+| `rag_service` | Retrieval and SQL over spreadsheet-backed data | `8001` | FastAPI, Chroma, DuckDB | [RAG README](magenticx/rag_service/README.md) |
+| `mcp_gateway` | Tool catalog and MCP SSE endpoint | `8005` | docker/mcp-gateway | [MCP Gateway README](magenticx/mcp_gateway/README.md) |
 | `vectordb` | Persistent vector storage for retrieval | `8000` | Chroma | integrated |
 | `chat_postgres` | Durable chat state, attachments, feedback, and the `streaming_*` inference-run lifecycle on `messages` | `5432` | PostgreSQL | integrated |
 | `redis` | Per-run AG-UI event log (Redis Streams) backing the WebSocket observer's cursor-based replay | `6379` | Redis 7.4 alpine | integrated |
@@ -231,7 +231,7 @@ Representative use cases supported by the current codebase:
 │   └── architecture screenshots and diagrams
 ├── notebooks/
 │   └── exploratory and analysis notebooks
-└── src/
+└── magenticx/
     ├── agentic_ui/          React SPA, nginx proxy, AG-UI rendering
     ├── dialogue_bridge/     FastAPI BFF, auth, persistence, detached inference runs
     ├── agents/              Agent runtime, manifests, AG-UI event output
@@ -255,10 +255,10 @@ Representative use cases supported by the current codebase:
 
 ### Core Stack
 
-The main application services are defined in `src/docker-compose.yaml`:
+The main application services are defined in `magenticx/docker-compose.yaml`:
 
 ```bash
-docker compose -f src/docker-compose.yaml up --build
+docker compose -f magenticx/docker-compose.yaml up --build
 ```
 
 This core stack includes:
@@ -275,8 +275,8 @@ This core stack includes:
 
 The repo also includes separate Compose files for infrastructure that may be run alongside or independently of the core stack:
 
-- `src/docker-compose-mcp.yaml` for the MCP gateway
-- `src/docker-compose-hashicorp.yaml` for Vault
+- `magenticx/docker-compose-mcp.yaml` for the MCP gateway
+- `magenticx/docker-compose-hashicorp.yaml` for Vault
 
 The main stack expects external connectivity to `mcp_net` and `hashicorp_vault` when those services are deployed separately. Review those Compose files before assuming a single-command full-environment startup.
 
@@ -296,11 +296,11 @@ When the default Compose setup is running:
 
 For service-by-service development, use the implementation READMEs:
 
-- [UI local development](src/agentic_ui/README.md#development)
-- [Dialogue bridge setup](src/dialogue_bridge/README.md)
-- [Agents setup](src/agents/README.md)
-- [RAG service setup](src/rag_service/README.md)
-- [MCP gateway setup](src/mcp_gateway/README.md)
+- [UI local development](magenticx/agentic_ui/README.md#development)
+- [Dialogue bridge setup](magenticx/dialogue_bridge/README.md)
+- [Agents setup](magenticx/agents/README.md)
+- [RAG service setup](magenticx/rag_service/README.md)
+- [MCP gateway setup](magenticx/mcp_gateway/README.md)
 
 ## Screens and Diagrams
 
@@ -427,19 +427,19 @@ sequenceDiagram
 
 Use the root README for orientation, then jump into the service manuals for implementation detail:
 
-- [Agentic UI](src/agentic_ui/README.md)
-- [Dialogue Bridge](src/dialogue_bridge/README.md)
-- [Agents Service](src/agents/README.md)
-- [RAG Service](src/rag_service/README.md)
-- [MCP Gateway](src/mcp_gateway/README.md)
+- [Agentic UI](magenticx/agentic_ui/README.md)
+- [Dialogue Bridge](magenticx/dialogue_bridge/README.md)
+- [Agents Service](magenticx/agents/README.md)
+- [RAG Service](magenticx/rag_service/README.md)
+- [MCP Gateway](magenticx/mcp_gateway/README.md)
 
 ## Development Notes
 
-- If you are working on the browser experience, start with `src/agentic_ui`.
-- If you are changing auth, sessions, chat persistence, or detached inference run observation, start with `src/dialogue_bridge`.
-- If you are changing agent workflows, manifests, or AG-UI stream behavior, start with `src/agents`.
-- If you are changing retrieval collections, Excel analytics, or DuckDB behavior, start with `src/rag_service`.
-- If you are changing available tools or MCP server wiring, start with `src/mcp_gateway`.
+- If you are working on the browser experience, start with `magenticx/agentic_ui`.
+- If you are changing auth, sessions, chat persistence, or detached inference run observation, start with `magenticx/dialogue_bridge`.
+- If you are changing agent workflows, manifests, or AG-UI stream behavior, start with `magenticx/agents`.
+- If you are changing retrieval collections, Excel analytics, or DuckDB behavior, start with `magenticx/rag_service`.
+- If you are changing available tools or MCP server wiring, start with `magenticx/mcp_gateway`.
 
 ## License
 

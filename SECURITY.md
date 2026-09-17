@@ -40,11 +40,11 @@ This is a personal project, so support is best-effort and focused on the current
 This policy applies to vulnerabilities in this repository, including:
 
 - the root deployment and Compose wiring
-- `src/agentic_ui`
-- `src/dialogue_bridge`
-- `src/agents`
-- `src/rag_service`
-- `src/mcp_gateway`
+- `magenticx/agentic_ui`
+- `magenticx/dialogue_bridge`
+- `magenticx/agents`
+- `magenticx/rag_service`
+- `magenticx/mcp_gateway`
 
 Third-party services, external MCP servers, and upstream dependencies may need to be fixed in their own projects even when they affect this stack.
 

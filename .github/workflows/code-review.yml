@@ -40,10 +40,10 @@ jobs:
 
             This repository is a multi-service agentic platform, not a single app.
 
-            - `src/agentic_ui/`: React 18 + Vite + TypeScript frontend. Renders chat, AG-UI traces, branches, attachments, and dictation. All browser API traffic must go through the dialogue bridge under `/api/v1/*`.
-            - `src/dialogue_bridge/`: FastAPI backend-for-frontend. Owns Vault auth, bridge-managed sessions, CSRF, Postgres persistence, catalog proxying, and SSE proxying to the agents service.
-            - `src/agents/`: FastAPI inference/orchestration service. Discovers `LangGraphAgent` and `DeepAgent` implementations, loads MCP tools, calls the RAG service, and streams normalized AG-UI SSE events.
-            - `src/rag_service/`: FastAPI retrieval and Excel/DuckDB analytics service. Provides semantic retrieval over Chroma and read-only SQL over loaded workbook data.
+            - `magenticx/agentic_ui/`: React 18 + Vite + TypeScript frontend. Renders chat, AG-UI traces, branches, attachments, and dictation. All browser API traffic must go through the dialogue bridge under `/api/v1/*`.
+            - `magenticx/dialogue_bridge/`: FastAPI backend-for-frontend. Owns Vault auth, bridge-managed sessions, CSRF, Postgres persistence, catalog proxying, and SSE proxying to the agents service.
+            - `magenticx/agents/`: FastAPI inference/orchestration service. Discovers `LangGraphAgent` and `DeepAgent` implementations, loads MCP tools, calls the RAG service, and streams normalized AG-UI SSE events.
+            - `magenticx/rag_service/`: FastAPI retrieval and Excel/DuckDB analytics service. Provides semantic retrieval over Chroma and read-only SQL over loaded workbook data.
             - Runtime is primarily Docker Compose based. Frontend uses npm/Vite, backend services use Python 3.11+, FastAPI, Pydantic v2, and async I/O.
 
             ## Review priorities
@@ -58,8 +58,8 @@ jobs:
 
             ## Repo-specific patterns
 
-            - Do not assume generic paths like `src/tools/`, `src/prompts/`, or `src/db/`. Those are not the project layout.
-            - Agent discovery is dynamic. New runnable agents should fit the existing registration model in `src/agents/agent_runtime/` and the `langgraph_agents/` or `deep_agents/` packages.
+            - Do not assume generic paths like `magenticx/tools/`, `magenticx/prompts/`, or `magenticx/db/`. Those are not the project layout.
+            - Agent discovery is dynamic. New runnable agents should fit the existing registration model in `magenticx/agents/agent_runtime/` and the `langgraph_agents/` or `deep_agents/` packages.
             - The bridge is the persistence and auth boundary. If code bypasses bridge validation or user binding, flag it.
             - AG-UI stream normalization matters. Event names, ordering, partial chunks, and end-of-stream behavior are user-visible API surface.
             - Frontend request helpers should preserve credentials and CSRF handling through the existing API utilities.
