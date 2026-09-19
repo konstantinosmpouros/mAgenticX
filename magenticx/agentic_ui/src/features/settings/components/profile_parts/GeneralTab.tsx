@@ -141,10 +141,6 @@ export default function GeneralTab({
       >
         <SoftPanel className="divide-y divide-border/40 overflow-hidden">
           <ComingSoonRow
-            title="Accent color"
-            description="Pick the accent color used across buttons and highlights."
-          />
-          <ComingSoonRow
             title="Language"
             description="Override the interface language instead of auto-detecting it."
           />
