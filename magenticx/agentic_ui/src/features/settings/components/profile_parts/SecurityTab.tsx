@@ -7,7 +7,6 @@ import { toastError } from "@/shared/lib/toast";
 import { useToast } from "@/shared/hooks/use-toast";
 
 import { InfoCard, SoftPanel } from "./shared";
-import { ComingSoonRow } from "./ComingSoon";
 
 /**
  * SecurityTab — "Security and login": per-device sign-out, revoke-everywhere,
@@ -109,19 +108,6 @@ export default function SecurityTab({ onLogout }: SecurityTabProps) {
         confirmLabel="Log out everywhere"
         onConfirm={handleRevokeAll}
       />
-
-      <InfoCard
-        eyebrow="Planned"
-        title="More security controls"
-        description="Mirrored from the target settings layout — these land here once implemented."
-      >
-        <SoftPanel className="divide-y divide-border/40 overflow-hidden">
-          <ComingSoonRow
-            title="Multi-factor authentication"
-            description="Require a second factor when signing in with username and password."
-          />
-        </SoftPanel>
-      </InfoCard>
     </div>
   );
 }

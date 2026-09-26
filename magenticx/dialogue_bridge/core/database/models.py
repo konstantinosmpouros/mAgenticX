@@ -6,7 +6,8 @@ from ``core.database`` so callers keep importing ``from core.database import ...
 """
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-from sqlalchemy import select
+from sqlalchemy import or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy import (
     Column,
     String,
@@ -91,15 +92,19 @@ class UserTable(Base):
 
     id = Column(String, primary_key=True, default=gen_uuid)
     username = Column(String, unique=True, index=True, nullable=False)
-    # Per-provider external subject ids. Both are nullable+unique so ONE row can
-    # be linked to multiple login methods (see upsert_user_from_identity): a
-    # Vault-only user has oidc_subject NULL, an Entra-only user has vault_user_id
-    # NULL, and a linked user carries both. Postgres allows many NULLs under a
-    # unique index, so unlinked rows never collide.
-    vault_user_id = Column(String, unique=True, index=True, nullable=True)
+    # The Entra `oid` — the only key a sign-in is resolved by (see
+    # upsert_user_from_identity). Nullable+unique: Postgres allows many NULLs
+    # under a unique index, so rows that have never signed in with Microsoft
+    # never collide.
     oidc_subject = Column(String, unique=True, index=True, nullable=True)
-    # Comma-separated set of login methods proven for this account ("vault",
-    # "entra"), for observability/debugging — the subject columns are authoritative.
+    # The Vault entity id from before plan 29 removed username/password login.
+    # Nothing reads it any more. Kept deliberately: it is the only record of
+    # which row belonged to which Vault account, which is what you need to
+    # diagnose a link that went wrong. Dropping it is a destructive migration
+    # for no functional gain.
+    vault_user_id = Column(String, unique=True, index=True, nullable=True)
+    # Comma-separated set of login methods this account has used ("vault",
+    # "entra") — observability only. A linked Vault-era row reads "entra,vault".
     auth_providers = Column(String, nullable=True)
 
     email = Column(String, unique=True, index=True, nullable=True)
@@ -589,15 +594,15 @@ class MessageEmbeddingTable(Base):
 # -------------------------------------------------------------------------------
 # User helpers
 # -------------------------------------------------------------------------------
-# Maps an auth provider to the UserTable column that stores its external subject
-# id. Adding a third provider (e.g. Keycloak) is a one-line addition here.
-_PROVIDER_SUBJECT_COLUMN = {"vault": "vault_user_id", "entra": "oidc_subject"}
-
-
 class IdentityConflictError(Exception):
-    """A login could not be linked because the email is already bound to a
-    DIFFERENT subject for the same provider. Raised (and surfaced as an auth
-    failure) rather than silently merging or duplicating an account."""
+    """A first-time sign-in could not get an account of its own.
+
+    Its username or email is already held by a different row. Raised — and
+    surfaced as ``?sso=conflict`` — instead of attaching the sign-in to that row:
+    an unlinked account whose email happens to match is precisely what a
+    takeover by email looks like, so it is never merged automatically. An admin
+    resolves it by setting that row's ``oidc_subject`` deliberately.
+    """
 
 
 def _normalize_email(email: str | None) -> str | None:
@@ -608,73 +613,70 @@ def _normalize_email(email: str | None) -> str | None:
 async def upsert_user_from_identity(
     session: AsyncSession,
     *,
-    provider: str,
     subject: str,
     username: str,
     email: str | None = None,
     metadata: dict | None = None,
 ) -> UserTable:
-    """Resolve (or create) the single canonical user row for an authenticated
-    identity, LINKING login methods so the same human never gets two rows.
+    """Resolve the user row for a Microsoft sign-in by its Entra ``oid`` only.
 
-    Resolution order:
-      1. by this provider's subject id — the user has signed in this way before;
-      2. else by verified email — an account already exists (created via the
-         other provider); attach this provider's subject to it (the link step);
-      3. else create a fresh row carrying this provider's subject.
+    - **Known oid** → that row; its profile fields are refreshed.
+    - **Unknown oid** → a brand-new row — unless its username or email already
+      belongs to another row, which raises :class:`IdentityConflictError`.
 
-    Email is the cross-provider link key and is trustworthy here because every
-    provider (single-tenant Entra, org-provisioned Vault) is authoritative for
-    it. A subject/email clash fails closed via :class:`IdentityConflictError`.
+    Email is deliberately not a lookup key. Microsoft's guidance is to identify
+    a user by ``oid`` (scoped by tenant), because ``email`` and
+    ``preferred_username`` are mutable and not guaranteed unique. The email
+    match that used to live here existed only to link Vault-era accounts to
+    their Entra logins; plan 29 Phase A1 completed that linking before this
+    code shipped, so the step is gone rather than contained.
     """
-    if provider not in _PROVIDER_SUBJECT_COLUMN:
-        raise ValueError(f"Unknown auth provider: {provider!r}")
-    subject_col = _PROVIDER_SUBJECT_COLUMN[provider]
     metadata = metadata or {}
     email_norm = _normalize_email(email)
 
-    # 1. Already known via this provider.
-    result = await session.execute(
-        select(UserTable).where(getattr(UserTable, subject_col) == subject)
-    )
+    result = await session.execute(select(UserTable).where(UserTable.oidc_subject == subject))
     user: UserTable | None = result.scalar_one_or_none()
 
-    # 2. Not yet — try to link to an existing account by email.
-    if user is None and email_norm:
-        result = await session.execute(
-            select(UserTable).where(func.lower(UserTable.email) == email_norm)
-        )
-        user = result.scalar_one_or_none()
-        if user is not None:
-            bound = getattr(user, subject_col)
-            if bound is not None and bound != subject:
-                raise IdentityConflictError(
-                    f"email already linked to a different {provider} subject"
-                )
-            setattr(user, subject_col, subject)  # link this provider to the row
-
-    # 3. Brand-new human.
     if user is None:
-        user = UserTable(id=gen_uuid(), username=username, email=email_norm)
-        setattr(user, subject_col, subject)
+        # Refuse up front rather than let the unique constraint fire: it keeps
+        # the failure a clean redirect instead of a half-failed transaction.
+        clash_conditions = [UserTable.username == username]
+        if email_norm:
+            clash_conditions.append(func.lower(UserTable.email) == email_norm)
+        clash = await session.scalar(select(UserTable.id).where(or_(*clash_conditions)).limit(1))
+        if clash is not None:
+            raise IdentityConflictError("username or email already belongs to another account")
+
+        user = UserTable(
+            id=gen_uuid(),
+            username=username,
+            email=email_norm,
+            oidc_subject=subject,
+            auth_providers="entra",
+        )
         session.add(user)
-        # Flush early so relationships can reference the user within the same transaction.
-        await session.flush()
+        try:
+            # Flush early so relationships can reference the user within the same
+            # transaction. The check above makes a collision here a race between
+            # two first sign-ins — still refused, never a 500.
+            await session.flush()
+        except IntegrityError as exc:
+            await session.rollback()
+            raise IdentityConflictError("username or email already belongs to another account") from exc
+    else:
+        providers = {p for p in (user.auth_providers or "").split(",") if p}
+        providers.add("entra")
+        user.auth_providers = ",".join(sorted(providers))
+        # Backfill a missing email, but only if no other row holds it: email is
+        # unique, and a clash here would otherwise surface at commit as a 500.
+        if email_norm and not user.email:
+            taken = await session.scalar(
+                select(UserTable.id).where(func.lower(UserTable.email) == email_norm, UserTable.id != user.id)
+            )
+            if taken is None:
+                user.email = email_norm
 
-    # Record which login methods now resolve to this account.
-    providers = {p for p in (user.auth_providers or "").split(",") if p}
-    providers.add(provider)
-    user.auth_providers = ",".join(sorted(providers))
-
-    # Set username/email only when missing, to avoid clobbering a value the other
-    # provider owns (username is unique — overwriting could collide).
-    if not user.username:
-        user.username = username
-    if email_norm and not user.email:
-        user.email = email_norm
-
-    # Refresh mutable profile fields when the provider supplied them (email is
-    # handled above — never overwritten here, to avoid a unique-constraint clash).
+    # Refresh mutable profile fields when Entra supplied them.
     for field in ("display_name", "avatar_url", "full_name", "department", "role_title"):
         if metadata.get(field) is not None:
             setattr(user, field, metadata[field])

@@ -137,21 +137,34 @@ services:
       - no-new-privileges:true
     environment:
       - DATABASE_URL=postgresql+asyncpg://admin:admin@chat_postgres:5432/chat_db
-      - VAULT_URL=http://vault:8004
-      - VAULT_ROLE_ID=${VAULT_ROLE_ID:-}
-      - VAULT_SECRET_ID=${VAULT_SECRET_ID:-}
       - AGENTS_SERVICE_URL=http://agents:8003
       - SESSION_TOKEN_SECRET=${SESSION_TOKEN_SECRET}
       - TRUSTED_PROXY_SECRET=${TRUSTED_PROXY_SECRET}
       - REDIS_URL=redis://redis:6379/0
       - REDIS_PASSWORD=${REDIS_PASSWORD:-magenticx-dev-redis}
-      # Microsoft Entra ID (OIDC) sign-in — inert unless all three of
-      # tenant/client/secret are set (SSO stays off when these are empty).
+      # Microsoft Entra ID (OIDC) — the only way to sign in. The bridge refuses
+      # to start unless tenant/client/secret are all set in magenticx/.env, and
+      # the redirect URI must be registered on the Entra app
+      # (http://localhost:8050/api/v1/auth/oidc/callback for local dev).
       - ENTRA_TENANT_ID=${ENTRA_TENANT_ID:-}
       - ENTRA_CLIENT_ID=${ENTRA_CLIENT_ID:-}
       - ENTRA_CLIENT_SECRET=${ENTRA_CLIENT_SECRET:-}
       - ENTRA_REDIRECT_URI=${ENTRA_REDIRECT_URI:-}
       - ENTRA_ALLOWED_GROUP_IDS=${ENTRA_ALLOWED_GROUP_IDS:-}
+      # Session-JWT signing (plan 29). Local dev signs with a file key because a
+      # laptop cannot reach OCI KMS and must never hold the production API key;
+      # Dennis signs with KMS, and a test fails CI if it ever selects `file`.
+      # Generate the key once — see CLAUDE.md "Local Development Setup".
+      - SESSION_SIGNING_BACKEND=file
+      - SESSION_SIGNING_PRIVATE_KEY_FILE=/run/secrets/session_signing_key
+      - SESSION_SIGNING_PUBLIC_KEYS_DIR=/app/signing_keys
+      # Verify-only: the local Vault Transit key, so sessions minted before the
+      # switch keep working until they expire. Drop it after 20 days.
+      # `-` not `:-`: an empty value in .env must mean "no legacy kids", not "use 1".
+      - SESSION_SIGNING_LEGACY_KIDS=${SESSION_SIGNING_LEGACY_KIDS-1}
+    volumes:
+      - ./secrets/dev_session_signing_key.pem:/run/secrets/session_signing_key:ro
+      - ./secrets/signing_keys:/app/signing_keys:ro
     depends_on:
       - agents
       - chat_postgres
@@ -162,7 +175,6 @@ services:
     networks:
       - backend
       - frontend
-      - hashicorp_vault
 
 
   agentic_ui: # 8050
@@ -191,8 +203,6 @@ networks:
   backend:
     internal: true
   frontend:
-  hashicorp_vault:
-    external: true
   mcp_net:
     external: true
 

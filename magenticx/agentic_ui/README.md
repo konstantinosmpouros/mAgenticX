@@ -27,13 +27,13 @@ flowchart LR
     Bridge["Dialogue Bridge\nFastAPI BFF"]
     Agents["Agents Service"]
     RAG["RAG Service"]
-    Vault["Vault"]
+    Entra["Microsoft Entra ID"]
     PG["Postgres"]
 
     User --> UI
     UI --> Nginx
     Nginx --> Bridge
-    Bridge --> Vault
+    Bridge --> Entra
     Bridge --> PG
     Bridge --> Agents
     Agents --> RAG
@@ -120,13 +120,14 @@ sequenceDiagram
     participant U as User
     participant UI as Agentic UI
     participant B as Dialogue Bridge
-    participant V as Vault
+    participant E as Microsoft Entra
 
-    U->>UI: Submit username/password
-    UI->>B: POST /api/v1/auth/login
-    B->>V: Validate credentials
-    V-->>B: Auth success
-    B-->>UI: Set session + refresh cookies
+    U->>UI: Click "Sign in with Microsoft"
+    UI->>B: navigate to /api/v1/auth/oidc/login
+    B-->>U: 302 to Microsoft
+    U->>E: sign in (password, MFA — at Microsoft)
+    E-->>B: 302 to /api/v1/auth/oidc/callback
+    B-->>UI: Set session + refresh cookies, 302 to /
     UI->>UI: Save lightweight session snapshot
     UI->>B: GET /api/v1/auth/session
     B-->>UI: Authenticated user payload
@@ -172,7 +173,7 @@ flowchart TD
 Main endpoint groups:
 
 - Auth
-  - `/auth/login`
+  - `/auth/oidc/login` (full-page redirect to Microsoft — the only sign-in)
   - `/auth/session`
   - `/auth/session/refresh`
   - `/auth/logout`

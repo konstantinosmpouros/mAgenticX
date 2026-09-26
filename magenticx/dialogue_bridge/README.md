@@ -2,9 +2,9 @@
 
 The `dialogue_bridge` service is the backend-for-frontend layer for the Agentic UI. It sits between the browser and the downstream services and owns:
 
-- user authentication against Vault
-- bridge-managed session cookies and CSRF protection
-- Postgres persistence for conversations, messages, attachments, blobs, sessions, and user preferences
+- user sign-in through Microsoft Entra ID (OIDC) — the only way in
+- stateless, KMS-signed session cookies and CSRF protection
+- Postgres persistence for users, conversations, messages, attachments, blobs, and user preferences
 - agent catalog caching and tool catalog proxying
 - detached inference run lifecycle — server-owned asyncio tasks with WebSocket observers backed by per-run Redis Streams
 
@@ -32,7 +32,8 @@ It does not:
 ```mermaid
 flowchart LR
     UI[agentic_ui] --> BRIDGE[dialogue_bridge]
-    BRIDGE --> VAULT[Vault userpass]
+    BRIDGE --> ENTRA[Microsoft Entra ID]
+    BRIDGE --> KMS[OCI KMS signing key]
     BRIDGE --> PG[(Postgres)]
     BRIDGE --> AGENTS[agents service]
     AGENTS --> RAG[rag_service]
@@ -43,9 +44,9 @@ flowchart LR
 
 ### 3.1 Authentication
 
-- accepts username/password login requests
-- authenticates against Vault `userpass`
-- creates bridge-managed access and refresh sessions in Postgres
+- runs the Microsoft Entra ID sign-in (OIDC auth-code + PKCE) — there is no username/password login
+- resolves the user row by the Entra `oid`, never by email
+- mints stateless access + refresh JWTs, signed by an HSM-held key in OCI KMS
 - issues HTTP-only cookies plus a CSRF cookie
 
 ### 3.2 Conversation persistence
@@ -70,7 +71,7 @@ flowchart LR
 ```mermaid
 flowchart TD
     A[Browser request] --> B{Bridge router}
-    B -->|auth| C[Vault + session tables]
+    B -->|auth| C[Entra sign-in + KMS-signed JWTs]
     B -->|catalog| D[Agent cache + agents service]
     B -->|conversations/messages| E[Postgres via SQLAlchemy]
     B -->|inference| F[Start run + AI placeholder]
@@ -108,7 +109,7 @@ flowchart TD
 
 ## 6. Authentication and Session Model
 
-The current implementation does not exchange Vault credentials for an OIDC JWT. It authenticates with Vault and then creates its own session records and cookies.
+Microsoft Entra ID proves who the user is; the bridge then mints its own session JWTs, signed by an HSM-held key in OCI KMS. Username/password login and HashiCorp Vault were removed in plan 29. The full flow is in [docs/flows/authentication-and-session.md](../../docs/flows/authentication-and-session.md).
 
 ### 6.1 Login flow
 
@@ -116,25 +117,29 @@ The current implementation does not exchange Vault credentials for an OIDC JWT. 
 sequenceDiagram
     participant Browser
     participant Bridge
-    participant Vault
+    participant Entra as Microsoft Entra
     participant Postgres
+    participant KMS as OCI KMS
 
-    Browser->>Bridge: POST /v1/auth/login
-    Bridge->>Vault: userpass login
-    Vault-->>Bridge: client_token + entity_id
-    Bridge->>Postgres: upsert user
-    Bridge->>Vault: sign access + refresh JWTs (Transit)
-    Bridge-->>Browser: access cookie + refresh cookie + csrf cookie
+    Browser->>Bridge: GET /v1/auth/oidc/login
+    Bridge-->>Browser: 302 to Microsoft
+    Browser->>Entra: sign in (password, MFA)
+    Entra-->>Browser: 302 to /v1/auth/oidc/callback
+    Browser->>Bridge: callback (code + state)
+    Bridge->>Entra: redeem code → id_token
+    Bridge->>Postgres: resolve user by oid
+    Bridge->>KMS: sign access + refresh digests (HSM key)
+    Bridge-->>Browser: access cookie + refresh cookie + csrf cookie, 302 to /
 ```
 
 ### 6.2 Session model
 
-Sessions are **stateless** — there is no session table. After Vault verifies the credential, the bridge issues two RS256 JWTs **signed by Vault Transit** (the private key never leaves Vault):
+Sessions are **stateless** — there is no session table. Once Microsoft Entra has proven identity, the bridge issues two RS256 JWTs **signed by an HSM-protected key in OCI KMS** (the private key never leaves the HSM; only a SHA-256 digest is sent). Local dev signs with a file key instead — see `core/auth/signing.py`:
 
-- access token (8 h) — verified by signature on every request; no DB or Vault call on the hot path
+- access token (8 h) — verified by signature on every request; no DB or KMS call on the hot path
 - refresh token (10 d absolute cap) — rotates the pair, reusing the original login session id (`sid`)
 
-Per-request verification is signature-only against a cached public key. The only shared state is a fail-open Redis logout denylist keyed by `sid`.
+Per-request verification is signature-only against public keys loaded from files at boot. The only shared state is a fail-open Redis logout denylist keyed by `sid`.
 
 ### 6.3 Cookie and CSRF behavior
 
@@ -153,7 +158,8 @@ State-changing requests require CSRF validation unless the client is using beare
 
 | Endpoint | Method | Purpose |
 | --- | --- | --- |
-| `/v1/auth/login` | `POST` | authenticate and create session |
+| `/v1/auth/oidc/login` | `GET` | start Microsoft sign-in (302 to Entra; `?park=true` adds an account) |
+| `/v1/auth/oidc/callback` | `GET` | finish Microsoft sign-in and set the session cookies |
 | `/v1/auth/session` | `GET` | inspect current authenticated session |
 | `/v1/auth/session/refresh` | `POST` | rotate session tokens |
 | `/v1/auth/logout` | `POST` | revoke session and clear cookies |
@@ -189,9 +195,8 @@ erDiagram
 
 | Table | Purpose |
 | --- | --- |
-| `users` | authenticated user records mapped from Vault entity ids |
+| `users` | user records, resolved on sign-in by the Entra `oid` (`oidc_subject`) |
 | `user_preferences` | disabled tools and agentic-chat preference |
-| `sessions` | bridge-managed access/refresh sessions |
 | `agents` | cached agent manifests from the agents service |
 | `conversations` | conversation shell and sidebar metadata; `active_assistant_message_id` FK points to the AI message currently being streamed |
 | `messages` | user and AI messages, reactions, reasoning, plan, subagent state, plus `streaming_*` columns (status / message_path / started_at / completed_at / cancel_requested_at) that drive the inference-run lifecycle. A partial unique index on `conversation_id WHERE streaming_status IN ('queued','running','cancelling')` ensures at most one active stream per conversation. |
@@ -585,7 +590,8 @@ Either `content` or at least one attachment must be present for non-placeholder 
 
 | Endpoint | Method |
 | --- | --- |
-| `/v1/auth/login` | `POST` |
+| `/v1/auth/oidc/login` | `GET` |
+| `/v1/auth/oidc/callback` | `GET` |
 | `/v1/auth/session` | `GET` |
 | `/v1/auth/session/refresh` | `POST` |
 | `/v1/auth/logout` | `POST` |
@@ -722,19 +728,17 @@ Configuration is loaded from `core/settings.py` (pydantic-settings; secrets use 
 | `DATABASE_URL` | async SQLAlchemy database URL |
 | `SESSION_TOKEN_SECRET` | HMAC secret for session token hashing and log redaction fallback |
 
-`VAULT_URL` is effectively required if you want login to work. Without it, the auth router loads but login returns a configuration error.
+The bridge also refuses to start without the Microsoft Entra app registration (`ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`, `ENTRA_CLIENT_SECRET`) and a session-signing key (`SESSION_SIGNING_*` — see [configuration.md](../../docs/architecture/configuration.md#session-signing-signingsettings)).
 
 ### 17.2 Upstream and auth variables
 
 | Variable | Default |
 | --- | --- |
 | `AGENTS_SERVICE_URL` | `http://agents:8003` |
-| `VAULT_USERPASS_MOUNT` | `userpass` |
-| `VAULT_OIDC_ROLE` | `agenticx` |
-| `VAULT_OIDC_PATH` | `identity/oidc/token` |
-| `VAULT_HTTP_TIMEOUT` | `10.0` |
-
-Note: `VAULT_OIDC_ROLE` and `VAULT_OIDC_PATH` exist in settings, but the current implementation does not use them during login.
+| `ENTRA_TENANT_ID` / `ENTRA_CLIENT_ID` / `ENTRA_CLIENT_SECRET` | required |
+| `ENTRA_REDIRECT_URI` | the registered callback URL |
+| `ENTRA_ALLOWED_GROUP_IDS` | empty = no group restriction |
+| `SESSION_SIGNING_BACKEND` | `kms` (`file` for local dev only) |
 
 ### 17.3 Session variables
 
@@ -783,9 +787,9 @@ magenticx/dialogue_bridge/
 ├── main.py                        FastAPI app bootstrap and router wiring
 ├── core/
 │   ├── settings.py                Environment-driven settings (pydantic-settings)
-│   ├── database.py                ORM models and session factory
-│   ├── auth_client.py             Vault userpass client
-│   ├── auth_session.py            Session, cookie, CSRF, and auth dependencies
+│   ├── database/                  ORM models, engine, alembic migrations
+│   ├── auth/                      sign-in (oidc.py), JWTs (tokens.py), signing keys
+│   │                              (signing.py), cookies/CSRF/deps (session.py)
 │   ├── proxy.py                   Trusted proxy IP resolution
 │   └── rate_limit.py              SlowAPI setup
 ├── router/
@@ -830,8 +834,8 @@ pip install -r requirements.txt
 
 export DATABASE_URL=postgresql+asyncpg://admin:admin@localhost:5432/chat_db
 export AGENTS_SERVICE_URL=http://localhost:8003
-export VAULT_URL=http://localhost:8004
-export VAULT_USERPASS_MOUNT=userpass
+export ENTRA_TENANT_ID=... ENTRA_CLIENT_ID=... ENTRA_CLIENT_SECRET=...
+export SESSION_SIGNING_BACKEND=file SESSION_SIGNING_PRIVATE_KEY_FILE=/path/to/dev_session_signing_key.pem
 export SESSION_TOKEN_SECRET=change-me
 
 uvicorn main:app --host 0.0.0.0 --port 8002 --reload
@@ -841,7 +845,7 @@ For meaningful local use, you also need:
 
 - Postgres
 - the `agents` service
-- Vault if you want login to work
+- the Entra app registration, with this instance's callback URL among its redirect URIs
 
 ## 20. Docker and Compose
 
@@ -868,12 +872,11 @@ From `magenticx/docker-compose.yaml`:
 - networks:
   - `backend`
   - `frontend`
-  - `hashicorp_vault`
 
 Configured environment there includes:
 
 - `DATABASE_URL=postgresql+asyncpg://admin:admin@chat_postgres:5432/chat_db`
-- `VAULT_URL=http://vault:8004`
+- the `ENTRA_*` sign-in config, and `SESSION_SIGNING_BACKEND=file` with a mounted dev key (production signs with OCI KMS)
 - `SESSION_TOKEN_SECRET=${SESSION_TOKEN_SECRET}`
 - `TRUSTED_PROXY_SECRET=${TRUSTED_PROXY_SECRET}`
 - `REDIS_URL=redis://redis:6379/0`
@@ -884,7 +887,7 @@ Configured environment there includes:
 - Database schema migrations run automatically on startup via `alembic upgrade head` in the FastAPI lifespan handler (see §7.3). The legacy `Base.metadata.create_all` path was removed when alembic became the source of truth.
 - Agent manifests are synchronized on demand, not during startup.
 - `get_agent_by_id` currently reads only from the in-memory cache, so a cache miss depends on a prior catalog sync path having primed it.
-- Login works with Vault userpass only in the current code.
+- Microsoft Entra ID is the only way to sign in; there is no password route.
 - The bridge stores raw binary blobs in Postgres, not in external object storage.
 - Image attachments are returned as base64 in the image pagination endpoint.
 - Inference runs survive browser disconnects. The asyncio background task continues regardless of whether any WebSocket observer is connected. A reconnecting observer resends `{"type":"subscribe","since":<lastSeq>}`; the handler replays missed events from the per-run Redis stream and then continues live-tailing. If the run already terminated, the handler emits a single Postgres-backed snapshot frame and closes.
@@ -893,9 +896,10 @@ Configured environment there includes:
 ## 22. Quick File References
 
 - `main.py`: app setup and route prefixes
-- `core/auth_session.py`: sessions, cookies, CSRF, and auth dependencies
-- `core/auth_client.py`: Vault authentication
-- `core/database.py`: ORM schema
+- `core/auth/session.py`: cookies, CSRF, and auth dependencies
+- `core/auth/oidc.py`: Microsoft Entra sign-in
+- `core/auth/signing.py`: session signing keys (OCI KMS / dev file key)
+- `core/database/models.py`: ORM schema
 - `router/inference.py`: backend-owned inference start, WebSocket observation (`inference_run_websocket`), deprecated SSE fallback, cancellation, and active-run listing
 - `router/speech.py`: speech and dictation endpoints
 - `utils/inference.py`: branch resolution and multimodal serialization

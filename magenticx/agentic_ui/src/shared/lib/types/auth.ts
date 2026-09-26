@@ -6,11 +6,6 @@
 // `../schemas` — re-exported here so the auth surface stays in one place.
 export type { AccountList, AccountSummary } from "../schemas";
 
-export type AuthRequest = {
-  username: string;
-  password: string;
-};
-
 export type UserProfile = {
   id: string;
   username: string;
@@ -30,10 +25,4 @@ export type AuthResponse = {
   authenticated: boolean;
   user?: UserProfile;
   tokenTtl?: number;
-};
-
-export type AuthApiError = Error & {
-  status?: number;
-  retryAfterSeconds?: number;
-  detail?: string;
 };

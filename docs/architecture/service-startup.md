@@ -1,6 +1,6 @@
 # Service Startup — Minimum Requirements to Boot
 
-This document answers one question per service: **what does it absolutely need in order to start?** It is the operational companion to [configuration.md](configuration.md) — where that doc is the exhaustive *"everything you can tune"* reference, this one is the short *"the boot fails without these"* list. Three of the services are FastAPI/uvicorn apps whose `core/settings.py` validates its inputs at import time (a missing required secret raises before the server ever binds a port), and whose FastAPI **lifespan** then connects to the data stores it cannot run without (fail-fast, so the container crash-loops until the dependency is reachable rather than serving in a broken state). The infrastructure services (Postgres, Redis, Chroma, nginx, Vault) start from image defaults plus a handful of command flags and the fail-closed TLS entrypoints. Everything a service needs at boot falls into one of the three gate types in the legend below; everything *else* it talks to is connected lazily and only degrades a feature, not the boot.
+This document answers one question per service: **what does it absolutely need in order to start?** It is the operational companion to [configuration.md](configuration.md) — where that doc is the exhaustive *"everything you can tune"* reference, this one is the short *"the boot fails without these"* list. Three of the services are FastAPI/uvicorn apps whose `core/settings.py` validates its inputs at import time (a missing required secret raises before the server ever binds a port), and whose FastAPI **lifespan** then connects to the data stores it cannot run without (fail-fast, so the container crash-loops until the dependency is reachable rather than serving in a broken state). The infrastructure services (Postgres, Redis, Chroma, nginx) start from image defaults plus a handful of command flags and the fail-closed TLS entrypoints. Everything a service needs at boot falls into one of the three gate types in the legend below; everything *else* it talks to is connected lazily and only degrades a feature, not the boot.
 
 ---
 
@@ -10,7 +10,8 @@ This document answers one question per service: **what does it absolutely need i
 flowchart LR
     NGINX["agentic_ui\n(nginx)"] -->|"upstream, per-request"| BFF["dialogue_bridge"]
     BFF -->|"alembic upgrade head\nBOOT (fail-fast)"| PG_CHAT[("chat_postgres\nchat_db")]
-    BFF -->|"AppRole login\nauth endpoints"| VAULT[("vault")]
+    BFF -->|"sign-in (OIDC)"| ENTRA[("Microsoft Entra")]
+    BFF -->|"sign session JWTs\n(login / refresh)"| KMS[("OCI KMS")]
     BFF -->|"streams, lazy"| REDIS[("redis")]
     BFF -->|"per-inference"| AGENTS["agents"]
     AGENTS -->|"checkpointer pool\nBOOT (fail-fast)"| PG_RT[("chat_postgres\nagent_runtime")]
@@ -40,22 +41,25 @@ The "Configure via" column links to the exact section of [configuration.md](conf
 
 ## dialogue_bridge
 
-The BFF has the largest boot surface — it is the only service that is both an auth authority (needs Vault) and the schema owner (runs migrations).
+The BFF has the largest boot surface — it is the only service that is both the session issuer (needs Entra configured and a signing key) and the schema owner (runs migrations).
 
 | Requirement | Gate | Why it blocks startup | Configure via |
 | --- | --- | --- | --- |
 | `TRUSTED_PROXY_SECRET` | 🔴 | `_finalize_secrets` raises: *"Refusing to start without an internal-caller shared secret."* | [Proxy trust & logging](configuration.md#proxy-trust--logging) |
 | `DATABASE_URL` | 🔴 | The field is `Field(...)` — **no default**. Pydantic raises at import if unset. (Password may come from `DATABASE_PASSWORD_FILE`.) | [Database](configuration.md#database-databasesettings) |
-| `VAULT_URL` + `VAULT_ROLE_ID` + `VAULT_SECRET_ID` | 🔴 | **Outside `development`/`test` only.** Stateless JWT auth is signed via Vault Transit, so the AppRole identity is mandatory in prod — `_finalize_secrets` raises listing whichever is missing. | [Vault](configuration.md#vault-vaultsettings--stateless-jwt-auth) |
+| `ENTRA_TENANT_ID` + `ENTRA_CLIENT_ID` + `ENTRA_CLIENT_SECRET` | 🔴 | **Every environment.** Microsoft is the only way to sign in; without all three the bridge would boot a login page with no way in, so `_finalize_secrets` refuses to start. | [Entra](configuration.md#microsoft-entra-id--oidc-entrasettings) |
+| Session signing config | 🔴 | **Every environment.** `SESSION_SIGNING_BACKEND=kms` (the default) needs the KMS endpoint, key id, key versions and the signing principal's identity + API key; `file` needs a private key and is refused outside `development`/`test`. `SigningSettings` raises listing whatever is missing. | [Session signing](configuration.md#session-signing-signingsettings) |
+| Signing public keys | 🔴 | `main.lifespan` builds the keyring **first**: every accepted kid needs a readable, RSA ≥ 2048-bit `<kid>.pem` in `SESSION_SIGNING_PUBLIC_KEYS_DIR`, or the container exits before migrations run. Reads files only — **KMS is not contacted at boot**. | [Session signing](configuration.md#session-signing-signingsettings) |
 | `SESSION_TOKEN_SECRET` | 🔴 | **Outside `development`/`test` only.** Raises if empty (dev auto-generates a random one). General-purpose HMAC key — DOCX-preview tokens + log-redaction fallback. | [Session & cookies](configuration.md#session--cookies-sessionsettings) |
 | `chat_postgres` (`chat_db`) reachable | 🟠 | The lifespan runs `alembic upgrade head` in a subprocess **before serving** (unless `RUN_MIGRATIONS_ON_STARTUP=false`). If Postgres is down, migrations fail and boot aborts. | [App & lifecycle](configuration.md#app--lifecycle) |
 | TLS cert/key (+ CA for mTLS) | 🔒 | `REQUIRE_TLS`/`REQUIRE_MTLS` default `true`; `entrypoint-tls.sh` refuses to start if the cert/key/CA is missing or unreadable. | [Deploy-time safety toggles](configuration.md#deploy-time-safety-toggles-cross-service) |
 | JWT TTLs / CORS in range | 🔴 | Out-of-range `JWT_*_TTL_SECONDS` raise; `CORS_ALLOWED_ORIGINS` with `*` while credentials on raises. Validated, not clamped. | [JWT](configuration.md#jwt-jwtsettings) · [CORS](configuration.md#cors-corssettings) |
-| **Vault** reachable | 🟢 | Not a boot gate — the AppRole login happens on the auth path. The stack boots without Vault, but `login`/`refresh` return 500 until it's up. | [Vault](configuration.md#vault-vaultsettings--stateless-jwt-auth) |
+| **OCI KMS** reachable | 🟢 | Not a boot gate. Without it, new logins and refreshes fail closed; existing sessions keep working (verification is offline). | [Session signing](configuration.md#session-signing-signingsettings) |
+| **Microsoft Entra** reachable | 🟢 | Not a boot gate. Without it nobody can start a new session; existing sessions and refreshes are unaffected (refresh never calls Microsoft). | [Entra](configuration.md#microsoft-entra-id--oidc-entrasettings) |
 | **Redis** reachable | 🟢 | Connected lazily for the per-run event streams. Boot succeeds; inference streaming fails if Redis is down. | [Redis](configuration.md#redis-redissettings) |
 | **agents** service reachable | 🟢 | Contacted per-inference only. | [Upstream, inference, rate limits](configuration.md#upstream-inference-rate-limits) |
 
-**Minimum to boot (prod):** `TRUSTED_PROXY_SECRET`, `DATABASE_URL` (+ DB password secret), Vault AppRole trio, `SESSION_TOKEN_SECRET`, a reachable `chat_db`, and valid TLS material. In **dev/test**, only `TRUSTED_PROXY_SECRET` + `DATABASE_URL` are hard gates (Vault/session secrets auto-fallback, TLS entrypoints aren't used).
+**Minimum to boot (prod):** `TRUSTED_PROXY_SECRET`, `DATABASE_URL` (+ DB password secret), the KMS signing config + its public key files, `SESSION_TOKEN_SECRET`, `APP_ENV=production`, a reachable `chat_db`, and valid TLS material. In **dev/test**, the hard gates are `TRUSTED_PROXY_SECRET`, `DATABASE_URL` and a signing key (the `file` backend is allowed); session secrets auto-fallback and TLS entrypoints aren't used.
 
 ---
 
@@ -102,7 +106,6 @@ These have no `settings.py`; they boot from image env vars + command flags. Thei
 | **redis** | `/run/secrets/redis_password` | Configured purely by command flags; TLS is **hardwired** in the command (`--tls-port 6379`, plain port disabled) — no `REQUIRE_TLS` toggle. Ephemeral (`--save "" --appendonly no`). |
 | **vectordb** | `vectorstore` volume mount | `IS_PERSISTENT=TRUE`, `PERSIST_DIRECTORY=/chroma/chroma`. No auth/TLS today (tracked in the security audit). |
 | **agentic_ui (nginx)** | `BFF_BASE_URL`, `TRUSTED_PROXY_SECRET` (via the secret shim), TLS material | 🔒 `REQUIRE_TLS` via `entrypoint-nginx-tls.sh`; needs the CA to verify the bridge upstream. The `load-secrets-and-exec.sh` shim reads the proxy secret from `/run/secrets` into the env before `envsubst` renders the template. |
-| **vault** | raft storage volume, TLS listener config | Required by the bridge for auth in prod. `VAULT_LOCAL_CONFIG` holds the full server config; `SKIP_SETCAP=true` + `cap_add: IPC_LOCK`. |
 
 ---
 
@@ -115,10 +118,10 @@ The single most common "service won't boot" cause after secrets is TLS. The `mag
 ## Sharp Edges and Behavioral Notes
 
 - **`TRUSTED_PROXY_SECRET` is the universal gate.** All three Python services raise immediately without it — it's the first thing to check when a service won't boot after a secret rename.
-- **"Dev mode" relaxes three of the bridge's four hard gates.** With `APP_ENV` unset or `development`/`test`, Vault config and `SESSION_TOKEN_SECRET` are not required (auto-fallbacks kick in) and the TLS entrypoints aren't used — but `TRUSTED_PROXY_SECRET` and `DATABASE_URL` are *always* required. Prod is simply "`APP_ENV` not in {development, test}"; the production compose leaves it unset on purpose.
+- **"Dev mode" relaxes three of the bridge's four hard gates.** With `APP_ENV` unset or `development`/`test`, `SESSION_TOKEN_SECRET` is not required (an auto-fallback kicks in), the dev file signer is allowed, and the TLS entrypoints aren't used — but `TRUSTED_PROXY_SECRET`, `DATABASE_URL`, Entra and a signing key are *always* required. **Unset means `development`**, so the production compose sets `APP_ENV=production` explicitly; it went unset for a long time, silently disabling the production-only checks.
 - **agents fails fast on its own DB, by design.** Unlike a lazily-connected store, the checkpointer is opened in the lifespan and the comment is explicit: *fail fast and loud if `agent_runtime` is unreachable.* This is intentional — a running agents service with no checkpointer would lose every conversation on the first turn, so it refuses to serve at all.
-- **rag_service starts without Chroma; agents starts without the MCP gateway; the bridge starts without Vault/Redis.** These are all 🟢 lazy — the service boots green and only the dependent feature 500s. Don't diagnose a down vectordb by looking at whether rag_service started; look at whether `/retrieve` calls fail.
-- **Swarm ignores `depends_on`.** Boot order is not guaranteed. The whole design leans on fail-fast + restart loops: bring up Postgres and Vault and the dependent services stop crash-looping on their own. There is no orchestrated "wait for X."
+- **rag_service starts without Chroma; agents starts without the MCP gateway; the bridge starts without KMS/Redis.** These are all 🟢 lazy — the service boots green and only the dependent feature 500s. Don't diagnose a down vectordb by looking at whether rag_service started; look at whether `/retrieve` calls fail.
+- **Swarm ignores `depends_on`.** Boot order is not guaranteed. The whole design leans on fail-fast + restart loops: bring up Postgres and the dependent services stop crash-looping on their own. There is no orchestrated "wait for X."
 - **Two databases, one instance.** The bridge migrates `chat_db`; agents owns `agent_runtime` on the *same* Postgres. Either can independently block its owner's boot. See [configuration.md → agents reads two databases](configuration.md#sharp-edges-and-behavioral-notes).
 - **`*_FILE` unreadable is fail-loud; unset is a silent fallback** to the plain env var (what local `.env` relies on). A permission slip on a mounted secret raises at startup — it does not quietly skip.
 
@@ -128,7 +131,7 @@ The single most common "service won't boot" cause after secrets is TLS. The `mag
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| bridge start gates | [magenticx/dialogue_bridge/core/settings.py](../../magenticx/dialogue_bridge/core/settings.py) | `_finalize_secrets` (`TRUSTED_PROXY_SECRET`, Vault trio, `SESSION_TOKEN_SECRET`); `DatabaseSettings.url = Field(...)` |
+| bridge start gates | [magenticx/dialogue_bridge/core/settings.py](../../magenticx/dialogue_bridge/core/settings.py) | `_finalize_secrets` (`TRUSTED_PROXY_SECRET`, Entra, `SESSION_TOKEN_SECRET`, dev-signer refusal); `SigningSettings` (signing config); `DatabaseSettings.url = Field(...)` |
 | bridge migration lifespan | [magenticx/dialogue_bridge/main.py](../../magenticx/dialogue_bridge/main.py) | `lifespan` → `_run_alembic_upgrade`, `RUN_MIGRATIONS_ON_STARTUP` |
 | agents proxy gate | [magenticx/agents/core/settings.py](../../magenticx/agents/core/settings.py) | `_require_proxy_secret` |
 | agents checkpointer boot | [magenticx/agents/main.py](../../magenticx/agents/main.py) | `_init_durable_checkpointer`, `_ensure_checkpointer_database` (fail-fast) |

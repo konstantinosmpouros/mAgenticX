@@ -1,6 +1,6 @@
 # Secrets — What Each One Is and Where It Belongs
 
-Every sensitive value the production stack needs is delivered as a **file**, never as a plaintext environment variable in the compose YAML or the Portainer "Environment variables" dropdown. The core stack uses **Docker Swarm secrets** (namespaced `magenticx_*`, mounted read-only at `/run/secrets/<alias>` on a tmpfs); the MCP gateway uses a **bind-mounted `.env` file**; and the user-facing auth flow fetches its material from **HashiCorp Vault** at runtime. This document is the authoritative inventory of every secret across the four `docker-compose-denis*.y*ml` files — what it is, which services consume it, and what breaks without it. It does **not** contain any secret values; those live only in Portainer's Secrets tab, Vault, or the operator's offline notes.
+Every sensitive value the production stack needs is delivered as a **file**, never as a plaintext environment variable in the compose YAML or the Portainer "Environment variables" dropdown. The core stack uses **Docker Swarm secrets** (namespaced `magenticx_*`, mounted read-only at `/run/secrets/<alias>` on a tmpfs); the MCP gateway uses a **bind-mounted `.env` file**; and the session-signing private key is **never delivered at all** — it lives in an OCI KMS HSM. This document is the authoritative inventory of every secret across the `docker-compose-denis*.y*ml` files — what it is, which services consume it, and what breaks without it. It does **not** contain any secret values; those live only in Portainer's Secrets tab, OCI, Microsoft Entra, or the operator's offline notes. (HashiCorp Vault was removed in plan 29; it no longer holds anything.)
 
 ---
 
@@ -12,7 +12,7 @@ flowchart LR
     Tmpfs -->|"<NAME>_FILE env\n→ _resolve_file_backed_secret()"| Py["dialogue_bridge\nagents\nrag_service"]
     Tmpfs -->|"load-secrets-and-exec.sh\n(file → env var)"| Nginx["agentic_ui (nginx)"]
     File["/opt/magenticx/mcp_config/\nmcp_secret.env (bind mount)"] --> Gw["mcp_gateway"]
-    Vault["HashiCorp Vault\n(Transit · AppRole · userpass)"] -->|"runtime fetch\n(hashicorp_vault net)"| Py
+    KMS["OCI KMS\n(HSM signing key)"] -->|"Sign(digest)\nAPI key scoped to Dennis"| Py
 ```
 
 ---
@@ -27,7 +27,7 @@ There are four delivery paths; a single service may use more than one.
 | **Swarm secret → env via shim** | `agentic_ui` (nginx) | nginx's `envsubst` can only read env vars, not files. `load-secrets-and-exec.sh` reads `/run/secrets/trusted_proxy_secret` into `$TRUSTED_PROXY_SECRET`, then exec's the TLS entrypoint. |
 | **Swarm secret → file path in config** | `chat_postgres`, `redis`, `grafana`, `alertmanager` | The service's own config consumes the file directly: Postgres `POSTGRES_PASSWORD_FILE`, Redis `$(cat /run/secrets/redis_password)` in its command, Grafana `GF_SECURITY_ADMIN_PASSWORD__FILE`, Alertmanager `password_file:` in `alertmanager.yml`. |
 | **Bind-mounted file** | `mcp_gateway` | The gateway is plain `docker compose` (not Swarm), so it can't use Swarm secrets. Upstream MCP-server API keys live in `mcp_secret.env`, bind-mounted and passed via `--secrets`. |
-| **Vault runtime fetch** | `dialogue_bridge` | The bridge authenticates to Vault with its AppRole identity (role/secret id come from Swarm secrets) and uses the Transit engine to sign/verify session JWTs. The signing key never leaves Vault. |
+| **Key held in an HSM (never delivered)** | `dialogue_bridge` | The session-JWT signing key lives in OCI KMS and is **never delivered to any service**. The bridge holds only an API key (Swarm secret) permitted to request signatures over a digest, from Dennis only. |
 
 The in-container **alias** (e.g. `openai_api_key`) is intentionally fixed so application code never changes when the external Swarm name is bumped during rotation.
 
@@ -41,16 +41,15 @@ Nine Swarm secrets, declared at the bottom of the compose with `external: true` 
 | --- | --- | --- | --- | --- |
 | `magenticx_openai_api_key` | `openai_api_key` | `OPENAI_API_KEY_FILE` | `rag_service`, `agents` | OpenAI key for embeddings (rag), every LLM/agent call, and STT / TTS / realtime voice. |
 | `magenticx_trusted_proxy_secret` | `trusted_proxy_secret` | `TRUSTED_PROXY_SECRET_FILE` (Python); shim (nginx) | `rag_service`, `agents`, `dialogue_bridge`, `agentic_ui` | The internal-caller shared secret sent as the `X-Internal-Proxy-Secret` header. `require_internal_caller` validates it on every internal hop; the UI's nginx injects it. **Missing it = 403 on all internal calls, and the Python services refuse to start.** |
-| `magenticx_session_token_secret` | `session_token_secret` | `SESSION_TOKEN_SECRET_FILE` | `dialogue_bridge` | General-purpose HMAC key (e.g. short-lived DOCX-preview tokens). **No longer the auth-session secret** — auth is now stateless Vault-signed JWTs. |
+| `magenticx_session_token_secret` | `session_token_secret` | `SESSION_TOKEN_SECRET_FILE` | `dialogue_bridge` | General-purpose HMAC key (e.g. short-lived DOCX-preview tokens). **No longer the auth-session secret** — auth is stateless KMS-signed JWTs. |
 | `magenticx_redis_password` | `redis_password` | `REDIS_PASSWORD_FILE` (bridge); `cat` in command (redis) | `dialogue_bridge`, `redis` | Redis AUTH password. Redis holds the per-run inference event-log streams; the bridge reads/writes them over `rediss://`. |
 | `magenticx_postgres_password` | `postgres_password` | `POSTGRES_PASSWORD_FILE` (pg); `DATABASE_PASSWORD_FILE` (bridge); `AGENT_RUNTIME_DATABASE_PASSWORD_FILE` (agents) | `chat_postgres`, `dialogue_bridge`, `agents` | Password for the `admin` Postgres role. The bridge connects to `chat_db`; agents connects to the separate `agent_runtime` DB (LangGraph checkpointer) on the same instance. Spliced into each password-less `DATABASE_URL` at settings load. |
 | `magenticx_agent_runtime_aes_key` | `agent_runtime_aes_key` | `LANGGRAPH_AES_KEY_FILE` | `agents` | AES key for the LangGraph `EncryptedSerializer` — at-rest encryption of checkpoint blobs in `agent_runtime`. Empty ⇒ no encryption, so this is what makes stored conversation state ciphertext. |
 | `magenticx_log_redaction_secret` | `log_redaction_secret` | `LOG_REDACTION_SECRET_FILE` | `dialogue_bridge`, `agents`, `rag_service` | Shared HMAC key so the hashed `client_ip` (`h:<16hex>`) correlates across services. Absent ⇒ each process falls back to a random per-process key (correlation degrades, logs stay private). See [observability.md](../development/observability.md). |
-| `magenticx_vault_role_id` | `vault_role_id` | `VAULT_ROLE_ID_FILE` | `dialogue_bridge` | AppRole **role id** — the bridge's Vault machine identity. Used to sign session JWTs via Transit and read the verification public key. |
-| `magenticx_vault_secret_id` | `vault_secret_id` | `VAULT_SECRET_ID_FILE` | `dialogue_bridge` | AppRole **secret id** — pairs with the role id to authenticate to Vault. |
-| `magenticx_entra_client_secret` | `entra_client_secret` | `ENTRA_CLIENT_SECRET_FILE` | `dialogue_bridge` | Microsoft Entra app-registration **client secret** for the OIDC relying-party (auth-code + PKCE) sign-in. Only needed when Entra SSO is enabled; absent ⇒ SSO stays inert. |
+| `magenticx_oci_signer_key` | `oci_signer_key` | `OCI_API_PRIVATE_KEY_FILE` | `dialogue_bridge` | API private key of the dedicated OCI principal whose **only** permission is `use keys` on the session-signing HSM key, **and only from Dennis** (IAM network-source condition). It cannot read, export or rotate the key — only request a signature over a digest. **Has an expiry: record it and rotate before it lapses**, or new logins and refreshes stop. |
+| `magenticx_entra_client_secret` | `entra_client_secret` | `ENTRA_CLIENT_SECRET_FILE` | `dialogue_bridge` | Microsoft Entra app-registration **client secret** for the OIDC relying-party (auth-code + PKCE) sign-in — **the only way into the platform**. The bridge refuses to start without it. **Expires on a calendar date: record it below and rotate before it lapses**, or nobody can sign in. |
 
-> `dialogue_bridge`, `agents`, and `rag_service` **refuse to start** without `trusted_proxy_secret`. Outside `development`/`test`, the bridge additionally requires `VAULT_URL` + `vault_role_id` + `vault_secret_id` (stateless JWT auth) and a `session_token_secret`.
+> `dialogue_bridge`, `agents`, and `rag_service` **refuse to start** without `trusted_proxy_secret`. Outside `development`/`test`, the bridge additionally requires a `session_token_secret`. In **every** environment it requires the Entra config (`entra_client_secret` + tenant/client ids) and the session-signing config (`oci_signer_key` + the KMS settings, or the local-dev file key).
 
 ---
 
@@ -77,25 +76,31 @@ The MCP gateway runs as **plain `docker compose`** (the dind variant can't run u
 
 ---
 
-## Vault — the secret store itself — `docker-compose-denis-hashicorp.yaml`
-
-The Vault stack declares **no `secrets:` block** because Vault *is* the secret store. The material below lives inside Vault (or is produced when initializing it) and is **not** a Docker secret. It is reached over the `hashicorp_vault` overlay network.
+## Material outside Swarm — OCI KMS and Microsoft Entra
 
 | Secret material | Where it lives | Purpose / functionality |
 | --- | --- | --- |
-| **Unseal keys (Shamir, 2-of-3)** | Produced by `vault operator init`; held **offline** by the operator | Required to unseal Vault after every restart. Not stored anywhere in the stack — losing them (with Vault sealed) means the auth backend is unrecoverable. |
-| **Initial root token** | Produced by `vault operator init` | Bootstrap admin token for first-time config (Transit, AppRole, userpass). Should be revoked/rotated after setup; not used at runtime. |
-| **Transit key `jwt-rs256`** | Inside Vault (Transit engine) | The RSA private key that signs session JWTs. **Never leaves Vault** — the bridge calls Transit to sign and to fetch the public verification key. |
-| **AppRole `magenticx-bridge`** | Inside Vault (AppRole auth) | The bridge's machine identity. Its `role_id`/`secret_id` are surfaced to the bridge as the two `magenticx_vault_*` Swarm secrets above. |
-| **userpass user credentials** | Inside Vault (userpass auth) | The login identity provider — each end user's username/password. Validated by the bridge during `login`. (Entra/OIDC is a later phase.) |
+| **OCI KMS signing key** | Key `DenisSessionSigningKey` in vault `MpourosVault` (a default/virtual vault — free tier), protection mode HSM | The RSA-2048 private key that signs every session JWT. **Never exported, never in any container.** Its public key per version is exported to `/opt/magenticx/dialogue_bridge/signing_keys/<kid>.pem` (public, not secret; version 1 of the key is `kid 100`). Rotate by adding a key version — see [authentication-and-session.md § Phase 3](../flows/authentication-and-session.md#phase-3--token-minting-kms-signed-jwts). |
+| **The signing principal** | OCI IAM user `DenisTokenSigner` in group `DenisTokenSigners` (Default domain) | Capabilities: **API keys only** — no console password, auth tokens, SMTP, DB or secret keys. One API key, fingerprint `e1:52:33:d4:7c:83:bb:ac:45:1f:ad:29:ee:b8:93:8f` (created 2026-09-26); its private half is `magenticx_oci_signer_key`. |
+| **The signing key's IAM policy** | OCI IAM policy `DenisTokenSignerPolicy` + network source `DenisEgress` | `use keys` on the one key, for the one group, with `request.permission = 'KEY_SIGN'` and `request.networkSource.name = 'DenisEgress'` — the network source holds only Denis's reserved public IP (`DenisPublicIP`). Not a value, but security-critical: a policy that drops the network-source condition makes a leaked `magenticx_oci_signer_key` usable from anywhere. Proven 2026-09-26: a Sign call with the real key from outside Denis is refused (`404 NotAuthorizedOrNotFound`). **Denis's egress IP must stay `DenisPublicIP`** — a rebuilt VM with a new IP cannot sign, so nobody can log in. |
+| **Entra app registration** | Microsoft Entra ID | Tenant, client id, redirect URIs (production + `http://localhost:8050/...` for local dev), and the client secret surfaced as `magenticx_entra_client_secret`. The allowed security group (`ENTRA_ALLOWED_GROUP_IDS`) decides who may sign in at all. |
 
-The Vault server's own TLS key (`/opt/vault/tls/tls.key`) is private material too — see the next section.
+### Expiry dates — calendar these
+
+The Entra client secret expires on a date nobody will remember, and its lapsing stops **every new sign-in** (existing sessions keep working until they need to refresh). The OCI API key has no expiry date of its own (OCI API signing keys don't carry one), but it is listed with its rotation procedure because rotating it is the response to any suspected leak:
+
+| Credential | Expires | Rotate by |
+| --- | --- | --- |
+| `magenticx_entra_client_secret` | *record the date from the Entra app registration* | create a new client secret, create the Swarm secret under a versioned name, bump the compose, redeploy |
+| `magenticx_oci_signer_key` | no expiry date (created 2026-09-26) | add a second API key to `DenisTokenSigner`, create the new Swarm secret under a versioned name, update `OCI_API_KEY_FINGERPRINT`, redeploy, then delete the old key |
+
+**Retired with plan 29.** HashiCorp Vault — its unseal keys, root token, userpass users, AppRole identity (`magenticx_vault_role_id` / `magenticx_vault_secret_id`) and Transit key — is no longer used. The Transit key's *public* half survives for 20 days after the cutover as the verify-only `kid 1` public key file, so pre-cutover sessions stayed valid; then it is deleted. The Swarm secrets and the Vault Portainer stack are deleted during the plan 29 decommission.
 
 ---
 
 ## TLS private keys — bind-mounted, not Swarm secrets
 
-Every service authenticates with an internal CA-signed certificate. The **private keys** are sensitive but are delivered as bind-mounted files from `/opt/magenticx/<service>/tls/` (and `/opt/vault/tls/`), not as Swarm secrets, because the TLS entrypoints need them on a predictable path before the app starts.
+Every service authenticates with an internal CA-signed certificate. The **private keys** are sensitive but are delivered as bind-mounted files from `/opt/magenticx/<service>/tls/`, not as Swarm secrets, because the TLS entrypoints need them on a predictable path before the app starts.
 
 | File | Sensitivity | Notes |
 | --- | --- | --- |
@@ -114,8 +119,8 @@ Rotation of a key/cert is a file copy + `chown 1000:1000` + container restart �
 - **`POSTGRES_PASSWORD_FILE` only takes effect on first data-dir init.** To move an existing cluster onto the secret, `ALTER USER admin WITH PASSWORD '<new>'` from the container console **before** deploying the revision that switches the bridge/agents to the file-backed password.
 - **An unreadable `*_FILE` is fail-loud.** `_resolve_file_backed_secret()` raises if the `*_FILE` path is set but unreadable, rather than silently falling through to a plain env var — so a permission slip surfaces as a startup crash, not a silent wrong-value boot.
 - **The log-redaction secret is fail-safe, not fail-loud.** Without it each service hardens to a random per-process key; logs stay private but the `client_ip` hash stops correlating across services/restarts. Provision it.
-- **Blast radius, highest first:** `magenticx_postgres_password` (all chat + agent state), the Vault unseal keys / Transit key (every session JWT), `magenticx_openai_api_key` (cost + data egress), `magenticx_trusted_proxy_secret` (internal trust boundary), `magenticx_agent_runtime_aes_key` (checkpoint confidentiality). Rotate these first on any suspected exposure.
-- **Local dev needs none of this.** With no `*_FILE` vars set, settings fall back to plain env vars from `magenticx/.env`, and the dev defaults fill in the rest (random session/redaction secrets, no Vault). See `CLAUDE.md` § Local Development Setup.
+- **Blast radius, highest first:** `magenticx_postgres_password` (all chat + agent state), the OCI signing principal's API key and the KMS key's IAM policy (every session JWT — a policy that drops the network-source condition makes a leaked key usable from anywhere), `magenticx_openai_api_key` (cost + data egress), `magenticx_trusted_proxy_secret` (internal trust boundary), `magenticx_agent_runtime_aes_key` (checkpoint confidentiality). Rotate these first on any suspected exposure.
+- **Local dev needs none of this.** With no `*_FILE` vars set, settings fall back to plain env vars from `magenticx/.env`, and the dev defaults fill in the rest (random session/redaction secrets). Local dev still needs two things of its own: the `ENTRA_*` values for the shared app registration, and a gitignored file signing key in `magenticx/secrets/`. See `CLAUDE.md` § Local Development Setup.
 
 ---
 
@@ -126,9 +131,8 @@ Rotation of a key/cert is a file copy + `chown 1000:1000` + container restart �
 | Core stack secret declarations | [magenticx/docker-compose-denis.yaml](../../magenticx/docker-compose-denis.yaml) | top-level `secrets:` block, per-service `secrets:` lists |
 | Monitoring stack secrets | [magenticx/docker-compose-denis-monitoring.yml](../../magenticx/docker-compose-denis-monitoring.yml) | `grafana_admin_password`, `alert_smtp_password` |
 | MCP gateway secret file | [magenticx/docker-compose-denis-mcp.yaml](../../magenticx/docker-compose-denis-mcp.yaml) | `--secrets` flag + `mcp_secret.env` bind mount |
-| Vault server | [magenticx/docker-compose-denis-hashicorp.yaml](../../magenticx/docker-compose-denis-hashicorp.yaml) | listener TLS, raft storage; Transit/AppRole set up via `magenticx/vault/` |
 | File-backed secret resolution | [magenticx/dialogue_bridge/core/settings.py](../../magenticx/dialogue_bridge/core/settings.py) | `_resolve_file_backed_secret` |
 | nginx secret shim | [magenticx/agentic_ui/load-secrets-and-exec.sh](../../magenticx/agentic_ui/load-secrets-and-exec.sh) | `/run/secrets/trusted_proxy_secret` → env |
-| Vault setup scripts | [magenticx/vault/](../../magenticx/vault/) | Transit + AppRole + userpass init, RBAC scripts |
+| Session signing keys | [magenticx/dialogue_bridge/core/auth/signing.py](../../magenticx/dialogue_bridge/core/auth/signing.py) | KMS signer, public-key loading, the self-check |
 | Env var reference | [docs/architecture/configuration.md](configuration.md) | which env var points at each secret |
 | `PARKED_TOKEN_KEY` | dialogue_bridge | AES-GCM key (**at least** 32 bytes, base64 or hex; longer is condensed with HKDF) encrypting the refresh tokens of *parked* accounts in Redis, so a Redis-only compromise yields no usable credential. On Dennis it is the Swarm secret **`magenticx_parked_token_key`**, consumed as `PARKED_TOKEN_KEY_FILE=/run/secrets/parked_token_key`. Dedicated rather than derived from `session_token_secret` so it rotates on its own — rotating it signs every parked account out, which must not be a side effect of rotating an unrelated key. Omitted locally: the bridge then derives it from `SESSION_TOKEN_SECRET` (HKDF) rather than ever storing tokens unencrypted. |

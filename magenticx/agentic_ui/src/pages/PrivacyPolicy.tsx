@@ -13,7 +13,7 @@ const sections: LegalSection[] = [
   },
   {
     title: "Data Storage",
-    body: "Conversation data, messages, and file attachments are stored in our PostgreSQL database. Vector embeddings used for retrieval are stored in a ChromaDB vector store. Authentication tokens are managed via HashiCorp Vault. All data is stored on secured infrastructure and is not shared with third parties except as described in this policy.",
+    body: "Conversation data, messages, and file attachments are stored in our PostgreSQL database. Vector embeddings used for retrieval are stored in a ChromaDB vector store. Sign-in is handled by Microsoft Entra ID using your organization's Microsoft account, and the keys that sign session tokens are held in a hardware security module in Oracle Cloud Infrastructure Key Management. All data is stored on secured infrastructure and is not shared with third parties except as described in this policy.",
   },
   {
     title: "AI Processing",
@@ -29,7 +29,7 @@ const sections: LegalSection[] = [
   },
   {
     title: "Data Security",
-    body: "We implement industry-standard security measures including encrypted connections (TLS), mutual TLS between internal services, token-based authentication via HashiCorp Vault, and CSRF protection on all state-mutating endpoints. Access to production data is restricted to authorized personnel. No method of transmission over the internet is 100% secure, and we cannot guarantee absolute security.",
+    body: "We implement industry-standard security measures including encrypted connections (TLS), mutual TLS between internal services, single sign-on through Microsoft Entra ID with session tokens signed by keys held in a hardware security module, and CSRF protection on all state-mutating endpoints. Access to production data is restricted to authorized personnel. No method of transmission over the internet is 100% secure, and we cannot guarantee absolute security.",
   },
   {
     title: "Your Rights",

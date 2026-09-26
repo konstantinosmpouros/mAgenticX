@@ -21,7 +21,7 @@ import sys
 from pathlib import Path
 
 #: Lower this whenever the count drops. Never raise it without a written reason.
-CEILING = 1160
+CEILING = 1159
 
 _SELF = Path(__file__).resolve()
 _REPO_ROOT = _SELF.parent.parent

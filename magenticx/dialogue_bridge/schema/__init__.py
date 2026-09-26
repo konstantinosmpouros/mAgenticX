@@ -23,7 +23,6 @@ from schema.attachments import (
 from schema.auth import (
     AccountListResponse,
     AccountSummary,
-    AuthRequest,
     AuthResponse,
     SwitchAccountRequest,
     UserProfile,
@@ -132,7 +131,6 @@ __all__ = [
     "AgentToolsResponse",
     "AttachmentIn",
     "AttachmentOut",
-    "AuthRequest",
     "AuthResponse",
     "BlobOut",
     "ConversationDetail",

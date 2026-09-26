@@ -1,10 +1,12 @@
 # Authentication Flow
 
-The platform uses HashiCorp Vault as both the **identity authority** (it verifies credentials at login) and the **cryptographic signer** of session tokens (it holds the RS256 private key and signs JWTs via its Transit engine — the key never leaves Vault). The dialogue bridge is a thin **token issuer**: after Vault confirms the credential, the bridge mints a short-lived access JWT and a longer-lived refresh JWT, both signed by Vault, and hands them to the browser as HttpOnly cookies.
+Two different systems prove two different things. **Identity** is proven by **Microsoft Entra ID** — the only way to sign in (Phase 1): the password, MFA and any conditional-access policy all happen at Microsoft, never on our platform. **Session tokens** are signed by an **HSM-protected RSA key in OCI KMS** — the private key never leaves the HSM, and the bridge sends only a SHA-256 digest to be signed (Phase 3). The dialogue bridge is a thin **token issuer**: once Entra has proven who the user is, it mints a short-lived access JWT and a longer-lived refresh JWT and hands them to the browser as HttpOnly cookies.
 
-Sessions are **stateless**. There is no session row in the database; every request is authorised by verifying the JWT signature against Vault's public key (cached in-process) — no per-request database or Vault call. This is what lets the bridge scale horizontally behind a gateway: any instance on any VM can validate any token on its own. The only shared state is small and Redis-backed: a **logout denylist** that makes sign-out (and a stolen-token replay) take effect instantly, and a per-user **revoke-all watermark** behind "log out of all devices". Both are empty in the normal case and both fail open on the request hot path.
+Until plan 29 the platform also had username/password login through HashiCorp Vault, and Vault signed the session tokens through its Transit engine. Vault seals itself on every reboot, so after any restart nobody could log in until a human unsealed it. Both jobs are gone and so is Vault — see Phase 9.
 
-> **Future-proofing:** because the *app* only ever verifies "a bridge-issued JWT", swapping the upstream credential check from Vault userpass to Keycloak/Entra ID later changes only the login step — the token format and every verifier stay the same.
+Sessions are **stateless**. There is no session row in the database; every request is authorised by verifying the JWT signature against a public key **loaded from a file at boot** — no per-request database or KMS call. This is what lets the bridge scale horizontally behind a gateway: any instance on any VM can validate any token on its own. The only shared state is small and Redis-backed: a **logout denylist** that makes sign-out (and a stolen-token replay) take effect instantly, and a per-user **revoke-all watermark** behind "log out of all devices". Both are empty in the normal case and both fail open on the request hot path.
+
+> **Why the two are independent:** the *app* only ever verifies "a bridge-issued JWT". That is why Entra could be added without touching a verifier, and why the signer could move from Vault Transit to KMS without changing the token format — only where the signature comes from.
 
 ---
 
@@ -14,15 +16,18 @@ Sessions are **stateless**. There is no session row in the database; every reque
 flowchart LR
     Browser["Browser"]
     Bridge["dialogue_bridge\n(:8002)"]
-    Vault["HashiCorp Vault\n(:8004)\nuserpass + Transit + AppRole"]
-    Redis["Redis\n(logout denylist)"]
+    Entra["Microsoft Entra ID\n(OIDC) — the only sign-in"]
+    KMS["OCI KMS\nHSM-held RSA key"]
+    Redis["Redis\n(OIDC flow state · logout denylist)"]
+    PG["Postgres\n(users, by oid)"]
 
-    Browser -->|"POST /v1/auth/login"| Bridge
-    Bridge -->|"userpass login (verify password)"| Vault
-    Bridge -->|"transit/sign (mint RS256 JWT, AppRole token)"| Vault
+    Browser -->|"GET /v1/auth/oidc/login"| Bridge
+    Bridge -->|"auth-code + PKCE"| Entra
+    Bridge -->|"resolve user by oid"| PG
+    Bridge -->|"Sign(SHA-256 digest) — mint RS256 JWT"| KMS
     Bridge -->|"3 HttpOnly cookies (access + refresh + csrf)"| Browser
-    Bridge -.->|"verify: cached public key (no Vault, no DB)"| Bridge
-    Bridge -->|"logout: denylist sid · login: read pub key"| Redis
+    Bridge -.->|"verify: public key from file (no KMS, no DB)"| Bridge
+    Bridge -->|"flow state · logout: denylist sid"| Redis
 ```
 
 ---
@@ -33,22 +38,27 @@ flowchart LR
 sequenceDiagram
     participant B as Browser
     participant Bridge as dialogue_bridge
-    participant Vault as HashiCorp Vault
+    participant E as Microsoft Entra
+    participant KMS as OCI KMS
     participant Redis as Redis
 
-    B->>Bridge: POST /v1/auth/login {username, password}
+    B->>Bridge: GET /v1/auth/oidc/login
     Note over Bridge: rate-limit check (per client IP)
-    Bridge->>Vault: POST /v1/auth/userpass/login/{username} {password}
-    Vault-->>Bridge: {auth: {entity_id, ...}}
-    Bridge->>Bridge: upsert UserTable (vault_user_id = entity_id), check is_active
-    Bridge->>Vault: transit/sign jwt-rs256 (access claims) + (refresh claims)
-    Vault-->>Bridge: RS256 signatures (private key never leaves Vault)
-    Bridge-->>B: Set-Cookie: access(8h) + refresh(rolling, ≤20d) + csrf
-    Bridge-->>B: AuthResponse {userId, tokenTtl}
+    Bridge->>Redis: store {state, nonce, PKCE} (10 min, single use)
+    Bridge-->>B: 302 → Microsoft
+    B->>E: sign in (password, MFA — at Microsoft)
+    E-->>B: 302 → /v1/auth/oidc/callback?code&state
+    B->>Bridge: callback
+    Bridge->>Redis: take + delete flow(state)
+    Bridge->>E: redeem code → id_token (MSAL validates it)
+    Bridge->>Bridge: group gate → resolve user by oid → check is_active
+    Bridge->>KMS: Sign(SHA-256 of access) + Sign(SHA-256 of refresh), concurrently
+    KMS-->>Bridge: RS256 signatures (private key never leaves the HSM)
+    Bridge-->>B: Set-Cookie: access(8h) + refresh(rolling, ≤20d) + csrf, 302 → /
 
     Note over B,Bridge: Every authenticated request — STATELESS
     B->>Bridge: request + access cookie (+ X-CSRF-Token for mutations)
-    Bridge->>Bridge: verify RS256 signature (cached public key, by kid)
+    Bridge->>Bridge: verify RS256 signature (public key loaded at boot, by kid)
     Bridge->>Bridge: check iss/aud/exp/nbf/typ + sub/sid present
     Bridge->>Redis: EXISTS logout:sid? (fail-open)
     Bridge-->>B: response
@@ -56,7 +66,7 @@ sequenceDiagram
     Note over B,Bridge: Token refresh — STATELESS
     B->>Bridge: POST /v1/auth/session/refresh + refresh cookie + X-CSRF-Token
     Bridge->>Bridge: verify refresh JWT (typ=refresh) + denylist check
-    Bridge->>Vault: transit/sign new access + refresh (same sid, same login_at)
+    Bridge->>KMS: Sign new access + refresh digests (same sid, same login_at)
     Bridge-->>B: new Set-Cookie: access + refresh + csrf
 
     Note over B,Bridge: Sign out — INSTANT, this device
@@ -67,56 +77,113 @@ sequenceDiagram
 
 ---
 
-## Phase 1 — Vault Credential Validation
+## Phase 1 — Microsoft Entra ID Sign-In (the only way in)
 
-The browser sends `POST /v1/auth/login` with `{username, password}`. The endpoint is rate-limited per resolved client IP via `fastapi-redis-sdk` (`AUTH_RATE_LIMIT_MAX_ATTEMPTS` / `AUTH_RATE_LIMIT_WINDOW_SECONDS`, Redis-counted so the brute-force guard survives restarts); a `429` carries `Retry-After` + `X-RateLimit-*` headers. The same limit guards `GET /v1/auth/oidc/login`.
+The bridge is an OIDC **Relying Party** (authorization-code + PKCE via Microsoft's MSAL library). Entra proves identity; the bridge mints its own session JWTs from that (Phase 3). There is no other login path: `POST /v1/auth/login` no longer exists, and the bridge **refuses to start** unless `ENTRA_TENANT_ID` + `ENTRA_CLIENT_ID` + `ENTRA_CLIENT_SECRET` are all set — with Entra unconfigured the login page would have no way in at all, so a mistyped env var crash-loops the new task and Swarm keeps the old one.
 
-`VaultAuthenticator.authenticate()` issues a single HTTP call to Vault's userpass backend:
-
-```http
-POST {VAULT_URL}/v1/auth/{userpass_mount}/login/{username}
-Body: {"password": "..."}
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant DB as dialogue_bridge (RP)
+    participant R as Redis
+    participant E as Microsoft Entra
+    B->>DB: GET /v1/auth/oidc/login
+    DB->>R: store {state,nonce,PKCE} (TTL 10m, single-use)
+    DB-->>B: 302 → Entra (prompt=select_account)
+    B->>E: pick account, sign in (+MFA)
+    E-->>B: 302 → /v1/auth/oidc/callback?code&state
+    B->>DB: callback
+    DB->>R: fetch + delete flow(state)
+    DB->>E: exchange code (PKCE + client secret)
+    E-->>DB: id_token {oid, email, groups}
+    DB->>DB: validate token + GROUP gate → resolve user by oid → mint JWTs
+    DB-->>B: Set-Cookie + 302 → /  (failure → /login?sso=<reason>)
 ```
 
-Vault returns an `auth` block; the bridge extracts the stable `entity_id` (used as `user.vault_user_id`) and discards everything else. The user's Vault token is **not** used to sign JWTs — the bridge signs with its own machine identity (see Phase 3).
+`GET /v1/auth/oidc/login` is rate-limited per resolved client IP via `fastapi-redis-sdk` (`AUTH_RATE_LIMIT_MAX_ATTEMPTS` / `AUTH_RATE_LIMIT_WINDOW_SECONDS`, Redis-counted); a `429` carries `Retry-After` + `X-RateLimit-*` headers. It bounds redirect-flow abuse — password brute force is no longer ours to throttle, because Entra owns the credential.
 
-| Vault response field | How the bridge uses it |
-| --- | --- |
-| `auth.entity_id` | Stored as `user.vault_user_id` — stable user key across password changes |
-| `auth.client_token` | Discarded |
-| `auth.lease_duration` | Ignored |
+`GET /v1/auth/config` still answers `{"oidcEnabled": true}`. The current login page never asks; it exists so a browser still running the SPA from before this change — a tab left open across the deploy — keeps rendering the Microsoft button.
+
+**Refusals** redirect to `/login?sso=<reason>` with no cookies set: `failed` (unknown/replayed state, token exchange error), `denied` (group gate), `conflict` (Phase 2), `disabled` (`is_active=false`).
+
+**A refused "add another account" keeps its context: `/login?sso=<reason>&add=1`.** The callback reads the add-account intent (`consume_park_intent`) *before* validating the sign-in, so a refusal can carry it. Without `add=1` the login page is not in add mode, finds the first account's session still valid, restores it and reloads into the app — which wiped the error toast within a few hundred milliseconds, so a refused second account looked like "add account" silently did nothing. The login page strips only `sso` from the URL after showing the message (never `add`), and add mode shows a **Cancel — back to my workspace** link, because the user is still signed in there and must never be stranded on the login screen.
+
+### Group gate
+
+`ENTRA_ALLOWED_GROUP_IDS` (comma-separated group Object IDs) restricts who may sign in. The callback requires the id_token `groups` claim to intersect the allowed set, **fail closed**; a groups "overage" (too many groups for Entra to inline) is denied. With no password fallback any more, an overage is a lockout for that user — use a small dedicated security group, or App Roles. Empty = no restriction.
+
+### Security notes
+
+Real authorization-code + **PKCE**; `state`/`nonce`/PKCE held single-use in Redis (10-min TTL) as CSRF/replay defense; full id_token validation (signature vs Entra JWKS, `iss`/`aud`/`nonce`/`exp`) by MSAL. **Entra's own tokens are never stored** — the id_token authenticates once and is discarded; only the bridge's session JWT persists. The client secret is a file-backed `SecretStr` (`magenticx_entra_client_secret`) and **expires** — its date belongs in `docs/architecture/secrets.md`, because an expired secret is now a full login outage. MSAL is synchronous, so all of its network calls run via `asyncio.to_thread`. The bridge needs outbound HTTPS to the Microsoft identity platform.
+
+**Local development** signs in with the same Entra app: its redirect URI list includes `http://localhost:8050/api/v1/auth/oidc/callback` (Entra allows `http://localhost` without TLS), and the `ENTRA_*` values live in `magenticx/.env`. There is deliberately no dev bypass — a flag whose only purpose is to skip authentication eventually gets set in production.
 
 ---
 
-## Phase 2 — Local User Upsert
+## Phase 2 — Resolving the User by `oid`
 
-`upsert_user_from_vault()` looks the user up by `vault_user_id`. First login creates a `UserTable` row; later logins refresh the username. The bridge then enforces `user.is_active` — a locally disabled user is rejected with `403` even after Vault accepted the password. `user.last_login_at` is updated and committed.
+`upsert_user_from_identity` resolves the `users` row by the Entra **`oid`** (`oidc_subject`) and nothing else:
+
+```mermaid
+flowchart TD
+    L["Entra sign-in<br/>oid, email, username"] --> Q1{"row where<br/>oidc_subject == oid ?"}
+    Q1 -->|yes| U["use that row<br/>refresh display name, last_login_at"]
+    Q1 -->|no| Q2{"username or email<br/>already taken?"}
+    Q2 -->|no| NEW["create a new row (JIT)"]
+    Q2 -->|yes| X["IdentityConflictError<br/>/login?sso=conflict — never a merge"]
+```
+
+**Email is never a lookup key.** Microsoft's guidance is to identify a user by `oid` (scoped by tenant), because `email` and `preferred_username` are mutable and not guaranteed unique — merging accounts on them is the class of flaw publicly disclosed as "nOAuth" in 2023. So a first-time sign-in whose email already belongs to another row is **refused**, not attached to it; an administrator resolves it by setting that row's `oidc_subject` deliberately. A username collision is refused the same way (the check runs before the insert, with the unique constraint as a backstop, so it is a clean redirect and never a 500).
+
+A missing email on an existing row is backfilled from Entra only if no other row holds it. The bridge then enforces `user.is_active` — a locally disabled user is refused (`?sso=disabled`) even though Microsoft authenticated them — and updates `last_login_at`.
+
+`vault_user_id` still exists on `users` but nothing reads it: it is the record of which row belonged to which pre-plan-29 Vault account (Phase 9).
 
 ---
 
-## Phase 3 — Token Minting (Vault-Transit-signed JWTs)
+## Phase 3 — Token Minting (KMS-signed JWTs)
 
-Instead of creating a database session, the bridge mints two JWTs via `mint_tokens()`. Both are **RS256**, signed by Vault's Transit engine.
+Instead of creating a database session, the bridge mints two JWTs via `mint_tokens()`. Both are **RS256**, signed through `core/auth/signing.py`.
 
-### The bridge's Vault identity (AppRole)
+### Who signs: OCI KMS in production, a file key in local dev
 
-To sign, the bridge needs its own Vault token. It authenticates as a machine via **AppRole** (`VAULT_ROLE_ID` / `VAULT_SECRET_ID`), caches the token, and re-authenticates automatically on expiry or a `401/403`. Its policy grants exactly two capabilities: `update transit/sign/jwt-rs256` and `read transit/keys/jwt-rs256`.
+| Backend | Where the private key is | Used by |
+| --- | --- | --- |
+| `kms` (default) | an **HSM** in OCI KMS — never exported, never in bridge memory | Dennis |
+| `file` | a PEM file mounted into the container | local development only |
 
-### Signing (`core/vault_service.py`)
+**KMS.** The bridge builds the JWT signing input — `base64url(header) + "." + base64url(payload)` — hashes it with SHA-256 **locally**, and sends only the 32-byte digest:
 
-The bridge builds the JWT signing input — `base64url(header) + "." + base64url(payload)` — and POSTs it to Transit:
-
-```http
-POST transit/sign/jwt-rs256
-{ "input": "<std-base64 of signing input>",
-  "signature_algorithm": "pkcs1v15",   # RS256 == RSASSA-PKCS1-v1_5; Vault defaults to PSS, so this is mandatory
-  "hash_algorithm": "sha2-256",
-  "prehashed": false,
-  "marshaling_algorithm": "jws",        # emits base64url-no-pad — already the JWT 3rd segment
-  "key_version": <current version> }
+```text
+KmsCryptoClient.sign(SignDataDetails(
+    message            = base64(sha256(signing_input)),
+    message_type       = "DIGEST",                   # claims never leave our infrastructure
+    signing_algorithm  = "SHA_256_RSA_PKCS1_V1_5",    # == RS256; a PSS variant would be PS256 and fail verify()
+    key_id             = OCI_KMS_KEY_ID,
+    key_version_id     = <the version mapped to the active kid>))
 ```
 
-The response signature (`vault:v<N>:<sig>`) has its prefix stripped and is appended as the third segment. The **RSA private key never leaves Vault.** The JWT header `kid` is the Transit key version, so rotation is transparent: new tokens carry the new version; old tokens still verify against the older (still-published) public key.
+The SDK is synchronous, so the call runs in a worker thread (as MSAL does for Entra) with explicit connect/read timeouts (`OCI_KMS_CONNECT_TIMEOUT_SECONDS` / `OCI_KMS_READ_TIMEOUT_SECONDS`) and **no retries** — a login fails fast rather than stalling through a backoff. Access and refresh are signed concurrently.
+
+The bridge authenticates to KMS with the API key of a dedicated OCI principal whose **only** permission is `use keys` on the one signing key, **and only from Dennis** (an IAM network-source condition). KMS is a public endpoint, so that condition is what makes a leaked API key useless elsewhere — it is load-bearing, not optional (see plan 29 §5.4).
+
+**File (local dev).** A laptop cannot reach KMS and must never hold the production API key, so local dev signs with a key from `SESSION_SIGNING_PRIVATE_KEY_FILE`. It is refused three ways outside development: the default backend is `kms`; settings refuse `file` unless `APP_ENV` is `development`/`test` (Dennis sets `APP_ENV=production`); and `test_dennis_signs_with_kms_and_never_the_file_backend` fails CI if the Dennis compose ever selects it.
+
+### Every signature is checked before it is issued
+
+Whatever the backend returns, the keyring verifies it against the **pinned public key** for the active `kid` before the token leaves the process. A wrong KMS key version, a swapped `.pem`, or any other mismatch becomes a clean signing error at login — never a token that every later request would reject.
+
+**Signing fails closed.** A KMS error of any kind — refused, unreachable, timed out, malformed response — raises `SigningError` → `TokenError`, and no token is issued. There is no fallback signer.
+
+### Keys, `kid`s, and rotation
+
+The JWT header `kid` is a small integer. `SESSION_SIGNING_KEYS` maps each signing `kid` to a KMS key version (`100:ocid1.keyversion…`); `SESSION_SIGNING_ACTIVE_KID` names the one new tokens use. KMS kids start at **100**, so they are distinguishable at a glance from Vault Transit's `1, 2, …`.
+
+Every `kid` the bridge accepts — each listed KMS version, plus any **verify-only** kid in `SESSION_SIGNING_LEGACY_KIDS` — needs its public key at `<SESSION_SIGNING_PUBLIC_KEYS_DIR>/<kid>.pem`. They are plain files (a public key is not a secret), bind-mounted on Dennis from `/opt/magenticx/dialogue_bridge/signing_keys/`, and parsed at boot: a missing, malformed or sub-2048-bit key **refuses to start** the container, so Swarm keeps the healthy old task.
+
+**Rotation:** create a new KMS key version, export its public key as `101.pem`, add `101:<version ocid>` to `SESSION_SIGNING_KEYS`, set `SESSION_SIGNING_ACTIVE_KID=101`, deploy. Tokens with `kid 100` keep verifying; after **20 days** (`JWT_REFRESH_ABSOLUTE_TTL_SECONDS`) none can still be valid, and `100` is removed.
+
+**The move off Vault Transit was a rotation.** The Transit public key was exported once, while Vault was still unsealed, and loaded as verify-only `kid 1` (`SESSION_SIGNING_LEGACY_KIDS=1`). Sessions minted by Vault before the cutover kept verifying — and refreshing, into KMS-signed `kid 100` tokens — so **nobody was logged out**. `1.pem` and the legacy setting are removed 20 days after the cutover.
 
 ### Token model
 
@@ -164,14 +231,14 @@ flowchart TD
 
 ## Phase 4 — Per-Request Verification (stateless)
 
-Every protected endpoint depends on `require_session`. There is **no database lookup and no Vault call** on this path.
+Every protected endpoint depends on `require_session`. There is **no database lookup and no KMS call** on this path.
 
 ```mermaid
 flowchart TD
     A["require_session"] --> B["_get_access_token_from_request()"]
     B --> C{"Bearer header? else cookie"}
     C --> D["jwt_tokens.verify(token, 'access')"]
-    D --> E["parse kid → cached public key (Vault only on cache miss)"]
+    D --> E["parse kid → public key already in memory (loaded at boot; unknown kid → 401)"]
     E --> F["RS256 verify + iss/aud/exp/nbf/iat + require sub/sid + typ==access"]
     F -->|fail| G["401"]
     F -->|ok| H["logout_denylist.is_revoked(sid)?"]
@@ -180,7 +247,7 @@ flowchart TD
     H -->|ok| I["AuthContext → set request.state + log context"]
 ```
 
-`verify()` fails closed: the algorithm allow-list is **`RS256` only** (rejecting `alg:none` and HS/RS confusion), `iss`/`aud`/`exp`/`iat`/`nbf`/`sub` are required, and the `typ` claim must match — so an access token cannot be replayed at the refresh endpoint, or vice versa. Public keys are fetched from Vault once per key version and cached, so a Vault outage does not break verification of existing tokens.
+`verify()` fails closed: the algorithm allow-list is **`RS256` only** (rejecting `alg:none` and HS/RS confusion), `iss`/`aud`/`exp`/`iat`/`nbf`/`sub` are required, and the `typ` claim must match — so an access token cannot be replayed at the refresh endpoint, or vice versa. Every accepted public key is loaded from a file when the keyring is built, so verification never makes a network call of any kind — a KMS outage cannot affect it. A `kid` the bridge was not configured with is rejected as "not recognised".
 
 `require_current_user` returns a lightweight `AuthUser(id, is_active)` built **from the claims** (no DB). User-scoped endpoints add `require_bound_user_id`, which checks the `user_id` path parameter equals the token's `sub`. The two auth endpoints that return the full profile (`GET /session`, refresh) load the `UserTable` row from Postgres explicitly — that is the only place a user row is read on the auth path.
 
@@ -198,17 +265,17 @@ Access tokens expire after 8 hours. The browser calls `POST /v1/auth/session/ref
 
 **Refresh-token rotation + reuse detection.** Every refresh rotates the refresh token (fresh `jti`); the `RefreshTokenGuard` tracks the single currently-valid `jti` per `sid` in Redis. On refresh the presented `jti` is classified: the current one — or the just-rotated-from one inside a short grace window that tolerates a legitimate concurrent/retried refresh — is **ok**; an older, already-rotated `jti` replayed past the grace is **reuse** (a stolen refresh token replayed after the real client already rotated). Reuse **revokes the whole session** (denylist the `sid`) so neither the attacker's nor the victim's copy survives — both must re-authenticate. The guard **fails open** on a Redis error (degrades to no reuse detection, never a lockout), consistent with the logout denylist.
 
-`rotate_session()` mints a **new** access + refresh pair via Transit, preserving the original `sid` and `lat` (so the denylist still covers the session and the absolute cap is measured from the original login) while the refresh `exp` slides forward by the idle window. The new `jti` is then registered as current and the old one graced. No database row is written.
+`rotate_session()` mints a **new** access + refresh pair through the signing keyring (KMS on Dennis), preserving the original `sid` and `lat` (so the denylist still covers the session and the absolute cap is measured from the original login) while the refresh `exp` slides forward by the idle window. The new `jti` is then registered as current and the old one graced. No database row is written.
 
 ```mermaid
 sequenceDiagram
     participant B as Browser
     participant Bridge as dialogue_bridge
-    participant Vault as Vault
+    participant KMS as OCI KMS
 
     B->>Bridge: POST /session/refresh + mx_refresh cookie + X-CSRF-Token
     Bridge->>Bridge: verify refresh JWT (typ=refresh) + denylist(sid)
-    Bridge->>Vault: transit/sign new access + refresh (same sid, same lat)
+    Bridge->>KMS: Sign new access + refresh digests (same sid, same lat)
     Bridge-->>B: new Set-Cookie: mx_session + mx_refresh + mx_csrf
 ```
 
@@ -359,73 +426,15 @@ stateDiagram-v2
 
 ---
 
-## Phase 9 — Microsoft Entra ID (OIDC) Federated Sign-In
+## Phase 9 — How Password Login and Vault Were Retired (plan 29)
 
-Entra is an **additional** login method **alongside** username/password, not a replacement. The bridge acts as the OIDC **Relying Party** (authorization-code + PKCE via Microsoft's MSAL): Entra proves identity, then the bridge mints the **same session JWTs** as the password path — everything in Phases 4–8 is unchanged. The provider stays **inert unless configured**: `ENTRA_TENANT_ID` + `ENTRA_CLIENT_ID` + `ENTRA_CLIENT_SECRET` must all be set (`settings.entra.enabled`), and `GET /v1/auth/config → {oidcEnabled}` tells the login page whether to render the "Sign in with Microsoft" button.
+Until plan 29, username/password login ran alongside Entra: the bridge checked the password against HashiCorp Vault's userpass backend, and Vault's Transit engine signed every session token. Vault seals on every reboot, so a restart locked everyone out until someone unsealed it by hand. Both jobs were removed, and the Vault stack with them.
 
-```mermaid
-sequenceDiagram
-    participant B as Browser
-    participant DB as dialogue_bridge (RP)
-    participant R as Redis
-    participant E as Microsoft Entra
-    B->>DB: GET /v1/auth/oidc/login
-    DB->>R: store {state,nonce,PKCE} (TTL 10m, single-use)
-    DB-->>B: 302 → Entra (prompt=select_account)
-    B->>E: pick account, sign in (+MFA)
-    E-->>B: 302 → /v1/auth/oidc/callback?code&state
-    B->>DB: callback
-    DB->>R: fetch + delete flow(state)
-    DB->>E: exchange code (PKCE + client secret)
-    E-->>DB: id_token {oid, email, groups}
-    DB->>DB: validate token + GROUP gate → resolve/link user → mint JWTs
-    DB-->>B: Set-Cookie + 302 → /  (failure → /login?sso=<reason>)
-```
+**Accounts were linked before the password path was removed.** The release that still had both doors resolved a login by provider subject *or* by normalized email, so a Vault-era row picked up its `oidc_subject` the first time its owner signed in with Microsoft (`auth_providers` then reads `entra,vault`). Plan 29 Phase A0 checked every active row's email against Entra, and Phase A1 had every user sign in with Microsoft once, until no active row lacked an `oidc_subject`. Only then did the release that resolves by `oid` alone ship — which is why its lack of an email match strands no one.
 
-### Identity linking — one row per human
+**Sessions survived the signer change.** The Vault Transit public key was exported while Vault was still unsealed and loaded verify-only as `kid 1` (Phase 3), so tokens Vault had signed kept verifying — and refreshing into KMS-signed `kid 100` tokens — until they aged out after 20 days.
 
-The same person must map to **one** `users` row whether they sign in via Vault or Microsoft. The link key is the **normalized email**; a row can carry both `vault_user_id` and `oidc_subject`. One helper — `upsert_user_from_identity` — serves both login paths:
-
-```mermaid
-flowchart TD
-    L["Login via provider P<br/>subject S, email E"] --> Q1{"row where<br/>P-subject == S ?"}
-    Q1 -->|yes| U["use that row"]
-    Q1 -->|no| Q2{"row where<br/>email == E ?"}
-    Q2 -->|yes| LINK["attach S to that row<br/>➜ SAME row, no duplicate"]
-    Q2 -->|no| NEW["create new row"]
-    LINK --> U
-    NEW --> U
-```
-
-Migration `0014_link_identities` makes `vault_user_id` nullable and adds `oidc_subject` (nullable, unique) + `auth_providers`. A subject/email clash fails closed (`IdentityConflictError` → `/login?sso=conflict`). The local `users` row is created automatically on first login (JIT) and the second provider is linked on *its* first login — the database is never provisioned by hand.
-
-**Where the link email comes from (the key asymmetry):**
-
-| Provider | Email source |
-| --- | --- |
-| **Microsoft (Entra)** | the id_token `email` / `preferred_username` claim |
-| **Vault** | the **identity entity's `email` metadata** — read via `vault_service.read_entity_email()` (needs `read identity/entity/id/*` on the bridge's AppRole policy). A Vault userpass **username can never be an email** (Vault's `GenericNameRegex` forbids `@`), so the email lives on the entity, not the username. A username-that-happens-to-be-an-email is only a last-resort fallback (`_username_as_email`). |
-
-A Vault user whose entity has **no** `email` set simply stays a Vault-only account (nothing to match), which is why the bridge also validates the username against Vault's allowed pattern up front — an `@`-containing login is rejected as invalid credentials rather than 500-ing Vault on an unroutable path.
-
-> **The whole model in one line:** there is no self-registration — an admin provisions the user in Vault (userpass user **+ entity `email`**) and/or Entra (tenant user **+ allowed group**); **matching emails across the two ⇒ one account.** Set the same email on both sides and the logins merge automatically.
-
-### Group gate
-
-`ENTRA_ALLOWED_GROUP_IDS` (comma-separated group Object IDs) restricts who may sign in. The callback requires the id_token `groups` claim to intersect the allowed set, **fail closed**; a groups "overage" is denied (use a dedicated security group). Empty = no restriction.
-
-### Security notes
-
-Real authorization-code + **PKCE**; `state`/`nonce`/PKCE held single-use in Redis (10-min TTL) as CSRF/replay defense; full id_token validation (signature vs Entra JWKS, `iss`/`aud`/`nonce`/`exp`) by MSAL. **Entra's own tokens are never stored** — the id_token authenticates once and is discarded; only the bridge's session JWT persists. The client secret is a file-backed `SecretStr`. MSAL is synchronous, so all of its network calls run via `asyncio.to_thread` to avoid blocking the event loop.
-
-### Production enablement
-
-Entra ships **default-off**, so the images deploy to production inert: the additive `0014` migration applies on startup and existing login is unaffected (the Vault entity-email read fails gracefully if the policy below isn't present yet). To turn it on:
-
-- **Secret + config:** `ENTRA_CLIENT_SECRET` as a Swarm secret (`magenticx_entra_client_secret` → `ENTRA_CLIENT_SECRET_FILE`); the other `ENTRA_*` (including the production redirect URI) as service env in the production compose.
-- **Vault:** add `read identity/entity/id/*` to the bridge's AppRole policy on the production Vault (already in `vault_init.sh`), then set each Vault user's entity `email` so it can link to their Microsoft login.
-- **Egress:** the bridge needs outbound HTTPS to the Microsoft identity platform (server-side code exchange + JWKS).
-- **Deploy:** standard rolling update — this change does **not** touch mTLS. Recommended: deploy the images inert first, then enable as a deliberate second step.
+What remains of the old model: the `users.vault_user_id` column (unread, kept for diagnosis — dropping it is a destructive migration for no gain) and the legacy `kid 1` public key for 20 days after the cutover.
 
 ---
 
@@ -469,7 +478,7 @@ Two properties make that acceptable for a credential store:
 | GET | `/v1/auth/accounts` | Active account + parked ones. **Never returns a token.** |
 | POST | `/v1/auth/accounts/switch` | Promote a parked account; rate-limited; audited |
 | POST | `/v1/auth/accounts/logout-all` | Sign out of every account on this browser |
-| POST | `/v1/auth/login?park=true` | "Add another account" — parks the outgoing session instead of replacing it |
+| GET | `/v1/auth/oidc/login?park=true` | "Add another account" — a second Microsoft sign-in. The intent is stored against the flow's single-use `state` (the callback is a fresh GET from Microsoft and carries none of our query) and read back by `consume_park_intent`, which parks the outgoing session instead of replacing it |
 
 **Three factors are required to switch**: a valid *active* session, the device
 cookie, **and** a CSRF token. The device cookie alone must never suffice — that
@@ -514,6 +523,18 @@ Two client-side rules that are easy to get wrong, and were:
   holding the previous account's `userId` — and every request keyed on that stale
   id is rejected as *"Token does not grant access to this user"*.
 
+**Mobile renders the account menus inline, not as flyouts.** On desktop the
+switcher and the per-account "Log out" are side submenus. A side submenu needs
+room beside its parent, and on a phone there is none on either side — Radix only
+shifts a side submenu up or down, never inward — so they hung off the screen. On
+mobile (`useSidebar().isMobile`) the **profile header row is the switcher**:
+tapping it expands the other accounts plus "Add another account" in place
+(`AccountMenuItems`, real `DropdownMenu.Item`s) with the chevron turned down;
+tapping again collapses it, and it always starts collapsed. The per-account
+logout choices render inline under a "Log out" label. The menu content is capped
+at the available height and scrolls, so a longer list cannot run off a short
+screen. Help already rendered inline on mobile for the same reason.
+
 ### Logout semantics
 
 Unchanged: logout always ends the **active** session and drops it from the parked
@@ -523,25 +544,30 @@ holding dormant logins.
 
 ### Known gaps
 
-* **OIDC cannot add an account.** `?park=true` is honoured on password login only;
-  the Entra callback has no way to carry the intent through the redirect.
 * **"Log out of all accounts" has no UI yet** — the endpoint is implemented and
   tested, but nothing calls it.
-* **CSRF enforcement on the new routes is not covered by tests**, because the test
-  suite overrides `require_csrf_protection` app-wide. The dependency is declared
-  the same way as on `/logout` and `/session/refresh`.
+* **CSRF enforcement is tested by opting back in.** The suite overrides
+  `require_csrf_protection` app-wide, so `test_multi_account.py`'s `real_csrf`
+  fixture removes that override to prove a missing or mismatched token is refused
+  on the switch/logout routes — and that a matching one gets through.
 
 ---
 
 ## Sharp Edges and Behavioral Notes
 
-- **Vault is needed to MINT a token, not to verify one.** Login and refresh call Vault (Transit sign). Per-request verification uses the cached public key — if Vault is down, existing sessions keep working and refreshing as long as the public key is cached; only brand-new logins fail.
+- **KMS is needed to MINT a token, not to verify one.** Login and refresh call KMS. Verification uses public keys loaded at boot — if KMS is unreachable, existing sessions keep working for the rest of their access-token lifetime (≤ 8 h), while new logins and refreshes fail closed. The bridge still boots while KMS is down: building the keyring reads files only.
+
+- **Microsoft is a hard dependency of *signing in*, not of *being signed in*.** If Entra is unreachable, nobody can start a new session, but existing sessions keep working and refreshing — refresh never talks to Microsoft. The Entra client secret and the OCI signing API key both expire on a calendar date; either lapsing is a full new-login outage, so both dates are recorded in `docs/architecture/secrets.md`.
 
 - **No database session state.** There is no `sessions` table lookup on any request, which is what makes the bridge horizontally scalable behind a gateway — any instance validates any token on its own. Moving a user between VMs never logs them out.
 
 - **Instant logout requires shared state, by design.** A stateless token cannot be "un-issued", so per-device logout clears the cookie (zero state) and, for theft defense, denylists the `sid` in Redis. The denylist is checked per request (one O(1) `EXISTS`), **fails open** (Redis down → request still served on a valid signature; a *new* logout just isn't enforced until Redis recovers), and is empty in the common case.
 
-- **`signature_algorithm=pkcs1v15` is load-bearing.** Vault Transit defaults to PSS (= PS256). RS256 *is* PKCS#1 v1.5; minting with the default would produce tokens that fail `algorithms=["RS256"]` verification.
+- **`SHA_256_RSA_PKCS1_V1_5` is load-bearing.** RS256 *is* PKCS#1 v1.5. Any PSS algorithm would produce PS256 tokens that fail `algorithms=["RS256"]` verification — and the keyring's self-check would refuse to issue them.
+
+- **The OCI network-source condition is load-bearing.** Vault was reachable only on an internal overlay; KMS is a public endpoint. Without the IAM network source restricting `use keys` to Dennis, a leaked signing API key would work from anywhere. Plan 29 Phase B0 proves it by requiring a Sign call from outside Dennis to be refused.
+
+- **`APP_ENV=production` must be set on Dennis.** `APP_ENV` defaults to `development`, and the production-only boot checks — including refusing the dev file signer — key off it. It went unset in production for a long time, which silently disabled those checks.
 
 - **Refresh-token rotation + reuse detection (Redis-backed).** Each refresh rotates the refresh token and records its `jti` per `sid`; replaying an already-rotated refresh token past a short grace window is treated as theft and **revokes the whole session**. Bounded server state (one key per active session, TTL = the absolute cap), and it **fails open** on a Redis outage — degrading to no reuse detection (the prior posture), never to a lockout. Concurrent refreshes can't false-trip it: the client refreshes **cross-tab single-flight** (Web Locks — only one tab across the origin calls `/session/refresh`; the others see the rotated token in the shared session marker and skip), so two tabs never diverge the tracked `jti`. The server-side grace window is the backstop for the rare browser without Web Locks.
 
@@ -559,17 +585,17 @@ holding dormant logins.
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| Vault credential check | [magenticx/dialogue_bridge/core/auth_client.py](../../magenticx/dialogue_bridge/core/auth_client.py) | `VaultAuthenticator.authenticate()` |
-| Bridge Vault identity + Transit signing | [magenticx/dialogue_bridge/core/vault_service.py](../../magenticx/dialogue_bridge/core/vault_service.py) | `VaultServiceClient` — AppRole login, `sign()`, `public_key_pem()`, `current_sign_version()` |
+| Session signing keys | [magenticx/dialogue_bridge/core/auth/signing.py](../../magenticx/dialogue_bridge/core/auth/signing.py) | `KmsSigner`, `FileSigner`, `Keyring.sign()` (self-check), `build_keyring()`, `get_keyring()` |
+| Normalized identity | [magenticx/dialogue_bridge/core/auth/providers.py](../../magenticx/dialogue_bridge/core/auth/providers.py) | `AuthIdentity` |
 | JWT mint / verify | [magenticx/dialogue_bridge/core/auth/tokens.py](../../magenticx/dialogue_bridge/core/auth/tokens.py) | `mint_tokens()`, `verify()`, claim model |
 | Session deps + cookies | [magenticx/dialogue_bridge/core/auth/session.py](../../magenticx/dialogue_bridge/core/auth/session.py) | `require_session`, `require_current_user`, `require_refresh_session`, `require_csrf_protection`, `issue_session_cookies`, `revoke_current_session` |
 | Instant-logout denylist | [magenticx/dialogue_bridge/core/logout_denylist.py](../../magenticx/dialogue_bridge/core/logout_denylist.py) | `LogoutDenylist` (fail-open) |
-| Auth endpoints | [magenticx/dialogue_bridge/router/auth.py](../../magenticx/dialogue_bridge/router/auth.py) | `authenticate`, `session_me`, `refresh_session`, `logout`, `auth_config`, `oidc_login`, `oidc_callback` |
+| Auth endpoints | [magenticx/dialogue_bridge/router/auth.py](../../magenticx/dialogue_bridge/router/auth.py) | `session_me`, `refresh_session`, `logout`, `auth_config`, `oidc_login`, `oidc_callback` |
 | Entra OIDC flow (MSAL) | [magenticx/dialogue_bridge/core/auth/oidc.py](../../magenticx/dialogue_bridge/core/auth/oidc.py) | `begin_login`, `complete_login`, group gate |
-| Identity link/upsert | [magenticx/dialogue_bridge/core/database/models.py](../../magenticx/dialogue_bridge/core/database/models.py) | `upsert_user_from_identity` (link-by-email), `IdentityConflictError` |
-| User upsert from Vault | [magenticx/dialogue_bridge/core/database/models.py](../../magenticx/dialogue_bridge/core/database/models.py) | `upsert_user_from_vault()` |
-| Settings | [magenticx/dialogue_bridge/core/settings.py](../../magenticx/dialogue_bridge/core/settings.py) | `JWTSettings`, `VaultSettings` (AppRole + Transit), `EntraSettings` (OIDC) |
-| Vault setup runbook | [magenticx/vault/vault_init.sh](../../magenticx/vault/vault_init.sh) | Transit key + AppRole role + policy |
+| User resolution | [magenticx/dialogue_bridge/core/database/models.py](../../magenticx/dialogue_bridge/core/database/models.py) | `upsert_user_from_identity` (by `oid` only), `IdentityConflictError` |
+| Settings | [magenticx/dialogue_bridge/core/settings.py](../../magenticx/dialogue_bridge/core/settings.py) | `JWTSettings`, `SigningSettings` (KMS / file backend, kids), `EntraSettings` (OIDC — mandatory), the Entra boot guard in `Settings._finalize_secrets` |
+| Signing tests | [tests/dialogue_bridge/test_session_signing.py](../../tests/dialogue_bridge/test_session_signing.py) | digest-only, self-check, KMS failures, legacy kid, boot guards, Dennis compose guard |
+| Sign-in tests | [tests/dialogue_bridge/test_auth.py](../../tests/dialogue_bridge/test_auth.py) | `/login` gone, Entra boot guard, oid-only resolution, no merge by email, refusals |
 | Rate limiting | [magenticx/dialogue_bridge/core/security/rate_limit.py](../../magenticx/dialogue_bridge/core/security/rate_limit.py) | `AUTHENTICATE_LIMIT`, `limiter` |
 | localStorage marker | [magenticx/agentic_ui/src/shared/lib/authStorage.ts](../../magenticx/agentic_ui/src/shared/lib/authStorage.ts) | `StoredSession`, `saveSession()`, `loadSession()` |
 | Silent-refresh primitive | [magenticx/agentic_ui/src/shared/lib/sessionRefresh.ts](../../magenticx/agentic_ui/src/shared/lib/sessionRefresh.ts) | `ensureFreshSession()` — single-flight + cross-tab refresh, shared by both triggers |

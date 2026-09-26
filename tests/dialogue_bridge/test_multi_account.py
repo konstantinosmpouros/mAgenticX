@@ -14,27 +14,26 @@ import pytest
 from fakeredis import aioredis as fake_aioredis
 
 import core.auth.parked as parked_mod
-import core.auth.providers as auth_providers
+import router.auth as auth_router
+import utils.auth as auth_utils
 from core.auth.parked import ParkedAccountLimit, ParkedSessionError, ParkedSessionStore
-from core.auth.providers import AuthIdentity
+from core.auth.session import (
+    CSRF_COOKIE_NAME,
+    CSRF_HEADER_NAME,
+    DEVICE_COOKIE_NAME,
+    require_csrf_protection,
+)
 from core.settings import settings
-
-
-class _Provider:
-    """Authenticates anyone; the username becomes the identity."""
-
-    name = "vault"
-
-    async def authenticate(self, payload):
-        username = payload["username"]
-        return AuthIdentity(subject=f"vault::{username}", username=username, provider="vault")
 
 
 def _device_id(client) -> str | None:
     """The browser's parked-session index id, as the test client received it."""
-    from core.auth.session import DEVICE_COOKIE_NAME
-
     return client.cookies.get(DEVICE_COOKIE_NAME)
+
+
+async def _current_user_id(client) -> str:
+    """The account the test client is signed in as right now."""
+    return (await client.get("/v1/auth/session")).json()["user_id"]
 
 
 @pytest.fixture
@@ -68,9 +67,6 @@ def multi_account(monkeypatch, store):
     the switch/logout handlers and utils.auth owns the login finaliser that parks
     the outgoing session.
     """
-    import router.auth as auth_router
-    import utils.auth as auth_utils
-
     for module in (parked_mod, auth_router, auth_utils):
         monkeypatch.setattr(module, "parked_sessions", store)
     return store
@@ -222,11 +218,10 @@ async def test_the_key_is_derived_when_no_dedicated_secret_is_set(store, monkeyp
 # ---------------------------------------------------------------------------
 # The endpoints
 # ---------------------------------------------------------------------------
-async def test_endpoints_are_absent_when_the_feature_is_disabled(client, monkeypatch):
+async def test_endpoints_are_absent_when_the_feature_is_disabled(client, sso_login, monkeypatch):
     """A disabled feature must not even be probeable."""
-    monkeypatch.setitem(auth_providers._PROVIDERS, "vault", _Provider())
     monkeypatch.setattr(settings.session, "multi_account_enabled", False)
-    await client.post("/v1/auth/login", json={"username": "alice", "password": "pw"})
+    await sso_login("alice")
 
     assert (await client.get("/v1/auth/accounts")).status_code == 404
     switch = await client.post("/v1/auth/accounts/switch", json={"user_id": "someone"})
@@ -237,19 +232,14 @@ async def test_accounts_requires_a_session(client, multi_account):
     assert (await client.get("/v1/auth/accounts")).status_code == 401
 
 
-async def test_add_account_then_switch_between_them(client, monkeypatch, multi_account):
+async def test_add_account_then_switch_between_them(client, sso_login, monkeypatch, multi_account):
     """The whole point, end to end: two accounts signed in, switch between them."""
-    monkeypatch.setitem(auth_providers._PROVIDERS, "vault", _Provider())
 
-    first = await client.post("/v1/auth/login", json={"username": "alice", "password": "pw"})
-    assert first.status_code == 200
-    alice_id = first.json()["user_id"]
+    await sso_login("alice")
+    alice_id = await _current_user_id(client)
 
-    second = await client.post(
-        "/v1/auth/login", params={"park": "true"}, json={"username": "bob", "password": "pw"}
-    )
-    assert second.status_code == 200
-    bob_id = second.json()["user_id"]
+    await sso_login("bob", park=True)
+    bob_id = await _current_user_id(client)
     assert bob_id != alice_id
 
     listing = await client.get("/v1/auth/accounts")
@@ -275,21 +265,19 @@ async def test_add_account_then_switch_between_them(client, monkeypatch, multi_a
     assert bob_id in rows
 
 
-async def test_switching_to_the_active_account_is_rejected(client, monkeypatch, multi_account):
-    monkeypatch.setitem(auth_providers._PROVIDERS, "vault", _Provider())
-    login = await client.post("/v1/auth/login", json={"username": "alice", "password": "pw"})
+async def test_switching_to_the_active_account_is_rejected(client, sso_login, monkeypatch, multi_account):
+    await sso_login("alice")
 
     response = await client.post(
-        "/v1/auth/accounts/switch", json={"user_id": login.json()["user_id"]}
+        "/v1/auth/accounts/switch", json={"user_id": await _current_user_id(client)}
     )
 
     assert response.status_code == 409
 
 
-async def test_switching_to_an_unparked_account_is_rejected(client, monkeypatch, multi_account):
+async def test_switching_to_an_unparked_account_is_rejected(client, sso_login, monkeypatch, multi_account):
     """A device cookie plus a guessed user id must not be enough to become them."""
-    monkeypatch.setitem(auth_providers._PROVIDERS, "vault", _Provider())
-    await client.post("/v1/auth/login", json={"username": "alice", "password": "pw"})
+    await sso_login("alice")
 
     response = await client.post(
         "/v1/auth/accounts/switch", json={"user_id": "00000000-0000-0000-0000-000000000000"}
@@ -298,12 +286,9 @@ async def test_switching_to_an_unparked_account_is_rejected(client, monkeypatch,
     assert response.status_code == 409
 
 
-async def test_logout_all_accounts_clears_the_device(client, monkeypatch, multi_account):
-    monkeypatch.setitem(auth_providers._PROVIDERS, "vault", _Provider())
-    await client.post("/v1/auth/login", json={"username": "alice", "password": "pw"})
-    await client.post(
-        "/v1/auth/login", params={"park": "true"}, json={"username": "bob", "password": "pw"}
-    )
+async def test_logout_all_accounts_clears_the_device(client, sso_login, monkeypatch, multi_account):
+    await sso_login("alice")
+    await sso_login("bob", park=True)
 
     response = await client.post("/v1/auth/accounts/logout-all")
 
@@ -312,15 +297,12 @@ async def test_logout_all_accounts_clears_the_device(client, monkeypatch, multi_
     assert (await client.get("/v1/auth/session")).status_code == 401
 
 
-async def test_plain_logout_drops_the_account_from_the_switcher(client, monkeypatch, multi_account):
+async def test_plain_logout_drops_the_account_from_the_switcher(client, sso_login, monkeypatch, multi_account):
     """Logging out of the active account must not leave it listed as something to
     switch back into."""
-    monkeypatch.setitem(auth_providers._PROVIDERS, "vault", _Provider())
-    first = await client.post("/v1/auth/login", json={"username": "alice", "password": "pw"})
-    alice_id = first.json()["user_id"]
-    await client.post(
-        "/v1/auth/login", params={"park": "true"}, json={"username": "bob", "password": "pw"}
-    )
+    await sso_login("alice")
+    alice_id = await _current_user_id(client)
+    await sso_login("bob", park=True)
 
     await client.post("/v1/auth/logout")
 
@@ -336,16 +318,13 @@ async def test_plain_logout_drops_the_account_from_the_switcher(client, monkeypa
 # Per-account logout
 # ---------------------------------------------------------------------------
 async def test_logging_out_a_parked_account_removes_and_revokes_it(
-    client, monkeypatch, multi_account
+    client, sso_login, monkeypatch, multi_account
 ):
     """Dropping the stored copy is not enough — the session must be denylisted,
     or a token exfiltrated before the logout would stay usable until it expired."""
-    monkeypatch.setitem(auth_providers._PROVIDERS, "vault", _Provider())
-    first = await client.post("/v1/auth/login", json={"username": "alice", "password": "pw"})
-    alice_id = first.json()["user_id"]
-    await client.post(
-        "/v1/auth/login", params={"park": "true"}, json={"username": "bob", "password": "pw"}
-    )
+    await sso_login("alice")
+    alice_id = await _current_user_id(client)
+    await sso_login("bob", park=True)
 
     response = await client.post(f"/v1/auth/accounts/{alice_id}/logout")
 
@@ -357,11 +336,10 @@ async def test_logging_out_a_parked_account_removes_and_revokes_it(
 
 
 async def test_logging_out_the_active_account_clears_the_session(
-    client, monkeypatch, multi_account
+    client, sso_login, monkeypatch, multi_account
 ):
-    monkeypatch.setitem(auth_providers._PROVIDERS, "vault", _Provider())
-    login = await client.post("/v1/auth/login", json={"username": "alice", "password": "pw"})
-    alice_id = login.json()["user_id"]
+    await sso_login("alice")
+    alice_id = await _current_user_id(client)
 
     response = await client.post(f"/v1/auth/accounts/{alice_id}/logout")
 
@@ -369,10 +347,9 @@ async def test_logging_out_the_active_account_clears_the_session(
     assert (await client.get("/v1/auth/session")).status_code == 401
 
 
-async def test_logging_out_an_absent_account_is_a_no_op(client, monkeypatch, multi_account):
+async def test_logging_out_an_absent_account_is_a_no_op(client, sso_login, monkeypatch, multi_account):
     """A logout of something already gone is a success, not an error."""
-    monkeypatch.setitem(auth_providers._PROVIDERS, "vault", _Provider())
-    await client.post("/v1/auth/login", json={"username": "alice", "password": "pw"})
+    await sso_login("alice")
 
     response = await client.post(
         "/v1/auth/accounts/00000000-0000-0000-0000-000000000000/logout"
@@ -390,15 +367,11 @@ async def test_logging_out_an_absent_account_is_a_no_op(client, monkeypatch, mul
 # ---------------------------------------------------------------------------
 @pytest.fixture
 def real_csrf(app):
-    from core.auth.session import require_csrf_protection
-
     app.dependency_overrides.pop(require_csrf_protection, None)
     return True
 
 
 def _csrf_header(client) -> dict[str, str]:
-    from core.auth.session import CSRF_COOKIE_NAME, CSRF_HEADER_NAME
-
     return {CSRF_HEADER_NAME: client.cookies.get(CSRF_COOKIE_NAME) or ""}
 
 
@@ -407,12 +380,9 @@ def _csrf_header(client) -> dict[str, str]:
     ["/v1/auth/accounts/switch", "/v1/auth/accounts/logout-all", "/v1/auth/accounts/u/logout"],
 )
 async def test_state_changing_routes_reject_a_missing_csrf_token(
-    client, monkeypatch, multi_account, real_csrf, path
+    client, sso_login, monkeypatch, multi_account, real_csrf, path
 ):
-    monkeypatch.setitem(auth_providers._PROVIDERS, "vault", _Provider())
-    await client.post(
-        "/v1/auth/login", json={"username": "alice", "password": "pw"}, headers={}
-    )
+    await sso_login("alice")
 
     response = await client.post(path, json={"user_id": "someone"})
 
@@ -421,12 +391,10 @@ async def test_state_changing_routes_reject_a_missing_csrf_token(
 
 
 async def test_state_changing_routes_reject_a_mismatched_csrf_token(
-    client, monkeypatch, multi_account, real_csrf
+    client, sso_login, monkeypatch, multi_account, real_csrf
 ):
     """A double-submit check must compare, not merely require presence."""
-    monkeypatch.setitem(auth_providers._PROVIDERS, "vault", _Provider())
-    await client.post("/v1/auth/login", json={"username": "alice", "password": "pw"})
-    from core.auth.session import CSRF_HEADER_NAME
+    await sso_login("alice")
 
     response = await client.post(
         "/v1/auth/accounts/logout-all", headers={CSRF_HEADER_NAME: "not-the-cookie-value"}
@@ -435,15 +403,14 @@ async def test_state_changing_routes_reject_a_mismatched_csrf_token(
     assert response.status_code == 403
 
 
-async def test_a_matching_csrf_token_is_accepted(client, monkeypatch, multi_account, real_csrf):
+async def test_a_matching_csrf_token_is_accepted(client, sso_login, monkeypatch, multi_account, real_csrf):
     """The negative tests above would also pass if the route were simply broken,
     so prove the same request succeeds once the tokens match."""
-    monkeypatch.setitem(auth_providers._PROVIDERS, "vault", _Provider())
-    login = await client.post("/v1/auth/login", json={"username": "alice", "password": "pw"})
+    await sso_login("alice")
 
     response = await client.post(
         "/v1/auth/accounts/switch",
-        json={"user_id": login.json()["user_id"]},
+        json={"user_id": await _current_user_id(client)},
         headers=_csrf_header(client),
     )
 

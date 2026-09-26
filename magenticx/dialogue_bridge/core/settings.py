@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import secrets
 from pathlib import Path
+from typing import Literal
 from urllib.parse import quote
 
 import httpx
@@ -138,7 +139,7 @@ class SessionSettings(BaseSettings):
     parked_token_key: SecretStr = Field(default_factory=lambda: SecretStr(""))
 
     # General-purpose HMAC secret (used e.g. for short-lived DOCX-preview tokens);
-    # no longer used for auth sessions, which are now stateless Vault-signed JWTs.
+    # no longer used for auth sessions, which are now stateless KMS-signed JWTs.
     token_secret: SecretStr = Field(default_factory=lambda: SecretStr(""))
 
     @field_validator("token_secret", mode="before")
@@ -188,44 +189,6 @@ class SessionSettings(BaseSettings):
         return self
 
 
-class VaultSettings(BaseSettings):
-    model_config = _BASE_MODEL_CONFIG
-
-    addr: str | None = Field(None, validation_alias="VAULT_URL")
-    userpass_mount: str = Field("userpass", validation_alias="VAULT_USERPASS_MOUNT")
-    namespace: str | None = Field(None, validation_alias="VAULT_NAMESPACE")
-    timeout: float = Field(10.0, validation_alias="VAULT_HTTP_TIMEOUT")
-
-    # AppRole machine identity the bridge uses to sign session JWTs (and read the
-    # public keys) via the Transit engine. role_id/secret_id come from mounted
-    # secrets in prod (VAULT_ROLE_ID_FILE / VAULT_SECRET_ID_FILE).
-    approle_mount: str = Field("approle", validation_alias="VAULT_APPROLE_MOUNT")
-    role_id: SecretStr = Field(default_factory=lambda: SecretStr(""))
-    secret_id: SecretStr = Field(default_factory=lambda: SecretStr(""))
-
-    # Transit engine + key that signs the JWTs; the RSA private key never leaves Vault.
-    transit_mount: str = Field("transit", validation_alias="VAULT_TRANSIT_MOUNT")
-    transit_jwt_key: str = Field("jwt-rs256", validation_alias="VAULT_TRANSIT_JWT_KEY")
-
-    @field_validator("role_id", mode="before")
-    @classmethod
-    def _load_role_id(cls, value: object) -> object:
-        if isinstance(value, SecretStr) and value.get_secret_value():
-            return value
-        if isinstance(value, str) and value:
-            return value
-        return _resolve_file_backed_secret("VAULT_ROLE_ID") or ""
-
-    @field_validator("secret_id", mode="before")
-    @classmethod
-    def _load_secret_id(cls, value: object) -> object:
-        if isinstance(value, SecretStr) and value.get_secret_value():
-            return value
-        if isinstance(value, str) and value:
-            return value
-        return _resolve_file_backed_secret("VAULT_SECRET_ID") or ""
-
-
 class JWTSettings(BaseSettings):
     model_config = _BASE_MODEL_CONFIG
 
@@ -250,7 +213,6 @@ class JWTSettings(BaseSettings):
     # legitimate concurrent/retried refresh is not misread as stolen-token reuse.
     refresh_reuse_grace_seconds: int = Field(30, validation_alias="JWT_REFRESH_REUSE_GRACE_SECONDS")
     leeway_seconds: int = Field(30, validation_alias="JWT_LEEWAY_SECONDS")
-    sign_version_cache_seconds: int = Field(60, validation_alias="JWT_SIGN_VERSION_CACHE_SECONDS")
 
     @field_validator(
         "leeway_seconds", "access_ttl_seconds",
@@ -272,14 +234,187 @@ class JWTSettings(BaseSettings):
         return v
 
 
+# Bounds on a JWT `kid`. Mirrors the check in `core.auth.tokens.verify`, which
+# rejects anything outside it before looking a key up — a configured kid that
+# verify would refuse is a misconfiguration, so it fails at boot instead.
+KID_MIN = 1
+KID_MAX = 100_000
+
+
+def _parse_kid(raw: str, source: str) -> int:
+    candidate = raw.strip()
+    if not candidate.isdigit():
+        raise ValueError(f"{source}: key id {candidate!r} is not a positive integer.")
+    kid = int(candidate)
+    if not KID_MIN <= kid <= KID_MAX:
+        raise ValueError(f"{source}: key id {kid} is outside {KID_MIN}..{KID_MAX}.")
+    return kid
+
+
+class SigningSettings(BaseSettings):
+    """How session JWTs are signed, and which public keys verify them.
+
+    Replaces Vault Transit (plan 29, Part B). Vault sealed itself on every
+    reboot, and because minting a token needed ``transit/sign``, nobody could log
+    in until a human unsealed it.
+
+    **Production signs with OCI KMS**, using an HSM-protected RSA key: the
+    private key never exists outside the HSM, the bridge sends only a SHA-256
+    digest of ``header.payload``, and gets a signature back. That keeps the one
+    property Transit gave us — the private key never enters our process — while
+    removing the sealed state.
+
+    **The ``file`` backend is for local development only.** A laptop cannot reach
+    KMS and must never hold the production API key. It is refused unless selected
+    explicitly, and a test fails CI if the Dennis compose ever selects it.
+
+    **Verification never calls anything.** Every public key the bridge accepts is
+    a PEM file loaded at boot (``<public_keys_dir>/<kid>.pem``). Public keys are
+    not secret, and holding them locally means the request path stays free of
+    network calls — and the bridge boots even while KMS is unreachable.
+    """
+
+    model_config = _BASE_MODEL_CONFIG
+
+    backend: Literal["kms", "file"] = Field("kms", validation_alias="SESSION_SIGNING_BACKEND")
+    # The kid stamped on newly minted tokens. KMS kids start at 100 so they are
+    # distinguishable at a glance from Vault Transit's 1, 2, … in logs.
+    active_kid: int = Field(100, validation_alias="SESSION_SIGNING_ACTIVE_KID")
+    public_keys_dir: str = Field("/app/signing_keys", validation_alias="SESSION_SIGNING_PUBLIC_KEYS_DIR")
+    # "kid:version_ocid,kid:version_ocid" — the KMS key versions the bridge may
+    # sign with. Every listed kid also needs its public key file.
+    kms_key_versions_raw: str | None = Field(None, validation_alias="SESSION_SIGNING_KEYS")
+    # Verify-only kids with no private key behind them anywhere we can reach:
+    # used to keep tokens signed by a retired key (including the old Vault
+    # Transit key) valid until they age out. Each needs its public key file.
+    legacy_kids_raw: str | None = Field(None, validation_alias="SESSION_SIGNING_LEGACY_KIDS")
+
+    # --- file backend (local development) ---
+    private_key: SecretStr = Field(default_factory=lambda: SecretStr(""))
+
+    # --- kms backend (production) ---
+    kms_crypto_endpoint: str | None = Field(None, validation_alias="OCI_KMS_CRYPTO_ENDPOINT")
+    kms_key_id: str | None = Field(None, validation_alias="OCI_KMS_KEY_ID")
+    oci_user: str | None = Field(None, validation_alias="OCI_USER_OCID")
+    oci_tenancy: str | None = Field(None, validation_alias="OCI_TENANCY_OCID")
+    oci_fingerprint: str | None = Field(None, validation_alias="OCI_API_KEY_FINGERPRINT")
+    oci_region: str | None = Field(None, validation_alias="OCI_REGION")
+    # The API key of a principal whose only permission is `use keys` on the one
+    # signing key, and only from Dennis (IAM network source). Swarm secret.
+    oci_api_key: SecretStr = Field(default_factory=lambda: SecretStr(""))
+    kms_connect_timeout_seconds: float = Field(5.0, validation_alias="OCI_KMS_CONNECT_TIMEOUT_SECONDS")
+    kms_read_timeout_seconds: float = Field(10.0, validation_alias="OCI_KMS_READ_TIMEOUT_SECONDS")
+
+    @field_validator("private_key", mode="before")
+    @classmethod
+    def _load_private_key(cls, value: object) -> object:
+        if isinstance(value, SecretStr) and value.get_secret_value():
+            return value
+        if isinstance(value, str) and value:
+            return value
+        return _resolve_file_backed_secret("SESSION_SIGNING_PRIVATE_KEY") or ""
+
+    @field_validator("oci_api_key", mode="before")
+    @classmethod
+    def _load_oci_api_key(cls, value: object) -> object:
+        if isinstance(value, SecretStr) and value.get_secret_value():
+            return value
+        if isinstance(value, str) and value:
+            return value
+        return _resolve_file_backed_secret("OCI_API_PRIVATE_KEY") or ""
+
+    @field_validator("active_kid", mode="after")
+    @classmethod
+    def _bound_active_kid(cls, value: int) -> int:
+        if not KID_MIN <= value <= KID_MAX:
+            raise ValueError(f"SESSION_SIGNING_ACTIVE_KID must be within {KID_MIN}..{KID_MAX}.")
+        return value
+
+    @field_validator("kms_connect_timeout_seconds", "kms_read_timeout_seconds", mode="after")
+    @classmethod
+    def _bound_timeouts(cls, value: float) -> float:
+        # A login waits on this call; never let it hang, never make it instant-fail.
+        if not 0.5 <= value <= 60.0:
+            raise ValueError("OCI KMS timeouts must be between 0.5 and 60 seconds.")
+        return value
+
+    @property
+    def kms_key_versions(self) -> dict[int, str]:
+        """``SESSION_SIGNING_KEYS`` parsed into ``{kid: key_version_ocid}``."""
+        versions: dict[int, str] = {}
+        for entry in _split_csv(self.kms_key_versions_raw):
+            kid_raw, sep, version = entry.partition(":")
+            if not sep or not version.strip():
+                raise ValueError(f"SESSION_SIGNING_KEYS entry {entry!r} is not 'kid:version_ocid'.")
+            kid = _parse_kid(kid_raw, "SESSION_SIGNING_KEYS")
+            if kid in versions:
+                raise ValueError(f"SESSION_SIGNING_KEYS lists key id {kid} twice.")
+            versions[kid] = version.strip()
+        return versions
+
+    @property
+    def legacy_kids(self) -> tuple[int, ...]:
+        """``SESSION_SIGNING_LEGACY_KIDS`` parsed into verify-only key ids."""
+        return tuple(_parse_kid(raw, "SESSION_SIGNING_LEGACY_KIDS") for raw in _split_csv(self.legacy_kids_raw))
+
+    @model_validator(mode="after")
+    def _require_backend_config(self) -> SigningSettings:
+        # Parsing here, not lazily, so a malformed list fails at boot rather
+        # than on the first login.
+        versions = self.kms_key_versions
+        legacy = self.legacy_kids
+        if self.active_kid in legacy:
+            raise ValueError("SESSION_SIGNING_ACTIVE_KID cannot also be a verify-only legacy kid.")
+        overlap = set(versions) & set(legacy)
+        if overlap:
+            raise ValueError(f"Key ids {sorted(overlap)} are both signing and verify-only.")
+
+        if self.backend == "file":
+            if not self.private_key.get_secret_value():
+                raise ValueError(
+                    "SESSION_SIGNING_BACKEND=file needs SESSION_SIGNING_PRIVATE_KEY_FILE "
+                    "(local development only)."
+                )
+            return self
+
+        missing = [
+            name
+            for name, present in (
+                ("OCI_KMS_CRYPTO_ENDPOINT", bool(self.kms_crypto_endpoint)),
+                ("OCI_KMS_KEY_ID", bool(self.kms_key_id)),
+                ("OCI_USER_OCID", bool(self.oci_user)),
+                ("OCI_TENANCY_OCID", bool(self.oci_tenancy)),
+                ("OCI_API_KEY_FINGERPRINT", bool(self.oci_fingerprint)),
+                ("OCI_REGION", bool(self.oci_region)),
+                ("OCI_API_PRIVATE_KEY_FILE", bool(self.oci_api_key.get_secret_value())),
+                ("SESSION_SIGNING_KEYS", bool(versions)),
+            )
+            if not present
+        ]
+        if missing:
+            raise ValueError(
+                "Session signing uses OCI KMS (SESSION_SIGNING_BACKEND=kms) but these are not set: "
+                + ", ".join(missing)
+                + ". Refusing to start: no token could ever be issued."
+            )
+        if not self.kms_crypto_endpoint.startswith("https://"):
+            raise ValueError("OCI_KMS_CRYPTO_ENDPOINT must be an https:// URL.")
+        if self.active_kid not in versions:
+            raise ValueError(
+                f"SESSION_SIGNING_ACTIVE_KID={self.active_kid} has no KMS key version in SESSION_SIGNING_KEYS."
+            )
+        return self
+
+
 class EntraSettings(BaseSettings):
-    """Microsoft Entra ID (Azure AD) OIDC provider config.
+    """Microsoft Entra ID (Azure AD) OIDC — the platform's only way to sign in.
 
     The bridge acts as an OIDC Relying Party (authorization-code + PKCE via MSAL)
-    and, on a successful Entra login, mints the SAME session JWTs as the userpass
-    path — Entra only replaces *how identity is proven*. The whole provider stays
-    INERT unless ``tenant_id``, ``client_id`` and ``client_secret`` are all set
-    (see ``enabled``), so shipping it default-off changes nothing until configured.
+    and, on a successful Entra login, mints its own session JWTs (see
+    ``SigningSettings``). Username/password login was removed in plan 29 Part A,
+    so ``tenant_id``, ``client_id`` and ``client_secret`` are **mandatory**: the
+    root ``Settings`` refuses to start without them, because a bridge with Entra
+    unconfigured would serve a login page with no way in at all.
     """
 
     model_config = _BASE_MODEL_CONFIG
@@ -643,10 +778,12 @@ class RedisSettings(BaseSettings):
 class RateLimitSettings(BaseSettings):
     model_config = _BASE_MODEL_CONFIG
 
-    # Per resolved client IP, per window. Raised from 4 because one sign-in is no
-    # longer one login: "add another account" is a second POST /login, and behind
-    # a NAT or corporate proxy several people share the same resolved IP — 4/min
-    # locked out legitimate users. Still a tight brute-force ceiling.
+    # Per resolved client IP, per window, on GET /oidc/login — starting a
+    # Microsoft sign-in. Raised from 4 because one sign-in is not one start:
+    # "add another account" starts a second, and behind a NAT or corporate proxy
+    # several people share the same resolved IP — 4/min locked out legitimate
+    # users. Password brute force is no longer ours to throttle (Entra owns the
+    # credential); this bounds redirect-flow abuse and Redis flow-state churn.
     auth_max_attempts: int = Field(15, validation_alias="AUTH_RATE_LIMIT_MAX_ATTEMPTS")
     auth_window_seconds: int = Field(60, validation_alias="AUTH_RATE_LIMIT_WINDOW_SECONDS")
     inference_max_attempts: int = Field(10, validation_alias="INFERENCE_RATE_LIMIT_MAX_ATTEMPTS")
@@ -675,7 +812,7 @@ class RateLimitSettings(BaseSettings):
     # Starter suggestions proxy an LLM generation call on the agents service.
     suggestions_max_attempts: int = Field(10, validation_alias="SUGGESTIONS_RATE_LIMIT_MAX_ATTEMPTS")
     suggestions_window_seconds: int = Field(60, validation_alias="SUGGESTIONS_RATE_LIMIT_WINDOW_SECONDS")
-    # Session refresh mints tokens via Vault Transit; keyed per client IP
+    # Session refresh mints tokens via OCI KMS (a network call each); keyed per client IP
     # (pre-auth path, like login).
     refresh_max_attempts: int = Field(10, validation_alias="REFRESH_RATE_LIMIT_MAX_ATTEMPTS")
     refresh_window_seconds: int = Field(60, validation_alias="REFRESH_RATE_LIMIT_WINDOW_SECONDS")
@@ -788,8 +925,8 @@ class Settings(BaseSettings):
     app: AppSettings = Field(default_factory=AppSettings)
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
     session: SessionSettings = Field(default_factory=SessionSettings)
-    vault: VaultSettings = Field(default_factory=VaultSettings)
     jwt: JWTSettings = Field(default_factory=JWTSettings)
+    signing: SigningSettings = Field(default_factory=SigningSettings)
     entra: EntraSettings = Field(default_factory=EntraSettings)
     upstream: UpstreamSettings = Field(default_factory=UpstreamSettings)
     inference: InferenceSettings = Field(default_factory=InferenceSettings)
@@ -816,22 +953,25 @@ class Settings(BaseSettings):
                 "Refusing to start without an internal-caller shared secret."
             )
 
-        if self.app.env not in {"development", "test"}:
-            missing = [
-                name
-                for name, present in (
-                    ("VAULT_URL", bool(self.vault.addr)),
-                    ("VAULT_ROLE_ID", bool(self.vault.role_id.get_secret_value())),
-                    ("VAULT_SECRET_ID", bool(self.vault.secret_id.get_secret_value())),
-                )
-                if not present
-            ]
-            if missing:
-                raise ValueError(
-                    "Stateless JWT auth requires Vault AppRole + Transit configuration; missing: "
-                    + ", ".join(missing)
-                    + "."
-                )
+        # Entra is the only way in (plan 29 Part A). Checked in every
+        # environment: with it unconfigured the bridge would boot into a login
+        # page with no button and no route that could issue a session — a full
+        # outage from one mistyped env var. Crash-looping instead means Swarm
+        # keeps the healthy old task.
+        if not self.entra.enabled:
+            raise ValueError(
+                "Microsoft Entra ID is the only login method, but ENTRA_TENANT_ID / "
+                "ENTRA_CLIENT_ID / ENTRA_CLIENT_SECRET are not all set. Refusing to start."
+            )
+
+        # A usable signer is enforced by SigningSettings itself, in every
+        # environment. The file backend is a development tool and is refused
+        # anywhere else.
+        if self.signing.backend == "file" and self.app.env not in {"development", "test"}:
+            raise ValueError(
+                "SESSION_SIGNING_BACKEND=file is for local development only; "
+                f"APP_ENV={self.app.env!r} must sign with OCI KMS."
+            )
 
         if not self.session.token_secret.get_secret_value():
             if self.app.env not in {"development", "test"}:

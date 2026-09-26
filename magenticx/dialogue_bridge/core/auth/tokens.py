@@ -1,5 +1,13 @@
+"""Mint and verify the stateless session JWTs (RS256).
+
+Signing goes through ``core.auth.signing`` — OCI KMS in production, where the
+private key never leaves an HSM. Verification is entirely local: a signature
+check against a public key loaded at boot, with no network call and no session
+row, which is what keeps the request path stateless.
+"""
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import uuid
@@ -8,8 +16,8 @@ from datetime import datetime, timezone
 
 from jose import jwt as jose_jwt, JWTError
 
-from core.settings import settings
-from core.auth.vault import VaultServiceError, vault_service
+from core.settings import KID_MAX, KID_MIN, settings
+from core.auth.signing import SigningConfigError, SigningError, get_keyring
 from core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -46,19 +54,19 @@ def _new_id() -> str:
 
 
 async def _sign(claims: dict) -> str:
-    # The kid must be inside the (signed) header, so resolve the signing key
-    # version first and sign with exactly that version — never the "latest"
-    # default, which could race a rotation and mismatch the header kid.
-    version = await vault_service.current_sign_version()
-    header = {"alg": "RS256", "typ": "JWT", "kid": str(version)}
+    # The kid sits inside the signed header, and the keyring signs with exactly
+    # the key that kid names — a rotation can never produce a header that
+    # disagrees with its own signature.
+    keyring = get_keyring()
+    header = {"alg": "RS256", "typ": "JWT", "kid": str(keyring.active_kid)}
     header_seg = _b64url(json.dumps(header, separators=(",", ":")).encode("utf-8"))
     payload_seg = _b64url(json.dumps(claims, separators=(",", ":")).encode("utf-8"))
     signing_input = f"{header_seg}.{payload_seg}"
     try:
-        signature = await vault_service.sign(signing_input, version)
-    except VaultServiceError as exc:
-        raise TokenError(f"Failed to sign token via Vault Transit: {exc}") from exc
-    return f"{signing_input}.{signature}"
+        signature = await keyring.sign(signing_input.encode("ascii"))
+    except SigningError as exc:
+        raise TokenError(f"Failed to sign session token: {exc}") from exc
+    return f"{signing_input}.{_b64url(signature)}"
 
 
 async def mint_tokens(
@@ -68,7 +76,7 @@ async def mint_tokens(
     login_at: int | None = None,
     is_active: bool = True,
 ) -> IssuedTokens:
-    """Mint an access + refresh JWT pair (RS256, Vault-Transit-signed).
+    """Mint an access + refresh JWT pair (RS256, signed via ``core.auth.signing``).
 
     A login mints a fresh ``sid``; a refresh reuses the original ``sid`` and
     ``login_at`` so the instant-logout denylist still covers the rotated tokens
@@ -102,8 +110,9 @@ async def mint_tokens(
         "exp": refresh_exp,
         "jti": refresh_jti,
     }
-    access_token = await _sign(access_claims)
-    refresh_token = await _sign(refresh_claims)
+    # Independent signatures: with KMS each is one network round trip, so
+    # concurrently halves the wait a login spends on signing.
+    access_token, refresh_token = await asyncio.gather(_sign(access_claims), _sign(refresh_claims))
     return IssuedTokens(
         session_id=sid,
         access_token=access_token,
@@ -131,14 +140,17 @@ async def verify(token: str, expected_type: str) -> dict:
     if not kid or not str(kid).isdigit():
         raise TokenError("Token header missing a valid key id.")
     kid_version = int(kid)
-    # Bound the version before touching Vault so a forged kid can't trigger an
-    # unbounded key lookup; real Transit versions are small monotonic integers.
-    if kid_version < 1 or kid_version > 100_000:
+    # Bound the kid before the lookup so a forged header can't ask for anything
+    # outside the range settings accept for a configured key.
+    if kid_version < KID_MIN or kid_version > KID_MAX:
         raise TokenError("Token key id out of range.")
+    # Local lookup only — no network call on the request path, ever.
     try:
-        pem = await vault_service.public_key_pem(kid_version)
-    except VaultServiceError as exc:
-        raise TokenError(f"Could not load verification key: {exc}") from exc
+        pem = get_keyring().public_key_pem(kid_version)
+    except SigningConfigError as exc:
+        raise TokenError(f"Verification keys are unavailable: {exc}") from exc
+    if pem is None:
+        raise TokenError("Token key id is not recognised.")
     try:
         claims = jose_jwt.decode(
             token,

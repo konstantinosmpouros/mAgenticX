@@ -175,24 +175,24 @@ erDiagram
 
 ### `users`
 
-The identity record for every person who has logged in. Created (or refreshed) on first successful Vault login via `upsert_user_from_vault()`.
+The identity record for every person who has signed in. Created on a person's first Microsoft sign-in, and resolved on every later one, by `upsert_user_from_identity()` — **by `oidc_subject` only**, never by email (see [authentication-and-session.md § Phase 2](../flows/authentication-and-session.md#phase-2--resolving-the-user-by-oid)).
 
 | Column | Type | Null | Default | Notes |
 | --- | --- | --- | --- | --- |
 | `id` | `String` | No | `gen_uuid()` | PK |
-| `username` | `String` | No | — | UNIQUE, INDEXED — Vault username |
-| `vault_user_id` | `String` | Yes | `NULL` | UNIQUE, INDEXED — Vault `entity_id`, stable across password changes. Nullable since `0014` (an Entra-only user has none). |
-| `oidc_subject` | `String` | Yes | `NULL` | UNIQUE, INDEXED — Microsoft Entra `oid`. The OIDC counterpart of `vault_user_id`; a row may carry both when the account is linked across providers. |
-| `auth_providers` | `String` | Yes | `NULL` | Comma-separated set of proven login methods (`vault`, `entra`) for observability; the subject columns are authoritative. |
+| `username` | `String` | No | — | UNIQUE, INDEXED — the Entra `preferred_username` at first sign-in (pre-plan-29 rows: the Vault username). A first sign-in that would collide is refused (`?sso=conflict`). |
+| `vault_user_id` | `String` | Yes | `NULL` | UNIQUE, INDEXED — **historical, unread.** The Vault `entity_id` from before plan 29 removed username/password login. Kept deliberately as the record of which row belonged to which Vault account; dropping it would be a destructive migration for no gain. |
+| `oidc_subject` | `String` | Yes | `NULL` | UNIQUE, INDEXED — Microsoft Entra `oid`: **the only key a sign-in is resolved by.** Pre-plan-29 rows were linked to theirs before password login was removed. |
+| `auth_providers` | `String` | Yes | `NULL` | Comma-separated set of login methods the account has used (`vault`, `entra`) — observability only. A linked pre-plan-29 row reads `entra,vault`. |
 | `email` | `String` | Yes | `NULL` | UNIQUE, INDEXED — the cross-provider **account-link key** (`upsert_user_from_identity`). May be `NULL` when no email is known. |
-| `display_name` | `String` | Yes | `NULL` | From Vault metadata |
-| `avatar_url` | `String` | Yes | `NULL` | From Vault metadata |
-| `full_name` | `String` | Yes | `NULL` | From Vault metadata |
-| `department` | `String` | Yes | `NULL` | From Vault metadata |
-| `role_title` | `String` | Yes | `NULL` | From Vault metadata |
+| `display_name` | `String` | Yes | `NULL` | From the Entra `name` claim, refreshed on each sign-in |
+| `avatar_url` | `String` | Yes | `NULL` | Profile field (not supplied by Entra today) |
+| `full_name` | `String` | Yes | `NULL` | From the Entra `name` claim, refreshed on each sign-in |
+| `department` | `String` | Yes | `NULL` | Profile field (not supplied by Entra today) |
+| `role_title` | `String` | Yes | `NULL` | Profile field (not supplied by Entra today) |
 | `sessions_revoked_at` | `DateTime` | Yes | `NULL` | "Log out of all devices" watermark: every session token with `iat` older than this is refused. `NULL` = never revoked. Moved **only** by an explicit revoke — a login writing it would sign the user out everywhere on every sign-in. See [authentication-and-session](../flows/authentication-and-session.md) |
 | `last_login_at` | `DateTime` | Yes | `NULL` | Updated on every successful login, before the session JWT is issued |
-| `is_active` | `Boolean` | No | `true` | Set to `false` to ban a user at the application layer without touching Vault |
+| `is_active` | `Boolean` | No | `true` | Set to `false` to ban a user at the application layer; a disabled user is refused at sign-in (`?sso=disabled`) even though Microsoft authenticated them |
 | `created_at` | `DateTime` | No | `func.now()` | — |
 | `updated_at` | `DateTime` | No | `func.now()` | `onupdate=func.now()` |
 
@@ -653,7 +653,7 @@ These rules are enforced by Pydantic schemas, not database constraints:
 | All ORM model definitions | [magenticx/dialogue_bridge/core/database/models.py](../../magenticx/dialogue_bridge/core/database/models.py) | All `Table` classes, `__table_args__`, relationships |
 | Partial indexes on `messages` | [magenticx/dialogue_bridge/core/database/models.py](../../magenticx/dialogue_bridge/core/database/models.py) | `Index("uq_messages_one_active_stream_per_conversation", ..., postgresql_where=...)`, `Index("ix_messages_streaming_status", ...)` |
 | Pydantic request/response schemas | [magenticx/dialogue_bridge/schema/](../../magenticx/dialogue_bridge/schema/) | All `BaseModel` subclasses, attachment limits, enum literals |
-| User upsert on login | [magenticx/dialogue_bridge/core/database/models.py](../../magenticx/dialogue_bridge/core/database/models.py) | `upsert_user_from_vault()` |
+| User resolution on sign-in | [magenticx/dialogue_bridge/core/database/models.py](../../magenticx/dialogue_bridge/core/database/models.py) | `upsert_user_from_identity()` (by `oid` only), `IdentityConflictError` |
 | Active run status set | [magenticx/dialogue_bridge/utils/inference_runs.py](../../magenticx/dialogue_bridge/utils/inference_runs.py) | `ACTIVE_RUN_STATUSES` |
 | Stateless session JWTs | [magenticx/dialogue_bridge/core/auth/tokens.py](../../magenticx/dialogue_bridge/core/auth/tokens.py) | `mint_tokens()`, `verify()` |
 | Async engine and session factory | [magenticx/dialogue_bridge/core/database/engine.py](../../magenticx/dialogue_bridge/core/database/engine.py) | `engine`, `SessionLocal`, `get_db()` |

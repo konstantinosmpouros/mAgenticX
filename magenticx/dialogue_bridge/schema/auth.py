@@ -4,12 +4,6 @@ from pydantic import BaseModel, ConfigDict, Field
 from schema.base import UTCDateTime
 
 
-class AuthRequest(BaseModel):
-    """Schema for user authentication request."""
-    username: str
-    password: str
-
-
 class UserProfile(BaseModel):
     """Public user profile returned to the client after authentication."""
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)

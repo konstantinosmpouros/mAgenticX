@@ -4,11 +4,12 @@ This is an exhaustive, replicate-from-scratch reference for the **`dialogue_brid
 
 **Stack:** Python 3.12 · FastAPI · uvicorn (port **8002**) · SQLAlchemy async + asyncpg · Pydantic v2 · Redis (event log + skills cache) · Alembic · pgvector · runs as non-root `1000:1000`.
 
-> **README drift:** the checked-in `README.md` predates two refactors. Ignore it where it (a) references old `core/` paths (`core/database.py`, `core/auth_session.py`, `core/proxy.py`, `core/rate_limit.py`) — the real layout is `core/database/{engine,models}.py`, `core/auth/{session,tokens,providers,vault}.py`, `core/security/{internal_trust,rate_limit,user_rate_limit,tls}.py`; (b) describes a `sessions` table and `SESSION_MAX_PER_USER` — that table was **dropped** (migration `0008`), auth is now stateless Vault-Transit-signed JWTs; (c) implies SSE is the primary observer transport — it's **WebSocket** now (SSE is legacy/deprecated).
+> **README drift:** the checked-in `README.md` predates two refactors. Ignore it where it (a) references old `core/` paths (`core/database.py`, `core/auth_session.py`, `core/proxy.py`, `core/rate_limit.py`) — the real layout is `core/database/{engine,models}.py`, `core/auth/{session,tokens,signing,providers,oidc,parked}.py`, `core/security/{internal_trust,rate_limit,user_rate_limit,tls}.py`; (b) describes a `sessions` table and `SESSION_MAX_PER_USER` — that table was **dropped** (migration `0008`), auth is now stateless JWTs signed by an OCI KMS HSM key, with Microsoft Entra as the only sign-in (plan 29; Vault userpass + Transit before); (c) implies SSE is the primary observer transport — it's **WebSocket** now (SSE is legacy/deprecated).
 
 ---
 
 ## Table of contents
+
 1. [What the bridge is & owns](#1-what-the-bridge-is--owns)
 2. [Directory structure (actual)](#2-directory-structure-actual)
 3. [Bootstrap & lifecycle (`main.py`)](#3-bootstrap--lifecycle-mainpy)
@@ -36,7 +37,8 @@ This is an exhaustive, replicate-from-scratch reference for the **`dialogue_brid
 ## 1. What the bridge is & owns
 
 The BFF. The browser talks **only** to the bridge (via nginx). It owns:
-1. **Auth & session** — Vault userpass login, stateless Vault-Transit-signed JWT cookies, CSRF.
+
+1. **Auth & session** — Microsoft Entra (OIDC) sign-in — the only one — stateless KMS-signed JWT cookies, CSRF.
 2. **Persistence** — conversations, the append-only message tree, attachments/blobs (in Postgres), preferences, shares, scheduled tasks, message embeddings.
 3. **Inference run lifecycle** — detached server-owned asyncio tasks that call the agents service, fan events through per-run Redis Streams, and persist the terminal result. **This is the core.**
 4. **Capability proxying** — agent catalog cache, tool catalog, skills, memories, dictation/TTS/realtime voice, title/suggestion generation.
@@ -47,7 +49,8 @@ It does **not** run agent logic, retrieval, or SQL — those are the agents/rag 
 ```mermaid
 flowchart LR
     UI[agentic_ui] -->|cookies + CSRF, mTLS via nginx| BRIDGE[dialogue_bridge :8002]
-    BRIDGE -->|userpass + Transit sign| VAULT[(Vault)]
+    BRIDGE -->|OIDC auth-code + PKCE| ENTRA[(Microsoft Entra)]
+    BRIDGE -->|Sign digest| KMS[(OCI KMS)]
     BRIDGE -->|async SQLAlchemy, verify-full| PG[(Postgres chat_db)]
     BRIDGE -->|per-run event log| REDIS[(Redis Streams)]
     BRIDGE -->|SSE /stream + /resume, mTLS| AGENTS[agents :8003]
@@ -71,9 +74,10 @@ magenticx/dialogue_bridge/
 │   │   └── policies.py         Cache key families, TTL/eviction-group registry, shared imperative CacheBackend
 │   ├── auth/
 │   │   ├── session.py          login/refresh/logout, cookies, CSRF, auth dependencies, Redis sid denylist, refresh_guard
-│   │   ├── tokens.py           mint/verify stateless JWTs (RS256 via Vault Transit)
-│   │   ├── providers.py        AuthProvider ABC + AuthIdentity + Vault userpass IdP
-│   │   └── vault.py            Vault client (AppRole login, Transit sign/verify, userpass)
+│   │   ├── tokens.py           mint/verify stateless JWTs (RS256)
+│   │   ├── signing.py          session signing keys: OCI KMS (prod) / file (dev), public keys by kid
+│   │   ├── providers.py        AuthIdentity — the normalized identity a sign-in produces
+│   │   └── oidc.py             Microsoft Entra relying party (MSAL auth-code + PKCE), group gate
 │   ├── security/
 │   │   ├── internal_trust.py   require_internal_caller, internal_service_headers, client-IP resolution
 │   │   ├── rate_limit.py       fastapi-redis-sdk policies: verified-identity budget + auth/inference/speech deps
@@ -107,6 +111,7 @@ Import-time `sys.path.append(PACKAGE_ROOT)` (`main.py:1-7`) → absolute imports
 **Migrations run in a subprocess** — `_run_alembic_upgrade()` (`main.py:51-76`) runs `alembic -c <root>/alembic.ini upgrade head` via `subprocess` (not in-process: alembic's `env.py` spins its own `asyncio.run` in a worker thread and would deadlock nested event loops). Non-zero exit → `RuntimeError` → **startup crashes**.
 
 **Lifespan** (`main.py:79-116`), in order:
+
 1. If `RUN_MIGRATIONS_ON_STARTUP` (default `True`) → `await asyncio.to_thread(_run_alembic_upgrade)` (keeps the loop responsive). `false` → warn and skip (emergency knob).
 2. `await cleanup_orphaned_inference_runs()` — flip every `messages` row in an active streaming state to `failed` and clear every `active_assistant_message_id` (a process restart killed those asyncio tasks; runs *before* the scheduler so a restart-interrupted scheduled fire reads as failed).
 3. `scheduler.start()` — in-process scheduled-tasks loop (no-op if `SCHEDULER_ENABLED=false`).
@@ -130,11 +135,13 @@ Import-time `sys.path.append(PACKAGE_ROOT)` (`main.py:1-7`) → absolute imports
 `SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)`; root `Settings()` singleton. `_resolve_file_backed_secret(*names)` reads `<NAME>_FILE` (raises on unreadable path) else `<NAME>`. `DATABASE_PASSWORD_FILE` is spliced into a password-less `DATABASE_URL` (inline password wins → local dev untouched).
 
 Groups (env alias → default):
+
 - **App** — `APP_ENV`/`ENV`→`development` (gates the boot validators), `APP_VERSION`/`IMAGE_TAG`, `LOG_SERVICE_NAME`→`dialogue_bridge`.
 - **Database** — `DATABASE_URL` (**required**, SecretStr), echo/pool knobs, `RUN_MIGRATIONS_ON_STARTUP`→True.
 - **Session** — `SESSION_COOKIE_SECURE`→True, `SESSION_COOKIE_SAMESITE`→lax, `SESSION_COOKIE_DOMAIN`→None, cookie names (auto `__Host-mx_session`/`_refresh`/`_csrf` when secure+no-domain), `SESSION_CSRF_HEADER_NAME`→`X-CSRF-Token`, `SESSION_TOKEN_SECRET` (general-purpose HMAC — DOCX-preview tokens + redaction fallback).
-- **Vault** — `VAULT_URL`, `VAULT_USERPASS_MOUNT`→userpass, `VAULT_APPROLE_MOUNT`→approle, `VAULT_ROLE_ID`/`VAULT_SECRET_ID` (file-backed), `VAULT_TRANSIT_MOUNT`→transit, `VAULT_TRANSIT_JWT_KEY`→`jwt-rs256`, `VAULT_HTTP_TIMEOUT`→10.
-- **JWT** — `JWT_ISSUER`→`magenticx-bridge`, `JWT_AUDIENCE`→`magenticx`, `JWT_ACCESS_TTL_SECONDS`→28800 (8h, bound 60–86400), `JWT_REFRESH_IDLE_TTL_SECONDS`→604800 (7d), `JWT_REFRESH_ABSOLUTE_TTL_SECONDS`→2592000 (30d), `JWT_REFRESH_REUSE_GRACE_SECONDS`→30, `JWT_LEEWAY_SECONDS`→30, `JWT_SIGN_VERSION_CACHE_SECONDS`→60. Out-of-range → startup fail.
+- **Entra** — `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`, `ENTRA_CLIENT_SECRET` (file-backed) — **mandatory**; plus `ENTRA_REDIRECT_URI`, `ENTRA_ALLOWED_GROUP_IDS`, `ENTRA_POST_LOGIN_REDIRECT`→`/`, `ENTRA_LOGIN_ERROR_REDIRECT`→`/login`, `ENTRA_AUTHORITY_HOST`.
+- **JWT** — `JWT_ISSUER`→`magenticx-bridge`, `JWT_AUDIENCE`→`magenticx`, `JWT_ACCESS_TTL_SECONDS`→28800 (8h, bound 60–86400), `JWT_REFRESH_IDLE_TTL_SECONDS`→604800 (7d), `JWT_REFRESH_ABSOLUTE_TTL_SECONDS`→2592000 (30d), `JWT_REFRESH_REUSE_GRACE_SECONDS`→30, `JWT_LEEWAY_SECONDS`→30. Out-of-range → startup fail.
+- **Signing** — `SESSION_SIGNING_BACKEND`→`kms` (or `file`, dev only), `SESSION_SIGNING_ACTIVE_KID`→100, `SESSION_SIGNING_KEYS` (`kid:key_version_ocid`), `SESSION_SIGNING_LEGACY_KIDS` (verify-only), `SESSION_SIGNING_PUBLIC_KEYS_DIR`→`/app/signing_keys`, plus `OCI_KMS_*` / `OCI_*` for the KMS key and its signing principal. Incomplete → startup fail, in every environment.
 - **TLS** — `INTERNAL_CA_CERT_PATH` (str; drives Postgres verify-full + Redis TLS), `INTERNAL_CLIENT_CERT_PATH`/`_KEY_PATH` (SecretStr).
 - **Upstream** — `AGENTS_SERVICE_URL`→`https://agents:8003`.
 - **Inference** — `INFERENCE_TOOL_RESULT_MAX_CHARS`→16000, `INFERENCE_WS_SUBSCRIBE_TIMEOUT_SECONDS`→10.0.
@@ -148,7 +155,7 @@ Groups (env alias → default):
 - **Logging** — `LOG_LEVEL`→INFO, `LOG_FORMAT`→console, `LOG_TIMEZONE`/`TZ`→Europe/Athens, `LOG_REDACTION_SECRET`.
 - **CORS** — `CORS_ALLOWED_ORIGINS`→localhost:8080/8050 + 127.0.0.1:8080/8050, credentials True (**wildcard + credentials = startup error**), methods `GET,POST,PUT,PATCH,DELETE`, computed default headers, exposed download/range headers, max-age 600.
 
-**Boot validators (`_finalize_secrets`, refuse to start):** (1) empty `TRUSTED_PROXY_SECRET` → raise (all envs); (2) outside dev/test, missing any of `VAULT_URL`/`VAULT_ROLE_ID`/`VAULT_SECRET_ID` → raise; (3) outside dev/test, empty `SESSION_TOKEN_SECRET` → raise (dev generates a random one); (4) redaction-secret fallback to token_secret (never fails). Plus: missing `DATABASE_URL`, out-of-range JWT durations, credentialed CORS wildcard, a failed `alembic upgrade head`, or an unreadable `*_FILE` path all abort startup.
+**Boot validators (`_finalize_secrets`, refuse to start):** (1) empty `TRUSTED_PROXY_SECRET` → raise (all envs); (2) Entra not fully configured → raise (all envs — it is the only way in); (2b) `SESSION_SIGNING_BACKEND=file` outside dev/test → raise, and an incomplete signing config → raise (all envs); (3) outside dev/test, empty `SESSION_TOKEN_SECRET` → raise (dev generates a random one); (4) redaction-secret fallback to token_secret (never fails). Plus: missing `DATABASE_URL`, out-of-range JWT durations, credentialed CORS wildcard, a failed `alembic upgrade head`, or an unreadable `*_FILE` path all abort startup.
 
 ---
 
@@ -157,9 +164,9 @@ Groups (env alias → default):
 Async engine (`core/database/engine.py`): `create_async_engine(url, connect_args={"ssl": ctx})` where `ctx` is a `verify-full` context (`check_hostname=True`, `CERT_REQUIRED`, CA from `INTERNAL_CA_CERT_PATH`) or `None` (dev). SQLite (tests) uses `NullPool` (no pool sizing). `SessionLocal = async_sessionmaker(expire_on_commit=False)`; `get_db()` yields a session. `Base = declarative_base()`; `gen_uuid()` = `str(uuid4())` is every PK default. `EMBEDDING_DIMENSIONS = 1536`.
 
 | Table | Key columns / notes |
-|---|---|
+| --- | --- |
 | **agents** | `id`, `slug`(unique), name/description/icon, `version`, `type`(server_default `"langgraph agent"`), `is_active`, timestamps. Cached manifests from the agents service. |
-| **users** | `id`, `username`(unique,idx), `vault_user_id`(unique,idx), `email`(unique,idx), display_name/avatar/full_name/department/role_title, `last_login_at`, `is_active`. `upsert_user_from_vault` maps a Vault entity → row. |
+| **users** | `id`, `username`(unique,idx), `vault_user_id`(unique,idx), `email`(unique,idx), display_name/avatar/full_name/department/role_title, `last_login_at`, `is_active`. `oidc_subject`(unique,idx) is the only key a sign-in resolves by (`upsert_user_from_identity`); `vault_user_id` is historical and unread. |
 | **user_preferences** | 1:1 with users (unique `user_id`). `suggestions_enabled`, `show_message_token_usage`(0006), `search_past_convs`(0011, gates cross-conv memory tool), `use_memory`(0012, gates persistent memory), `personality`+`custom_instructions`(0015, threaded to runs as `context.personalization`), `voice_mode_voice`/`_language`. (The `tools` JSON column was dropped in 0016 — tool enablement is per (user, agent) on the agents service, not a preference.) |
 | **conversations** | `user_id`, `agent_id`(last-used pointer), `forked_parent_id`/`forked_message_id`(self-ref fork lineage, SET NULL), `agent_name`, `title`, `is_private`, `is_archived`/`archived_at`, `is_reported`/`reported_at`, **`active_assistant_message_id`**(FK→messages SET NULL — the AI msg currently streaming; `post_update=True` to break the write cycle), `last_message_preview`/`last_message_at`. |
 | **messages** ★ | The append-only tree AND the run. `conversation_id`(CASCADE), **`parent_message_id`**(self-FK SET NULL — the tree edge; edits/retries are *sibling* rows, never overwrites), `sender`(`message_sender_enum` user/ai), `content`, `liked`, `reasoning_steps`/`reasoning_time_seconds`, `input_tokens`/`output_tokens`(0004), `is_error`/`error_message`, **`checkpoint_thread_id`**(0007, per-branch LangGraph thread), **`checkpoint_id`**(0007, durable head from `CHECKPOINT_COMMITTED`), `raw_events`(JSON, ordered AG-UI events), `agent_id`(SET NULL)/`agent_name`, **`streaming_status`**(queued/running/cancelling/completed/cancelled/failed), `streaming_message_path`(JSON), `streaming_started_at`/`_completed_at`/`_cancel_requested_at`, `scheduled_task_id`(0009, SET NULL). (`streaming_enabled_tools` dropped in 0016.) **Two partial indexes**: unique `WHERE streaming_status IN ('queued','running','cancelling')` (≤1 active stream per conversation) + `WHERE streaming_status IS NOT NULL`. |
@@ -178,7 +185,7 @@ The `conversations ↔ messages` cross-FK cycle is resolved via `use_alter` in t
 `alembic.ini` leaves `sqlalchemy.url` blank; `env.py` sources it from `settings` and rewrites `postgresql+asyncpg://` → `postgresql+psycopg2://`, translating the asyncpg `ssl=` to libpq `sslmode=verify-full`+`sslrootcert`. `compare_type`/`compare_server_default` on; revision ids ≤32 chars.
 
 | Rev | Summary |
-|---|---|
+| --- | --- |
 | `0001_baseline` | Full snapshot (incl. the now-dropped `sessions` table). Cross-FKs resolved post-hoc (`use_alter`); enums created implicitly by `create_table`; the two `messages` partial indexes. `alembic stamp`-able on the pre-existing prod DB. |
 | `0002` | `agents.type` (server_default `langgraph agent`). |
 | `0003` | `messages.agent_id`+`agent_name` (+ backfill AI messages from their conversation's agent). |
@@ -202,11 +209,12 @@ Partial/`postgresql_where` and pgvector-opclass indexes are always hand-written 
 
 ## 7. Auth & session (stateless JWT)
 
-**Model:** after Vault verifies the credential, the bridge issues two **RS256 JWTs signed by Vault's Transit engine** (the private key never leaves Vault). There is **no session table** — sessions are stateless. Per-request verification is signature-only against a cached Transit public key (no DB/Vault call on the hot path). The only shared state is a **fail-open Redis logout denylist keyed by `sid`**.
+**Model:** once Microsoft Entra has proven identity, the bridge issues two **RS256 JWTs signed by an HSM-protected key in OCI KMS** (`core/auth/signing.py`; the private key never leaves the HSM and only a SHA-256 digest is sent; local dev uses a file key). Every signature is verified against the pinned public key before it is issued. There is **no session table** — sessions are stateless. Per-request verification is signature-only against public keys loaded from files at boot (no DB or KMS call on the hot path). The only shared state is a **fail-open Redis logout denylist keyed by `sid`**.
 
-**Login** (`POST /v1/auth/login`, `router/auth.py`): rate-limited per-IP (`AUTHENTICATE_LIMIT` 4/60). → `get_provider("vault").authenticate(username,password)` (userpass IdP in `core/auth/providers.py` → `core/auth/vault.py`); `VaultAuthError` 400/401/403 → 401 generic, other → 502, unconfigured → 500 → `upsert_user_from_vault` → 403 if inactive → `mint_login_session(user)` (`core/auth/session.py` → `core/auth/tokens.py`) mints the access (8h) + refresh (7d idle / 30d absolute) pair via Transit, both carrying a shared login-session `sid` → `refresh_guard.register(...)` → `issue_session_cookies` sets access + refresh + CSRF cookies. Returns `AuthResponse{authenticated, user_id, user, tokenTtl}`.
+**Sign-in** (`GET /v1/auth/oidc/login` → Microsoft → `GET /v1/auth/oidc/callback`, `router/auth.py`): `/oidc/login` is rate-limited per-IP and 302s to Entra after storing `{state, nonce, PKCE}` single-use in Redis; the callback takes + deletes that flow, redeems the code via MSAL (`core/auth/oidc.py`, sync → `asyncio.to_thread`), applies the group gate (fail closed) → `upsert_user_from_identity` resolves the row **by `oid` only** (a first sign-in whose username/email is taken → `IdentityConflictError` → `?sso=conflict`, never a merge) → `?sso=disabled` if inactive → `finalize_login` mints the access (8h) + refresh pair through the signing keyring (KMS on Dennis, both signed concurrently) sharing one login-session `sid`, registers the refresh `jti`, parks the outgoing session when `consume_park_intent` says this was "add another account", and sets access + refresh + CSRF cookies on a 302 to `/`. Refusals redirect to `/login?sso=<failed|denied|conflict|disabled>` with no cookies — plus `&add=1` when the refused sign-in was "add another account" (the intent is read before validation for exactly this), so the SPA stays on the add-account screen and the reason stays visible. There is no password route (`POST /v1/auth/login` was removed in plan 29).
 
 **Per-request auth dependencies** (`core/auth/session.py`):
+
 - `require_session` → verifies the access JWT (from `Authorization: Bearer` OR the `__Host-`/access cookie), checks the Redis denylist (fail-open), requires `act=true`; 401 on failure.
 - `require_current_user` → lightweight `AuthUser(id, is_active)` (no DB load).
 - `require_bound_user_id` → 403 if path `{user_id}` ≠ JWT `sub`.
@@ -226,7 +234,7 @@ Partial/`postgresql_where` and pgvector-opclass indexes are always hand-written 
 ## 8. Security (CSRF, rate limits, internal trust, TLS)
 
 - **CSRF** — double-submit cookie on every state-mutating endpoint (`require_csrf_protection`).
-- **Rate limiting, one engine (fastapi-redis-sdk), two layers** — policies in `core/security/rate_limit.py`, installed by `core/cache/integration.py`. (1) Global budget middleware: ~300/min per verified-JWT-user (`verified_identity`; IP fallback), Redis-counted (atomic Lua window; survives deploys, holds across replicas), header-silent, exempts `/health` + `/v1/internal/*`. (2) Strict `rate_limit` dependencies (emit `X-RateLimit-*` + `Retry-After` on 429) — policy: *paid APIs, outward artifacts, and unbounded-storage writes get their own per-user window*: auth `/login` + `/oidc/login` 4/60 per resolved IP, `/session/refresh` 10/60 per IP (Vault Transit mint), inference `/start` 10/60 per user, speech router 20/60 per user, voice `/realtime/{uid}/session` 15/60 (paid Realtime), share create 10/60 (public tokens), PDF export 10/60 (heavy render), custom-skill upload 10/60 (disk writes), message POST 30/60 (blob growth), suggestions 10/60 (LLM-backed). The run-stream **WebSocket** is outside the HTTP middleware — `allow_ws_connect` meters handshakes in-route (20/60 per verified user, close code `4429`). Everything **fails open** on a Redis outage (logged + counted as degraded), same stance as the logout denylist.
+- **Rate limiting, one engine (fastapi-redis-sdk), two layers** — policies in `core/security/rate_limit.py`, installed by `core/cache/integration.py`. (1) Global budget middleware: ~300/min per verified-JWT-user (`verified_identity`; IP fallback), Redis-counted (atomic Lua window; survives deploys, holds across replicas), header-silent, exempts `/health` + `/v1/internal/*`. (2) Strict `rate_limit` dependencies (emit `X-RateLimit-*` + `Retry-After` on 429) — policy: *paid APIs, outward artifacts, and unbounded-storage writes get their own per-user window*: auth `/login` + `/oidc/login` 4/60 per resolved IP, `/session/refresh` 10/60 per IP (OCI KMS mint), inference `/start` 10/60 per user, speech router 20/60 per user, voice `/realtime/{uid}/session` 15/60 (paid Realtime), share create 10/60 (public tokens), PDF export 10/60 (heavy render), custom-skill upload 10/60 (disk writes), message POST 30/60 (blob growth), suggestions 10/60 (LLM-backed). The run-stream **WebSocket** is outside the HTTP middleware — `allow_ws_connect` meters handshakes in-route (20/60 per verified user, close code `4429`). Everything **fails open** on a Redis outage (logged + counted as degraded), same stance as the logout denylist.
 - **Internal trust** (`core/security/internal_trust.py`) — `require_internal_caller` validates `X-Internal-Proxy-Secret` via `secrets.compare_digest` (403 else); `internal_service_headers(request_id[,session_id,user_id])` builds outbound headers for the agents hop (always the proxy secret; auto-derives raw `X-User-Id`/`X-Session-Id` from the request context so ids correlate with the DB); `resolve_client_ip` only trusts forwarded headers from a trusted proxy.
 - **mTLS** (`core/security/tls.py`) — `get_httpx_verify()`/`get_httpx_client_cert()` for the bridge→agents hop; same single-SSLContext approach as the agents service.
 - **Three unauthenticated endpoints**: `GET /health`, `GET /v1/shared-conversations/{token}` (public share), `GET /v1/attachments/public/{token}` (HMAC-token-gated Office blob for the Online Viewer, served with `CSP: default-src 'none'; sandbox;` + `nosniff` + `no-store`).
@@ -271,7 +279,9 @@ Schemas live in the `schema/` package — one module per concept, all re-exporte
 **Two thread ids:** `checkpoint_thread_id` is **branch-scoped** (the LangGraph durable-saver thread, shared across a branch's runs); `run_id` is **per-run** (AG-UI bindings + Redis key). Keep them distinct.
 
 ### The 5 start modes — `POST /v1/inference/runs/{user_id}/start` → `start_inference_flow` (`utils/inference_start.py`)
+
 Body `InferenceStartPayload{mode, agentId?, isPrivate, title?, sharedConversationToken?, conversationId?, parentMessageId?, targetMessageId?, messagePath?, message?}` (the `enabledTools` field was removed — the agent resolves its own tools). Deps: `validate_userId` + `require_csrf_protection` + rate limit. Dispatch by `mode`:
+
 - **`new`** — needs `agentId`+`message`; resolves a title (via agents), `init_conv` creates the conversation + first user message; parent = that message.
 - **`send`** — needs `conversationId`/`parentMessageId`/`agentId`/`message`; validates parent + `messagePath` lineage; `init_message` appends a user message under the parent.
 - **`edit`** — needs `targetMessageId` (a **user** msg); reuses the agent that originally answered; creates a **sibling** user message under `target.parent_message_id` (append-only).
@@ -281,6 +291,7 @@ Body `InferenceStartPayload{mode, agentId?, isPrivate, title?, sharedConversatio
 Then `create_inference_run_record` (`utils/inference_runs.py`): reaps stale queued runs (>2 min, no live task); enforces **per-user active cap** (`INFERENCE_MAX_ACTIVE_RUNS_PER_USER`=5 → 429) and **per-conversation** single-active guard (→ 409 via the partial unique index); allocates the branch thread (`send` on a committed branch reuses the ancestor's `checkpoint_thread_id`; new/edit/retry/shared_continue → fresh UUID); inserts the AI placeholder `messages` row (`sender="ai"`, `content=""`, `streaming_status="queued"`, `streaming_started_at`, `checkpoint_thread_id`); sets `conversation.active_assistant_message_id`. Then `inference_run_manager.launch(run.id)` fires the detached task; the endpoint returns `InferenceStartResponse{detail, summary, run, message}` (201).
 
 ### The run task — `InferenceRunManager._run` (`utils/inference_runs.py`)
+
 Process-global manager with per-run dicts (`_tasks`, `_cancel_events`, `_runtimes`, `_run_metas`, `_resume_events`, `_resume_payloads`); `launch` is idempotent and registers a done-callback that pops all per-run state.
 
 1. **Mark running**; load conversation (eager messages+attachments+blobs).
@@ -292,18 +303,22 @@ Process-global manager with per-run dicts (`_tasks`, `_cancel_events`, `_runtime
    - **`full_seed`** — no committed checkpoint → send the full reconstructed branch history (`prepare_inference_history`, strips a trailing empty AI placeholder), cold-seed a thread.
 5. Serialize history (`serialise_message_with_images_for_agent`): images inlined as base64 `data:` URLs; non-image attachments as text bullets (deep agents get `/conversation/input/<name>` references). Seed deep-agent input files (PUT to the agent's input dir).
 6. Build the **config block** sent to both `/stream` and `/resume`:
+
    ```json
    {"run_config": {"configurable": {"thread_id": "<branch thread>"}},
     "context": {"user_id","conversation_id","run_id","search_past_convs","use_memory","personalization?"},
     "fork_from": {"thread_id","checkpoint_id"}   // /stream only, delta_fork}
    ```
+
    No `tools` key is sent — the agent resolves its own tool set (declared in `agent.yaml` minus the per-(user, agent) disables in `tool_prefs.json`).
 7. **Leg loop:** race `_do_stream` against the cancel event. On completion with no pending interrupts → `_finish_run` completed. On pending interrupts → pause and race resume vs cancel (§12).
 
 `_do_stream` (`utils/inference_runs.py`) opens `httpx.AsyncClient(verify=get_httpx_verify(), cert=get_httpx_client_cert(), timeout=inference_timeout)`, POSTs to `{AGENTS_SERVICE_URL}/agents/{slug}/stream` with `internal_service_headers(...)` + `Accept: text/event-stream`, and iterates `response.aiter_bytes()`. `_parse_sse_bytes` accumulates and splits on `\n\n`, keeps `data:` JSON dicts with a `type`. Each event → `runtime.apply_event(event)`; a `RUN_ERROR` marks failed + terminal snapshot + returns `"failed"`; otherwise the seq-stamped applied event is batched and `_publish_delta`'d.
 
 ### `InferenceRunRuntime.apply_event` — the accumulator
+
 Assigns a monotonic `seq`, then:
+
 - **`TOOL_CALL_RESULT`** — content truncated to `INFERENCE_TOOL_RESULT_MAX_CHARS` (16000, flags `truncated:true`), also unwrapped inside `SUBAGENT_EVENT`.
 - **`CUSTOM`** — `SUBAGENT_EVENT` unwraps its inner event; nested `HITL_INTERRUPT` → `register_interrupt`, nested `TOKEN_USAGE` → `_accumulate_usage`; top-level `HITL_INTERRUPT`/`TOKEN_USAGE` likewise; **`CHECKPOINT_COMMITTED`** captures `produced_checkpoint_id` and **returns `None`** — deliberately not streamed and not persisted to `raw_events` (it carries internal thread/checkpoint UUIDs that must not leak into share snapshots/clones).
 - **THINKING_*** — tracks thinking duration + collects thought previews.
@@ -318,12 +333,13 @@ Assigns a monotonic `seq`, then:
 
 The browser transport is a **WebSocket**, not SSE. SSE is only the upstream (bridge → agents) hop. The full path:
 
-```
+```text
 agents /stream (SSE) → bridge _do_stream: _parse_sse_bytes → runtime.apply_event (accumulate/coalesce/truncate)
    → _publish_delta → RedisEventLog.append (XADD)  [inference:run:{run_id}:events]
    ◀ WS subscriber: stream_run_events → RedisEventLog.read_since (XREAD BLOCK)
    → router sends {snapshot|event|terminal} JSON frames → browser
 ```
+
 The detached task produces into Redis whether or not any browser is attached — that's what makes reconnect/resume/replay work.
 
 **`core/cache/client.py`** — one `create_redis_client()` shared by every raw-Redis consumer (event log, sid denylist, OIDC state, the skills CacheBackend). `decode_responses=True`. TLS is conditional on `rediss://` (verify the server cert against `INTERNAL_CA_CERT_PATH`, `ssl_cert_reqs="required"`, hostname check on — Redis is password-over-verified-TLS, **not** mTLS). Password from `REDIS_PASSWORD[_FILE]` (empty → no AUTH, local dev).
@@ -331,6 +347,7 @@ The detached task produces into Redis whether or not any browser is attached —
 **`core/cache/integration.py`** — fastapi-redis-sdk installation. The SDK's settings singleton is env-driven, so the installer *primes* the env from `core.settings` (credentialed `REDIS_URL` — the SDK's URL mode ignores its separate password field — plus `mx:sdk` key prefix, CA path for `rediss://`, header/fail-open flags), warms `get_settings()` once, then restores the password-less URL so nothing credentialed lingers in the process env or reaches subprocesses (alembic). **`core/cache/policies.py`** — cache key families + eviction groups + the shared imperative `CacheBackend` (used by `utils/skills_cache.py`; per-(user, agent) entries join group `skills:agents:{user_id}`, so pool-deletion cascade is one `delete_group`).
 
 **`utils/event_log.py` — `RedisEventLog`:**
+
 - Stream key `inference:run:{run_id}:events`.
 - `append(run_id, event)` → `XADD key {"payload": json} MAXLEN ~ 20000` (approximate trim); returns the entry_id (the `seq` cursor).
 - Two frame shapes: **`events` delta** `{"type":"events","run":{...,"pendingInterrupts":N},"events":[<seq-stamped>...]}` (O(chunk), never cumulative), and **terminal snapshot** `{"type":"terminal","run":<InferenceRunOut>,"message":<MessageOut>,"summary":<ConversationSummary>}`.
@@ -338,6 +355,7 @@ The detached task produces into Redis whether or not any browser is attached —
 - `mark_terminal(run_id)` → `EXPIRE key 3600` (replay window after the run ends; after expiry the durable record is the `messages` row).
 
 **WebSocket endpoint** `WS /v1/inference/runs/{user_id}/{run_id}/ws` (`router/inference.py`):
+
 1. `authenticate_websocket_user` (access cookie); failure → close `4401`. Codes `4401`/`4403`/`4404`/`4400` mirror HTTP.
 2. `get_active_run_for_user` (owner-scoped); missing → `4404`.
 3. `accept()`, then wait ≤`INFERENCE_WS_SUBSCRIBE_TIMEOUT_SECONDS` (10s) for the first frame `{"type":"subscribe","since":"<seq>"|null}`.
@@ -363,7 +381,8 @@ The detached task produces into Redis whether or not any browser is attached —
 **Orphan reaping** — `cleanup_orphaned_inference_runs()` (lifespan startup) bulk-flips every active-status message to `failed` and clears all `active_assistant_message_id`, because a process restart killed the in-memory tasks; a reconnecting client gets a `terminal(failed)` frame rather than a hung socket.
 
 **Run state machine:**
-```
+
+```text
 create → queued → (launch) running
    running ──cancel──► cancelled
    running ──RUN_ERROR/exception/seed-fail──► failed
@@ -435,16 +454,17 @@ Queue-based structured logging (mirrors the agents service): a non-blocking `Que
 ## 20. Deployment
 
 - **Dockerfile** — `python:3.12-slim`, installs deps, copies app, uvicorn on **8002**. Runs as `1000:1000`; TLS + secret-loading are prod-only compose overrides (the same `load-secrets-and-exec.sh` + `entrypoint-tls.sh` pattern as the other services; `REQUIRE_TLS`/`REQUIRE_MTLS` fail-closed). Local compose runs plain uvicorn (HTTP).
-- **Compose** — depends on `agents`, `chat_postgres`, `redis`; on the `backend`/`frontend`/`hashicorp_vault` networks; env includes `DATABASE_URL`, `VAULT_URL`, `SESSION_TOKEN_SECRET`, `TRUSTED_PROXY_SECRET`, `REDIS_URL`(+password), Vault AppRole ids.
+- **Compose** — depends on `agents`, `chat_postgres`, `redis`; on the `backend`/`frontend` networks; env includes `DATABASE_URL`, `SESSION_TOKEN_SECRET`, `TRUSTED_PROXY_SECRET`, `REDIS_URL`(+password), the `ENTRA_*` sign-in config, and the session-signing config (`SESSION_SIGNING_*`: `file` backend locally with a mounted dev key).
 - **Postgres image must be `pgvector/pgvector:pg16`** (migration 0010 needs the `vector` extension). Migrations run automatically on startup (`alembic upgrade head` in the lifespan).
 
 ---
 
 ## 21. Replication checklist & sharp edges
 
-**To stand up a replica:** provide `DATABASE_URL` (pgvector-capable Postgres), `TRUSTED_PROXY_SECRET` (won't boot without it), `SESSION_TOKEN_SECRET`, and — for login — `VAULT_URL` + AppRole `VAULT_ROLE_ID`/`VAULT_SECRET_ID` (+ a Transit `jwt-rs256` key + userpass auth), `AGENTS_SERVICE_URL`, and `REDIS_URL`. Keep the `pgvector/pgvector:pg16` image.
+**To stand up a replica:** provide `DATABASE_URL` (pgvector-capable Postgres), `TRUSTED_PROXY_SECRET` (won't boot without it), `SESSION_TOKEN_SECRET`, a session signer — `SESSION_SIGNING_*` + `OCI_*` for an HSM key in OCI KMS (or `SESSION_SIGNING_BACKEND=file` for local dev) plus its `<kid>.pem` public keys — the `ENTRA_*` app registration (mandatory; its redirect URIs must include the replica's callback URL), `AGENTS_SERVICE_URL`, and `REDIS_URL`. Keep the `pgvector/pgvector:pg16` image.
 
 **Sharp edges (don't get bitten):**
+
 - **The run *is* the assistant message** — `run_id == assistantMessageId == messages.id`, and that same value is the Redis stream key and the AG-UI `message_id` root. Branch `checkpoint_thread_id` stays distinct from `run_id`.
 - **Transport is WebSocket, not SSE** (SSE is only the upstream agents hop; the legacy browser SSE route is deprecated). The WS terminal frame is **DB-authoritative** to survive lost stream entries.
 - **`CHECKPOINT_COMMITTED` is captured but never persisted** to `raw_events` (thread/checkpoint UUIDs must not leak into share snapshots); only `checkpoint_id` lands on the message column.

@@ -6,7 +6,6 @@ import type {
   UserSkill,
 } from "@/shared/lib/types";
 import {
-  authenticate,
   getAccounts,
   getAgents,
   getConversations,
@@ -19,7 +18,6 @@ import {
   logoutSession,
   switchAccount,
 } from "@/shared/lib/api";
-import { toastError } from "@/shared/lib/toast";
 import { sortByUpdatedAtDesc } from "@/shared/lib/utils";
 import { saveSession, clearSession, loadSession } from "@/shared/lib/authStorage";
 import { setUnauthorizedSuppressed } from "@/shared/lib/consts";
@@ -37,8 +35,6 @@ export type AuthCtx = {
   setUserPreferences: (v: UserPreferences | null) => void;
   setConversations: (v: any) => void;
   setConversationsLoading: (v: boolean) => void;
-  setLoginUsername?: (v: string) => void;
-  setLoginPassword?: (v: string) => void;
   setShowUserProfile: (v: boolean) => void;
   clearChatAndStopThinking: () => void;
   persistUIState: () => void;
@@ -48,8 +44,6 @@ export type AuthCtx = {
     variant?: string;
     duration?: number;
   }) => void;
-  loginUsername?: string;
-  loginPassword?: string;
   onLoggedOut?: () => void;
   onClearUISnapshot?: (userId: string) => void;
   /** Drives the full-screen switch interstitial owned by the shell. */
@@ -78,14 +72,9 @@ export function createAuthHandlers(ctx: AuthCtx) {
     setMyRegistrySkills,
     setUserPreferences,
     setConversationsLoading,
-    setLoginUsername,
-    setLoginPassword,
     setShowUserProfile,
     clearChatAndStopThinking,
     persistUIState,
-    toast,
-    loginUsername,
-    loginPassword,
     onLoggedOut,
     onClearUISnapshot,
     onSwitchStateChange,
@@ -93,42 +82,6 @@ export function createAuthHandlers(ctx: AuthCtx) {
     resetWorkspace,
     activeUserId,
   } = ctx;
-
-  const handleLogin = async () => {
-    try {
-      // Authenticate first; all follow-up bootstrap requests depend on the user id from this response.
-      const response = await authenticate({
-        username: (loginUsername || "").trim(),
-        password: loginPassword || "",
-      });
-
-      if (response.authenticated && response.user && response.user.id) {
-        const user = response.user;
-        const ttlSeconds =
-          typeof response.tokenTtl === "number" && response.tokenTtl > 0 ? response.tokenTtl : 3600;
-        const ttlMs = ttlSeconds * 1000;
-        setTimeout(() => {
-          // Delay the heavy state swap slightly so the login transition can settle visually.
-          void bootstrapUser(user, ttlMs);
-        }, 600);
-
-        setLoginUsername?.("");
-        setLoginPassword?.("");
-      } else {
-        // The API can reject credentials without throwing, so surface that branch explicitly.
-        toast({
-          title: "Authentication failed",
-          description: "Please check your credentials and try again.",
-          variant: "destructive",
-          duration: 2000,
-        });
-      }
-    } catch (error) {
-      toastError(toast, "Login Failed", error, {
-        description: "Unable to connect to authentication service",
-      });
-    }
-  };
 
   /**
    * Load everything a signed-in user needs.
@@ -235,8 +188,6 @@ export function createAuthHandlers(ctx: AuthCtx) {
       handleLogoutLocal();
       setIsLoggedIn(false);
       setUserId(null);
-      setLoginUsername?.("");
-      setLoginPassword?.("");
       setAgents([]);
       setAvailableTools([]);
       setAvailableSkills([]);
@@ -385,7 +336,6 @@ export function createAuthHandlers(ctx: AuthCtx) {
   };
 
   return {
-    handleLogin,
     handleLogout,
     loadAccounts,
     handleSwitchAccount,
