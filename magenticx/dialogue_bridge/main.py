@@ -13,6 +13,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi_pagination import add_pagination
 from core.settings import settings
+from core.auth.signing import get_keyring
 from utils.inference_runs import cleanup_orphaned_inference_runs
 from utils.scheduled_tasks import scheduler
 from utils.embeddings import run_embedding_sweeper
@@ -103,6 +104,12 @@ def _run_alembic_upgrade() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("service_startup", "Dialogue bridge startup initiated")
+    # Build the session-signing keyring before anything else, so a missing or
+    # malformed key file stops the container before migrations run or traffic
+    # is served — Swarm then keeps the healthy old task. It reads local files
+    # only; an unreachable KMS does not block boot (signing fails closed per
+    # request instead, and verification never needs KMS at all).
+    get_keyring()
     if settings.database.run_migrations_on_startup:
         logger.info("database_migrations_started", "Running alembic upgrade head")
         # asyncio.to_thread keeps the FastAPI event loop responsive while the

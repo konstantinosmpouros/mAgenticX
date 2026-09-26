@@ -40,3 +40,6 @@ magenticx/tls/monitoring/
 
 # Implementation plans — local working notes, not part of the repo history
 plans/
+
+# Local-dev session signing key + exported public keys (plan 29). Never committed.
+magenticx/secrets/

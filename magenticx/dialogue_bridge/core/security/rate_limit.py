@@ -54,7 +54,7 @@ async def verified_identity(request: Request) -> str:
     """Verified session sub → ``user:<id>``; anything else → ``ip:<resolved>``.
 
     This is the *same* verification the auth dependency runs (RS256 against
-    the in-process-cached Vault key — no Vault round-trip on the hot path), so
+    a public key loaded at boot — no network call on the hot path), so
     the bucket key can't be forged onto another user. Any failure (no cookie,
     expired, tampered) falls back to the IP bucket; the request then proceeds
     to normal auth, which rejects it there if it is actually invalid.

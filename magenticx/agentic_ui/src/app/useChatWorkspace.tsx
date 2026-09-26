@@ -1090,8 +1090,6 @@ export function useChatWorkspace({
       clearChatAndStopThinking,
       persistUIState: requestPersist,
       toast: toastWrapper,
-      loginUsername: "",
-      loginPassword: "",
       onLoggedOut: () => navigate("/login", { replace: true }),
       onClearUISnapshot: (uid) => clearUISnapshot(uid).catch(() => {}),
       resetWorkspace: resetForAccountSwitch,

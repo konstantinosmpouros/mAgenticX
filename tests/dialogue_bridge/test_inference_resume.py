@@ -302,7 +302,7 @@ async def test_resume_route_isolates_other_users(client, session_factory, seeded
         foreign_user = UserTable(
             id=foreign_user_id,
             username="other-user",
-            vault_user_id="vault-other-user",
+            oidc_subject="oid-other-user",
             is_active=True,
         )
         session.add(foreign_user)

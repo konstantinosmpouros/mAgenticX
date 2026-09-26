@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
@@ -8,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db, upsert_user_from_identity, IdentityConflictError
 from schema import (
     AccountListResponse,
-    AuthRequest,
     AuthResponse,
     SwitchAccountRequest,
 )
@@ -47,8 +47,6 @@ from utils.auth import (
     oidc_redirect_uri,
     require_multi_account,
 )
-from core.auth.providers import get_provider
-from core.auth.vault import VaultAuthError
 from core.auth.oidc import (
     begin_login,
     complete_login,
@@ -60,104 +58,6 @@ from core.auth.oidc import (
 
 router = APIRouter()
 logger = get_logger(__name__)
-
-
-@router.post(
-    "/login",
-    response_model=AuthResponse,
-    status_code=status.HTTP_200_OK,
-    dependencies=[Depends(auth_rate_limit)],  # per-IP brute-force guard
-)
-async def authenticate(
-    creds: AuthRequest,
-    request: Request,
-    response: Response,
-    park: bool = False,
-    db: AsyncSession = Depends(get_db),
-) -> AuthResponse:
-    """Authenticate against Vault and issue stateless, Vault-signed session JWTs.
-
-    ``?park=true`` is the "add another account" path: the session that is already
-    active is parked instead of replaced, so the browser ends up signed in to
-    both. It is honoured only when multi-account is enabled and the cap allows it.
-    """
-    if park:
-        await guard_add_account(request)
-    try:
-        identity = await get_provider("vault").authenticate(
-            {"username": creds.username, "password": creds.password}
-        )
-    except VaultAuthError as exc:
-        # 404 too: Vault returns it for a login path that doesn't route (e.g. a
-        # username containing "@", which userpass forbids) — that's a bad
-        # username, not a service outage, so surface it as invalid credentials
-        # rather than a misleading "service unavailable".
-        if exc.status_code in (400, 401, 403, 404):
-            logger.warning(
-                "auth_login_failed",
-                "Vault authentication failed",
-                vault_status_code=exc.status_code,
-                failure_reason="invalid_credentials",
-            )
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid username or password.",
-            ) from exc
-        logger.error(
-            "auth_login_failed",
-            "Vault authentication failed",
-            exc_info=True,
-            vault_status_code=exc.status_code,
-            failure_reason="vault_unavailable",
-        )
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Authentication service is unavailable.",
-        ) from exc
-    except RuntimeError as exc:
-        logger.error(
-            "auth_service_not_configured",
-            "Authentication service is not configured",
-            failure_reason="auth_service_not_configured",
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Authentication service is temporarily unavailable. Please try again later.",
-        ) from exc
-    except Exception as exc:
-        logger.exception("auth_unexpected_error", "Unexpected error during authentication", failure_reason="unexpected_error")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Sign in failed. Please try again.",
-        ) from exc
-
-    login_time = datetime.now(timezone.utc).replace(tzinfo=None)
-
-    user = await upsert_user_from_identity(
-        db,
-        provider="vault",
-        subject=identity.subject,
-        username=identity.username,
-        email=identity.email,
-        metadata={"last_login_at": login_time},
-    )
-
-    if not user.is_active:
-        logger.warning("auth_user_inactive", "Authenticated user is inactive", user_id=user.id, failure_reason="inactive_user")
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User access has been disabled.",
-        )
-
-    user.last_login_at = login_time
-    await db.commit()
-    await db.refresh(user)
-
-    # _finalize_login records the refresh jti as the session's current one, so a
-    # later replay of an already-rotated (e.g. stolen) refresh token is detected.
-    issued = await finalize_login(request, response, user, park_previous=park)
-    logger.info("auth_login_succeeded", "User authenticated successfully", added_account=park)
-    return AuthResponse(**build_auth_response(user, issued.access_ttl))
 
 
 @router.get("/session", response_model=AuthResponse, status_code=status.HTTP_200_OK)
@@ -178,7 +78,7 @@ async def session_me(
     "/session/refresh",
     response_model=AuthResponse,
     status_code=status.HTTP_200_OK,
-    # Token mint hits Vault Transit — per-IP ceiling on the pre-auth path.
+    # Token mint calls OCI KMS — per-IP ceiling on the pre-auth path.
     dependencies=[Depends(refresh_rate_limit)],
 )
 async def refresh_session(
@@ -590,8 +490,15 @@ async def logout_all_accounts(
 # ---------------------------------------------------------------------------
 @router.get("/config", status_code=status.HTTP_200_OK)
 async def auth_config() -> dict:
-    """Public: which login methods the SPA should offer. No secrets — a single
-    boolean so the login page knows whether to render the Microsoft button."""
+    """Public: which login methods the SPA should offer. No secrets.
+
+    Microsoft is now the only method and settings refuse to boot without it, so
+    this is always ``true`` and the current SPA no longer asks. It stays for one
+    reason: a browser still running the previous SPA — a tab left open across the
+    deploy, or the window where the bridge has rolled and the UI has not — reads
+    it to decide whether to show the Microsoft button. Removing it would hide the
+    only way in from exactly those users.
+    """
     return {"oidcEnabled": settings.entra.enabled}
 
 
@@ -627,19 +534,30 @@ async def oidc_callback(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ) -> RedirectResponse:
-    """Entra redirect target: validate the id_token, link/resolve the user, mint
-    the same session cookies as password login, and land the browser in the SPA.
+    """Entra redirect target: validate the id_token, resolve the user by oid, mint
+    the session cookies, and land the browser in the SPA. The only sign-in path.
 
     On any failure we redirect back to the login screen with an ``sso`` reason
     query rather than leaking an error page — no session cookies are set."""
     if not settings.entra.enabled:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SSO is not enabled.")
 
+    # Read "add another account" first, not just on success. A refusal during
+    # an add-account sign-in must land back on the add-account screen: without
+    # ?add=1 the login page sees the first account's still-valid session,
+    # restores it and reloads into the app — taking the error message with it,
+    # so the user sees nothing happen and never learns why. Single use: the
+    # intent is consumed here either way, and the flow's own state is validated
+    # (and consumed) by complete_login below.
+    park_previous = await consume_park_intent(request.query_params.get("state"))
+
     def _deny(reason: str) -> RedirectResponse:
-        return RedirectResponse(
-            f"{settings.entra.login_error_redirect}?sso={reason}",
-            status_code=status.HTTP_302_FOUND,
-        )
+        query = {"sso": reason}
+        if park_previous:
+            query["add"] = "1"
+        base = settings.entra.login_error_redirect
+        separator = "&" if "?" in base else "?"
+        return RedirectResponse(f"{base}{separator}{urlencode(query)}", status_code=status.HTTP_302_FOUND)
 
     try:
         identity = await complete_login(dict(request.query_params))
@@ -657,7 +575,6 @@ async def oidc_callback(
     try:
         user = await upsert_user_from_identity(
             db,
-            provider="entra",
             subject=identity.subject,
             username=identity.username,
             email=identity.email,
@@ -668,7 +585,10 @@ async def oidc_callback(
             },
         )
     except IdentityConflictError:
-        logger.warning("oidc_identity_conflict", "Could not link Microsoft identity to an existing account", failure_reason="oidc_identity_conflict")
+        # A first-time sign-in whose username or email already belongs to another
+        # account. Refused rather than merged: resolving by oid only is what stops
+        # a matching email from ever handing over someone else's account.
+        logger.warning("oidc_identity_conflict", "A new Microsoft identity collides with an existing account", failure_reason="oidc_identity_conflict")
         return _deny("conflict")
 
     if not user.is_active:
@@ -679,11 +599,10 @@ async def oidc_callback(
     await db.commit()
     await db.refresh(user)
 
-    # Honour "add another account" when that is how this flow started, so the
-    # session already in the browser is parked instead of replaced. Goes through
-    # the same finaliser as password login, so cookies, the device cookie and the
-    # refresh-guard registration cannot drift between the two paths.
-    park_previous = await consume_park_intent(request.query_params.get("state"))
+    # Honour "add another account" (read above) so the session already in the
+    # browser is parked instead of replaced. The shared finaliser owns the
+    # cookies, the device cookie and the refresh-guard registration, so the
+    # account switcher sees the same thing either way.
     redirect = RedirectResponse(settings.entra.post_login_redirect, status_code=status.HTTP_302_FOUND)
     await finalize_login(request, redirect, user, park_previous=park_previous)
     logger.info(

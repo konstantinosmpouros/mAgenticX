@@ -16,7 +16,6 @@ This document describes the full mAgenticX platform: every service, its port, it
 | chat_postgres | `chat_postgres` | **5432** | PostgreSQL 16 + **pgvector** (`pgvector/pgvector:pg16`) — relational store (`chat_db` + `agent_runtime` DBs); pgvector backs per-message conversation embeddings |
 | redis | `redis` | **6379** | Redis 7.4 — per-run Redis Streams as the inference event log |
 | mcp_gateway | `mcp_gateway` | **8005** | Docker MCP Gateway — optional, via `docker-compose-mcp.yaml` |
-| vault | `vault` | **8004** | HashiCorp Vault 1.21 — optional, via `docker-compose-hashicorp.yaml` |
 
 The frontend Vite dev server (no nginx) uses **port 8080**.
 
@@ -42,14 +41,9 @@ flowchart TB
         mcp["mcp_gateway\n:8005 (optional)"]
     end
 
-    subgraph vault_net["hashicorp_vault network"]
-        vault["vault\n:8004 (optional)"]
-    end
-
     Browser -->|"HTTPS + WebSocket"| nginx
     nginx -->|"rewrite /api/ → /v1/"| bridge
     bridge -->|"SSE stream"| agents
-    bridge -->|"REST"| vault
     bridge -->|"chat_db"| pg
     bridge -->|"XADD / XREAD inference event log"| redis
 
@@ -120,7 +114,7 @@ Key nginx settings:
 
 ### Responsibilities
 
-- Authenticates users (Vault userpass → JWT access + refresh cookies)
+- Authenticates users (Microsoft Entra OIDC → KMS-signed JWT access + refresh cookies)
 - Manages conversations, messages, and attachments in PostgreSQL
 - Persists the per-run AG-UI event log in Redis Streams (`inference:run:{id}:events`) and serves WebSocket observers with cursor-based replay
 - Consumes the agents-service SSE stream from inside the detached `InferenceRunManager` task, accumulates the runtime state in memory, and appends each parsed event to Redis
@@ -153,11 +147,11 @@ All backend-to-backend HTTP calls require the `X-Internal-Proxy-Secret` header (
 
 There is one **reverse hop**: the agents service calls the bridge's internal `POST /v1/internal/memory/search` for the `search_past_conversations` agent tool (the bridge owns the pgvector index — see [conversation-embeddings](../flows/conversation-embeddings.md)). Because nginx injects the proxy secret on *browser* traffic too, that endpoint is guarded by `require_internal_caller` **and** explicitly denied at the nginx edge (`location ^~ /api/v1/internal/ → 404`), so it is reachable only service-to-service on the `backend` network — never from a browser. The agents service authenticates with its existing internal client cert + proxy secret (no new credentials).
 
-In production this application-layer credential is backed by **transport-layer mutual TLS** on the three HTTP service hops — `agentic_ui → dialogue_bridge`, `dialogue_bridge → agents`, and `agents → rag_service`. Each server requires a client certificate signed by the internal CA (`entrypoint-tls.sh` adds `--ssl-cert-reqs 2 --ssl-ca-certs ca.crt` to uvicorn when `REQUIRE_MTLS` is true, default `true`); each caller presents its own service cert (nginx `proxy_ssl_certificate`, Python services via httpx `cert=get_httpx_client_cert()`). So a peer is authenticated cryptographically by its cert, not only by the shared header. `chat_postgres`, `redis`, and `vault` stay password/token-over-verified-TLS (not mTLS); `agents → mcp_gateway` remains plaintext. `REQUIRE_MTLS=false` is the escape hatch and the zero-downtime rollout lever (deploy cert-presenting clients first, then flip enforcement on).
+In production this application-layer credential is backed by **transport-layer mutual TLS** on the three HTTP service hops — `agentic_ui → dialogue_bridge`, `dialogue_bridge → agents`, and `agents → rag_service`. Each server requires a client certificate signed by the internal CA (`entrypoint-tls.sh` adds `--ssl-cert-reqs 2 --ssl-ca-certs ca.crt` to uvicorn when `REQUIRE_MTLS` is true, default `true`); each caller presents its own service cert (nginx `proxy_ssl_certificate`, Python services via httpx `cert=get_httpx_client_cert()`). So a peer is authenticated cryptographically by its cert, not only by the shared header. `chat_postgres` and `redis` stay password-over-verified-TLS (not mTLS); `agents → mcp_gateway` remains plaintext. `REQUIRE_MTLS=false` is the escape hatch and the zero-downtime rollout lever (deploy cert-presenting clients first, then flip enforcement on).
 
-### Vault Integration
+### Sign-in and session signing
 
-`dialogue_bridge` calls `vault:8004` to authenticate user credentials (userpass backend) **and** to sign the session JWTs via Vault's Transit engine — the RS256 private key never leaves Vault. The bridge authenticates to Vault as a machine via AppRole. Sessions are stateless: the bridge issues HttpOnly access + refresh cookies and verifies them per-request by signature against a cached public key (no DB or Vault call on the hot path). Vault is required for login/refresh, but not for verifying an already-issued token.
+**Microsoft Entra ID is the only way to sign in**: `dialogue_bridge` is an OIDC relying party (auth-code + PKCE) and resolves each user by their Entra `oid`. **Session JWTs are signed by an HSM-protected RSA key in OCI KMS**: the private key never leaves the HSM and the bridge sends only a SHA-256 digest. Sessions are stateless: the bridge issues HttpOnly access + refresh cookies and verifies them per-request by signature against public keys loaded from files at boot (no DB or KMS call on the hot path). Microsoft is needed to start a session and KMS to mint a token; neither is needed to verify one. HashiCorp Vault — which used to do both jobs and sealed on every reboot — was removed in plan 29.
 
 ---
 
@@ -256,10 +250,6 @@ Tool catalog: `magenticx/mcp_gateway/mcp_catalog.yaml`
 Tool configuration: `magenticx/mcp_gateway/mcp_config.yaml`
 Secrets (API keys for MCP tools): `magenticx/mcp_gateway/mcp_secret.env`
 
-### vault (Optional)
-
-HashiCorp Vault 1.21 issues short-lived JWT access tokens and manages the userpass authentication backend. It is activated by including `docker-compose-hashicorp.yaml`. `dialogue_bridge` calls `vault:8004` for login and token issuance; Vault is otherwise not visible to any other service.
-
 ---
 
 ## Phase 6 — Inter-Service Data Flows
@@ -335,7 +325,6 @@ The platform uses a layered compose setup. Services are started by combining com
 ```text
 magenticx/docker-compose.yaml              ← core: ui, bridge, agents, rag, chroma, postgres
 magenticx/docker-compose-mcp.yaml          ← optional: mcp_gateway
-magenticx/docker-compose-hashicorp.yaml    ← optional: vault
 ```
 
 Example for full stack:
@@ -344,7 +333,6 @@ Example for full stack:
 docker compose \
   -f magenticx/docker-compose.yaml \
   -f magenticx/docker-compose-mcp.yaml \
-  -f magenticx/docker-compose-hashicorp.yaml \
   up -d
 ```
 
@@ -354,7 +342,6 @@ docker compose \
 | --- | --- |
 | `backend` | dialogue_bridge, agents, rag_service, vectordb, chat_postgres, redis, mcp_gateway |
 | `frontend` | agentic_ui, dialogue_bridge |
-| `hashicorp_vault` | dialogue_bridge, vault |
 | `mcp_net` | agents, mcp_gateway |
 
 Only `agentic_ui` (port 8050) is bound to the host. All other services are internal.
@@ -379,10 +366,11 @@ Only `agentic_ui` (port 8050) is bound to the host. All other services are inter
 | `REQUIRE_TLS` | agents, rag_service, dialogue_bridge, chat_postgres, agentic_ui | TLS-entrypoint gate; defaults to `true` (fail closed — refuse to start in plaintext if certs are missing/unreadable). Set `false` only as an emergency escape hatch. Not used in local dev (the TLS entrypoints are a prod-only override). |
 | `REQUIRE_MTLS` | agents, rag_service, dialogue_bridge | Mutual-TLS gate on the HTTP service hops; defaults to `true` (uvicorn requires a CA-signed client cert). Set `false` as the emergency escape hatch / zero-downtime rollout lever. Prod-only (TLS entrypoints don't run in local dev). |
 | `INTERNAL_CLIENT_CERT_PATH` / `INTERNAL_CLIENT_KEY_PATH` | agents, dialogue_bridge | Client cert + key the service presents on outbound internal calls (mTLS). Unset in local dev → no client cert. |
-| `VAULT_URL` | dialogue_bridge | HashiCorp Vault base URL (required for login + JWT signing) |
-| `VAULT_ROLE_ID_FILE` / `VAULT_ROLE_ID` | dialogue_bridge | AppRole role id for the bridge's Vault identity (file-mounted Swarm secret in prod) |
-| `VAULT_SECRET_ID_FILE` / `VAULT_SECRET_ID` | dialogue_bridge | AppRole secret id; pairs with the role id |
-| `VAULT_TRANSIT_JWT_KEY` | dialogue_bridge | Transit key that signs session JWTs (default `jwt-rs256`) |
+| `ENTRA_TENANT_ID` / `ENTRA_CLIENT_ID` / `ENTRA_CLIENT_SECRET(_FILE)` | dialogue_bridge | Microsoft Entra app registration — **mandatory**, the only way to sign in |
+| `SESSION_SIGNING_BACKEND` | dialogue_bridge | `kms` (prod) or `file` (local dev only) — who signs session JWTs |
+| `SESSION_SIGNING_KEYS` / `SESSION_SIGNING_ACTIVE_KID` / `SESSION_SIGNING_LEGACY_KIDS` | dialogue_bridge | KMS key versions by `kid`, the active one, and verify-only kids |
+| `OCI_KMS_CRYPTO_ENDPOINT` / `OCI_KMS_KEY_ID` / `OCI_*` | dialogue_bridge | The KMS signing key and the dedicated principal allowed to use it |
+| `OCI_API_PRIVATE_KEY_FILE` | dialogue_bridge | That principal's API key (Swarm secret `magenticx_oci_signer_key`) |
 | `REDIS_URL` | dialogue_bridge | Redis connection URL (default `redis://redis:6379/0`) |
 | `REDIS_PASSWORD_FILE` / `REDIS_PASSWORD` | dialogue_bridge, redis | Redis AUTH password (file-mounted secret in prod, env var in local dev) |
 | `REDIS_STREAM_MAXLEN` | dialogue_bridge | Approximate cap on the per-run event stream (default 5000) |
@@ -424,7 +412,7 @@ Only `agentic_ui` (port 8050) is bound to the host. All other services are inter
 
 - **nginx is the only public port.** Every browser request enters through port 8050. Nothing else should be exposed to the host in production. Exposing `dialogue_bridge:8002` or `agents:8003` directly bypasses the proxy-secret injection and breaks the trust model.
 
-- **`TRUSTED_PROXY_SECRET` must match across all services.** The bridge and agents both validate this header. A mismatch causes 403 errors on all agent inference calls. Vault does not use this header — it has its own authentication.
+- **`TRUSTED_PROXY_SECRET` must match across all services.** The bridge and agents both validate this header. A mismatch causes 403 errors on all agent inference calls.
 
 - **Agent inference is always a detached background task.** `dialogue_bridge` spawns an asyncio task to stream from `agents`. If the browser disconnects, the task runs to completion (the inference run is still persisted). Cancellation requires an explicit API call to the cancellation endpoint, which sends a cancellation signal to the running graph.
 
@@ -436,7 +424,7 @@ Only `agentic_ui` (port 8050) is bound to the host. All other services are inter
 
 - **WebRTC audio never touches the bridge.** After the SDP exchange, all audio flows directly between the browser and OpenAI's Realtime API. The bridge is not in the media path and has no visibility into the audio stream.
 
-- **Vault is required for auth and is the JWT signer.** The bridge verifies credentials (userpass) and signs every session JWT via Vault Transit (private key never leaves Vault). Per-request verification is signature-only against a cached public key, so Vault being down does not affect already-issued tokens — only new logins/refreshes fail. There is no local-signing fallback.
+- **Entra is the only sign-in; OCI KMS is the JWT signer.** Every session JWT is signed inside an OCI KMS HSM (private key never leaves it, only a digest is sent). Per-request verification is signature-only against public keys loaded at boot, so a KMS outage does not affect already-issued tokens — only new logins/refreshes fail, closed. There is no fallback signer and no fallback login. Nothing in the stack needs unsealing after a reboot.
 
 - **Postgres is the only stateful service in the core compose.** ChromaDB state lives in a Docker volume (`./vectorstores/chroma_db_openai/`). PostgreSQL state lives in a named volume (`chat_postgres_data`). Both must be backed up for full disaster recovery.
 
@@ -452,7 +440,6 @@ Only `agentic_ui` (port 8050) is bound to the host. All other services are inter
 | --- | --- | --- |
 | Core compose (services, networks, volumes) | [magenticx/docker-compose.yaml](../../magenticx/docker-compose.yaml) | port bindings, environment variable names, volume mounts |
 | MCP gateway compose | [magenticx/docker-compose-mcp.yaml](../../magenticx/docker-compose-mcp.yaml) | mcp_gateway service definition, mcp_net network |
-| Vault compose | [magenticx/docker-compose-hashicorp.yaml](../../magenticx/docker-compose-hashicorp.yaml) | vault service definition, hashicorp_vault network |
 | nginx config template | [magenticx/agentic_ui/nginx.conf.template](../../magenticx/agentic_ui/nginx.conf.template) | proxy_pass rules, header injection, buffer settings |
 | Vite dev config | [magenticx/agentic_ui/vite.config.ts](../../magenticx/agentic_ui/vite.config.ts) | dev server port, API proxy target |
 | dialogue_bridge FastAPI app | [magenticx/dialogue_bridge/main.py](../../magenticx/dialogue_bridge/main.py) | router registrations, middleware, startup events |

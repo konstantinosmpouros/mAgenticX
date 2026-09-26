@@ -12,6 +12,9 @@ pydantic==2.12.5
 pydantic-settings==2.7.1
 python-jose[cryptography]==3.5.0
 msal==1.31.1  # Microsoft Entra ID OIDC relying-party (auth-code + PKCE) sign-in
+oci==2.184.2  # OCI KMS: HSM-held session-JWT signing key (core/auth/signing.py). 2.185+ needs a newer msal.
+cryptography==45.0.7  # imported directly by core/auth/signing.py; the version oci + msal + jose resolve to
+requests==2.34.2  # imported directly by core/auth/signing.py (KMS transport errors); already pulled in by oci + msal
 python-multipart==0.0.26
 fonttools==4.60.1
 redis==8.1.0

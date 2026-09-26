@@ -1,3 +1,4 @@
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { Check, Loader2, Plus, UserRound } from "lucide-react";
 
 import { cn } from "@/shared/lib/utils";
@@ -135,5 +136,80 @@ export default function AccountMenu({
         <span className="text-sm font-medium text-foreground">Add another account</span>
       </button>
     </div>
+  );
+}
+
+
+/**
+ * The same switcher, rendered as rows of the parent menu instead of a flyout.
+ *
+ * For narrow screens. A side submenu needs room beside its parent, and on a
+ * phone there is none on either side — Radix can only slide a side submenu up or
+ * down, never inward, so it hangs off the edge of the screen. Inline rows sit in
+ * the menu's own column and always fit.
+ *
+ * Only the *other* accounts are listed: the profile header directly above
+ * already shows the active one, so repeating it here would just be noise. Rows
+ * are real `DropdownMenu.Item`s, so touch, arrow keys and close-on-select all
+ * behave like the rest of the menu.
+ */
+const itemBase =
+  "flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors data-[highlighted]:bg-[hsl(var(--hover-surface))] focus-visible:outline-none data-[highlighted]:outline-none data-[disabled]:cursor-not-allowed data-[disabled]:opacity-60";
+
+export function AccountMenuItems({
+  accounts,
+  canAddAccount,
+  maxAccounts,
+  busyAccountId = null,
+  onSelectAccount,
+  onAddAccount,
+}: AccountMenuProps) {
+  const busy = Boolean(busyAccountId);
+  const others = accounts.filter((account) => !account.current);
+
+  return (
+    <DropdownMenu.Group aria-label="Accounts">
+      {others.map((account) => (
+        <DropdownMenu.Item
+          key={account.id}
+          disabled={busy}
+          onSelect={() => onSelectAccount(account)}
+          className={itemBase}
+        >
+          <Avatar account={account} />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-medium text-foreground">
+              {account.displayName || account.username}
+            </span>
+            <span className="block truncate text-xs text-muted-foreground">
+              {account.expired
+                ? "Signed out — select to sign in again"
+                : account.email || account.username}
+            </span>
+          </span>
+          {busyAccountId === account.id ? (
+            <Loader2 size={15} className="shrink-0 animate-spin text-muted-foreground" aria-hidden />
+          ) : null}
+        </DropdownMenu.Item>
+      ))}
+      <DropdownMenu.Item
+        disabled={busy}
+        onSelect={onAddAccount}
+        title={
+          canAddAccount
+            ? undefined
+            : `You can be signed in to at most ${maxAccounts} accounts — you'll be asked to sign out of one.`
+        }
+        className={itemBase}
+      >
+        <span
+          aria-hidden
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 text-muted-foreground"
+        >
+          <Plus size={15} />
+        </span>
+        <span className="text-sm font-medium text-foreground">Add another account</span>
+      </DropdownMenu.Item>
+    </DropdownMenu.Group>
   );
 }

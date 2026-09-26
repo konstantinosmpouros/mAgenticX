@@ -12,8 +12,8 @@ import pytest
 import pytest_asyncio
 from fastapi_pagination import add_pagination
 from httpx import ASGITransport, AsyncClient
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import padding, rsa
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -31,6 +31,25 @@ if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
 
 os.environ.setdefault("APP_ENV", "test")
+# Session tokens are signed by the real code path's file backend with a real RSA
+# key — no fake signer — so mint + verify run exactly as they do in the bridge.
+# Generated fresh per test session into the temp dir; `core.settings` reads it
+# at import, so this must run before anything imports the app.
+_SIGNING_KEY_PATH = Path(tempfile.mkdtemp(prefix="bridge-signing-")) / "session_signing_key.pem"
+_SIGNING_KEY_PATH.write_bytes(
+    rsa.generate_private_key(public_exponent=65537, key_size=2048).private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    )
+)
+os.environ.setdefault("SESSION_SIGNING_BACKEND", "file")
+os.environ.setdefault("SESSION_SIGNING_PRIVATE_KEY_FILE", str(_SIGNING_KEY_PATH))
+# Microsoft Entra is the only way in, and settings refuse to boot without it.
+# Never contacted: the `sso_login` fixture stubs Microsoft's half of the flow.
+os.environ.setdefault("ENTRA_TENANT_ID", "00000000-0000-0000-0000-00000000e0e0")
+os.environ.setdefault("ENTRA_CLIENT_ID", "00000000-0000-0000-0000-00000000c1c1")
+os.environ.setdefault("ENTRA_CLIENT_SECRET", "test-entra-client-secret")
 # A placeholder so `core.settings` can load at import time — never connected to.
 # Every test gets its own engine from the `db_engine` fixture below. Kept in the
 # temp dir because sqlalchemy/aiosqlite touches the file into existence, and the
@@ -75,7 +94,8 @@ _sdk_pool_state = _PoolState()
 _sdk_pool_state.async_pool = _sdk_fake_redis.connection_pool
 _sdk_pool_state._async_client = _sdk_fake_redis
 bridge_app.state._redis = _sdk_pool_state
-import core.auth.tokens as _jwt_tokens
+import router.auth as auth_router_module
+from core.auth.providers import AuthIdentity
 from core.auth.session import require_csrf_protection
 from core.database import (
     AgentTable,
@@ -91,35 +111,6 @@ from utils.validators import validate_userId
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
-
-
-class _FakeVaultTransit:
-    """Signs like Vault Transit under the bridge's exact params, so JWT mint +
-    jose verify work end to end without a live Vault."""
-
-    def __init__(self) -> None:
-        self._key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-        self._pem = (
-            self._key.public_key()
-            .public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
-            .decode()
-        )
-
-    async def current_sign_version(self) -> int:
-        return 1
-
-    async def public_key_pem(self, version: int) -> str:
-        return self._pem
-
-    async def sign(self, signing_input: str, version: int) -> str:
-        sig = self._key.sign(signing_input.encode("ascii"), padding.PKCS1v15(), hashes.SHA256())
-        return base64.urlsafe_b64encode(sig).rstrip(b"=").decode("ascii")
-
-
-@pytest.fixture(autouse=True)
-def _mock_vault_transit(monkeypatch):
-    """Replace the real Vault Transit client so auth/JWT tests never need a live Vault."""
-    monkeypatch.setattr(_jwt_tokens, "vault_service", _FakeVaultTransit())
 
 
 @pytest_asyncio.fixture
@@ -150,7 +141,7 @@ async def seeded_user(session_factory):
     async with session_factory() as session:
         user = UserTable(
             username="dialogue-test-user",
-            vault_user_id="vault-dialogue-test-user",
+            oidc_subject="oid-dialogue-test-user",
             is_active=True,
         )
         session.add(user)
@@ -204,6 +195,49 @@ async def client(app):
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as async_client:
         yield async_client
+
+
+@pytest.fixture
+def sso_login(client, monkeypatch):
+    """Sign the test client in the only way production can: the Entra callback.
+
+    Only Microsoft's half is stubbed — ``complete_login`` returns a fixed
+    identity instead of redeeming a code — so everything the bridge owns runs for
+    real: resolve-by-oid, the active/conflict checks, ``finalize_login``, the
+    session cookies, the device cookie and the refresh guard. ``park=True`` is
+    "add another account", which production carries across the redirect via
+    ``consume_park_intent``.
+
+    Returns the callback response: a 302 to ``/`` on success, or to
+    ``/login?sso=<reason>`` when the sign-in is refused.
+    """
+
+    async def login(
+        username: str,
+        *,
+        subject: str | None = None,
+        email: str | None = None,
+        park: bool = False,
+    ):
+        identity = AuthIdentity(
+            subject=subject or f"oid::{username}",
+            username=username,
+            provider="entra",
+            email=email,
+            claims={"name": username.title()},
+        )
+
+        async def complete_login(_auth_response):
+            return identity
+
+        async def consume_park_intent(_state):
+            return park
+
+        monkeypatch.setattr(auth_router_module, "complete_login", complete_login)
+        monkeypatch.setattr(auth_router_module, "consume_park_intent", consume_park_intent)
+        return await client.get("/v1/auth/oidc/callback", params={"state": "test-state", "code": "test-code"})
+
+    return login
 
 
 @pytest.fixture

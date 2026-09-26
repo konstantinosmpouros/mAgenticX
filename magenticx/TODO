@@ -3,6 +3,7 @@
 ## General
 
 - Add as services in denis: n8n, penpot, appflowy, and other open source tools that can be used by the agents and the users.
+- Make **Microsoft (Entra ID) SSO the only way in**, and **remove HashiCorp Vault** — see [plan 29](../plans/29-sso-only-login.md). **Done in code, not deployed:** password login, the provider registry and every line of Vault code are gone; users are resolved by Entra `oid` only; session JWTs are signed by an HSM key in OCI KMS; tests green and verified on the local stack. The Dennis accounts are already linked (checked read-only: 1 active, linked). **OCI side done (2026-09-26):** reserved IP `DenisPublicIP`, vault `MpourosVault`, HSM key `DenisSessionSigningKey`, signer `DenisTokenSigner`, network source `DenisEgress`, policy `DenisTokenSignerPolicy`; an off-Dennis Sign call is refused (404); the compose values are filled. **Remains (plan 29 §0.2):** put `100.pem` + the Transit `1.pem` (exported while Vault is unsealed) in `/opt/magenticx/dialogue_bridge/signing_keys/`; create `magenticx_oci_signer_key`; build + deploy bridge and UI; then delete the Vault stack, its two secrets and the unseal step. Day 20: drop the legacy `kid 1` key.
 - Make it a platform with org level and user-level permissions, so that users can have their own workspaces and agents, and orgs can have their own workspaces and agents along with admins.
 
 ## New Features
@@ -29,4 +30,3 @@
   - **Stub sections** (full ComingSoon pages): Notifications (lands with the Notification system + PWA item above), Plugins (OAuth app connectors — distinct from MCP Servers), Storage (attachment/artifact quotas + cleanup), Safety (content-safety / moderation preferences).
   - **Stub rows** inside real tabs: General → UI language; Data controls → improve-the-model opt-in, Export data, Delete account; Security → Multi-factor authentication.
   - **Edit profile dialog** is read-only (fields come from the IdP) — avatar upload + display-name editing need a bridge profile-update endpoint.
-- Refactor the conversation rail (`ConversationRail` — the right-edge scroll-rail / thread minimap) to work like the Codex app's: hovering a tick should preview that message's text in a card, instead of only highlighting a bare tick.

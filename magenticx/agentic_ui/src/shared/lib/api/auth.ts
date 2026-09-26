@@ -1,39 +1,14 @@
 /**
  * Authentication and multi-account session API.
  *
- * Covers login (password + Entra), session read/refresh/logout, and the
- * per-browser account switcher.
+ * Covers Microsoft (Entra) sign-in — the only way in — session
+ * read/refresh/logout, and the per-browser account switcher.
  */
-import type { AccountList, AuthRequest, AuthResponse } from "../types";
+import type { AccountList, AuthResponse } from "../types";
 import { requestJson, requestVoid } from "../http";
 import { AccountListSchema } from "../schemas";
 import { normalizeAuthResponse } from "../utils";
 import { AUTH_BASE_PATH } from "./paths";
-
-// Authenticate user credentials. A failed login is a credential error, not a
-// session expiry, so it must NOT emit the global unauthorized event; the
-// Retry-After header is captured so the form can show a rate-limit countdown.
-export async function authenticate(
-  credentials: AuthRequest,
-  // "Add another account": park the session that is already active instead of
-  // replacing it, so the browser ends up signed in to both.
-  options: { park?: boolean } = {},
-): Promise<AuthResponse> {
-  const query = options.park ? "?park=true" : "";
-  const data = await requestJson(`${AUTH_BASE_PATH}/login${query}`, {
-    method: "POST",
-    body: credentials,
-    emitOn401: false,
-    // A 401 here is bad credentials, not an expired session — never refresh-retry.
-    skipAuthRetry: true,
-    captureRetryAfter: true,
-    errorMessages: {
-      429: "You are signed in to the maximum number of accounts. Sign out of one first.",
-    },
-    fallbackMessage: "Failed to authenticate",
-  });
-  return normalizeAuthResponse(data);
-}
 
 // Get current session info (used for session restoration and auth checks). A 401
 // here is an expected "not signed in" answer, not an event-worthy expiry.
@@ -159,19 +134,6 @@ export async function logoutAllAccounts(): Promise<void> {
     ignoreStatuses: [401, 404],
     fallbackMessage: "Failed to sign out of all accounts",
   });
-}
-
-// Public config: whether Microsoft (Entra) SSO is available, so the login page
-// only shows the button when the backend is actually configured for it. A 401
-// is not meaningful here and never triggers a refresh.
-export async function getAuthConfig(): Promise<{ oidcEnabled: boolean }> {
-  const data = await requestJson(`${AUTH_BASE_PATH}/config`, {
-    emitOn401: false,
-    skipAuthRetry: true,
-    fallbackMessage: "Failed to fetch auth config",
-  });
-  const record = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
-  return { oidcEnabled: record.oidcEnabled === true };
 }
 
 // Enter the Entra auth-code flow. This is a full-page navigation, NOT a fetch:

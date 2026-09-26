@@ -3,9 +3,10 @@
 The bridge federates *identity* to Entra but keeps issuing its own session JWTs:
 this module runs the browser redirect flow (via Microsoft's MSAL library),
 validates the returned ``id_token``, enforces group membership, and hands back a
-normalized :class:`AuthIdentity` — the same contract the userpass provider
-returns — which the auth router feeds into ``upsert_user_from_identity`` +
-``mint_login_session``. Nothing here touches the session-token layer.
+normalized :class:`AuthIdentity`, which the auth router feeds into
+``upsert_user_from_identity`` + ``finalize_login``. This is the platform's only
+sign-in (plan 29 removed username/password). Nothing here touches the
+session-token layer.
 
 MSAL is synchronous (it uses ``requests``), so every call that can hit the
 network — app construction (authority discovery), the authorize-URL build, and

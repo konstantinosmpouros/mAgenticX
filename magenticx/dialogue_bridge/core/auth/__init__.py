@@ -1,8 +1,10 @@
-"""Authentication: session lifecycle, JWT issuance, identity providers, and the Vault backend.
+"""Authentication: session lifecycle, JWT issuance and signing, identity providers.
 
 Re-exports the public surface so callers can use ``from core.auth import ...``;
-submodules (``session``, ``tokens``, ``providers``, ``vault``) remain importable
-directly for the less common symbols.
+submodules (``session``, ``tokens``, ``signing``, ``providers``, ``oidc``)
+remain importable directly for the less common symbols. Microsoft Entra ID
+(``oidc``) is the only way to sign in; ``signing`` owns the session-token keys
+(OCI KMS in production). There is no Vault dependency left (plan 29).
 """
 from core.auth.session import (
     AuthContext,
@@ -13,10 +15,4 @@ from core.auth.session import (
     require_current_user,
 )
 from core.auth.tokens import IssuedTokens, TokenError, mint_tokens, verify
-from core.auth.providers import AuthIdentity, AuthProvider, get_provider, register_provider
-from core.auth.vault import (
-    VaultAuthenticator,
-    VaultAuthError,
-    VaultServiceError,
-    vault_service,
-)
+from core.auth.providers import AuthIdentity

@@ -12,7 +12,6 @@
  */
 
 export {
-  authenticate,
   revokeAllSessions,
   restoreSession,
   logoutSession,
@@ -20,7 +19,6 @@ export {
   switchAccount,
   logoutAccount,
   logoutAllAccounts,
-  getAuthConfig,
   beginEntraLogin,
 } from "./auth";
 

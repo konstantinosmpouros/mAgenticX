@@ -1,6 +1,6 @@
 # Configuration — Every Environment Variable, Per Service
 
-Each Python service is configured entirely through environment variables read by **Pydantic `BaseSettings`** classes in its `core/settings.py`; the infrastructure services (Postgres, Redis, Chroma, nginx, Vault, the monitoring stack) are configured by image env vars and command flags. This document is the exhaustive reference for *how much you can tune each service without touching code* — every var, its default, and what it does. For the inverse — the short list of *what each service cannot boot without* — see its companion, [service-startup.md](service-startup.md). Defaults shown are the **in-code defaults**; the production compose overrides only a handful (mostly URLs, TLS paths, `LOG_FORMAT=json`, and `*_FILE` secret pointers). Settings are **case-insensitive**, load from `magenticx/.env` in local dev, and ignore unknown vars (`extra="ignore"`). Anything backed by a secret follows the `<NAME>_FILE` indirection documented in [secrets.md](secrets.md).
+Each Python service is configured entirely through environment variables read by **Pydantic `BaseSettings`** classes in its `core/settings.py`; the infrastructure services (Postgres, Redis, Chroma, nginx, the monitoring stack) are configured by image env vars and command flags. This document is the exhaustive reference for *how much you can tune each service without touching code* — every var, its default, and what it does. For the inverse — the short list of *what each service cannot boot without* — see its companion, [service-startup.md](service-startup.md). Defaults shown are the **in-code defaults**; the production compose overrides only a handful (mostly URLs, TLS paths, `LOG_FORMAT=json`, and `*_FILE` secret pointers). Settings are **case-insensitive**, load from `magenticx/.env` in local dev, and ignore unknown vars (`extra="ignore"`). Anything backed by a secret follows the `<NAME>_FILE` indirection documented in [secrets.md](secrets.md).
 
 ---
 
@@ -11,7 +11,7 @@ flowchart LR
     Env[".env / compose env / Swarm secret files"] --> S1["dialogue_bridge\ncore/settings.py"]
     Env --> S2["agents\ncore/settings.py"]
     Env --> S3["rag_service\ncore/settings.py"]
-    Env --> S4["infra: postgres · redis · chroma\nnginx · vault · monitoring"]
+    Env --> S4["infra: postgres · redis · chroma\nnginx · monitoring"]
     EP["entrypoint-*.sh"] -->|"REQUIRE_TLS / REQUIRE_MTLS"| S1 & S2 & S3 & S4
 ```
 
@@ -33,7 +33,7 @@ The BFF. The richest configuration surface — 19 settings groups.
 
 | Env var | Default | What it does |
 | --- | --- | --- |
-| `APP_ENV` / `ENV` | `development` | Environment name. **Anything other than `development`/`test` makes Vault (`VAULT_URL`, role id, secret id) and `SESSION_TOKEN_SECRET` mandatory** and disables dev secret fallbacks. Prod leaves this **unset** on purpose (so it is not `development`). |
+| `APP_ENV` / `ENV` | `development` | Environment name. **Anything other than `development`/`test` makes `SESSION_TOKEN_SECRET` mandatory, refuses the dev file signer (`SESSION_SIGNING_BACKEND=file`)** and disables dev secret fallbacks. **Dennis sets `APP_ENV=production` explicitly** — unset means `development`, which silently switches all of this off. |
 | `APP_VERSION` / `IMAGE_TAG` | `unknown` | Version string stamped onto every log line. |
 | `LOG_SERVICE_NAME` | `dialogue_bridge` | `service` field in logs. |
 | `RUN_MIGRATIONS_ON_STARTUP` | `true` | Run `alembic upgrade head` in the lifespan before serving. Set `false` as the emergency knob if a bad migration is keeping the container down. |
@@ -63,19 +63,23 @@ The BFF. The richest configuration surface — 19 settings groups.
 | `SESSION_CSRF_HEADER_NAME` | `X-CSRF-Token` | Header the SPA echoes the CSRF token in. |
 | `SESSION_TOKEN_SECRET` | (secret) | General-purpose HMAC key (DOCX-preview tokens). Required outside dev/test; dev generates a random one. |
 
-### Vault (`VaultSettings`) — stateless JWT auth
+### Session signing (`SigningSettings`)
+
+Who signs session JWTs and which public keys verify them. Production signs with an **HSM-protected RSA key in OCI KMS**; local dev signs with a file key. Verification never makes a network call — every accepted public key is a file loaded at boot. The bridge **refuses to start** if this is incomplete, in every environment. See [authentication-and-session.md § Phase 3](../flows/authentication-and-session.md#phase-3--token-minting-kms-signed-jwts).
 
 | Env var | Default | What it does |
 | --- | --- | --- |
-| `VAULT_URL` | `None` | Vault address (prod `https://vault:8004`). Required outside dev/test. |
-| `VAULT_USERPASS_MOUNT` | `userpass` | Mount path of the userpass IdP. |
-| `VAULT_NAMESPACE` | `None` | Vault Enterprise namespace (unused on OSS). |
-| `VAULT_HTTP_TIMEOUT` | `10.0` | Per-call timeout to Vault (seconds). |
-| `VAULT_APPROLE_MOUNT` | `approle` | Mount path of the AppRole the bridge logs in with. |
-| `VAULT_ROLE_ID` | (secret) | AppRole role id (machine identity). Required outside dev/test. |
-| `VAULT_SECRET_ID` | (secret) | AppRole secret id. Required outside dev/test. |
-| `VAULT_TRANSIT_MOUNT` | `transit` | Mount path of the Transit engine. |
-| `VAULT_TRANSIT_JWT_KEY` | `jwt-rs256` | Transit key name that signs/verifies session JWTs. |
+| `SESSION_SIGNING_BACKEND` | `kms` | `kms` (production) or `file` (local dev only — refused unless `APP_ENV` is `development`/`test`). |
+| `SESSION_SIGNING_ACTIVE_KID` | `100` | `kid` stamped on newly minted tokens. 1 … 100000. |
+| `SESSION_SIGNING_KEYS` | `None` | `kid:key_version_ocid,…` — the KMS key versions the bridge may sign with. Must include the active kid. Required for `kms`. |
+| `SESSION_SIGNING_LEGACY_KIDS` | `None` | Comma list of **verify-only** kids (e.g. `1`, the exported Vault Transit key) so older tokens keep verifying until they age out. |
+| `SESSION_SIGNING_PUBLIC_KEYS_DIR` | `/app/signing_keys` | Directory of `<kid>.pem` public keys; every accepted kid needs one. Bind-mounted on Dennis from `/opt/magenticx/dialogue_bridge/signing_keys/`. |
+| `SESSION_SIGNING_PRIVATE_KEY_FILE` | (secret) | `file` backend only: the unencrypted PEM private key. |
+| `OCI_KMS_CRYPTO_ENDPOINT` | `None` | The crypto endpoint of the OCI KMS "vault" holding the key (`https://…-crypto.kms.<region>.oraclecloud.com`). Must be `https://`. OCI calls a KMS key container a *vault* — unrelated to the HashiCorp Vault this platform no longer uses. |
+| `OCI_KMS_KEY_ID` | `None` | OCID of the HSM signing key. |
+| `OCI_USER_OCID` / `OCI_TENANCY_OCID` / `OCI_API_KEY_FINGERPRINT` / `OCI_REGION` | `None` | Identity of the dedicated signing principal. |
+| `OCI_API_PRIVATE_KEY_FILE` | (secret) | That principal's API key (Swarm secret `magenticx_oci_signer_key`). |
+| `OCI_KMS_CONNECT_TIMEOUT_SECONDS` / `OCI_KMS_READ_TIMEOUT_SECONDS` | `5.0` / `10.0` | Per-call KMS timeouts. 0.5 … 60. The SDK does not retry `sign`, by design. |
 
 ### JWT (`JWTSettings`)
 
@@ -88,17 +92,16 @@ The BFF. The richest configuration surface — 19 settings groups.
 | `JWT_REFRESH_ABSOLUTE_TTL_SECONDS` | `1728000` (20d) | Hard cap from original login — the refresh `exp` never exceeds `lat + this`, forcing a full re-auth. | 3600 … 15552000 |
 | `JWT_REFRESH_REUSE_GRACE_SECONDS` | `30` | Grace during which the just-rotated-from refresh `jti` is still accepted (avoids false reuse-detection on a retried/concurrent refresh). | 0 … 300 |
 | `JWT_LEEWAY_SECONDS` | `30` | Clock-skew leeway on verification. | 0 … 300 |
-| `JWT_SIGN_VERSION_CACHE_SECONDS` | `60` | How long the Transit key version is cached before re-checking. | — |
 
 ### Microsoft Entra ID / OIDC (`EntraSettings`)
 
-Federated sign-in alongside username/password. **Inert unless `ENTRA_TENANT_ID` + `ENTRA_CLIENT_ID` + `ENTRA_CLIENT_SECRET` are all set** (`settings.entra.enabled`).
+**The only way to sign in** (plan 29 removed username/password). `ENTRA_TENANT_ID` + `ENTRA_CLIENT_ID` + `ENTRA_CLIENT_SECRET` are **mandatory in every environment**: the bridge refuses to start without all three, because it would otherwise serve a login page with no way in. Local dev uses the same app registration with `http://localhost:8050/api/v1/auth/oidc/callback` added to its redirect URIs.
 
 | Env var | Default | What it does |
 | --- | --- | --- |
 | `ENTRA_TENANT_ID` | `None` | Directory (tenant) id. |
 | `ENTRA_CLIENT_ID` | `None` | Application (client) id of the app registration. |
-| `ENTRA_CLIENT_SECRET` | (secret) | Client secret (file-backed via `ENTRA_CLIENT_SECRET_FILE` / Swarm secret in prod). |
+| `ENTRA_CLIENT_SECRET` | (secret) | Client secret (file-backed via `ENTRA_CLIENT_SECRET_FILE` / Swarm secret in prod). **Expires** — an expired secret is a full new-login outage; its date is recorded in [secrets.md](secrets.md). |
 | `ENTRA_REDIRECT_URI` | `None` | Exact registered callback URL, e.g. `http://localhost:8050/api/v1/auth/oidc/callback`. Falls back to forwarded-origin derivation if unset. |
 | `ENTRA_ALLOWED_GROUP_IDS` | `None` | Comma-separated Entra security-group Object IDs allowed to sign in. Empty = no restriction (enforced fail-closed). |
 | `ENTRA_POST_LOGIN_REDIRECT` | `/` | SPA path to land on after a successful SSO login. |
@@ -132,7 +135,7 @@ Federated sign-in alongside username/password. **Inert unless `ENTRA_TENANT_ID` 
 | `SKILL_UPLOAD_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Custom-skill uploads (agents-service disk writes) per user. |
 | `MESSAGE_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `30` / `60` | Message creation (attachment/blob growth) per user. |
 | `SUGGESTIONS_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Starter-suggestion generation (LLM-backed) per user. |
-| `REFRESH_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Session refresh (Vault Transit mint) per client IP. |
+| `REFRESH_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Session refresh (OCI KMS mint) per client IP. |
 | `WS_CONNECT_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `20` / `60` | Run-stream WebSocket handshakes per user (enforced in-route; close code `4429`). |
 | `USER_RATE_LIMIT_MAX_CALLS` | `300` | App-wide aggregate budget per verified user (per-IP fallback) per window. |
 | `USER_RATE_LIMIT_WINDOW_SECONDS` | `60` | Budget window. |
@@ -393,15 +396,6 @@ Configured entirely by **command flags**, no env vars: password from `/run/secre
 | `TRUSTED_PROXY_SECRET` | (from secret via shim) | Injected as the internal-caller header on proxied requests. |
 | `REQUIRE_TLS` | `true` | Fail-closed HTTPS (via `entrypoint-nginx-tls.sh`). |
 
-### vault (`hashicorp/vault:1.21`)
-
-| Env var | Value | What it does |
-| --- | --- | --- |
-| `SKIP_SETCAP` | `true` | Skip the setcap step (we grant `IPC_LOCK` via `cap_add` and `disable_mlock`). |
-| `VAULT_LOCAL_CONFIG` | inline JSON | Full server config: `ui`, raft storage at `/vault/data`, TLS listener on `:8004`, `api_addr`/`cluster_addr`. |
-
-For the CLI, set `VAULT_ADDR=https://vault:8004` (or `https://localhost:8004`) — **not** `127.0.0.1`, which fails cert validation (the cert has no IP SAN).
-
 ### Monitoring stack (`docker-compose-denis-monitoring.yml`)
 
 | Service | Key vars / flags |
@@ -428,7 +422,7 @@ These flip behavior at boot; all are **fail-closed by default** (secure unless e
 
 ## Sharp Edges and Behavioral Notes
 
-- **Prod leaves `APP_ENV`/`ENV` unset on purpose.** Settings treat "not `development`/`test`" as production, which makes Vault config and `SESSION_TOKEN_SECRET` mandatory and disables the random dev-secret fallbacks. Setting `APP_ENV=production` works too but is redundant.
+- **Prod must set `APP_ENV=production` explicitly.** The default is `development`, so leaving it unset does *not* mean production — it switches off every production-only check (mandatory `SESSION_TOKEN_SECRET`, refusing the dev file signer, no random dev-secret fallbacks). Dennis ran unset for a long time on the mistaken belief that unset meant "not development"; plan 29 added `APP_ENV=production` to its compose.
 - **`TRUSTED_PROXY_SECRET` is a hard start gate** on all three Python services — a `model_validator` raises if it's empty. This is the single most common "service won't boot" cause after a secret rename.
 - **`*_FILE` unreadable is fail-loud; `*_FILE` unset is a silent fallback.** A set-but-unreadable secret path raises at startup (so a permission slip is loud), but an *unset* `*_FILE` quietly falls back to the plain env var — which is exactly what local `.env` dev relies on.
 - **`LOG_FORMAT` defaults to `console`.** Prod must run `json` (the production compose sets it on all three) or Alloy can't extract the `level` label and the Loki dashboards/error alerts break.
