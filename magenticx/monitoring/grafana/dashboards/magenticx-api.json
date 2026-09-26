@@ -1,0 +1,77 @@
+{
+  "uid": "magenticx-api",
+  "title": "magenticX — API & Streaming",
+  "tags": ["magenticx"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "Requests /s (5m)",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "decimals": 2, "noValue": "0", "color": { "mode": "fixed", "fixedColor": "blue" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [ { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum(rate({stack=\"magenticx\", service=\"magenticx_dialogue_bridge\"} | json | event=\"http_request_completed\" [5m]))" } ]
+    },
+    {
+      "id": 2, "type": "stat", "title": "5xx (1h)",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "none", "noValue": "0", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum(count_over_time({stack=\"magenticx\", service=\"magenticx_dialogue_bridge\"} | json | event=\"http_request_completed\" | status_code=~\"5..\" [1h]))" } ]
+    },
+    {
+      "id": 3, "type": "stat", "title": "p95 latency (5m)",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "ms", "noValue": "0", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 1000 }, { "color": "red", "value": 3000 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [ { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "expr": "quantile_over_time(0.95, {stack=\"magenticx\", service=\"magenticx_dialogue_bridge\"} |= \"http_request_completed\" | json lat=\"fields.duration_ms\" | unwrap lat [5m])" } ]
+    },
+    {
+      "id": 4, "type": "timeseries", "title": "Request rate by status",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [ { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum by (status_code) (rate({stack=\"magenticx\", service=\"magenticx_dialogue_bridge\"} | json | event=\"http_request_completed\" [5m]))", "legendFormat": "{{status_code}}" } ]
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "Latency p50 / p95 / p99 (ms)",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "ms", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "expr": "quantile_over_time(0.50, {stack=\"magenticx\", service=\"magenticx_dialogue_bridge\"} |= \"http_request_completed\" | json lat=\"fields.duration_ms\" | unwrap lat [5m])", "legendFormat": "p50" },
+        { "refId": "B", "datasource": { "type": "loki", "uid": "loki" }, "expr": "quantile_over_time(0.95, {stack=\"magenticx\", service=\"magenticx_dialogue_bridge\"} |= \"http_request_completed\" | json lat=\"fields.duration_ms\" | unwrap lat [5m])", "legendFormat": "p95" },
+        { "refId": "C", "datasource": { "type": "loki", "uid": "loki" }, "expr": "quantile_over_time(0.99, {stack=\"magenticx\", service=\"magenticx_dialogue_bridge\"} |= \"http_request_completed\" | json lat=\"fields.duration_ms\" | unwrap lat [5m])", "legendFormat": "p99" }
+      ]
+    },
+    {
+      "id": 6, "type": "timeseries", "title": "Upstream retries /min",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "fieldConfig": { "defaults": { "unit": "none", "custom": { "drawStyle": "bars", "fillOpacity": 60 } }, "overrides": [] },
+      "targets": [ { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum(count_over_time({service=\"magenticx_dialogue_bridge\"} |= \"upstream_request_retrying\" [1m]))", "legendFormat": "retries" } ]
+    },
+    {
+      "id": 7, "type": "timeseries", "title": "Streaming first-byte latency p95 (ms) — needs inference traffic",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "fieldConfig": { "defaults": { "unit": "ms", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [ { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "expr": "quantile_over_time(0.95, {service=\"magenticx_dialogue_bridge\"} |= \"blob_download_completed\" | json fb=\"fields.first_byte_latency_ms\" | unwrap fb [5m])", "legendFormat": "first-byte p95" } ]
+    },
+    {
+      "id": 8, "type": "logs", "title": "5xx + retry stream",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 20 },
+      "options": { "showTime": true, "wrapLogMessage": true, "enableLogDetails": true, "dedupStrategy": "none", "sortOrder": "Descending" },
+      "targets": [ { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "expr": "{stack=\"magenticx\", service=\"magenticx_dialogue_bridge\"} |~ \"upstream_request_retrying|http_request_failed|unhandled_exception\"" } ]
+    }
+  ]
+}

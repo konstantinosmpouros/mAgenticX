@@ -1,0 +1,59 @@
+// Grafana Alloy — ships every container's Docker logs to Loki.
+// Runs as a global Swarm service (one per node); reads logs via the Docker API
+// (the mounted socket), so no application change is needed.
+
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+// Promote a few LOW-cardinality labels; everything else (user/session/duration_ms/
+// event/path) stays in the log line and is parsed at query time with `| json`.
+discovery.relabel "containers" {
+  targets = discovery.docker.containers.targets
+
+  // Ship ONLY the magenticx app stack's logs — drops the other Portainer stacks
+  // (cloudflare/npm/portainer/…) and their noisy old backlog. Metrics still
+  // cover every container via cAdvisor; this filter is logs-only.
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_stack_namespace"]
+    regex         = "magenticx"
+    action        = "keep"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_swarm_service_name"]
+    target_label  = "service"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_stack_namespace"]
+    target_label  = "stack"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/?(.*)"
+    target_label  = "container"
+  }
+}
+
+loki.source.docker "containers" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.containers.output
+  forward_to = [loki.process.parse.receiver]
+}
+
+// Surface the JSON `level` as a label so error filtering/alerting is cheap.
+loki.process "parse" {
+  stage.json {
+    expressions = { level = "level" }
+  }
+  stage.labels {
+    values = { level = "" }
+  }
+  forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

@@ -1,0 +1,140 @@
+# Local monitoring add-on — Grafana, Prometheus, Loki, Alloy, cAdvisor and a
+# silent Alertmanager, watching the LOCAL Docker stack.
+#
+# The Denis twin is docker-compose-denis-monitoring.yml (Swarm, TLS, NPM, e-mail
+# alerts). This file reuses its dashboards, Grafana provisioning, Loki config and
+# alert rules unchanged; only target discovery differs (monitoring/local/),
+# because local containers carry Compose labels instead of Swarm ones.
+#
+# Runs as its OWN project, so it can never recreate an app container:
+#
+#   docker compose -p magenticx-monitoring -f magenticx/docker-compose-monitoring.yaml up -d
+#
+# Grafana: http://localhost:3000 — user `admin`, password in
+# magenticx/secrets/grafana_admin_password (gitignored; see
+# docs/development/observability.md for how to create it). Bound to 127.0.0.1
+# only: nothing here is reachable from the network.
+#
+# The log panels parse JSON: set LOG_FORMAT=json in magenticx/.env and recreate
+# the three app services to fill them (metrics panels work either way).
+
+services:
+  grafana:
+    image: portainer/template-swarm-monitoring:grafana-9.5.2   # same as Denis
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD__FILE=/run/secrets/grafana_admin_password
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://localhost:3000
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+      - GF_ANALYTICS_CHECK_FOR_UPDATES=false
+    secrets:
+      - grafana_admin_password
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/datasources.yml:/etc/grafana/provisioning/datasources/magenticx.yml:ro
+      - ./monitoring/grafana/dashboards.yml:/etc/grafana/provisioning/dashboards/magenticx.yml:ro
+      - ./monitoring/grafana/dashboards:/etc/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+      - loki
+    restart: unless-stopped
+    networks:
+      - monitoring
+
+  prometheus:
+    image: portainer/template-swarm-monitoring:prometheus-v2.44.0   # same as Denis
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--log.level=error"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"   # Denis keeps 90d; a laptop doesn't need it
+      - "--web.enable-lifecycle"
+    volumes:
+      - prometheus-data:/prometheus
+      - ./monitoring/local/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alert.rules.yml:/etc/prometheus/alert.rules.yml:ro
+    restart: unless-stopped
+    networks:
+      - monitoring
+
+  # Per-container CPU / memory / network / restarts — what the dashboards chart.
+  # KNOWN LOCAL LIMIT: cAdvisor (every version up to v0.52.1, the latest) can't
+  # identify containers when Docker Desktop stores images with containerd
+  # (`docker info` → Storage Driver: overlayfs). It then reports only the whole
+  # machine, so the per-service CPU/memory panels stay empty; logs and every
+  # Loki panel still work. Docker Desktop → Settings → General → untick "Use
+  # containerd for pulling and storing images" switches to overlay2 and fixes it
+  # (images must then be rebuilt/re-pulled). Denis uses overlay2 — unaffected.
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.47.0   # same as Denis
+    command: ["-logtostderr", "-docker_only"]
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+    restart: unless-stopped
+    networks:
+      - monitoring
+
+  # Receives Prometheus and Loki alerts so the rules evaluate end-to-end, and
+  # sends them nowhere: a laptop must never e-mail production alert recipients.
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+      - "--log.level=warn"
+    volumes:
+      - alertmanager-data:/alertmanager
+      - ./monitoring/local/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    restart: unless-stopped
+    networks:
+      - monitoring
+
+  loki:
+    image: grafana/loki:3.1.1
+    command: ["-config.file=/etc/loki/loki-config.yml"]
+    volumes:
+      - loki-data:/loki
+      - ./monitoring/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - ./monitoring/loki-rules.yml:/etc/loki/rules/fake/rules.yml:ro
+    restart: unless-stopped
+    networks:
+      - monitoring
+
+  # Ships the app containers' Docker logs to Loki (read-only Docker API access).
+  alloy:
+    image: grafana/alloy:v1.4.2
+    command:
+      - run
+      - /etc/alloy/config.alloy
+      - --storage.path=/var/lib/alloy/data
+    user: root   # to read the Docker socket
+    volumes:
+      - ./monitoring/local/alloy-config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy-data:/var/lib/alloy/data
+    depends_on:
+      - loki
+    restart: unless-stopped
+    networks:
+      - monitoring
+
+volumes:
+  grafana-data:
+  prometheus-data:
+  alertmanager-data:
+  loki-data:
+  alloy-data:
+
+networks:
+  monitoring:
+
+secrets:
+  grafana_admin_password:
+    file: ./secrets/grafana_admin_password

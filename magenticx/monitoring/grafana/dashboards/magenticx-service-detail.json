@@ -1,0 +1,119 @@
+{
+  "uid": "magenticx-service-detail",
+  "title": "magenticX — Service detail",
+  "tags": ["magenticx"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "annotations": { "list": [] },
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "Service",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "definition": "label_values(container_memory_usage_bytes{container_label_com_docker_swarm_service_name=~\"magenticx_.*\", container_label_com_docker_swarm_service_name!~\"magenticx_monitoring_.*\"}, container_label_com_docker_swarm_service_name)",
+        "query": { "query": "label_values(container_memory_usage_bytes{container_label_com_docker_swarm_service_name=~\"magenticx_.*\", container_label_com_docker_swarm_service_name!~\"magenticx_monitoring_.*\"}, container_label_com_docker_swarm_service_name)", "refId": "StandardVariableQuery" },
+        "refresh": 2,
+        "sort": 1,
+        "includeAll": false,
+        "multi": false,
+        "hide": 0,
+        "current": {}
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "CPU (cores)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "none", "decimals": 3, "color": { "mode": "fixed", "fixedColor": "blue" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(container_cpu_usage_seconds_total{container_label_com_docker_swarm_service_name=\"$service\"}[5m]))" } ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Memory",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "color": { "mode": "fixed", "fixedColor": "purple" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(container_memory_usage_bytes{container_label_com_docker_swarm_service_name=\"$service\"})" } ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Restarts (1h)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "none", "noValue": "0", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 1 }, { "color": "red", "value": 4 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(changes(container_start_time_seconds{container_label_com_docker_swarm_service_name=\"$service\"}[1h]))" } ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Errors (1h)",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "none", "noValue": "0", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum(count_over_time({service=\"$service\", level=\"ERROR\"}[1h]))" } ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "CPU (cores) — $service",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "none", "custom": { "drawStyle": "line", "fillOpacity": 15 } }, "overrides": [] },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(container_cpu_usage_seconds_total{container_label_com_docker_swarm_service_name=\"$service\"}[5m]))", "legendFormat": "cpu" } ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Memory — $service",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "drawStyle": "line", "fillOpacity": 15 } }, "overrides": [] },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(container_memory_usage_bytes{container_label_com_docker_swarm_service_name=\"$service\"})", "legendFormat": "memory" } ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Network I/O — $service",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "fieldConfig": { "defaults": { "unit": "Bps", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(container_network_receive_bytes_total{container_label_com_docker_swarm_service_name=\"$service\"}[5m]))", "legendFormat": "rx" },
+        { "refId": "B", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(container_network_transmit_bytes_total{container_label_com_docker_swarm_service_name=\"$service\"}[5m]))", "legendFormat": "tx" }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Log rate by level — $service",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "fieldConfig": { "defaults": { "unit": "logs/s", "custom": { "drawStyle": "bars", "fillOpacity": 60, "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "targets": [ { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum by (level) (rate({service=\"$service\", level=~\".+\"}[1m]))", "legendFormat": "{{level}}" } ]
+    },
+    {
+      "id": 9,
+      "type": "logs",
+      "title": "Logs — $service",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 20 },
+      "options": { "showTime": true, "wrapLogMessage": true, "enableLogDetails": true, "dedupStrategy": "none", "sortOrder": "Descending" },
+      "targets": [ { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "expr": "{service=\"$service\"}", "legendFormat": "" } ]
+    }
+  ]
+}

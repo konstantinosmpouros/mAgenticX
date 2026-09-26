@@ -281,6 +281,34 @@ flowchart TD
 
 ---
 
+## Running the monitoring stack locally
+
+[`docker-compose-monitoring.yaml`](../../magenticx/docker-compose-monitoring.yaml) is the laptop twin of the Denis monitoring stack: Grafana, Prometheus, Loki, Alloy, cAdvisor and a **silent** Alertmanager, watching the local Docker stack. It reuses the production dashboards, Grafana provisioning, Loki config and alert rules **unchanged** — only target discovery differs, in `magenticx/monitoring/local/`, because local containers carry Compose labels (`com.docker.compose.project=magenticx`, `…service=dialogue_bridge`) where Swarm ones carry `com.docker.stack.namespace` / `com.docker.swarm.service.name`. Prometheus (`metric_relabel_configs`) and Alloy (`discovery.relabel`) rebuild the Swarm names — `magenticx_<service>` — so every panel's query works as-is.
+
+```bash
+# once: a local Grafana admin password (gitignored)
+python -c "import secrets; open('magenticx/secrets/grafana_admin_password','w').write(secrets.token_urlsafe(24))"
+
+# start (its own project — it can never recreate an app container)
+docker compose -p magenticx-monitoring -f magenticx/docker-compose-monitoring.yaml up -d
+# stop
+docker compose -p magenticx-monitoring -f magenticx/docker-compose-monitoring.yaml down
+```
+
+Grafana is at **<http://localhost:3000>** (user `admin`, the password from that file), bound to `127.0.0.1` only. Dashboards are in the **magenticX** folder.
+
+| Differs from Denis | Why |
+| --- | --- |
+| Plain HTTP, no NPM, host port `127.0.0.1:3000` | The local stack is HTTP-only; nothing is exposed beyond the laptop |
+| Alertmanager has a `null` receiver | Rules still evaluate end-to-end, but a laptop must never e-mail production alert recipients |
+| No node-exporter | Locally it would only describe Docker Desktop's VM; no dashboard uses host metrics (the host alert rules simply never fire) |
+| Only the `magenticx` Compose project's logs are shipped | The monitoring containers and any other local projects are dropped |
+| Prometheus keeps 15d, not 90d | A laptop |
+
+**Log panels need JSON logs.** Local services default to `LOG_FORMAT=console`; the log panels parse JSON with `| json`. Set `LOG_FORMAT=json` in `magenticx/.env` and recreate the three app services (`docker-compose -p magenticx -f magenticx/docker-compose.yaml up -d --no-deps dialogue_bridge agents rag_service`) to fill them; raw log lines are searchable in Explore either way.
+
+---
+
 ## Sharp Edges and Behavioral Notes
 
 - **The redaction secret must be provisioned in prod, or `client_ip` correlation silently degrades.** Without `magenticx_log_redaction_secret`, each service hardens to a *random per-process* key — the `client_ip` hash no longer matches across services or survives a restart (`user_id`/`session_id` are unaffected — they are logged raw). This is fail-safe (never the reversible default), not fail-loud; provision the secret.
@@ -290,6 +318,7 @@ flowchart TD
 - **Exact-match drop keys.** The drop set matches the *whole* lowercased key, so `output_tokens` or `input_size` are **not** dropped — only a field literally named `output`/`input` is. Redact tokens (`password`, `secret`, …) use *substring* match instead.
 - **rag_service uses a direct StreamHandler, not the queue.** Its log volume is low and it has no long-lived event loop pressure like the streaming services, so it skips the `QueueHandler` indirection that bridge/agents use.
 - **`/health` is never logged** in any service — healthchecks would otherwise dominate the log at 30s intervals.
+- **Locally, cAdvisor can't see individual containers when Docker Desktop stores images with containerd.** With `docker info` → *Storage Driver: overlayfs* (the containerd snapshotter), every cAdvisor release up to v0.52.1 fails with "failed to identify the read-write layer ID" and reports only the whole machine, so the per-service CPU/memory panels are empty; logs and all Loki panels still work. Unticking Docker Desktop → Settings → General → *Use containerd for pulling and storing images* switches to overlay2 and fixes it (images must then be rebuilt or re-pulled). Denis uses overlay2 and is unaffected.
 - **Docker `json-file` is the only sink today.** Logs rotate at 20–50MB × 3–5 files in production and are lost on volume loss; there is no aggregation until Phase 5 (Loki).
 - **`agents` suppresses uvloop cancellation noise.** The event-loop exception handler swallows `CancelledError`/`BrokenPipeError`/`ConnectionResetError` (normal on client disconnect mid-stream) and only logs genuine `event_loop_exception`s.
 
@@ -316,3 +345,6 @@ flowchart TD
 | Redaction secret (all) | [magenticx/dialogue_bridge/core/settings.py](../../magenticx/dialogue_bridge/core/settings.py) | `LoggingSettings.redaction_secret` |
 | Deploy + secret wiring | [magenticx/docker-compose-denis.yaml](../../magenticx/docker-compose-denis.yaml) | `deploy.update_config`, `log_redaction_secret` |
 | Monitoring stack | [magenticx/docker-compose-denis-monitoring.yml](../../magenticx/docker-compose-denis-monitoring.yml) | Grafana, Prometheus, cAdvisor, node-exporter (+ Phase 2 additions) |
+| Monitoring configs (Denis) | [magenticx/monitoring/](../../magenticx/monitoring/) | dashboards, datasources, Prometheus/Loki/Alloy/Alertmanager configs, alert rules — bind-mounted from `/opt/magenticx/monitoring/` |
+| Local monitoring stack | [magenticx/docker-compose-monitoring.yaml](../../magenticx/docker-compose-monitoring.yaml) | laptop twin; own project `magenticx-monitoring`, Grafana on `127.0.0.1:3000` |
+| Local discovery configs | [magenticx/monitoring/local/](../../magenticx/monitoring/local/) | `prometheus.yml` + `alloy-config.alloy` (Compose → Swarm label mapping), silent `alertmanager.yml` |

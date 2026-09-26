@@ -1,0 +1,71 @@
+{
+  "uid": "magenticx-agents",
+  "title": "magenticX — Agent Runs / Inference",
+  "tags": ["magenticx"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-24h", "to": "now" },
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "Runs (24h)",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "none", "noValue": "0", "color": { "mode": "fixed", "fixedColor": "blue" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [ { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum(count_over_time({service=\"magenticx_agents\"} |= \"agent_stream_request_received\" [24h]))" } ]
+    },
+    {
+      "id": 2, "type": "stat", "title": "Run failures (24h)",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "none", "noValue": "0", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum(count_over_time({service=\"magenticx_agents\"} |~ \"agent_run_error|agent_stream_failed\" [24h]))" } ]
+    },
+    {
+      "id": 3, "type": "stat", "title": "Tool errors (24h)",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "none", "noValue": "0", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum(count_over_time({service=\"magenticx_agents\"} |= \"tool_call_error\" [24h]))" } ]
+    },
+    {
+      "id": 4, "type": "stat", "title": "Checkpoints (24h)",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "none", "noValue": "0", "color": { "mode": "fixed", "fixedColor": "purple" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [ { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum(count_over_time({service=\"magenticx_agents\"} |= \"checkpoint_committed\" [24h]))" } ]
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "Run lifecycle /min",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "none", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum(count_over_time({service=\"magenticx_agents\"} |= \"agent_stream_started\" [1m]))", "legendFormat": "started" },
+        { "refId": "B", "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum(count_over_time({service=\"magenticx_agents\"} |= \"agent_stream_completed\" [1m]))", "legendFormat": "completed" },
+        { "refId": "C", "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum(count_over_time({service=\"magenticx_agents\"} |~ \"agent_run_error|agent_stream_failed\" [1m]))", "legendFormat": "failed" }
+      ]
+    },
+    {
+      "id": 6, "type": "timeseries", "title": "Runs by agent",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "none", "custom": { "drawStyle": "bars", "fillOpacity": 60, "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "targets": [ { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum by (agent_slug) (count_over_time({service=\"magenticx_agents\"} |= \"agent_stream_request_received\" | json | agent_slug=~\".+\" [5m]))", "legendFormat": "{{agent_slug}}" } ]
+    },
+    {
+      "id": 7, "type": "logs", "title": "Agent error stream",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 12 },
+      "options": { "showTime": true, "wrapLogMessage": true, "enableLogDetails": true, "dedupStrategy": "none", "sortOrder": "Descending" },
+      "targets": [ { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "expr": "{service=\"magenticx_agents\"} |~ \"agent_run_error|agent_stream_failed|tool_call_error|event_loop_exception|checkpoint_commit_emit_failed\"" } ]
+    }
+  ]
+}

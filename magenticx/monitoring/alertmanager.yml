@@ -1,0 +1,39 @@
+# Alertmanager routing for the Dennis monitoring stack.
+# Source of truth — bind-mounted to /etc/alertmanager/alertmanager.yml.
+# Receives alerts from BOTH the Prometheus rules (infra/container) and the Loki
+# ruler (application error logs), and emails them.
+global:
+  resolve_timeout: 5m
+  # SMTP relay that SENDS the alert mail — here, the same Hotmail account that
+  # receives them. Microsoft personal accounts need 2-Step Verification ENABLED
+  # and an App Password (basic auth with the normal password is disabled); put
+  # that app password in the magenticx_alert_smtp_password Swarm secret.
+  smtp_smarthost: "smtp-mail.outlook.com:587"
+  smtp_from: "kostasbouros@hotmail.gr"
+  smtp_auth_username: "kostasbouros@hotmail.gr"
+  smtp_auth_password_file: "/run/secrets/alert_smtp_password"
+  smtp_require_tls: true
+
+route:
+  receiver: email
+  group_by: ["alertname", "service"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - matchers:
+        - severity = "critical"
+      receiver: email
+      repeat_interval: 1h
+
+receivers:
+  - name: email
+    email_configs:
+      - to: "kostasbouros@hotmail.gr"
+        send_resolved: true
+
+inhibit_rules:
+  # A critical alert silences a matching warning (same alertname+service).
+  - source_matchers: [severity = "critical"]
+    target_matchers: [severity = "warning"]
+    equal: ["alertname", "service"]

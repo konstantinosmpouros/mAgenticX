@@ -1,0 +1,45 @@
+# Loki ruler alert rules (LogQL) — application-level errors from the logs.
+# Bind-mounted to /etc/loki/rules/fake/rules.yml; fires into the same
+# Alertmanager as the Prometheus rules, so everything emails one place.
+groups:
+  - name: application-errors
+    rules:
+      - alert: HighErrorLogRate
+        expr: |
+          sum(rate({stack="magenticx", level="ERROR"}[5m])) > 0.2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Elevated ERROR log rate across magenticx"
+          description: "More than ~1 ERROR log every 5s, sustained for 5m."
+
+      - alert: ServiceErrorBurst
+        expr: |
+          sum by (service) (count_over_time({stack="magenticx", level="ERROR"}[5m])) > 10
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Error burst in {{ $labels.service }}"
+          description: ">10 ERROR logs in 5m from {{ $labels.service }}."
+
+      - alert: UnhandledException
+        expr: |
+          sum by (service) (count_over_time({stack="magenticx"} |= "unhandled_exception" [5m])) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Unhandled exception in {{ $labels.service }}"
+          description: "An unhandled_exception event was logged."
+
+      - alert: AgentRunErrors
+        expr: |
+          sum(count_over_time({stack="magenticx", service="magenticx_agents"} |= "agent_run_error" [10m])) > 3
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Multiple agent run errors"
+          description: ">3 agent_run_error events in 10m."

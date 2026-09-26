@@ -1,0 +1,43 @@
+# Prometheus config for the LOCAL monitoring add-on (docker-compose-monitoring.yaml).
+# Same jobs as ../prometheus.yml (Denis), but with plain Compose DNS names instead
+# of Swarm's `tasks.<service>`, and no node-exporter (locally it would only
+# describe Docker Desktop's VM).
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    stack: magenticx
+
+rule_files:
+  - /etc/prometheus/alert.rules.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["cadvisor:8080"]
+    # Local containers carry Compose labels, not Swarm ones. The dashboards and
+    # alert rules filter on the Swarm service name (`magenticx_<service>`), so
+    # rebuild it from the Compose project + service — for the app project only —
+    # and every panel works unchanged.
+    metric_relabel_configs:
+      - source_labels: [container_label_com_docker_compose_project, container_label_com_docker_compose_service]
+        regex: "(magenticx);(.+)"
+        target_label: container_label_com_docker_swarm_service_name
+        replacement: "${1}_${2}"
+      - source_labels: [container_label_com_docker_compose_project]
+        regex: "(magenticx)"
+        target_label: container_label_com_docker_stack_namespace
+        replacement: "${1}"
+
+  - job_name: alertmanager
+    static_configs:
+      - targets: ["alertmanager:9093"]

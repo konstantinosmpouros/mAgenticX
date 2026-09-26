@@ -30,6 +30,7 @@ services:
       - RAG_HOST=vectordb
       - RAG_PORT=8000
       - TRUSTED_PROXY_SECRET=${TRUSTED_PROXY_SECRET}
+      - LOG_FORMAT=${LOG_FORMAT:-console}
     depends_on:
       - vectordb
     restart: unless-stopped
@@ -61,6 +62,7 @@ services:
       - DIALOGUE_BRIDGE_URL=http://dialogue_bridge:8002
       - MCP_GATEWAY_URL=http://mcp_gateway:8005/sse
       - TRUSTED_PROXY_SECRET=${TRUSTED_PROXY_SECRET}
+      - LOG_FORMAT=${LOG_FORMAT:-console}   # json for the local monitoring add-on
       # Both planes of the agents filesystem live on the magenticx_data volume.
       - MAGENTICX_GLOBAL_ROOT=/var/magenticx/global
       - MAGENTICX_WORKSPACES_ROOT=/var/magenticx/workspaces
@@ -140,6 +142,7 @@ services:
       - AGENTS_SERVICE_URL=http://agents:8003
       - SESSION_TOKEN_SECRET=${SESSION_TOKEN_SECRET}
       - TRUSTED_PROXY_SECRET=${TRUSTED_PROXY_SECRET}
+      - LOG_FORMAT=${LOG_FORMAT:-console}   # json for the local monitoring add-on
       - REDIS_URL=redis://redis:6379/0
       - REDIS_PASSWORD=${REDIS_PASSWORD:-magenticx-dev-redis}
       # Microsoft Entra ID (OIDC) — the only way to sign in. The bridge refuses

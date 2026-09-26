@@ -1,0 +1,8 @@
+# Alertmanager for the LOCAL monitoring add-on: accepts every alert and sends it
+# nowhere. Firing alerts are still visible in Prometheus and Grafana; a laptop
+# must never e-mail the production recipients in ../alertmanager.yml.
+route:
+  receiver: "null"
+
+receivers:
+  - name: "null"

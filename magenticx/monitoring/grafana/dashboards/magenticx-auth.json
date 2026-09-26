@@ -1,0 +1,81 @@
+{
+  "uid": "magenticx-auth",
+  "title": "magenticX — Auth & Security",
+  "tags": ["magenticx"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-24h", "to": "now" },
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "Logins OK (24h)",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "none", "noValue": "0", "color": { "mode": "fixed", "fixedColor": "green" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [ { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum(count_over_time({service=\"magenticx_dialogue_bridge\"} |= \"auth_login_succeeded\" [24h]))" } ]
+    },
+    {
+      "id": 2, "type": "stat", "title": "Logins failed (24h)",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "none", "noValue": "0", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 5 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum(count_over_time({service=\"magenticx_dialogue_bridge\"} |= \"auth_login_failed\" [24h]))" } ]
+    },
+    {
+      "id": 3, "type": "stat", "title": "Rate-limit hits (24h)",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "none", "noValue": "0", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum(count_over_time({service=\"magenticx_dialogue_bridge\"} |= \"rate_limit_exceeded\" [24h]))" } ]
+    },
+    {
+      "id": 4, "type": "stat", "title": "CSRF failures (24h)",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "none", "noValue": "0", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum(count_over_time({service=\"magenticx_dialogue_bridge\"} |= \"csrf_validation_failed\" [24h]))" } ]
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "Logins: success vs failure /min",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "none", "custom": { "drawStyle": "bars", "fillOpacity": 60 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum(count_over_time({service=\"magenticx_dialogue_bridge\"} |= \"auth_login_succeeded\" [1m]))", "legendFormat": "success" },
+        { "refId": "B", "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum(count_over_time({service=\"magenticx_dialogue_bridge\"} |= \"auth_login_failed\" [1m]))", "legendFormat": "failed" }
+      ]
+    },
+    {
+      "id": 6, "type": "timeseries", "title": "Security events /min",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "none", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum(count_over_time({service=\"magenticx_dialogue_bridge\"} |= \"rate_limit_exceeded\" [1m]))", "legendFormat": "rate_limit" },
+        { "refId": "B", "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum(count_over_time({service=\"magenticx_dialogue_bridge\"} |= \"csrf_validation_failed\" [1m]))", "legendFormat": "csrf" },
+        { "refId": "C", "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum(count_over_time({stack=\"magenticx\"} |= \"user_scope_mismatch\" [1m]))", "legendFormat": "scope_mismatch" }
+      ]
+    },
+    {
+      "id": 7, "type": "timeseries", "title": "401 / 403 responses /min",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "fieldConfig": { "defaults": { "unit": "none", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [ { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum by (status_code) (count_over_time({stack=\"magenticx\", service=\"magenticx_dialogue_bridge\"} | json | event=\"http_request_completed\" | status_code=~\"401|403\" [1m]))", "legendFormat": "{{status_code}}" } ]
+    },
+    {
+      "id": 8, "type": "logs", "title": "Auth & security event stream",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 11, "w": 12, "x": 12, "y": 12 },
+      "options": { "showTime": true, "wrapLogMessage": true, "enableLogDetails": true, "dedupStrategy": "none", "sortOrder": "Descending" },
+      "targets": [ { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "expr": "{stack=\"magenticx\"} |~ \"auth_login_failed|rate_limit_exceeded|csrf_validation_failed|user_scope_mismatch|auth_user_inactive\"" } ]
+    }
+  ]
+}

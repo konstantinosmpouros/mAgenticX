@@ -1,0 +1,17 @@
+# Grafana dashboard provisioning — bind-mounted to
+# /etc/grafana/provisioning/dashboards/magenticx.yml. Loads every dashboard
+# JSON under /etc/grafana/dashboards into a "magenticX" folder.
+apiVersion: 1
+
+providers:
+  - name: magenticx
+    orgId: 1
+    folder: magenticX
+    type: file
+    disableDeletion: false
+    editable: true
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/dashboards
+      foldersFromFilesStructure: false

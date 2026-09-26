@@ -1,0 +1,77 @@
+{
+  "uid": "magenticx-users-sessions",
+  "title": "magenticX — Users & Sessions",
+  "tags": ["magenticx"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-24h", "to": "now" },
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "Active users (range)",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "none", "noValue": "0", "color": { "mode": "fixed", "fixedColor": "blue" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "queryType": "instant", "expr": "count(sum by (user_id) (count_over_time({stack=\"magenticx\"} | json | user_id=~\".+\" | user_id!=\"anonymous\" [$__range])))" } ]
+    },
+    {
+      "id": 2, "type": "stat", "title": "Active sessions (range)",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "none", "noValue": "0", "color": { "mode": "fixed", "fixedColor": "purple" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "queryType": "instant", "expr": "count(sum by (session_id) (count_over_time({stack=\"magenticx\"} | json | session_id=~\".+\" | session_id!=\"no-session\" [$__range])))" } ]
+    },
+    {
+      "id": 3, "type": "stat", "title": "Failed logins (range)",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "none", "noValue": "0", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 5 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "queryType": "instant", "expr": "sum(count_over_time({service=\"magenticx_dialogue_bridge\"} |= \"auth_login_failed\" [$__range]))" } ]
+    },
+    {
+      "id": 4, "type": "stat", "title": "Errors (range)",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "none", "noValue": "0", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "queryType": "instant", "expr": "sum(count_over_time({stack=\"magenticx\", level=\"ERROR\"} [$__range]))" } ]
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "Active users / 5m",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "none", "custom": { "drawStyle": "line", "fillOpacity": 15 } }, "overrides": [] },
+      "targets": [ { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "expr": "count(sum by (user_id) (count_over_time({stack=\"magenticx\"} | json | user_id=~\".+\" | user_id!=\"anonymous\" [5m])))", "legendFormat": "active users" } ]
+    },
+    {
+      "id": 6, "type": "table", "title": "Top users by requests",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 11, "w": 8, "x": 0, "y": 11 },
+      "fieldConfig": { "defaults": { "custom": { "align": "auto" } }, "overrides": [] },
+      "targets": [ { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "queryType": "instant", "expr": "topk(25, sum by (user_id) (count_over_time({stack=\"magenticx\", service=\"magenticx_dialogue_bridge\"} |= \"http_request_completed\" | json | user_id=~\".+\" | user_id!=\"anonymous\" [$__range])))" } ],
+      "transformations": [ { "id": "organize", "options": { "excludeByName": { "Time": true }, "renameByName": { "Value #A": "requests" } } } ]
+    },
+    {
+      "id": 7, "type": "table", "title": "Top users by errors",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 11, "w": 8, "x": 8, "y": 11 },
+      "fieldConfig": { "defaults": { "custom": { "align": "auto" } }, "overrides": [] },
+      "targets": [ { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "queryType": "instant", "expr": "topk(25, sum by (user_id) (count_over_time({stack=\"magenticx\", level=\"ERROR\"} | json | user_id=~\".+\" | user_id!=\"anonymous\" [$__range])))" } ],
+      "transformations": [ { "id": "organize", "options": { "excludeByName": { "Time": true }, "renameByName": { "Value #A": "errors" } } } ]
+    },
+    {
+      "id": 8, "type": "table", "title": "Errors by session",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 11, "w": 8, "x": 16, "y": 11 },
+      "fieldConfig": { "defaults": { "custom": { "align": "auto" } }, "overrides": [] },
+      "targets": [ { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "queryType": "instant", "expr": "topk(25, sum by (session_id) (count_over_time({stack=\"magenticx\", level=\"ERROR\"} | json | session_id=~\".+\" | session_id!=\"no-session\" [$__range])))" } ],
+      "transformations": [ { "id": "organize", "options": { "excludeByName": { "Time": true }, "renameByName": { "Value #A": "errors" } } } ]
+    }
+  ]
+}

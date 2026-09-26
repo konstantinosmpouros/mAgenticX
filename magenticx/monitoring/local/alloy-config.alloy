@@ -1,0 +1,59 @@
+// Grafana Alloy for the LOCAL monitoring add-on (docker-compose-monitoring.yaml).
+// Same pipeline as ../alloy-config.alloy (Denis), but local containers carry
+// Compose labels instead of Swarm ones, so the `stack` / `service` labels are
+// rebuilt from those — `service` becomes `magenticx_<service>`, exactly as on
+// Swarm — and the dashboards' LogQL works unchanged.
+
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "containers" {
+  targets = discovery.docker.containers.targets
+
+  // Ship ONLY the magenticx app project's logs — not the monitoring stack's own
+  // containers, and not any other Compose project running on the laptop.
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    regex         = "magenticx"
+    action        = "keep"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project", "__meta_docker_container_label_com_docker_compose_service"]
+    separator     = "_"
+    target_label  = "service"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    target_label  = "stack"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/?(.*)"
+    target_label  = "container"
+  }
+}
+
+loki.source.docker "containers" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.containers.output
+  forward_to = [loki.process.parse.receiver]
+}
+
+// Surface the JSON `level` as a label (only present with LOG_FORMAT=json).
+loki.process "parse" {
+  stage.json {
+    expressions = { level = "level" }
+  }
+  stage.labels {
+    values = { level = "" }
+  }
+  forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

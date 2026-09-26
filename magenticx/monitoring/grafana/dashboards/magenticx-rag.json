@@ -1,0 +1,81 @@
+{
+  "uid": "magenticx-rag",
+  "title": "magenticX — RAG / Retrieval",
+  "tags": ["magenticx"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-24h", "to": "now" },
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "Retrievals (24h)",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "none", "noValue": "0", "color": { "mode": "fixed", "fixedColor": "blue" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [ { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum(count_over_time({service=\"magenticx_rag_service\"} |= \"retrieval_completed\" [24h]))" } ]
+    },
+    {
+      "id": 2, "type": "stat", "title": "No-results (24h)",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "none", "noValue": "0", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum(count_over_time({service=\"magenticx_rag_service\"} |= \"retrieval_no_results\" [24h]))" } ]
+    },
+    {
+      "id": 3, "type": "stat", "title": "Failures (24h)",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "none", "noValue": "0", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum(count_over_time({service=\"magenticx_rag_service\"} |~ \"retrieval_failed|sql_query_failed\" [24h]))" } ]
+    },
+    {
+      "id": 4, "type": "stat", "title": "SQL queries (24h)",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "none", "noValue": "0", "color": { "mode": "fixed", "fixedColor": "purple" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [ { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum(count_over_time({service=\"magenticx_rag_service\"} |= \"sql_query_completed\" [24h]))" } ]
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "Retrieval ops /min",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "none", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum(count_over_time({service=\"magenticx_rag_service\"} |= \"retrieval_completed\" [1m]))", "legendFormat": "completed" },
+        { "refId": "B", "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum(count_over_time({service=\"magenticx_rag_service\"} |= \"retrieval_no_results\" [1m]))", "legendFormat": "no_results" },
+        { "refId": "C", "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum(count_over_time({service=\"magenticx_rag_service\"} |= \"retrieval_failed\" [1m]))", "legendFormat": "failed" }
+      ]
+    },
+    {
+      "id": 6, "type": "timeseries", "title": "Latency p95 (ms) — retrieval & SQL",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "ms", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "expr": "quantile_over_time(0.95, {service=\"magenticx_rag_service\"} |= \"retrieval_completed\" | json lat=\"fields.duration_ms\" | unwrap lat [5m])", "legendFormat": "retrieval p95" },
+        { "refId": "B", "datasource": { "type": "loki", "uid": "loki" }, "expr": "quantile_over_time(0.95, {service=\"magenticx_rag_service\"} |= \"sql_query_completed\" | json lat=\"fields.duration_ms\" | unwrap lat [5m])", "legendFormat": "sql p95" }
+      ]
+    },
+    {
+      "id": 7, "type": "timeseries", "title": "Retrievals by collection /min",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 12 },
+      "fieldConfig": { "defaults": { "unit": "none", "custom": { "drawStyle": "bars", "fillOpacity": 60, "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "targets": [ { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum by (coll) (count_over_time({service=\"magenticx_rag_service\"} |= \"retrieval_completed\" | json coll=\"fields.collection_name\" [5m]))", "legendFormat": "{{coll}}" } ]
+    },
+    {
+      "id": 8, "type": "logs", "title": "RAG warnings & failures",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 20 },
+      "options": { "showTime": true, "wrapLogMessage": true, "enableLogDetails": true, "dedupStrategy": "none", "sortOrder": "Descending" },
+      "targets": [ { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "expr": "{service=\"magenticx_rag_service\"} |~ \"retrieval_failed|retrieval_no_results|sql_query_failed|sql_table_not_found\"" } ]
+    }
+  ]
+}
