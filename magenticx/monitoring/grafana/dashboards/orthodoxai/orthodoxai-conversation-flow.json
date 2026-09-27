@@ -1,0 +1,72 @@
+{
+  "uid": "orthodoxai-conversation-flow",
+  "title": "OrthodoxAI — Conversation flow",
+  "tags": ["orthodoxai"],
+  "description": "Paste a conversation id (or one request id) to follow it through dialogue_bridge and agents.",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {"from": "now-24h", "to": "now"},
+  "templating": {"list": [{"name": "id", "label": "Conversation or request id (raw, matches DB)", "type": "textbox", "query": "", "current": {"text": "", "value": ""}, "hide": 0}]},
+  "annotations": {"list": []},
+  "links": [{"type": "dashboards", "tags": ["orthodoxai"], "asDropdown": true, "title": "OrthodoxAI dashboards", "includeVars": false, "keepTime": true}],
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "Events (range)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "none", "noValue": "0", "color": {"mode": "fixed", "fixedColor": "blue"}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "none"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "sum(count_over_time({stack=\"orthodoxai\"} |= \"$id\" [$__range]))"}],
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0}
+    },
+    {
+      "id": 2, "type": "stat", "title": "Errors (range)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "none", "noValue": "0", "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background", "graphMode": "none"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "sum(count_over_time({stack=\"orthodoxai\", level=\"ERROR\"} |= \"$id\" [$__range]))"}],
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0}
+    },
+    {
+      "id": 3, "type": "stat", "title": "Answers (range)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "none", "noValue": "0", "color": {"mode": "fixed", "fixedColor": "purple"}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "none"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"$id\" |= \"inference_run_started\" [$__range]))"}],
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0}
+    },
+    {
+      "id": 4, "type": "stat", "title": "Voice turns (range)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "none", "noValue": "0", "color": {"mode": "fixed", "fixedColor": "green"}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "none"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"$id\" |= \"realtime_voice_transcript_persisted\" [$__range]))"}],
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0}
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "Activity /1m by service",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "interval": "1m",
+      "fieldConfig": {"defaults": {"unit": "none", "custom": {"drawStyle": "bars", "fillOpacity": 60, "stacking": {"mode": "normal"}}}, "overrides": []},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum by (service) (count_over_time({stack=\"orthodoxai\"} |= \"$id\" [1m]))", "legendFormat": "{{service}}"}],
+      "gridPos": {"h": 7, "w": 12, "x": 0, "y": 4}
+    },
+    {
+      "id": 6, "type": "timeseries", "title": "HTTP status /1m",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "interval": "1m",
+      "fieldConfig": {"defaults": {"unit": "none", "custom": {"drawStyle": "bars", "fillOpacity": 60, "stacking": {"mode": "normal"}}}, "overrides": []},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum by (status_code) (count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"$id\" |= \"http_request_completed\" | json [1m]))", "legendFormat": "{{status_code}}"}],
+      "gridPos": {"h": 7, "w": 12, "x": 12, "y": 4}
+    },
+    {
+      "id": 7, "type": "logs", "title": "Full flow — every bridge + agents event carrying this id",
+      "description": "A conversation id matches every line of that conversation; a request id follows one request from the bridge into the agents service.",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "options": {"showTime": true, "wrapLogMessage": true, "enableLogDetails": true, "dedupStrategy": "none", "sortOrder": "Descending"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "expr": "{stack=\"orthodoxai\"} |= \"$id\""}],
+      "gridPos": {"h": 16, "w": 24, "x": 0, "y": 11}
+    }
+  ]
+}

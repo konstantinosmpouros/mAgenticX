@@ -5,8 +5,13 @@
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
+  # Names the Prometheus, not a project: external labels are stamped on every
+  # alert sent to Alertmanager, and this instance alerts on BOTH app stacks
+  # (magenticx and orthodoxai). A `stack: magenticx` label here would mislabel
+  # every OrthodoxAI alert e-mail. Per-project alerts carry their own `project`
+  # label (alert.rules.yml).
   external_labels:
-    stack: magenticx
+    monitor: dennis
 
 rule_files:
   - /etc/prometheus/alert.rules.yml
@@ -43,6 +48,8 @@ scrape_configs:
         type: A
         port: 9093
 
-# NOTE: the magenticx app services (bridge/agents/rag) are intentionally NOT
-# scraped here — they sit behind mTLS and the plan is push-OTLP, not scrape.
+# NOTE: the app services of both stacks (magenticx bridge/agents/rag, orthodoxai
+# bridge/agents) are intentionally NOT scraped here — they sit behind mTLS on
+# internal networks this stack does not join, and the plan is push-OTLP, not
+# scrape. cAdvisor already sees every container on the host.
 # Application error/latency alerts arrive in Track 2 (OTel SDK → otel-collector).

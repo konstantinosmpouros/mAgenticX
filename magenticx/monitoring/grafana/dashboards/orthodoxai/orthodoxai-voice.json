@@ -1,0 +1,121 @@
+{
+  "uid": "orthodoxai-voice",
+  "title": "OrthodoxAI — Voice & speech",
+  "tags": ["orthodoxai"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {"from": "now-24h", "to": "now"},
+  "templating": {"list": []},
+  "annotations": {"list": []},
+  "links": [{"type": "dashboards", "tags": ["orthodoxai"], "asDropdown": true, "title": "OrthodoxAI dashboards", "includeVars": false, "keepTime": true}],
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "Live voice sessions (range)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "none", "noValue": "0", "color": {"mode": "fixed", "fixedColor": "green"}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "none"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"realtime_voice_session_created\" [$__range]))"}],
+      "gridPos": {"h": 4, "w": 4, "x": 0, "y": 0}
+    },
+    {
+      "id": 2, "type": "stat", "title": "Voice sessions ended (range)",
+      "description": "Sessions the kiosk closed cleanly. Far fewer than started means sessions are being dropped.",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "none", "noValue": "0", "color": {"mode": "fixed", "fixedColor": "blue"}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "none"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"realtime_voice_session_ended\" [$__range]))"}],
+      "gridPos": {"h": 4, "w": 4, "x": 4, "y": 0}
+    },
+    {
+      "id": 3, "type": "stat", "title": "Voice turns saved (range)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "none", "noValue": "0", "color": {"mode": "fixed", "fixedColor": "purple"}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "none"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"realtime_voice_transcript_persisted\" [$__range]))"}],
+      "gridPos": {"h": 4, "w": 4, "x": 8, "y": 0}
+    },
+    {
+      "id": 4, "type": "stat", "title": "Dictations (range)",
+      "description": "Push-to-talk questions transcribed into the chat box.",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "none", "noValue": "0", "color": {"mode": "fixed", "fixedColor": "blue"}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "none"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"dictation_transcribed\" [$__range]))"}],
+      "gridPos": {"h": 4, "w": 4, "x": 12, "y": 0}
+    },
+    {
+      "id": 5, "type": "stat", "title": "Read-aloud (range)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "none", "noValue": "0", "color": {"mode": "fixed", "fixedColor": "blue"}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "none"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"message_read_aloud_generated\" [$__range]))"}],
+      "gridPos": {"h": 4, "w": 4, "x": 16, "y": 0}
+    },
+    {
+      "id": 6, "type": "stat", "title": "Voice / speech failures (range)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "none", "noValue": "0", "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background", "graphMode": "none"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |~ `realtime_voice_session_(failed|unreachable|invalid_json)|dictation_(upstream_http_error|upstream_unreachable|invalid_json|invalid_payload|read_failed)|read_aloud_(upstream_failed|upstream_unavailable|empty_audio)` [$__range]))"}],
+      "gridPos": {"h": 4, "w": 4, "x": 20, "y": 0}
+    },
+    {
+      "id": 7, "type": "timeseries", "title": "Voice activity /15m",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "interval": "15m",
+      "fieldConfig": {"defaults": {"unit": "none", "custom": {"drawStyle": "bars", "fillOpacity": 60}}, "overrides": []},
+      "targets": [
+        {"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"realtime_voice_session_created\" [15m]))", "legendFormat": "live sessions"},
+        {"refId": "B", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"realtime_voice_transcript_persisted\" [15m]))", "legendFormat": "voice turns saved"},
+        {"refId": "C", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"dictation_transcribed\" [15m]))", "legendFormat": "dictations"},
+        {"refId": "D", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"message_read_aloud_generated\" [15m]))", "legendFormat": "read-aloud"}
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4}
+    },
+    {
+      "id": 8, "type": "timeseries", "title": "Failures by type /15m",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "interval": "15m",
+      "fieldConfig": {"defaults": {"unit": "none", "custom": {"drawStyle": "bars", "fillOpacity": 60, "stacking": {"mode": "normal"}}}, "overrides": []},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum by (event) (count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |~ `realtime_voice_session_(failed|unreachable|invalid_json)|dictation_(upstream_http_error|upstream_unreachable|invalid_json|invalid_payload|read_failed)|read_aloud_(upstream_failed|upstream_unavailable|empty_audio)` | json [15m]))", "legendFormat": "{{event}}"}],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4}
+    },
+    {
+      "id": 9, "type": "timeseries", "title": "Dictation upload size p50 / p95",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "bytes", "custom": {"drawStyle": "line", "fillOpacity": 10}}, "overrides": []},
+      "targets": [
+        {"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "expr": "quantile_over_time(0.50, {stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"dictation_transcribed\" | json v=\"fields.upload_bytes\" | unwrap v | __error__=\"\" [30m]) by (service)", "legendFormat": "p50"},
+        {"refId": "B", "datasource": {"type": "loki", "uid": "loki"}, "expr": "quantile_over_time(0.95, {stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"dictation_transcribed\" | json v=\"fields.upload_bytes\" | unwrap v | __error__=\"\" [30m]) by (service)", "legendFormat": "p95"}
+      ],
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 12}
+    },
+    {
+      "id": 10, "type": "timeseries", "title": "Transcript length p50 (chars)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "none", "custom": {"drawStyle": "line", "fillOpacity": 10}}, "overrides": []},
+      "targets": [
+        {"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "expr": "quantile_over_time(0.50, {stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"dictation_transcribed\" | json v=\"fields.transcript_length\" | unwrap v | __error__=\"\" [30m]) by (service)", "legendFormat": "dictation"},
+        {"refId": "B", "datasource": {"type": "loki", "uid": "loki"}, "expr": "quantile_over_time(0.50, {stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"realtime_voice_transcript_persisted\" | json v=\"fields.transcript_length\" | unwrap v | __error__=\"\" [30m]) by (service)", "legendFormat": "live voice turn"}
+      ],
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 12}
+    },
+    {
+      "id": 11, "type": "timeseries", "title": "Voice turns by speaker /15m",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "interval": "15m",
+      "fieldConfig": {"defaults": {"unit": "none", "custom": {"drawStyle": "bars", "fillOpacity": 60, "stacking": {"mode": "normal"}}}, "overrides": []},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum by (role) (count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"realtime_voice_transcript_persisted\" | json role=\"fields.role\" [15m]))", "legendFormat": "{{role}}"}],
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 12}
+    },
+    {
+      "id": 12, "type": "logs", "title": "Voice & speech failures (bridge + agents)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "options": {"showTime": true, "wrapLogMessage": true, "enableLogDetails": true, "dedupStrategy": "none", "sortOrder": "Descending"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "expr": "{stack=\"orthodoxai\", service=~\"orthodoxai_(dialogue_bridge|agents)\"} |~ `realtime_voice_session_(failed|unreachable|invalid_json)|dictation_(upstream_http_error|upstream_unreachable|invalid_json|invalid_payload|read_failed)|read_aloud_(upstream_failed|upstream_unavailable|empty_audio)|realtime_session_provider_|dictation_provider_(failed|invalid_payload)|read_aloud_provider_(failed|empty_audio)`"}],
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 20}
+    }
+  ]
+}

@@ -1,0 +1,129 @@
+{
+  "uid": "orthodoxai-agent",
+  "title": "OrthodoxAI — Agent runs",
+  "tags": ["orthodoxai"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {"from": "now-24h", "to": "now"},
+  "templating": {"list": []},
+  "annotations": {"list": []},
+  "links": [{"type": "dashboards", "tags": ["orthodoxai"], "asDropdown": true, "title": "OrthodoxAI dashboards", "includeVars": false, "keepTime": true}],
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "Streams started (range)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "none", "noValue": "0", "color": {"mode": "fixed", "fixedColor": "blue"}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "none"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_agents\"} |= \"agent_stream_started\" [$__range]))"}],
+      "gridPos": {"h": 4, "w": 4, "x": 0, "y": 0}
+    },
+    {
+      "id": 2, "type": "stat", "title": "Completed (range)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "none", "noValue": "0", "color": {"mode": "fixed", "fixedColor": "green"}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "none"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_agents\"} |= \"agent_stream_completed\" [$__range]))"}],
+      "gridPos": {"h": 4, "w": 4, "x": 4, "y": 0}
+    },
+    {
+      "id": 3, "type": "stat", "title": "Failed (range)",
+      "description": "agent_stream_failed / agent_resume_failed (agents) + inference_run_failed (bridge).",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "none", "noValue": "0", "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background", "graphMode": "none"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "sum(count_over_time({stack=\"orthodoxai\", service=~\"orthodoxai_(dialogue_bridge|agents)\"} |~ `agent_stream_failed|agent_resume_failed|inference_run_failed` [$__range]))"}],
+      "gridPos": {"h": 4, "w": 4, "x": 8, "y": 0}
+    },
+    {
+      "id": 4, "type": "stat", "title": "Cancelled (range)",
+      "description": "A cancelled run is usually a visitor asking something new before the answer finished — not an error.",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "none", "noValue": "0", "color": {"mode": "fixed", "fixedColor": "yellow"}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "none"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_agents\"} |~ `agent_stream_cancelled|agent_resume_cancelled` [$__range]))"}],
+      "gridPos": {"h": 4, "w": 4, "x": 12, "y": 0}
+    },
+    {
+      "id": 5, "type": "stat", "title": "Tool errors (range)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "none", "noValue": "0", "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 1}]}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background", "graphMode": "none"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_agents\"} |= \"tool_call_error\" [$__range]))"}],
+      "gridPos": {"h": 4, "w": 4, "x": 16, "y": 0}
+    },
+    {
+      "id": 6, "type": "stat", "title": "Approval pauses (range)",
+      "description": "Runs paused on a human-in-the-loop approval gate.",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "none", "noValue": "0", "color": {"mode": "fixed", "fixedColor": "purple"}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "none"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"inference_run_awaiting_resume\" [$__range]))"}],
+      "gridPos": {"h": 4, "w": 4, "x": 20, "y": 0}
+    },
+    {
+      "id": 7, "type": "timeseries", "title": "Run lifecycle /5m",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "interval": "5m",
+      "fieldConfig": {"defaults": {"unit": "none", "custom": {"drawStyle": "bars", "fillOpacity": 60}}, "overrides": []},
+      "targets": [
+        {"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_agents\"} |= \"agent_stream_started\" [5m]))", "legendFormat": "started"},
+        {"refId": "B", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_agents\"} |= \"agent_stream_completed\" [5m]))", "legendFormat": "completed"},
+        {"refId": "C", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_agents\"} |= \"agent_stream_cancelled\" [5m]))", "legendFormat": "cancelled"},
+        {"refId": "D", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_agents\"} |= \"agent_stream_failed\" [5m]))", "legendFormat": "failed"}
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4}
+    },
+    {
+      "id": 8, "type": "timeseries", "title": "Approval (resume) lifecycle /5m",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "interval": "5m",
+      "fieldConfig": {"defaults": {"unit": "none", "custom": {"drawStyle": "bars", "fillOpacity": 60}}, "overrides": []},
+      "targets": [
+        {"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_agents\"} |= \"agent_resume_started\" [5m]))", "legendFormat": "resumed"},
+        {"refId": "B", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_agents\"} |= \"agent_resume_completed\" [5m]))", "legendFormat": "completed"},
+        {"refId": "C", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_agents\"} |= \"agent_resume_failed\" [5m]))", "legendFormat": "failed"},
+        {"refId": "D", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_agents\"} |= \"agent_resume_stale_interrupt\" [5m]))", "legendFormat": "stale interrupt"}
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4}
+    },
+    {
+      "id": 9, "type": "timeseries", "title": "Tool errors by tool /5m",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "interval": "5m",
+      "fieldConfig": {"defaults": {"unit": "none", "custom": {"drawStyle": "bars", "fillOpacity": 60, "stacking": {"mode": "normal"}}}, "overrides": []},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum by (tool) (count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_agents\"} |= \"tool_call_error\" | json tool=\"fields.tool\" [5m]))", "legendFormat": "{{tool}}"}],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12}
+    },
+    {
+      "id": 10, "type": "timeseries", "title": "Runtime problems by event /5m",
+      "description": "Checkpointer, event-loop and agent-initialisation warnings that do not always fail a run.",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "interval": "5m",
+      "fieldConfig": {"defaults": {"unit": "none", "custom": {"drawStyle": "bars", "fillOpacity": 60, "stacking": {"mode": "normal"}}}, "overrides": []},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum by (event) (count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_agents\"} |~ `checkpoint_[a-z_]*failed|checkpoint_fork_source_empty|event_loop_exception|agent_initialization_failed|agent_resume_initialization_failed|agent_resume_state_load_failed|agent_resume_stale_interrupt` | json [5m]))", "legendFormat": "{{event}}"}],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12}
+    },
+    {
+      "id": 11, "type": "timeseries", "title": "Conversation titles & charts /5m",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "interval": "5m",
+      "fieldConfig": {"defaults": {"unit": "none", "custom": {"drawStyle": "bars", "fillOpacity": 60}}, "overrides": []},
+      "targets": [
+        {"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"title_generation_succeeded\" [5m]))", "legendFormat": "title generated"},
+        {"refId": "B", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"title_generation_fallback_used\" [5m]))", "legendFormat": "title fallback"},
+        {"refId": "C", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |~ `title_generation_(failed|unreachable|invalid_payload)` [5m]))", "legendFormat": "title failed"},
+        {"refId": "D", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_agents\"} |= \"chart_rendered\" [5m]))", "legendFormat": "chart rendered"}
+      ],
+      "gridPos": {"h": 7, "w": 24, "x": 0, "y": 20}
+    },
+    {
+      "id": 12, "type": "logs", "title": "Agent error stream",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "options": {"showTime": true, "wrapLogMessage": true, "enableLogDetails": true, "dedupStrategy": "none", "sortOrder": "Descending"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "expr": "{stack=\"orthodoxai\", service=~\"orthodoxai_(dialogue_bridge|agents)\"} |~ `agent_run_error|agent_stream_failed|agent_resume_failed|inference_run_failed|tool_call_error|event_loop_exception|checkpoint_[a-z_]*failed|event_log_publish_failed`"}],
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 27}
+    }
+  ]
+}

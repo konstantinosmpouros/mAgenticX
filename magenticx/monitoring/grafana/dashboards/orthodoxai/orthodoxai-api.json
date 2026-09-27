@@ -1,0 +1,116 @@
+{
+  "uid": "orthodoxai-api",
+  "title": "OrthodoxAI — API & Streaming",
+  "tags": ["orthodoxai"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {"from": "now-6h", "to": "now"},
+  "templating": {"list": []},
+  "annotations": {"list": []},
+  "links": [{"type": "dashboards", "tags": ["orthodoxai"], "asDropdown": true, "title": "OrthodoxAI dashboards", "includeVars": false, "keepTime": true}],
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "Requests /s (5m)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "reqps", "noValue": "0", "decimals": 2, "color": {"mode": "fixed", "fixedColor": "blue"}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "area"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum(rate({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"http_request_completed\" | json | event=\"http_request_completed\" [5m]))"}],
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0}
+    },
+    {
+      "id": 2, "type": "stat", "title": "5xx (range)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "none", "noValue": "0", "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background", "graphMode": "none"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"http_request_completed\" | json | event=\"http_request_completed\" | status_code=~\"5..\" [$__range]))"}],
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0}
+    },
+    {
+      "id": 3, "type": "stat", "title": "429 rate-limited (range)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "none", "noValue": "0", "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 1}]}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background", "graphMode": "none"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"http_request_completed\" | json | event=\"http_request_completed\" | status_code=\"429\" [$__range]))"}],
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0}
+    },
+    {
+      "id": 4, "type": "stat", "title": "p95 latency (5m)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "ms", "noValue": "0", "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 1000}, {"color": "red", "value": 3000}]}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background", "graphMode": "area"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "expr": "quantile_over_time(0.95, {stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"http_request_completed\" | json lat=\"fields.duration_ms\" | unwrap lat | __error__=\"\" [5m]) by (service)"}],
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0}
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "Request rate by status",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "reqps", "custom": {"drawStyle": "line", "fillOpacity": 10}}, "overrides": []},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum by (status_code) (rate({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"http_request_completed\" | json | event=\"http_request_completed\" [5m]))", "legendFormat": "{{status_code}}"}],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4}
+    },
+    {
+      "id": 6, "type": "timeseries", "title": "Latency p50 / p95 / p99 (ms)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "ms", "custom": {"drawStyle": "line", "fillOpacity": 10}}, "overrides": []},
+      "targets": [
+        {"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "expr": "quantile_over_time(0.5, {stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"http_request_completed\" | json lat=\"fields.duration_ms\" | unwrap lat | __error__=\"\" [5m]) by (service)", "legendFormat": "p50"},
+        {"refId": "B", "datasource": {"type": "loki", "uid": "loki"}, "expr": "quantile_over_time(0.95, {stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"http_request_completed\" | json lat=\"fields.duration_ms\" | unwrap lat | __error__=\"\" [5m]) by (service)", "legendFormat": "p95"},
+        {"refId": "C", "datasource": {"type": "loki", "uid": "loki"}, "expr": "quantile_over_time(0.99, {stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"http_request_completed\" | json lat=\"fields.duration_ms\" | unwrap lat | __error__=\"\" [5m]) by (service)", "legendFormat": "p99"}
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4}
+    },
+    {
+      "id": 7, "type": "timeseries", "title": "Requests by route /5m",
+      "description": "Paths with their UUIDs collapsed to :id, so every conversation's requests group into one route.",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "interval": "5m",
+      "fieldConfig": {"defaults": {"unit": "none", "custom": {"drawStyle": "bars", "fillOpacity": 60, "stacking": {"mode": "normal"}}}, "overrides": []},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum by (http_method, route) (count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"http_request_completed\" | json | event=\"http_request_completed\" | label_format route=`{{ regexReplaceAll \"[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}\" .http_path \":id\" }}` [5m]))", "legendFormat": "{{http_method}} {{route}}"}],
+      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 12}
+    },
+    {
+      "id": 8, "type": "table", "title": "Slowest routes — p95 ms (range)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"custom": {"align": "auto"}}, "overrides": [{"matcher": {"id": "byType", "options": "number"}, "properties": [{"id": "displayName", "value": "p95 ms"}]}]},
+      "options": {"showHeader": true, "sortBy": [{"displayName": "p95 ms", "desc": true}]},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "topk(15, quantile_over_time(0.95, {stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"http_request_completed\" | json | label_format route=`{{ regexReplaceAll \"[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}\" .http_path \":id\" }}` | unwrap fields_duration_ms | __error__=\"\" [$__range]) by (http_method, route))"}],
+      "transformations": [{"id": "labelsToFields", "options": {}}, {"id": "merge", "options": {}}, {"id": "organize", "options": {"excludeByName": {"Time": true}}}],
+      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 12}
+    },
+    {
+      "id": 9, "type": "timeseries", "title": "WebSocket run streams /5m",
+      "description": "The kiosk watches every answer over a WebSocket; failures here are answers a visitor never saw finish.",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "interval": "5m",
+      "fieldConfig": {"defaults": {"unit": "none", "custom": {"drawStyle": "bars", "fillOpacity": 60}}, "overrides": []},
+      "targets": [
+        {"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"ws_subscribe\" [5m]))", "legendFormat": "subscribed"},
+        {"refId": "B", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"ws_disconnect\" [5m]))", "legendFormat": "disconnected"},
+        {"refId": "C", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"ws_stream_failed\" [5m]))", "legendFormat": "failed"},
+        {"refId": "D", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"ws_terminal_payload_failed\" [5m]))", "legendFormat": "terminal payload failed"}
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 21}
+    },
+    {
+      "id": 10, "type": "timeseries", "title": "Upstream retries & event-log failures /5m",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "interval": "5m",
+      "fieldConfig": {"defaults": {"unit": "none", "custom": {"drawStyle": "bars", "fillOpacity": 60}}, "overrides": []},
+      "targets": [
+        {"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"upstream_request_retrying\" [5m]))", "legendFormat": "upstream retries"},
+        {"refId": "B", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"event_log_publish_failed\" [5m]))", "legendFormat": "event-log publish failed"},
+        {"refId": "C", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"event_log_mark_terminal_failed\" [5m]))", "legendFormat": "event-log mark-terminal failed"}
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 21}
+    },
+    {
+      "id": 11, "type": "logs", "title": "Failure stream — 5xx, retries, stream failures",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "options": {"showTime": true, "wrapLogMessage": true, "enableLogDetails": true, "dedupStrategy": "none", "sortOrder": "Descending"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "expr": "{stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |~ `http_request_failed|unhandled_exception|upstream_request_retrying|ws_stream_failed|event_log_publish_failed|\"status_code\": 5\\d\\d`"}],
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 29}
+    }
+  ]
+}

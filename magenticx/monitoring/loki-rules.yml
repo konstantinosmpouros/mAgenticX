@@ -1,22 +1,27 @@
 # Loki ruler alert rules (LogQL) — application-level errors from the logs.
 # Bind-mounted to /etc/loki/rules/fake/rules.yml; fires into the same
 # Alertmanager as the Prometheus rules, so everything emails one place.
+#
+# Two app stacks ship logs here (alloy-config.alloy): magenticx and orthodoxai.
+# The generic rules group `by (stack)` / `by (service)`, so one rule covers both
+# and the alert e-mail names the stack. Services are named `<stack>_<service>`,
+# so a `service` label alone is never ambiguous between the two.
 groups:
   - name: application-errors
     rules:
       - alert: HighErrorLogRate
         expr: |
-          sum(rate({stack="magenticx", level="ERROR"}[5m])) > 0.2
+          sum by (stack) (rate({stack=~"magenticx|orthodoxai", level="ERROR"}[5m])) > 0.2
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "Elevated ERROR log rate across magenticx"
+          summary: "Elevated ERROR log rate across {{ $labels.stack }}"
           description: "More than ~1 ERROR log every 5s, sustained for 5m."
 
       - alert: ServiceErrorBurst
         expr: |
-          sum by (service) (count_over_time({stack="magenticx", level="ERROR"}[5m])) > 10
+          sum by (stack, service) (count_over_time({stack=~"magenticx|orthodoxai", level="ERROR"}[5m])) > 10
         for: 0m
         labels:
           severity: critical
@@ -26,7 +31,7 @@ groups:
 
       - alert: UnhandledException
         expr: |
-          sum by (service) (count_over_time({stack="magenticx"} |= "unhandled_exception" [5m])) > 0
+          sum by (stack, service) (count_over_time({stack=~"magenticx|orthodoxai"} |= "unhandled_exception" [5m])) > 0
         for: 0m
         labels:
           severity: critical
@@ -36,10 +41,40 @@ groups:
 
       - alert: AgentRunErrors
         expr: |
-          sum(count_over_time({stack="magenticx", service="magenticx_agents"} |= "agent_run_error" [10m])) > 3
+          sum by (stack, service) (count_over_time({stack=~"magenticx|orthodoxai", service=~"(magenticx|orthodoxai)_agents"} |= "agent_run_error" [10m])) > 3
         for: 0m
         labels:
           severity: warning
         annotations:
-          summary: "Multiple agent run errors"
+          summary: "Multiple agent run errors in {{ $labels.service }}"
           description: ">3 agent_run_error events in 10m."
+
+  # OrthodoxAI-only signals — events the magenticx services do not emit.
+  - name: orthodoxai-kiosk
+    rules:
+      # Live voice, push-to-talk and read-aloud all depend on the provider. A
+      # kiosk that has stopped speaking produces no error a visitor can report,
+      # so the upstream failures are the only way anyone finds out.
+      - alert: OrthodoxAIVoiceFailures
+        expr: |
+          sum by (stack) (count_over_time({stack="orthodoxai", service="orthodoxai_dialogue_bridge"} |~ "realtime_voice_session_(failed|unreachable|invalid_json)|dictation_upstream_(http_error|unreachable)|read_aloud_upstream_(failed|unavailable)" [10m])) > 3
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "OrthodoxAI voice / speech failures"
+          description: ">3 voice, dictation or read-aloud upstream failures in 10m — the kiosk may have stopped listening or speaking."
+
+      # The access gate refuses before any provider call, so a surge costs
+      # nothing. It still means something is hammering a closed kiosk: a
+      # scanner past Cloudflare, or — once device authorization lands — an
+      # unregistered or revoked tablet retrying.
+      - alert: OrthodoxAIAccessDeniedSurge
+        expr: |
+          sum by (stack) (count_over_time({stack="orthodoxai", service="orthodoxai_dialogue_bridge"} |= "kiosk_access_denied" [10m])) > 50
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "OrthodoxAI access gate is refusing a surge of requests"
+          description: ">50 kiosk_access_denied events in 10m. See the OrthodoxAI — Kiosk access & security dashboard for the (hashed) client."

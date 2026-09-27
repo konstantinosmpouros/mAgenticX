@@ -1,0 +1,83 @@
+{
+  "uid": "orthodoxai-conversations",
+  "title": "OrthodoxAI — Conversations & usage",
+  "tags": ["orthodoxai"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {"from": "now-7d", "to": "now"},
+  "templating": {"list": []},
+  "annotations": {"list": []},
+  "links": [{"type": "dashboards", "tags": ["orthodoxai"], "asDropdown": true, "title": "OrthodoxAI dashboards", "includeVars": false, "keepTime": true}],
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "New conversations (range)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "none", "noValue": "0", "color": {"mode": "fixed", "fixedColor": "blue"}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "none"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"conversation_created\" [$__range]))"}],
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0}
+    },
+    {
+      "id": 2, "type": "stat", "title": "Conversations answered (range)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "none", "noValue": "0", "color": {"mode": "fixed", "fixedColor": "purple"}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "none"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "count(sum by (conversation_id) (count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"inference_run_started\" | json conversation_id=\"fields.conversation_id\" | conversation_id=~\".+\" [$__range])))"}],
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0}
+    },
+    {
+      "id": 3, "type": "stat", "title": "Answers (range)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "none", "noValue": "0", "color": {"mode": "fixed", "fixedColor": "green"}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "none"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"inference_run_started\" [$__range]))"}],
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0}
+    },
+    {
+      "id": 4, "type": "stat", "title": "Answers per conversation (range)",
+      "description": "How far a visitor goes past the first question. Session limits (TODO Phase 8) will cap this.",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "none", "noValue": "0", "decimals": 1, "color": {"mode": "fixed", "fixedColor": "blue"}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "none"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"inference_run_started\" [$__range])) / count(sum by (conversation_id) (count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"inference_run_started\" | json conversation_id=\"fields.conversation_id\" | conversation_id=~\".+\" [$__range])))"}],
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0}
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "Usage /1h",
+      "description": "When the kiosk is used — read it across the week for the busy hours and days.",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "interval": "1h",
+      "fieldConfig": {"defaults": {"unit": "none", "custom": {"drawStyle": "bars", "fillOpacity": 60}}, "overrides": []},
+      "targets": [
+        {"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"inference_run_started\" [1h]))", "legendFormat": "answers"},
+        {"refId": "B", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"conversation_created\" [1h]))", "legendFormat": "new conversations"},
+        {"refId": "C", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"realtime_voice_session_created\" [1h]))", "legendFormat": "live voice sessions"}
+      ],
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 4}
+    },
+    {
+      "id": 6, "type": "table", "title": "Longest conversations (answers, range)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"custom": {"align": "auto"}}, "overrides": [{"matcher": {"id": "byType", "options": "number"}, "properties": [{"id": "displayName", "value": "answers"}]}, {"matcher": {"id": "byName", "options": "conversation_id"}, "properties": [{"id": "links", "value": [{"title": "Open this conversation's flow", "url": "/d/orthodoxai-conversation-flow?var-id=${__value.raw}&${__url_time_range}"}]}]}]},
+      "options": {"showHeader": true, "sortBy": [{"displayName": "answers", "desc": true}]},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "topk(15, sum by (conversation_id) (count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"inference_run_started\" | json conversation_id=\"fields.conversation_id\" | conversation_id=~\".+\" [$__range])))"}],
+      "transformations": [{"id": "labelsToFields", "options": {}}, {"id": "merge", "options": {}}, {"id": "organize", "options": {"excludeByName": {"Time": true}}}],
+      "gridPos": {"h": 10, "w": 12, "x": 0, "y": 12}
+    },
+    {
+      "id": 7, "type": "timeseries", "title": "Messages & edits /1h",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "interval": "1h",
+      "fieldConfig": {"defaults": {"unit": "none", "custom": {"drawStyle": "bars", "fillOpacity": 60}}, "overrides": []},
+      "targets": [
+        {"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"first_message_created\" [1h]))", "legendFormat": "first messages"},
+        {"refId": "B", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"message_created\" [1h]))", "legendFormat": "messages added"},
+        {"refId": "C", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"conversation_forked\" [1h]))", "legendFormat": "forks"},
+        {"refId": "D", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"inference_run_started\" | json forked=\"fields.forked\" | forked=\"true\" [1h]))", "legendFormat": "runs on a forked branch (edit / retry)"}
+      ],
+      "gridPos": {"h": 10, "w": 12, "x": 12, "y": 12}
+    }
+  ]
+}

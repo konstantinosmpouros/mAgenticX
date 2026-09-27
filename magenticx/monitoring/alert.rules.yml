@@ -1,7 +1,11 @@
 # Infrastructure & container alert rules (Track 1).
 # These fire on the metrics cAdvisor + node-exporter already collect — no app
 # changes required. Application-level alerts (5xx, agent failures, log errors)
-# come with Track 2 (OTel + Loki).
+# live in loki-rules.yml.
+#
+# Two app stacks share this host and this rule file: magenticx and orthodoxai.
+# The container rules cover both and stamp a `project` label (derived from the
+# Swarm service name) so an alert e-mail says which stack it is about.
 groups:
   - name: monitoring-self
     rules:
@@ -43,7 +47,7 @@ groups:
           severity: critical
         annotations:
           summary: "Low disk on {{ $labels.instance }} ({{ $labels.mountpoint }})"
-          description: "Less than 10% free for 5m — Vault raft / Postgres / Chroma volumes at risk."
+          description: "Less than 10% free for 5m — both stacks' Postgres volumes, Chroma and the OrthodoxAI knowledge volume are at risk."
 
       - alert: HostDiskWillFill24h
         expr: predict_linear(node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs"}[6h], 24 * 3600) < 0
@@ -59,19 +63,27 @@ groups:
       # The exact failure mode we just hit: a service whose container keeps
       # restarting (bad startup, missing dependency, OOM-kill loop).
       - alert: ContainerCrashLooping
-        expr: changes(container_start_time_seconds{container_label_com_docker_swarm_service_name=~"magenticx_.*"}[15m]) > 3
+        expr: |
+          label_replace(
+            changes(container_start_time_seconds{container_label_com_docker_swarm_service_name=~"(magenticx|orthodoxai)_.*"}[15m]),
+            "project", "$1", "container_label_com_docker_swarm_service_name", "(magenticx|orthodoxai)_.*"
+          ) > 3
         for: 0m
         labels:
           severity: critical
         annotations:
-          summary: "Crash-looping: {{ $labels.container_label_com_docker_swarm_service_name }}"
+          summary: "Crash-looping ({{ $labels.project }}): {{ $labels.container_label_com_docker_swarm_service_name }}"
           description: "Container restarted >3 times in 15m (e.g. the agents → missing agent_runtime DB case)."
 
       - alert: ContainerHighMemory
-        expr: container_memory_usage_bytes{container_label_com_docker_swarm_service_name=~"magenticx_.*"} > 1.5e9
+        expr: |
+          label_replace(
+            container_memory_usage_bytes{container_label_com_docker_swarm_service_name=~"(magenticx|orthodoxai)_.*"},
+            "project", "$1", "container_label_com_docker_swarm_service_name", "(magenticx|orthodoxai)_.*"
+          ) > 1.5e9
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "High memory: {{ $labels.container_label_com_docker_swarm_service_name }}"
+          summary: "High memory ({{ $labels.project }}): {{ $labels.container_label_com_docker_swarm_service_name }}"
           description: "A single container has used >1.5GB for 10m."

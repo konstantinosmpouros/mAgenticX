@@ -1,5 +1,8 @@
 # Local monitoring add-on — Grafana, Prometheus, Loki, Alloy, cAdvisor and a
-# silent Alertmanager, watching the LOCAL Docker stack.
+# silent Alertmanager, watching the LOCAL Docker stacks: the `magenticx` project
+# and, when it is running, OrthodoxAI's `orthodoxai` project (its own repo, same
+# laptop). Each gets its own Grafana folder. Nothing here joins either project's
+# networks — logs come from the Docker socket, metrics from cAdvisor.
 #
 # The Denis twin is docker-compose-denis-monitoring.yml (Swarm, TLS, NPM, e-mail
 # alerts). This file reuses its dashboards, Grafana provisioning, Loki config and
@@ -16,7 +19,9 @@
 # only: nothing here is reachable from the network.
 #
 # The log panels parse JSON: set LOG_FORMAT=json in magenticx/.env and recreate
-# the three app services to fill them (metrics panels work either way).
+# the three app services to fill them (metrics panels work either way). The
+# OrthodoxAI local compose logs in console format, so locally only its raw-log
+# panels fill; on Denis it logs JSON and every panel works.
 
 services:
   grafana:

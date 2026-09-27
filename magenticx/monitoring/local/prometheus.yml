@@ -5,8 +5,9 @@
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
+  # See ../prometheus.yml — names the instance, not a project.
   external_labels:
-    stack: magenticx
+    monitor: local
 
 rule_files:
   - /etc/prometheus/alert.rules.yml
@@ -25,16 +26,16 @@ scrape_configs:
     static_configs:
       - targets: ["cadvisor:8080"]
     # Local containers carry Compose labels, not Swarm ones. The dashboards and
-    # alert rules filter on the Swarm service name (`magenticx_<service>`), so
-    # rebuild it from the Compose project + service — for the app project only —
-    # and every panel works unchanged.
+    # alert rules filter on the Swarm service name (`<project>_<service>`) and
+    # stack namespace, so rebuild both from the Compose project + service — for
+    # the two app projects only — and every panel works unchanged.
     metric_relabel_configs:
       - source_labels: [container_label_com_docker_compose_project, container_label_com_docker_compose_service]
-        regex: "(magenticx);(.+)"
+        regex: "(magenticx|orthodoxai);(.+)"
         target_label: container_label_com_docker_swarm_service_name
         replacement: "${1}_${2}"
       - source_labels: [container_label_com_docker_compose_project]
-        regex: "(magenticx)"
+        regex: "(magenticx|orthodoxai)"
         target_label: container_label_com_docker_stack_namespace
         replacement: "${1}"
 

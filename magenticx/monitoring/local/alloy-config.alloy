@@ -1,8 +1,9 @@
 // Grafana Alloy for the LOCAL monitoring add-on (docker-compose-monitoring.yaml).
 // Same pipeline as ../alloy-config.alloy (Denis), but local containers carry
 // Compose labels instead of Swarm ones, so the `stack` / `service` labels are
-// rebuilt from those — `service` becomes `magenticx_<service>`, exactly as on
-// Swarm — and the dashboards' LogQL works unchanged.
+// rebuilt from those — `service` becomes `<project>_<service>` (e.g.
+// `magenticx_agents`, `orthodoxai_agents`), exactly as on Swarm — and the
+// dashboards' LogQL works unchanged.
 
 discovery.docker "containers" {
   host = "unix:///var/run/docker.sock"
@@ -11,11 +12,12 @@ discovery.docker "containers" {
 discovery.relabel "containers" {
   targets = discovery.docker.containers.targets
 
-  // Ship ONLY the magenticx app project's logs — not the monitoring stack's own
-  // containers, and not any other Compose project running on the laptop.
+  // Ship ONLY the two app projects' logs (magenticx, orthodoxai) — not the
+  // monitoring project's own containers (`magenticx-monitoring`: the regex is
+  // anchored), and not any other Compose project running on the laptop.
   rule {
     source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
-    regex         = "magenticx"
+    regex         = "magenticx|orthodoxai"
     action        = "keep"
   }
 

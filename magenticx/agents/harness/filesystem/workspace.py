@@ -114,7 +114,7 @@ def build_workspace_backend(
         /skills/              → agent_runtime rows                  (user-enabled skills)
         /conversation/input/  → <conv_id>/input/                     (user uploads, read-only)
         /conversation/output/ → <conv_id>/output/                    (agent artifacts, read-write)
-        /conversation/        → <user_root>/agents/<slug>/<conv_id>/ (this chat only)
+        /conversation/        → <user_root>/agents/<slug>/conversations/<conv_id>/ (this chat only)
         /default_skills/      → image folder OR agent_runtime rows   (read-only, optional)
         /reference/           → image folder OR agent_runtime rows   (read-only, optional)
         default               → StateBackend(rt)                     (ephemeral scratch)

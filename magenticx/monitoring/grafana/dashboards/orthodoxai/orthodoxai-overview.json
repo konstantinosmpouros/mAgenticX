@@ -1,0 +1,159 @@
+{
+  "uid": "orthodoxai-overview",
+  "title": "OrthodoxAI — Overview",
+  "tags": ["orthodoxai"],
+  "description": "OrthodoxAI kiosk stack on Dennis: usage, containers, logs and API health at a glance.",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {"from": "now-6h", "to": "now"},
+  "templating": {"list": []},
+  "annotations": {"list": []},
+  "links": [{"type": "dashboards", "tags": ["orthodoxai"], "asDropdown": true, "title": "OrthodoxAI dashboards", "includeVars": false, "keepTime": true}],
+  "panels": [
+    {
+      "id": 1, "type": "row", "title": "Kiosk at a glance — selected range",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0}
+    },
+    {
+      "id": 2, "type": "stat", "title": "Answers (range)",
+      "description": "Detached inference runs started by the bridge — one per question answered in chat (typed or dictated).",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "none", "noValue": "0", "color": {"mode": "fixed", "fixedColor": "blue"}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "none"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"inference_run_started\" [$__range]))"}],
+      "gridPos": {"h": 4, "w": 4, "x": 0, "y": 1}
+    },
+    {
+      "id": 3, "type": "stat", "title": "Conversations answered (range)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "none", "noValue": "0", "color": {"mode": "fixed", "fixedColor": "purple"}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "none"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "count(sum by (conversation_id) (count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"inference_run_started\" | json conversation_id=\"fields.conversation_id\" | conversation_id=~\".+\" [$__range])))"}],
+      "gridPos": {"h": 4, "w": 4, "x": 4, "y": 1}
+    },
+    {
+      "id": 4, "type": "stat", "title": "Live voice sessions (range)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "none", "noValue": "0", "color": {"mode": "fixed", "fixedColor": "green"}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "none"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"realtime_voice_session_created\" [$__range]))"}],
+      "gridPos": {"h": 4, "w": 4, "x": 8, "y": 1}
+    },
+    {
+      "id": 5, "type": "stat", "title": "Access denied (range)",
+      "description": "Requests refused by the kiosk access gate before any provider call.",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "none", "noValue": "0", "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 1}]}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background", "graphMode": "none"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"kiosk_access_denied\" [$__range]))"}],
+      "gridPos": {"h": 4, "w": 4, "x": 12, "y": 1}
+    },
+    {
+      "id": 6, "type": "stat", "title": "5xx (range)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "none", "noValue": "0", "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background", "graphMode": "none"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"http_request_completed\" | json | event=\"http_request_completed\" | status_code=~\"5..\" [$__range]))"}],
+      "gridPos": {"h": 4, "w": 4, "x": 16, "y": 1}
+    },
+    {
+      "id": 7, "type": "stat", "title": "Errors (range)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "none", "noValue": "0", "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background", "graphMode": "none"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "sum(count_over_time({stack=\"orthodoxai\", level=\"ERROR\"} [$__range]))"}],
+      "gridPos": {"h": 4, "w": 4, "x": 20, "y": 1}
+    },
+    {
+      "id": 8, "type": "row", "title": "Containers (cAdvisor) — orthodoxai stack only",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 5}
+    },
+    {
+      "id": 9, "type": "timeseries", "title": "CPU (cores) by service",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "none", "custom": {"drawStyle": "line", "fillOpacity": 10}}, "overrides": []},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"]}},
+      "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (container_label_com_docker_swarm_service_name) (rate(container_cpu_usage_seconds_total{container_label_com_docker_swarm_service_name=~\"orthodoxai_.*\"}[5m]))", "legendFormat": "{{container_label_com_docker_swarm_service_name}}"}],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6}
+    },
+    {
+      "id": 10, "type": "timeseries", "title": "Memory by service",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "bytes", "custom": {"drawStyle": "line", "fillOpacity": 10}}, "overrides": []},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"]}},
+      "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (container_label_com_docker_swarm_service_name) (container_memory_usage_bytes{container_label_com_docker_swarm_service_name=~\"orthodoxai_.*\"})", "legendFormat": "{{container_label_com_docker_swarm_service_name}}"}],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6}
+    },
+    {
+      "id": 11, "type": "timeseries", "title": "Host share — CPU (cores) by stack",
+      "description": "Both app stacks on Dennis, monitoring excluded. OrthodoxAI has no CPU/memory limits yet, so this is the panel that shows it crowding mAgenticX.",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "none", "custom": {"drawStyle": "line", "fillOpacity": 10, "stacking": {"mode": "normal"}}}, "overrides": []},
+      "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (stack) (label_replace(rate(container_cpu_usage_seconds_total{container_label_com_docker_swarm_service_name=~\"(magenticx|orthodoxai)_.*\", container_label_com_docker_swarm_service_name!~\"magenticx_monitoring_.*\"}[5m]), \"stack\", \"$1\", \"container_label_com_docker_swarm_service_name\", \"(magenticx|orthodoxai)_.*\"))", "legendFormat": "{{stack}}"}],
+      "gridPos": {"h": 7, "w": 12, "x": 0, "y": 14}
+    },
+    {
+      "id": 12, "type": "timeseries", "title": "Host share — memory by stack",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "bytes", "custom": {"drawStyle": "line", "fillOpacity": 10, "stacking": {"mode": "normal"}}}, "overrides": []},
+      "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (stack) (label_replace(container_memory_usage_bytes{container_label_com_docker_swarm_service_name=~\"(magenticx|orthodoxai)_.*\", container_label_com_docker_swarm_service_name!~\"magenticx_monitoring_.*\"}, \"stack\", \"$1\", \"container_label_com_docker_swarm_service_name\", \"(magenticx|orthodoxai)_.*\"))", "legendFormat": "{{stack}}"}],
+      "gridPos": {"h": 7, "w": 12, "x": 12, "y": 14}
+    },
+    {
+      "id": 13, "type": "row", "title": "Logs (Loki)",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 21}
+    },
+    {
+      "id": 14, "type": "timeseries", "title": "Log rate by level",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "logs/s", "custom": {"drawStyle": "bars", "fillOpacity": 60, "stacking": {"mode": "normal"}}}, "overrides": []},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum by (level) (rate({stack=\"orthodoxai\", level=~\".+\"}[1m]))", "legendFormat": "{{level}}"}],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 22}
+    },
+    {
+      "id": 15, "type": "timeseries", "title": "Log rate by service",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "logs/s", "custom": {"drawStyle": "bars", "fillOpacity": 60, "stacking": {"mode": "normal"}}}, "overrides": []},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum by (service) (rate({stack=\"orthodoxai\"}[1m]))", "legendFormat": "{{service}}"}],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 22}
+    },
+    {
+      "id": 16, "type": "logs", "title": "ERROR stream",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "options": {"showTime": true, "wrapLogMessage": true, "enableLogDetails": true, "dedupStrategy": "none", "sortOrder": "Descending"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "expr": "{stack=\"orthodoxai\", level=\"ERROR\"}"}],
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 30}
+    },
+    {
+      "id": 17, "type": "row", "title": "API (from dialogue_bridge logs)",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 40}
+    },
+    {
+      "id": 18, "type": "timeseries", "title": "Request rate by status",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "reqps", "custom": {"drawStyle": "line", "fillOpacity": 10}}, "overrides": []},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum by (status_code) (rate({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"http_request_completed\" | json | event=\"http_request_completed\" [5m]))", "legendFormat": "{{status_code}}"}],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 41}
+    },
+    {
+      "id": 19, "type": "timeseries", "title": "Latency p50 / p95 (ms)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "ms", "custom": {"drawStyle": "line", "fillOpacity": 10}}, "overrides": []},
+      "targets": [
+        {"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "expr": "quantile_over_time(0.5, {stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"http_request_completed\" | json lat=\"fields.duration_ms\" | unwrap lat | __error__=\"\" [5m]) by (service)", "legendFormat": "p50"},
+        {"refId": "B", "datasource": {"type": "loki", "uid": "loki"}, "expr": "quantile_over_time(0.95, {stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"http_request_completed\" | json lat=\"fields.duration_ms\" | unwrap lat | __error__=\"\" [5m]) by (service)", "legendFormat": "p95"}
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 41}
+    }
+  ]
+}

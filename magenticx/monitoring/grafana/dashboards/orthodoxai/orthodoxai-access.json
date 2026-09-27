@@ -1,0 +1,122 @@
+{
+  "uid": "orthodoxai-access",
+  "title": "OrthodoxAI — Kiosk access & security",
+  "tags": ["orthodoxai"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {"from": "now-24h", "to": "now"},
+  "templating": {"list": []},
+  "annotations": {"list": []},
+  "links": [{"type": "dashboards", "tags": ["orthodoxai"], "asDropdown": true, "title": "OrthodoxAI dashboards", "includeVars": false, "keepTime": true}],
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "Access denied (range)",
+      "description": "Refused by require_kiosk_access before any provider call — today the fail-closed gate, after plan 03 the device check.",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "none", "noValue": "0", "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 1}]}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background", "graphMode": "none"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"kiosk_access_denied\" [$__range]))"}],
+      "gridPos": {"h": 4, "w": 4, "x": 0, "y": 0}
+    },
+    {
+      "id": 2, "type": "stat", "title": "403 responses (range)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "none", "noValue": "0", "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 1}]}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background", "graphMode": "none"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"http_request_completed\" | json | event=\"http_request_completed\" | status_code=\"403\" [$__range]))"}],
+      "gridPos": {"h": 4, "w": 4, "x": 4, "y": 0}
+    },
+    {
+      "id": 3, "type": "stat", "title": "429 rate-limited (range)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "none", "noValue": "0", "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 1}]}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background", "graphMode": "none"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"http_request_completed\" | json | event=\"http_request_completed\" | status_code=\"429\" [$__range]))"}],
+      "gridPos": {"h": 4, "w": 4, "x": 8, "y": 0}
+    },
+    {
+      "id": 4, "type": "stat", "title": "CSRF failures (range)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "none", "noValue": "0", "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background", "graphMode": "none"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"csrf_validation_failed\" [$__range]))"}],
+      "gridPos": {"h": 4, "w": 4, "x": 12, "y": 0}
+    },
+    {
+      "id": 5, "type": "stat", "title": "Invalid requests (range)",
+      "description": "Bodies or parameters rejected by schema validation (422).",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "none", "noValue": "0", "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 1}]}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background", "graphMode": "none"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"request_validation_failed\" [$__range]))"}],
+      "gridPos": {"h": 4, "w": 4, "x": 16, "y": 0}
+    },
+    {
+      "id": 6, "type": "stat", "title": "Distinct clients (range)",
+      "description": "Distinct HMAC-hashed client IPs (as resolved behind the trusted proxy). The hash key is OrthodoxAI's own redaction secret, so these never correlate with mAgenticX's.",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "none", "noValue": "0", "color": {"mode": "fixed", "fixedColor": "blue"}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "none"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "count(sum by (client_ip) (count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"http_request_completed\" | json | event=\"http_request_completed\" | client_ip=~\"h:.+\" [$__range])))"}],
+      "gridPos": {"h": 4, "w": 4, "x": 20, "y": 0}
+    },
+    {
+      "id": 7, "type": "timeseries", "title": "Refusals /5m",
+      "description": "\"WS limiter failing open\" means Redis is unreachable and WebSocket connects are not being rate limited.",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "interval": "5m",
+      "fieldConfig": {"defaults": {"unit": "none", "custom": {"drawStyle": "bars", "fillOpacity": 60}}, "overrides": []},
+      "targets": [
+        {"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"kiosk_access_denied\" [5m]))", "legendFormat": "access denied"},
+        {"refId": "B", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"http_request_completed\" | json | event=\"http_request_completed\" | status_code=\"429\" [5m]))", "legendFormat": "429 rate-limited"},
+        {"refId": "C", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"csrf_validation_failed\" [5m]))", "legendFormat": "CSRF failed"},
+        {"refId": "D", "datasource": {"type": "loki", "uid": "loki"}, "expr": "sum(count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"ws_connect_rate_limit_degraded\" [5m]))", "legendFormat": "WS limiter failing open"}
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4}
+    },
+    {
+      "id": 8, "type": "timeseries", "title": "Distinct clients / 1h",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "none", "custom": {"drawStyle": "line", "fillOpacity": 10}}, "overrides": []},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "expr": "count(sum by (client_ip) (count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"http_request_completed\" | json | event=\"http_request_completed\" | client_ip=~\"h:.+\" [1h])))", "legendFormat": "distinct clients"}],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4}
+    },
+    {
+      "id": 9, "type": "table", "title": "Top clients by requests (hashed IP)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"custom": {"align": "auto"}}, "overrides": [{"matcher": {"id": "byType", "options": "number"}, "properties": [{"id": "displayName", "value": "requests"}]}]},
+      "options": {"showHeader": true, "sortBy": [{"displayName": "requests", "desc": true}]},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "topk(15, sum by (client_ip) (count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"http_request_completed\" | json | event=\"http_request_completed\" | client_ip=~\"h:.+\" [$__range])))"}],
+      "transformations": [{"id": "labelsToFields", "options": {}}, {"id": "merge", "options": {}}, {"id": "organize", "options": {"excludeByName": {"Time": true}}}],
+      "gridPos": {"h": 10, "w": 8, "x": 0, "y": 12}
+    },
+    {
+      "id": 10, "type": "table", "title": "Top clients by refusals (hashed IP)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"custom": {"align": "auto"}}, "overrides": [{"matcher": {"id": "byType", "options": "number"}, "properties": [{"id": "displayName", "value": "refusals"}]}]},
+      "options": {"showHeader": true, "sortBy": [{"displayName": "refusals", "desc": true}]},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "topk(15, sum by (client_ip) (count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |~ `kiosk_access_denied|csrf_validation_failed` | json | client_ip=~\"h:.+\" [$__range])))"}],
+      "transformations": [{"id": "labelsToFields", "options": {}}, {"id": "merge", "options": {}}, {"id": "organize", "options": {"excludeByName": {"Time": true}}}],
+      "gridPos": {"h": 10, "w": 8, "x": 8, "y": 12}
+    },
+    {
+      "id": 11, "type": "table", "title": "Most-refused routes",
+      "description": "What is being probed at the closed gate (UUIDs collapsed to :id).",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"custom": {"align": "auto"}}, "overrides": [{"matcher": {"id": "byType", "options": "number"}, "properties": [{"id": "displayName", "value": "refusals"}]}]},
+      "options": {"showHeader": true, "sortBy": [{"displayName": "refusals", "desc": true}]},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "queryType": "instant", "expr": "topk(15, sum by (http_method, route) (count_over_time({stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |= \"kiosk_access_denied\" | json | http_path=~\".+\" | label_format route=`{{ regexReplaceAll \"[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}\" .http_path \":id\" }}` [$__range])))"}],
+      "transformations": [{"id": "labelsToFields", "options": {}}, {"id": "merge", "options": {}}, {"id": "organize", "options": {"excludeByName": {"Time": true}}}],
+      "gridPos": {"h": 10, "w": 8, "x": 16, "y": 12}
+    },
+    {
+      "id": 12, "type": "logs", "title": "Security event stream",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "options": {"showTime": true, "wrapLogMessage": true, "enableLogDetails": true, "dedupStrategy": "none", "sortOrder": "Descending"},
+      "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "expr": "{stack=\"orthodoxai\", service=\"orthodoxai_dialogue_bridge\"} |~ `kiosk_access_denied|csrf_validation_failed|request_validation_failed|ws_connect_rate_limit_degraded|\"status_code\": 429`"}],
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 22}
+    }
+  ]
+}

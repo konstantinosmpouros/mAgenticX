@@ -107,7 +107,8 @@ def users_root() -> Path:
 
 
 def user_workspace(user_id: str) -> Path:
-    """One user's entire tree — pool, custom agents, per-agent state."""
+    """One user's tree on disk — conversation working files only. The skill pool,
+    custom agents, memory and tool choices live in the databases instead."""
     return users_root() / safe_segment(user_id)
 
 

@@ -1,6 +1,11 @@
 # Grafana dashboard provisioning — bind-mounted to
-# /etc/grafana/provisioning/dashboards/magenticx.yml. Loads every dashboard
-# JSON under /etc/grafana/dashboards into a "magenticX" folder.
+# /etc/grafana/provisioning/dashboards/magenticx.yml.
+#
+# One provider per project watched by this monitoring stack, each reading its
+# own subfolder of /etc/grafana/dashboards into its own Grafana folder. The
+# paths must not overlap: a file provider scans its path recursively, so a
+# provider pointed at the parent directory would load every project's
+# dashboards twice.
 apiVersion: 1
 
 providers:
@@ -13,5 +18,20 @@ providers:
     updateIntervalSeconds: 30
     allowUiUpdates: true
     options:
-      path: /etc/grafana/dashboards
+      path: /etc/grafana/dashboards/magenticx
+      foldersFromFilesStructure: false
+
+  # OrthodoxAI — a separate Swarm stack on the same host (`orthodoxai_*`).
+  # Watched through the Docker socket and cAdvisor only; the monitoring stack
+  # joins none of its networks.
+  - name: orthodoxai
+    orgId: 1
+    folder: OrthodoxAI
+    type: file
+    disableDeletion: false
+    editable: true
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/dashboards/orthodoxai
       foldersFromFilesStructure: false
