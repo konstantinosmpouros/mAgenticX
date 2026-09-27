@@ -16,10 +16,18 @@ The definition used to be mirrored here as ``agents.definition_spec`` plus
 tests for them went with them.
 """
 
+import inspect
+
 import pytest
 
 from core.database import AgentTable
 from utils import user_agents as ua
+
+# The real helper's signature. Fakes bind their call against it, so a caller
+# passing a keyword the helper does not take — or omitting a required one —
+# fails here instead of only in production. A bare `**kwargs` fake is what let
+# `_proxy(..., user_id=...)` ship and break Edit/Duplicate for ten days.
+_PROXY_SIGNATURE = inspect.signature(ua._proxy)
 
 
 @pytest.fixture
@@ -108,6 +116,7 @@ async def test_detail_joins_the_local_row_with_the_upstream_definition(
     calls = []
 
     async def _fake_proxy(method, url, **kwargs):
+        _PROXY_SIGNATURE.bind(method, url, **kwargs)  # TypeError on a bad call
         calls.append((method, url))
         return {
             "spec": {"slug": "research-bot", "prompt": "./AGENT.md"},

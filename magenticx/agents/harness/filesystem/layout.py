@@ -11,14 +11,14 @@ Two planes under one root — the consolidated layout from
 
     $MAGENTICX_WORKSPACES_ROOT/users/<user_id>/     ← one user's everything
         agents/<agent_slug>/
-            tool_prefs.json
             conversations/<conversation_id>/{input,output}
 
 Both planes are here because the split between them is the point: the global
 plane is **build-time** content — baked into the image, identical for every
 user, never written at runtime — while the user plane holds only what a run
 actually produces. Runtime content that used to sit in the user plane now lives
-in ``agent_runtime`` instead: memory in ``agent_memories``, the skill pool,
+in a database instead — per-agent tool choices in ``chat_db``
+(``user_agent_tool_prefs``), and in ``agent_runtime``: memory in ``agent_memories``, the skill pool,
 custom skill files and per-agent assignments in ``skill_pool`` / ``skill_files``
 / ``agent_skills``, and user-authored agent definitions in
 ``agent_definitions`` / ``agent_definition_files``. None of them has a path
@@ -119,7 +119,7 @@ def user_agents_root(user_id: str) -> Path:
 
 
 def agent_root(user_id: str, agent_slug: str) -> Path:
-    """Parent of this (user, agent) pair's conversations and tool preferences.
+    """Parent of this (user, agent) pair's conversations.
     Never itself mounted — the agent never sees this level."""
     return user_agents_root(user_id) / safe_segment(agent_slug)
 

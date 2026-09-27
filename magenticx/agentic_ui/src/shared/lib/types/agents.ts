@@ -51,6 +51,14 @@ export type AgentDraftSubAgent = {
   name: string;
   description: string;
   prompt: string;
+  /** A model id, or `""` to inherit the agent's own model. */
+  model: string;
+  /**
+   * MCP tools this sub-agent is restricted to, as `server/tool` keys — always a
+   * subset of the agent's `tools`. Empty means **inherit**: the sub-agent gets
+   * every tool the agent has, which is the runtime's behaviour for an omitted list.
+   */
+  tools: string[];
 };
 
 // A reference file the user adds to an agent folder, beyond the prompts the form

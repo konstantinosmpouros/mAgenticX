@@ -18,7 +18,6 @@ attachment blobs in the database:
     <workspaces_root>/users/<user_id>/
     └── agents/
         └── <agent_slug>/
-            ├── tool_prefs.json        ← per-agent tool overrides
             └── conversations/
                 └── <conversation_id>/ ← CompositeBackend route /conversation/
                     ├── input/         ← read-only user uploads
@@ -73,8 +72,7 @@ def user_root(user_id: str) -> Path:
 
 
 def agent_root(user_id: str, agent_slug: str) -> Path:
-    """Parent of this (user, agent) pair's ``conversations/`` and its
-    ``tool_prefs.json``.
+    """Parent of this (user, agent) pair's ``conversations/``.
 
     Not itself mounted — the agent never sees this level directly. Used
     internally to compute ``conversation_root``.

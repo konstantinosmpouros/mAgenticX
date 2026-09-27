@@ -79,6 +79,10 @@ class SubAgentSpec(BaseModel):
     (e.g. ``./subagents/researcher.md``) or an inline string. ``model`` falls
     back to ``AgentSpec.model.subagents[name]`` and then the main model when
     omitted.
+
+    ``tools`` empty means **inherit** every tool the parent has in the run; a
+    non-empty list restricts the sub-agent to exactly those, and must be a
+    subset of the parent's declared ``tools`` (``AgentSpec`` enforces it).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -150,6 +154,26 @@ class AgentSpec(BaseModel):
             raise ValueError(
                 f"Invalid agent slug {self.slug!r}: must be kebab-case matching {SLUG_RE.pattern}."
             )
+        return self
+
+    @model_validator(mode="after")
+    def _subagent_tools_within_agent(self) -> "AgentSpec":
+        """A sub-agent may only narrow its parent's tools, never add to them.
+
+        Least privilege, enforced where the definition is parsed so it holds for
+        platform and user-authored agents alike: delegating to a sub-agent must
+        not be a way to reach a tool the agent itself was never given. An empty
+        sub-agent list means "inherit the parent's tools" and is always valid.
+        """
+        declared = {ref.key() for ref in self.tools}
+        for sa in self.subagents:
+            extra = sorted({ref.key() for ref in sa.tools} - declared)
+            if extra:
+                shown = ", ".join(k.replace("native::", "").replace("::", "/") for k in extra)
+                raise ValueError(
+                    f"Sub-agent {sa.name!r} lists tools the agent itself does not declare: {shown}. "
+                    "A sub-agent can only use a subset of its agent's tools."
+                )
         return self
 
     def all_model_ids(self) -> list[str]:

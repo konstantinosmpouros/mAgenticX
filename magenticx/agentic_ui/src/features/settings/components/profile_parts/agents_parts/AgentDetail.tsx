@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { AlertCircle, Pencil, ShieldCheck, Wrench } from "lucide-react";
+import { AlertCircle, CheckCircle2, Pencil, ShieldCheck, Wrench } from "lucide-react";
 
 import type { Agent, AgentToolRow } from "@/shared/lib/types";
 import { SectionTabs, type SectionTab } from "./SectionTabs";
@@ -21,7 +21,7 @@ import { SoftPanel } from "../shared";
  * control that silently does nothing.
  */
 
-type DetailSection = "overview" | "tools" | "approvals";
+export type DetailSection = "overview" | "tools" | "approvals";
 
 /**
  * The manifest's raw lifecycle type, in sentence case.
@@ -46,6 +46,8 @@ export function AgentDetail({
   onToggleTool,
   onToggleApproval,
   onEdit,
+  initialSection = "tools",
+  notice,
 }: {
   agent: Agent;
   mine: boolean;
@@ -62,9 +64,13 @@ export function AgentDetail({
   onToggleTool: (row: AgentToolRow) => void;
   onToggleApproval: (row: AgentToolRow) => void;
   onEdit?: () => void;
+  /** The section to open on — Approvals right after the agent was created. */
+  initialSection?: DetailSection;
+  /** A one-line confirmation above the sections, e.g. after creating the agent. */
+  notice?: string | null;
 }) {
   const reduceMotion = useReducedMotion();
-  const [section, setSection] = useState<DetailSection>("tools");
+  const [section, setSection] = useState<DetailSection>(initialSection);
 
   const enabledCount = useMemo(() => tools.filter((t) => t.enabled).length, [tools]);
   const gatedCount = useMemo(() => tools.filter((t) => t.approval).length, [tools]);
@@ -89,6 +95,15 @@ export function AgentDetail({
           </button>
         ) : null}
       </div>
+
+      {notice ? (
+        <SoftPanel className="flex items-start gap-3 px-4 py-3">
+          <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-primary" aria-hidden />
+          <p className="text-sm text-muted-foreground" role="status">
+            {notice}
+          </p>
+        </SoftPanel>
+      ) : null}
 
       {error ? (
         <SoftPanel className="flex items-start gap-3 px-4 py-3">

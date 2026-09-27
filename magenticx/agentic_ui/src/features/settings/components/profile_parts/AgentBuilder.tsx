@@ -19,6 +19,7 @@ import {
   Trash2,
   Upload,
   Wrench,
+  X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
@@ -27,6 +28,7 @@ import { cn } from "@/shared/lib/utils";
 import type {
   Agent,
   AgentDraft,
+  AgentToolRow,
   AgentDraftFile,
   CustomAgentValidation,
   AgentDraftSubAgent,
@@ -53,11 +55,14 @@ import {
   buildAgentPayload,
   draftFromDetail,
   emptyDraft,
+  emptySubagent,
   slugify,
   subagentPromptPath,
 } from "@/features/settings/lib/agentSpec";
 import { SoftPanel, ToggleSwitch } from "./shared";
 import { SectionTabs, type SectionTab } from "./agents_parts/SectionTabs";
+import { AgentSummary } from "./agents_parts/AgentSummary";
+import { ToolList } from "./agents_parts/ToolList";
 import { useFillAvailableHeight } from "@/features/settings/hooks/useFillAvailableHeight";
 
 /**
@@ -103,6 +108,9 @@ const ICON_GLYPHS: Record<string, LucideIcon> = {
 };
 
 const MAX_PROMPT_CHARS = 20000;
+// The model picker's value for "use the agent's model". Radix Select rejects an
+// empty-string item value, so the draft's `""` maps to this at the control only.
+const INHERIT_MODEL = "inherit";
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 // Mirrors the agents service's own limits (runtime/declarative/user_agents.py).
@@ -189,7 +197,14 @@ type AgentBuilderProps = {
   /** Live MCP catalog. Empty when the gateway is down — the section says so
    *  rather than looking like the agent has nothing to choose from. */
   toolCatalog: ToolMetadata[];
-  /** Present when editing; absent when creating. */
+  /**
+   * `edit` changes a saved agent; `create` makes a new one. Stated rather than
+   * inferred from `initial`, because Duplicate seeds a CREATE from an existing
+   * definition — inferring "edit" from it froze the copy's identifier and
+   * labelled the button "Save changes" on what was really a create.
+   */
+  mode: "create" | "edit";
+  /** The definition to start from: the agent being edited, or the one being duplicated. */
   initial?: CustomAgentDetail | null;
   submitting?: boolean;
   onSubmit: (payload: CustomAgentWritePayload) => Promise<Agent | null>;
@@ -197,19 +212,45 @@ type AgentBuilderProps = {
    *  hook) — distinct from a real `valid: false` answer. */
   onValidate: (payload: CustomAgentWritePayload) => Promise<CustomAgentValidation | null>;
   onClose: () => void;
+  /**
+   * Edit mode only — this account's live tool rows for the saved agent, the same
+   * rows the agent's detail view shows. Their switches (on/off, ask first) save
+   * instantly and per account, unlike the rest of the form, which changes the
+   * agent itself on Save. `null` while not applicable.
+   */
+  liveTools?: AgentToolRow[] | null;
+  liveToolsLoading?: boolean;
+  liveToolsError?: string | null;
+  togglingKey?: string | null;
+  onToggleTool?: (row: AgentToolRow) => void;
+  onToggleApproval?: (row: AgentToolRow) => void;
 };
 
 export default function AgentBuilder({
   agents,
   mySkills,
   toolCatalog,
+  mode,
   initial,
   submitting = false,
   onSubmit,
   onValidate,
   onClose,
+  liveTools = null,
+  liveToolsLoading = false,
+  liveToolsError = null,
+  togglingKey = null,
+  onToggleTool,
+  onToggleApproval,
 }: AgentBuilderProps) {
-  const isEdit = Boolean(initial);
+  const isEdit = mode === "edit";
+  // The live, per-account rows only mean something for an agent that exists.
+  const live = isEdit ? liveTools : null;
+  const liveByKey = useMemo(
+    () => new Map((live ?? []).map((row) => [row.key, row])),
+    [live],
+  );
+  const gatedCount = useMemo(() => (live ?? []).filter((row) => row.approval).length, [live]);
   const [draft, setDraft] = useState<AgentDraft>(() =>
     initial ? draftFromDetail(initial) : emptyDraft(),
   );
@@ -218,6 +259,8 @@ export default function AgentBuilder({
   const [checking, setChecking] = useState(false);
   const [skillPickerOpen, setSkillPickerOpen] = useState(false);
   const [toolPickerOpen, setToolPickerOpen] = useState(false);
+  // Index of the sub-agent whose tool picker is open; one at a time.
+  const [subToolPicker, setSubToolPicker] = useState<number | null>(null);
   const [activeFile, setActiveFile] = useState<string | null>(null);
   const [newFilePath, setNewFilePath] = useState("");
   const [fileError, setFileError] = useState("");
@@ -334,7 +377,7 @@ export default function AgentBuilder({
         flagged: Boolean(subagentError),
       },
       { id: "files", label: "Files", count: draft.files.length, flagged: Boolean(fileLimitError) },
-      { id: "approvals", label: "Approvals" },
+      { id: "approvals", label: "Approvals", count: live ? gatedCount : null },
     ],
     [
       slugError,
@@ -343,7 +386,10 @@ export default function AgentBuilder({
       promptError,
       subagentError,
       fileLimitError,
+      draft.tools.length,
       draft.skills.length,
+      live,
+      gatedCount,
       draft.subagents,
       draft.files.length,
     ],
@@ -381,10 +427,7 @@ export default function AgentBuilder({
   };
 
   const addSubagent = () =>
-    setDraft((prev) => ({
-      ...prev,
-      subagents: [...prev.subagents, { name: "", description: "", prompt: "" }],
-    }));
+    setDraft((prev) => ({ ...prev, subagents: [...prev.subagents, emptySubagent()] }));
 
   const updateSubagent = (index: number, patch: Partial<AgentDraftSubAgent>) =>
     setDraft((prev) => ({
@@ -428,8 +471,34 @@ export default function AgentBuilder({
       prev.tools.includes(key) ? prev : { ...prev, tools: [...prev.tools, key] },
     );
 
+  // A sub-agent may only narrow its agent's tools, so a tool leaving the agent
+  // leaves every sub-agent with it — otherwise the save would be refused.
   const removeTool = (key: string) =>
-    setDraft((prev) => ({ ...prev, tools: prev.tools.filter((t) => t !== key) }));
+    setDraft((prev) => ({
+      ...prev,
+      tools: prev.tools.filter((t) => t !== key),
+      subagents: prev.subagents.map((sa) =>
+        sa.tools.includes(key) ? { ...sa, tools: sa.tools.filter((t) => t !== key) } : sa,
+      ),
+    }));
+
+  const addSubagentTool = (index: number, key: string) =>
+    setDraft((prev) => ({
+      ...prev,
+      subagents: prev.subagents.map((sa, i) =>
+        i === index && !sa.tools.includes(key) ? { ...sa, tools: [...sa.tools, key] } : sa,
+      ),
+    }));
+
+  const removeSubagentTool = (index: number, key: string) =>
+    setDraft((prev) => ({
+      ...prev,
+      subagents: prev.subagents.map((sa, i) =>
+        i === index ? { ...sa, tools: sa.tools.filter((t) => t !== key) } : sa,
+      ),
+    }));
+
+  const modelLabel = (id: string) => MODEL_CHOICES.find((m) => m.id === id)?.label ?? id;
 
   /**
    * Add reference files, rejecting each bad one with its own reason.
@@ -573,6 +642,11 @@ export default function AgentBuilder({
         />
       </div>
 
+      {/* Live preview — the agent as it will appear, plus what it can do. */}
+      <div className="shrink-0 pt-3">
+        <AgentSummary draft={draft} modelLabel={modelLabel(draft.model)} />
+      </div>
+
       <div className="scrollbar-muted min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain px-0.5 py-5">
         {/* Form */}
         <AnimatePresence mode="wait" initial={false}>
@@ -692,7 +766,7 @@ export default function AgentBuilder({
                     placeholder="You are Research Bot. You dig into topics and return sourced findings…"
                     aria-invalid={Boolean(promptError)}
                   />
-                  <span className="text-[0.7rem] text-muted-foreground">
+                  <span className="text-[0.7rem] tabular-nums text-muted-foreground">
                     {draft.prompt.length.toLocaleString()} / {MAX_PROMPT_CHARS.toLocaleString()} ·
                     saved as {PROMPT_FILE}
                   </span>
@@ -787,14 +861,16 @@ export default function AgentBuilder({
                   {draft.tools.length > 0 ? (
                     <>
                       <p className="text-xs text-muted-foreground">
-                        On by default whenever this agent runs. Anyone using it can switch one off
-                        for themselves under Agents, and choose which ones ask before running.
+                        {live
+                          ? "The switch turns a tool on or off for you and applies right away. The bin removes it from the agent — that is saved with Save changes."
+                          : "On by default whenever this agent runs. Once it exists you can switch any of them off for yourself, and choose which ones ask before running."}
                       </p>
-                      <div className="flex flex-col gap-2">
+                      <ul className="flex flex-col gap-2">
                         {draft.tools.map((key) => {
                           const tool = catalogByKey.get(key);
                           return (
-                            <SoftPanel key={key} className="flex items-center gap-3 px-3 py-2">
+                            <li key={key}>
+                            <SoftPanel className="flex items-center gap-3 px-3 py-2">
                               <span className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-primary/40 bg-primary/15 text-primary">
                                 <Wrench className="h-3.5 w-3.5" aria-hidden />
                               </span>
@@ -816,6 +892,26 @@ export default function AgentBuilder({
                                   </span>
                                 )}
                               </span>
+                              {live ? (
+                                liveByKey.get(key) ? (
+                                  <ToggleSwitch
+                                    size="sm"
+                                    checked={Boolean(liveByKey.get(key)?.enabled)}
+                                    disabled={togglingKey === key || !onToggleTool}
+                                    onToggle={() => {
+                                      const row = liveByKey.get(key);
+                                      if (row) onToggleTool?.(row);
+                                    }}
+                                    label={`${liveByKey.get(key)?.enabled ? "Turn off" : "Turn on"} ${tool?.toolName ?? key} for you`}
+                                  />
+                                ) : (
+                                  // Added in this edit and not saved yet: there is
+                                  // no per-account row to switch until it is.
+                                  <span className="shrink-0 text-[0.7rem] text-muted-foreground">
+                                    On after saving
+                                  </span>
+                                )
+                              ) : null}
                               <button
                                 type="button"
                                 onClick={() => removeTool(key)}
@@ -825,9 +921,10 @@ export default function AgentBuilder({
                                 <Trash2 size={15} aria-hidden />
                               </button>
                             </SoftPanel>
+                            </li>
                           );
                         })}
-                      </div>
+                      </ul>
                     </>
                   ) : null}
                 </div>
@@ -958,71 +1055,216 @@ export default function AgentBuilder({
             ) : null}
             {section === "team" ? (
               <div className="flex flex-col gap-5">
-                {/* Sub-agents */}
+                {/* Sub-agents — each with its own model and, optionally, a
+                    narrower set of the agent's tools (plan 20 §5.3). */}
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center justify-between gap-3">
                     <span className={captionClass}>Sub-agents</span>
                     <button
                       type="button"
                       onClick={addSubagent}
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-border/60 bg-background/60 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-border/60 bg-background/60 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-all hover:text-foreground active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
                     >
-                      <Plus size={13} aria-hidden /> Add
+                      <Plus size={13} aria-hidden /> Add sub-agent
                     </button>
                   </div>
                   {draft.subagents.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">
-                      Optional helpers this agent can delegate to, each with its own instructions.
-                    </p>
+                    // The empty state carries its own action rather than pointing
+                    // at the button above.
+                    <SoftPanel className="px-5 py-6 text-center">
+                      <p className="text-sm font-semibold text-foreground">No sub-agents</p>
+                      <p className="mx-auto mt-1 max-w-sm text-xs text-muted-foreground">
+                        Helpers this agent can hand work to, each with its own instructions,
+                        model and tools.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={addSubagent}
+                        className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm transition-all hover:bg-primary/90 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                      >
+                        <Plus size={13} aria-hidden /> Add a sub-agent
+                      </button>
+                    </SoftPanel>
                   ) : (
-                    <div className="flex flex-col gap-3">
-                      {draft.subagents.map((sa, index) => (
-                        <SoftPanel key={index} className="flex flex-col gap-3 px-4 py-3">
-                          <div className="flex items-start gap-3">
-                            <div className="grid flex-1 gap-3 sm:grid-cols-2">
-                              <input
-                                className={inputClass}
-                                value={sa.name}
+                    <ul className="flex flex-col gap-3">
+                      {draft.subagents.map((sa, index) => {
+                        const label = sa.name.trim() || `sub-agent ${index + 1}`;
+                        const pickable = draft.tools.filter((key) => !sa.tools.includes(key));
+                        return (
+                          <li key={index}>
+                            <SoftPanel className="flex flex-col gap-3 px-4 py-3">
+                              <div className="flex items-start gap-3">
+                                <div className="grid flex-1 gap-3 sm:grid-cols-2">
+                                  <input
+                                    className={inputClass}
+                                    value={sa.name}
+                                    onChange={(event) =>
+                                      updateSubagent(index, { name: event.target.value })
+                                    }
+                                    placeholder="researcher"
+                                    aria-label="Sub-agent name"
+                                  />
+                                  <input
+                                    className={inputClass}
+                                    value={sa.description}
+                                    onChange={(event) =>
+                                      updateSubagent(index, { description: event.target.value })
+                                    }
+                                    placeholder="Gathers and verifies sources"
+                                    aria-label="Sub-agent description"
+                                  />
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => removeSubagent(index)}
+                                  aria-label={`Remove ${label}`}
+                                  className="mt-1 shrink-0 rounded-lg p-1.5 text-muted-foreground transition-all hover:text-destructive active:scale-[0.95] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/50"
+                                >
+                                  <Trash2 size={15} aria-hidden />
+                                </button>
+                              </div>
+                              <textarea
+                                className={cn(
+                                  inputClass,
+                                  "min-h-[5rem] resize-y font-mono text-[0.78rem]",
+                                )}
+                                value={sa.prompt}
                                 onChange={(event) =>
-                                  updateSubagent(index, { name: event.target.value })
+                                  updateSubagent(index, { prompt: event.target.value })
                                 }
-                                placeholder="researcher"
-                                aria-label="Sub-agent name"
+                                placeholder="You research topics thoroughly and return structured findings…"
+                                aria-label="Sub-agent instructions"
                               />
-                              <input
-                                className={inputClass}
-                                value={sa.description}
-                                onChange={(event) =>
-                                  updateSubagent(index, { description: event.target.value })
-                                }
-                                placeholder="Gathers and verifies sources"
-                                aria-label="Sub-agent description"
-                              />
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => removeSubagent(index)}
-                              aria-label={`Remove sub-agent ${sa.name || index + 1}`}
-                              className="mt-1 shrink-0 rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/50"
-                            >
-                              <Trash2 size={15} aria-hidden />
-                            </button>
-                          </div>
-                          <textarea
-                            className={cn(
-                              inputClass,
-                              "min-h-[5rem] resize-y font-mono text-[0.78rem]",
-                            )}
-                            value={sa.prompt}
-                            onChange={(event) =>
-                              updateSubagent(index, { prompt: event.target.value })
-                            }
-                            placeholder="You research topics thoroughly and return structured findings…"
-                            aria-label="Sub-agent instructions"
-                          />
-                        </SoftPanel>
-                      ))}
-                    </div>
+
+                              <div className="grid gap-3 sm:grid-cols-[minmax(0,13rem)_minmax(0,1fr)]">
+                                <label className={labelClass}>
+                                  <span className={captionClass}>Model</span>
+                                  <Select
+                                    value={sa.model || INHERIT_MODEL}
+                                    onValueChange={(value) =>
+                                      updateSubagent(index, {
+                                        model: value === INHERIT_MODEL ? "" : value,
+                                      })
+                                    }
+                                  >
+                                    <SelectTrigger className={inputClass} aria-label={`Model for ${label}`}>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent className="z-[90] rounded-xl border border-border/60 bg-background text-foreground shadow-lg">
+                                      <SelectItem value={INHERIT_MODEL} className="rounded-lg">
+                                        <span className="flex items-baseline gap-2">
+                                          <span className="font-medium text-foreground">Inherit</span>
+                                          <span className="text-xs text-muted-foreground">
+                                            {modelLabel(draft.model)}
+                                          </span>
+                                        </span>
+                                      </SelectItem>
+                                      {MODEL_CHOICES.map((model) => (
+                                        <SelectItem key={model.id} value={model.id} className="rounded-lg">
+                                          <span className="flex items-baseline gap-2">
+                                            <span className="font-medium text-foreground">{model.label}</span>
+                                            <span className="text-xs text-muted-foreground">{model.hint}</span>
+                                          </span>
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </label>
+
+                                <div className={labelClass}>
+                                  <span className={captionClass}>Tools</span>
+                                  <div className="flex min-h-[2.375rem] flex-wrap items-center gap-1.5 rounded-md border border-border/60 bg-background/60 px-2 py-1.5">
+                                    {sa.tools.length === 0 ? (
+                                      <span className="px-1 text-xs text-muted-foreground">
+                                        All of this agent&rsquo;s tools
+                                      </span>
+                                    ) : (
+                                      <ul className="contents" aria-label={`Tools for ${label}`}>
+                                        {sa.tools.map((key) => (
+                                          <li
+                                            key={key}
+                                            className="inline-flex items-center gap-1 rounded-md bg-primary/10 py-0.5 pl-2 pr-1 text-xs font-medium text-primary"
+                                          >
+                                            {catalogByKey.get(key)?.toolName ?? key}
+                                            <button
+                                              type="button"
+                                              onClick={() => removeSubagentTool(index, key)}
+                                              aria-label={`Remove ${key} from ${label}`}
+                                              className="rounded p-0.5 transition-colors hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                                            >
+                                              <X size={11} aria-hidden />
+                                            </button>
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    )}
+                                    {pickable.length > 0 ? (
+                                      <VoiceSelector
+                                        open={subToolPicker === index}
+                                        onOpenChange={(open) => setSubToolPicker(open ? index : null)}
+                                      >
+                                        <VoiceSelectorTrigger asChild>
+                                          <button
+                                            type="button"
+                                            className="ml-auto inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground transition-all hover:bg-muted/50 hover:text-foreground active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                                          >
+                                            <Plus size={12} aria-hidden />
+                                            {sa.tools.length === 0 ? "Limit" : "Add"}
+                                          </button>
+                                        </VoiceSelectorTrigger>
+                                        <VoiceSelectorContent
+                                          title={`Tools for ${label}`}
+                                          className="z-[90] max-w-md overflow-hidden rounded-2xl border border-border/70 bg-background p-0 shadow-2xl"
+                                        >
+                                          <VoiceSelectorInput placeholder="Search this agent's tools..." />
+                                          <VoiceSelectorList className="max-h-[22rem]">
+                                            <VoiceSelectorEmpty>No matching tool.</VoiceSelectorEmpty>
+                                            <VoiceSelectorGroup heading="This agent's tools">
+                                              {pickable.map((key) => {
+                                                const tool = catalogByKey.get(key);
+                                                return (
+                                                  <VoiceSelectorItem
+                                                    key={key}
+                                                    value={`${key} ${tool?.description ?? ""}`}
+                                                    onSelect={() => {
+                                                      addSubagentTool(index, key);
+                                                      setSubToolPicker(null);
+                                                    }}
+                                                    className="items-center gap-3 rounded-xl px-3 py-3"
+                                                  >
+                                                    <span className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-muted/40 text-muted-foreground">
+                                                      <Wrench className="h-3.5 w-3.5" aria-hidden />
+                                                    </span>
+                                                    <span className="min-w-0 flex-1">
+                                                      <VoiceSelectorName>{tool?.toolName ?? key}</VoiceSelectorName>
+                                                      <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                                                        {tool?.serverId ?? key.split("/")[0]}
+                                                        {tool?.description ? ` · ${tool.description}` : ""}
+                                                      </span>
+                                                    </span>
+                                                  </VoiceSelectorItem>
+                                                );
+                                              })}
+                                            </VoiceSelectorGroup>
+                                          </VoiceSelectorList>
+                                        </VoiceSelectorContent>
+                                      </VoiceSelector>
+                                    ) : null}
+                                  </div>
+                                  <span className="text-[0.7rem] text-muted-foreground">
+                                    {draft.tools.length === 0
+                                      ? "Uses the agent’s built-in tools. Add MCP tools under Tools to limit a sub-agent to some of them."
+                                      : sa.tools.length === 0
+                                        ? "Leave empty to use everything this agent has, or limit it to a few."
+                                        : "Only these — never more than the agent itself has."}
+                                  </span>
+                                </div>
+                              </div>
+                            </SoftPanel>
+                          </li>
+                        );
+                      })}
+                    </ul>
                   )}
                 </div>
               </div>
@@ -1190,21 +1432,41 @@ export default function AgentBuilder({
                     always need your approval. This applies to every agent and cannot be turned off.
                   </p>
                 </SoftPanel>
-                <SoftPanel className="px-4 py-3">
-                  <p className="text-sm font-semibold text-foreground">Anything else</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    Whether a tool asks before running is set per account, not in the definition —
-                    open this agent under Settings → Agents → Approvals. That way it works the
-                    same for an agent you built and one you didn&rsquo;t.
-                  </p>
-                </SoftPanel>
+                {live ? (
+                  <div className="flex flex-col gap-2">
+                    {liveToolsError ? (
+                      <SoftPanel className="flex items-start gap-3 px-4 py-3">
+                        <AlertCircle size={16} className="mt-0.5 shrink-0 text-destructive" aria-hidden />
+                        <p className="text-sm text-muted-foreground">{liveToolsError}</p>
+                      </SoftPanel>
+                    ) : null}
+                    <ToolList
+                      tools={live}
+                      axis="approval"
+                      loading={liveToolsLoading && live.length === 0}
+                      togglingKey={togglingKey}
+                      onToggle={onToggleApproval}
+                      emptyHint="This agent has no tools to gate."
+                    />
+                    <p className="px-1 text-xs leading-relaxed text-muted-foreground">
+                      Applies right away, for your account — no need to press Save. A tool set to
+                      ask pauses the run every time it is called; scheduled runs have nobody to ask
+                      and will time out instead.
+                    </p>
+                  </div>
+                ) : (
+                  <SoftPanel className="px-4 py-3">
+                    <p className="text-sm font-semibold text-foreground">Anything else</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Which other tools ask before running is your choice, per account. As soon as
+                      you create this agent you land on its Approvals to set them.
+                    </p>
+                  </SoftPanel>
+                )}
               </div>
             ) : null}
           </motion.div>
         </AnimatePresence>
-
-        {/* Live summary — the agent as it will appear, plus what it can do.
-            Below the form under lg so it never squeezes the inputs. */}
       </div>
 
       {/* Errors */}

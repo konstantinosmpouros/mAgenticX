@@ -237,7 +237,11 @@ async def get_custom_agent_definition(
     save another.
     """
     row = await _require_owned_row(db, user_id, agent_id)
-    detail = await _proxy("GET", f"{_base_url(user_id)}/{row.slug}", user_id=user_id)
+    detail = await _proxy(
+        "GET", f"{_base_url(user_id)}/{row.slug}",
+        operation="custom_agent_get",
+        public_detail="The agent could not be opened. Please try again.",
+    )
     return {
         **_summary_from_row(row),
         "spec": (detail or {}).get("spec") or {},

@@ -431,6 +431,8 @@ def register_subagents(self):
 
 Sub-agent delegation emits `TASK_SUBAGENT` and `SUBAGENT_EVENT` AG-UI events automatically via the normalizer — no manual event emission is needed.
 
+**What `tools` means.** Passing `tools=` gives the sub-agent exactly that list; **leaving the key out** makes deepagents hand it the parent's full tool list. `tools=[]` therefore means *no* tools, not "the parent's". A **declarative** agent (`agent.yaml`) spells it the friendly way round: an empty `subagents[].tools` means *inherit*, a non-empty list is a restriction that must be a subset of the agent's own `tools:`, and each entry may set its own `model:` — see [tool-harness § Sub-agent tools](tool-harness.md#sub-agent-tools). The builder (Settings → Agents → Team) exposes both: a model picker defaulting to **Inherit**, and a tool picker offering only the agent's own tools.
+
 #### 6. Use persistent directories
 
 Three path properties are available on every Deep agent instance:

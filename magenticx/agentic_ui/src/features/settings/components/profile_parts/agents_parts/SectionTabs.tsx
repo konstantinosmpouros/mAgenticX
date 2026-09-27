@@ -51,7 +51,7 @@ export function SectionTabs<T extends string>({
             onClick={() => onSelect(tab.id)}
             aria-current={selected ? "page" : undefined}
             className={cn(
-              "relative shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+              "relative shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition-[color,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
               selected ? "text-foreground" : "text-muted-foreground hover:text-foreground",
             )}

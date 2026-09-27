@@ -21,7 +21,7 @@ import { usePanelHeader } from "@/features/settings/panel-header-context";
 import { ConfirmDialog } from "@/shared/ui/confirm-dialog";
 import AgentBuilder from "./AgentBuilder";
 import { AgentsIndex, type AgentSummary } from "./agents_parts/AgentsIndex";
-import { AgentDetail } from "./agents_parts/AgentDetail";
+import { AgentDetail, type DetailSection } from "./agents_parts/AgentDetail";
 import { InfoCard } from "./shared";
 
 /**
@@ -76,6 +76,12 @@ export default function AgentsTab({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [togglingKey, setTogglingKey] = useState<string | null>(null);
+  // Where the detail view opens, and an optional confirmation above it. Set when
+  // a new agent is created: it lands on its Approvals instead of the list, so
+  // choosing what asks first is the next step rather than a place to find.
+  const [detailSection, setDetailSection] = useState<DetailSection>("tools");
+  const [detailNotice, setDetailNotice] = useState<string | null>(null);
+  const landOnApprovals = useRef<string | null>(null);
 
   // Per-agent tool tallies for the index rows, filled in the background so the
   // list paints immediately and the meta line fills in as counts arrive. A
@@ -123,6 +129,14 @@ export default function AgentsTab({
       void load(selectedId);
     }
   }, [view, selectedId, selectedAgent, load]);
+
+  // Editing shows the same live rows as the detail view — the tool switches and
+  // approvals — so a custom agent is configured in one place. A user-authored
+  // agent is always a deep agent, so it always has a tool model.
+  const editingId = view === "edit" ? (editing?.id ?? null) : null;
+  useEffect(() => {
+    if (editingId) void load(editingId);
+  }, [editingId, load]);
 
   useEffect(() => {
     if (view !== "create" && view !== "edit") return;
@@ -289,10 +303,12 @@ export default function AgentsTab({
     }
   };
 
-  const openDetail = (agent: Agent) => {
-    setSelectedId(agent.id);
+  const openDetail = (agentId: string, section: DetailSection = "tools", notice: string | null = null) => {
+    setSelectedId(agentId);
     setResp(null);
     setError(null);
+    setDetailSection(section);
+    setDetailNotice(notice);
     setView("detail");
   };
 
@@ -300,6 +316,10 @@ export default function AgentsTab({
     if (!onLoadAgentDefinition) return;
     const detail = await onLoadAgentDefinition(agent.id);
     if (detail) {
+      // The live-row handlers act on `selectedId`, so point it at this agent.
+      setSelectedId(agent.id);
+      setResp(null);
+      setError(null);
       setEditing(detail);
       setView("edit");
     }
@@ -328,6 +348,18 @@ export default function AgentsTab({
 
   const closeBuilder = () => {
     setEditing(null);
+    const created = landOnApprovals.current;
+    landOnApprovals.current = null;
+    if (created) {
+      // By id: the detail view resolves the agent from the list, so it renders
+      // as soon as the refreshed list includes the new agent.
+      openDetail(
+        created,
+        "approvals",
+        "Agent created. Choose which of its tools should ask before running — it applies right away.",
+      );
+      return;
+    }
     setView("index");
   };
 
@@ -342,15 +374,25 @@ export default function AgentsTab({
             toolCatalog={toolCatalog}
             // A duplicate seeds CREATE from an existing definition, so `initial`
             // is not the same question as "are we editing".
+            mode={view === "edit" ? "edit" : "create"}
             initial={editing}
             submitting={Boolean(busyAgentId)}
             onValidate={onValidateAgent ?? (async () => null)}
-            onSubmit={async (payload) =>
-              view === "edit" && editing
-                ? ((await onUpdateAgent?.(editing.id, payload)) ?? null)
-                : ((await onCreateAgent?.(payload)) ?? null)
-            }
+            onSubmit={async (payload) => {
+              if (view === "edit" && editing) {
+                return (await onUpdateAgent?.(editing.id, payload)) ?? null;
+              }
+              const created = (await onCreateAgent?.(payload)) ?? null;
+              if (created) landOnApprovals.current = created.id;
+              return created;
+            }}
             onClose={closeBuilder}
+            liveTools={view === "edit" ? (resp?.tools ?? []) : null}
+            liveToolsLoading={loading}
+            liveToolsError={error}
+            togglingKey={togglingKey}
+            onToggleTool={(row) => void onToggle(row)}
+            onToggleApproval={(row) => void onApprovalToggle(row)}
           />
         </InfoCard>
       </div>
@@ -376,6 +418,8 @@ export default function AgentsTab({
               ? () => void openEdit(selectedAgent)
               : undefined
           }
+          initialSection={detailSection}
+          notice={detailNotice}
         />
       </div>
     );
@@ -387,7 +431,7 @@ export default function AgentsTab({
         summaries={summaries}
         canAuthor={canAuthor}
         busyAgentId={busyAgentId}
-        onOpen={openDetail}
+        onOpen={(agent) => openDetail(agent.id)}
         onCreate={() => {
           setEditing(null);
           setView("create");

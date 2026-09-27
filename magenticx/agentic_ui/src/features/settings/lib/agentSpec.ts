@@ -87,7 +87,42 @@ export const emptyDraft = (): AgentDraft => ({
 
 /** One MCP entry in the spec's `tools` list. A native ref has neither field. */
 type SpecToolRef = { server_id?: unknown; tool_name?: unknown; native?: unknown };
-type SpecSubAgent = { name?: unknown; description?: unknown; prompt?: unknown };
+type SpecSubAgent = {
+  name?: unknown;
+  description?: unknown;
+  prompt?: unknown;
+  model?: unknown;
+  tools?: unknown;
+};
+
+/** A new, empty sub-agent: inherits the agent's model and all of its tools. */
+export const emptySubagent = (): AgentDraftSubAgent => ({
+  name: "",
+  description: "",
+  prompt: "",
+  model: "",
+  tools: [],
+});
+
+/**
+ * A `server/tool` key in the spec's MCP form. The split is on the FIRST slash
+ * only: a server id cannot contain one, a tool name can.
+ */
+const toolRef = (key: string) => {
+  const slash = key.indexOf("/");
+  return { server_id: key.slice(0, slash), tool_name: key.slice(slash + 1) };
+};
+
+/**
+ * The spec's tool list back to `server/tool` keys. Native refs are skipped: the
+ * form does not manage them, so round-tripping one would drop it on save.
+ */
+const toolKeys = (raw: unknown): string[] =>
+  Array.isArray(raw)
+    ? (raw as SpecToolRef[])
+        .filter((ref) => ref?.server_id && ref?.tool_name)
+        .map((ref) => `${String(ref.server_id)}/${String(ref.tool_name)}`)
+    : [];
 
 /**
  * Assemble the agent.yaml document + its prompt files from the draft.
@@ -118,18 +153,23 @@ export const buildAgentPayload = (draft: AgentDraft): CustomAgentWritePayload =>
       prompt: `./${PROMPT_FILE}`,
       model: { main: draft.model },
       memory: draft.memory,
-      // `server_id` + `tool_name` is the spec's MCP form. The split is on the
-      // FIRST slash only: a server id cannot contain one, a tool name can.
-      tools: draft.tools.map((key) => {
-        const slash = key.indexOf("/");
-        return { server_id: key.slice(0, slash), tool_name: key.slice(slash + 1) };
-      }),
+      tools: draft.tools.map(toolRef),
       skills: draft.skills,
-      subagents: named.map((sa) => ({
-        name: slugify(sa.name),
-        description: sa.description.trim() || sa.name.trim(),
-        prompt: `./${subagentPromptPath(sa.name)}`,
-      })),
+      subagents: named.map((sa) => {
+        // Only tools the agent still declares: the server refuses a sub-agent
+        // tool its agent lacks, and removing a tool from the agent must not
+        // leave a sub-agent pointing at it.
+        const tools = sa.tools.filter((key) => draft.tools.includes(key));
+        return {
+          name: slugify(sa.name),
+          description: sa.description.trim() || sa.name.trim(),
+          prompt: `./${subagentPromptPath(sa.name)}`,
+          // Omitted, not blank, to inherit: the runtime reads a missing model
+          // and a missing tool list as "use the agent's".
+          ...(sa.model ? { model: sa.model } : {}),
+          ...(tools.length ? { tools: tools.map(toolRef) } : {}),
+        };
+      }),
       hitl: Object.fromEntries(REQUIRED_GATES.map((gate) => [gate, true])),
     },
     files: [...generated, ...extras].map((file) => ({
@@ -162,6 +202,8 @@ export const draftFromDetail = (detail: CustomAgentDetail): AgentDraft => {
           name: String(sa?.name ?? ""),
           description: String(sa?.description ?? ""),
           prompt: fileFor(path),
+          model: typeof sa?.model === "string" ? sa.model : "",
+          tools: toolKeys(sa?.tools),
         };
       })
     : [];
@@ -177,13 +219,7 @@ export const draftFromDetail = (detail: CustomAgentDetail): AgentDraft => {
     model: String(model?.main ?? MODEL_CHOICES[1].id),
     prompt: fileFor(PROMPT_FILE),
     memory: spec.memory !== false,
-    // Native refs are skipped: this form does not manage them, so round-tripping
-    // one through it would silently drop it on the next save.
-    tools: Array.isArray(spec.tools)
-      ? (spec.tools as SpecToolRef[])
-          .filter((ref) => ref?.server_id && ref?.tool_name)
-          .map((ref) => `${String(ref.server_id)}/${String(ref.tool_name)}`)
-      : [],
+    tools: toolKeys(spec.tools),
     skills: Array.isArray(spec.skills) ? spec.skills.map(String) : [],
     subagents,
   };

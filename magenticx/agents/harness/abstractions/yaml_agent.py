@@ -32,6 +32,7 @@ from deepagents import SubAgent
 
 from harness.abstractions.deep_agent import DeepAgent
 from harness.abstractions.agent_spec import AgentSpec, SubAgentSpec, ToolRef
+from utils import build_tool_cache_key, get_tool_cache_key
 from utils.declarative import read_prompt, resolve_prompt
 from harness.filesystem import layout
 from harness.tools.registry import NativeToolContext, resolve_native_tool
@@ -205,29 +206,66 @@ class YamlDeepAgent(DeepAgent):
 
     # ------------------------------------------------------------------
     def register_subagents(self) -> list[SubAgent]:
+        """One ``SubAgent`` per spec entry, with its own model and tool subset.
+
+        **An empty ``tools`` list means "inherit".** The ``tools`` key is then
+        left out entirely, and deepagents hands the sub-agent the parent's full
+        tool list — declared MCP tools, native tools and the always-on builtins.
+        A non-empty list is an explicit *restriction*: the sub-agent gets exactly
+        those tools and nothing else.
+
+        Approval gates are never set here, so every sub-agent inherits the
+        parent's resolved ``interrupt_on``. Giving a sub-agent a tool therefore
+        cannot route around its gate.
+        """
+        # The parent's MCP tools as already filtered for this run —
+        # `(declared ∪ user-enabled) − user-disabled` — keyed the way a ToolRef
+        # keys them. Natives are not in `self.tools` yet: `register_agent` adds
+        # them after this runs.
+        parent_mcp = {get_tool_cache_key(tool): tool for tool in self.tools}
         subagents: list[SubAgent] = []
         for sa in self._spec.subagents:
-            mcp_refs = [t for t in sa.tools if not t.is_native]
-            if mcp_refs:
-                # Sub-agent MCP tools aren't filtered from the live manifest yet
-                # (Phase 1 handles native + main-agent MCP). Surface it instead of
-                # silently dropping.
-                logger.warning(
-                    "yaml_subagent_mcp_tools_ignored",
-                    "Sub-agent MCP tools are not yet wired for YAML agents; ignoring",
-                    agent_slug=self.name,
-                    subagent=sa.name,
-                )
-            subagents.append(
-                SubAgent(
-                    model=self._resolve_subagent_model(sa),
-                    name=sa.name,
-                    description=sa.description,
-                    system_prompt=self._read_prompt(sa.prompt),
-                    tools=self._resolve_native_tools(sa.tools),
-                )
+            spec = SubAgent(
+                model=self._resolve_subagent_model(sa),
+                name=sa.name,
+                description=sa.description,
+                system_prompt=self._read_prompt(sa.prompt),
             )
+            if sa.tools:
+                spec["tools"] = self._resolve_subagent_tools(sa, parent_mcp)
+            subagents.append(spec)
         return subagents
+
+    def _resolve_subagent_tools(self, sa: SubAgentSpec, parent_mcp: Mapping[str, Any]) -> list[Any]:
+        """A sub-agent's explicit tool subset, never wider than its parent.
+
+        MCP refs are picked from the parent's *already-filtered* tools rather than
+        the raw gateway manifest. That is what keeps a sub-agent inside its
+        parent: a tool the user switched off for this agent, or one the gateway
+        does not serve right now, is simply absent — and it stays absent rather
+        than widening back to "inherit everything", because the author asked for
+        a restriction.
+        """
+        tools = self._resolve_native_tools([t for t in sa.tools if t.is_native])
+        missing: list[str] = []
+        for ref in sa.tools:
+            if ref.is_native:
+                continue
+            key = build_tool_cache_key(ref.server_id or "", ref.tool_name or "")
+            tool = parent_mcp.get(key)
+            if tool is None:
+                missing.append(key)
+            else:
+                tools.append(tool)
+        if missing:
+            logger.warning(
+                "yaml_subagent_tools_unavailable",
+                "Sub-agent tools are not available to the parent agent in this run; skipped",
+                agent_slug=self.name,
+                subagent=sa.name,
+                missing_tools=sorted(missing),
+            )
+        return tools
 
     def _resolve_subagent_model(self, sa: SubAgentSpec) -> str:
         """Sub-agent model: explicit → `model.subagents[name]` → main model."""

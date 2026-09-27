@@ -91,7 +91,7 @@ export function ToolList({
 
   if (loading) {
     return (
-      <div className="space-y-2" aria-busy>
+      <div className="space-y-2" aria-busy="true" aria-label="Loading tools">
         {Array.from({ length: 5 }).map((_, i) => (
           <Skeleton key={i} className="h-12 rounded-xl" />
         ))}
@@ -202,7 +202,8 @@ export function ToolList({
               </button>
 
               {open ? (
-                <SoftPanel className="divide-y divide-border/30 overflow-hidden">
+                <SoftPanel className="overflow-hidden">
+                  <ul className="divide-y divide-border/30" aria-label={`${group.id} tools`}>
                   {group.tools.map((row) => {
                     const on = isToolOn(row, axis);
                     const locked = isToolLocked(row, axis);
@@ -211,7 +212,7 @@ export function ToolList({
                     // control, and there is no switch.
                     const gated = axis === "enable" && row.approval;
                     return (
-                      <div
+                      <li
                         key={row.key}
                         className={cn(
                           "flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/30",
@@ -297,9 +298,10 @@ export function ToolList({
                             }
                           />
                         )}
-                      </div>
+                      </li>
                     );
                   })}
+                  </ul>
                 </SoftPanel>
               ) : null}
             </motion.section>
