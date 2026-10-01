@@ -9,6 +9,10 @@ export const NA = "N/A";
 // how many to show as an alphabetical browse slice when there is no query.
 export const CATALOG_RESULT_LIMIT = 10;
 export const CATALOG_BROWSE_LIMIT = 6;
+// The search runs server-side, so keystrokes are coalesced before a request:
+// long enough to skip the intermediate words of a fast typist, short enough
+// that results still feel live.
+export const CATALOG_SEARCH_DEBOUNCE_MS = 250;
 
 // Below this viewport width the profile sidebar collapses into the compact
 // horizontal mobile nav.

@@ -772,9 +772,6 @@ The bridge also refuses to start without the Microsoft Entra app registration (`
 | `REDIS_STREAM_MAXLEN` | `5000` (approximate cap on per-run event stream) |
 | `REDIS_STREAM_TERMINAL_TTL_SECONDS` | `3600` (replay window after a run ends) |
 | `REDIS_STREAM_READ_BLOCK_MS` | `30000` (`XREAD BLOCK` timeout) |
-| `REDIS_SKILLS_GLOBAL_TTL_SECONDS` | `86400` (global skills catalog cache, 24 h) |
-| `REDIS_SKILLS_USER_REGISTRY_TTL_SECONDS` | `7200` (per-user skill pool cache, 2 h) |
-| `REDIS_SKILLS_USER_AGENT_TTL_SECONDS` | `7200` (per-(user, agent) assignment cache, 2 h) |
 
 ### 17.6 CORS variables
 

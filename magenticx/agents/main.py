@@ -21,10 +21,7 @@ from core.logging import (
     register_exception_handlers,
     shutdown_logging,
 )
-from harness.skill_registry import (
-    rebuild_global_manifest,
-    seed_global_registry,
-)
+from harness.skill_registry import run_remote_skill_sync_loop
 from harness.abstractions import seed_global_agents
 from utils.agents import refresh_registry
 from router.catalog import router as catalog_router
@@ -78,13 +75,9 @@ async def _lifespan(app: FastAPI):
     loop.set_exception_handler(_make_loop_exception_handler(old))
     pool = None
     retention_task: asyncio.Task | None = None
+    remote_sync_task: asyncio.Task | None = None
     try:
         logger.info("service_startup", "Agents service startup initiated")
-        # Bootstrap the global skills catalogue volume from the image seed and
-        # index it into manifest.json. Build-time content, so it lives on the
-        # volume; everything per-user is rows in agent_runtime.
-        seed_global_registry()
-        rebuild_global_manifest()
         # Seed built-in declarative (YAML) agents into the global volume, then
         # re-scan so they join AGENT_REGISTRY (invisible at import, before seed).
         seed_global_agents()
@@ -99,13 +92,21 @@ async def _lifespan(app: FastAPI):
         retention_task = asyncio.create_task(
             run_workspace_retention_loop(), name="workspace-retention"
         )
+        # Plan 30: the skill catalogue is the remote sources, indexed daily.
+        # Returns at once when REMOTE_SKILLS_ENABLED is false, so no request
+        # ever leaves the service.
+        remote_sync_task = asyncio.create_task(
+            run_remote_skill_sync_loop(), name="remote-skill-sync"
+        )
         yield
     finally:
-        if retention_task is not None:
-            retention_task.cancel()
+        for task in (retention_task, remote_sync_task):
+            if task is None:
+                continue
+            task.cancel()
             # Swallow only the cancellation we just requested.
             try:
-                await retention_task
+                await task
             except asyncio.CancelledError:
                 pass
         if pool is not None:

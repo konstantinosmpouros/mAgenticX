@@ -1,20 +1,26 @@
-"""Skills registry DTOs: global catalog, user pool, skill files, custom-skill create."""
-from typing import List, Literal
+"""Skills registry DTOs: a user's pool, skill files, custom-skill create, and the
+search over the remote skill catalogue (plan 30)."""
+from typing import List, Literal, Optional
 from pydantic import BaseModel, Field
 
+#: Mirrors the agents service. ``remote`` is a skill added from an allowlisted
+#: remote source, pinned to the version the user added. ``global`` is legacy —
+#: a reference into the bundled catalogue plan 30 deleted, still readable.
+PoolSkillType = Literal["global", "custom", "remote"]
 
-class Skill(BaseModel):
-    """One entry in the global skills catalog.
 
-    Mirrors :class:`agents.schemas.SkillManifest`. ``category`` is the
-    parent folder under the global registry root, surfaced as a small label
-    next to the skill name in the UI.
+class RemoteProvenance(BaseModel):
+    """Where a remote skill came from. Mirrors :class:`agents.schemas.RemoteProvenance`.
+
+    ``commit`` is the upstream commit, or the artifact's ``sha256:`` digest for
+    a publisher-hosted skill; ``licence`` is ``None`` for those.
     """
 
-    name: str
-    description: str = ""
-    content: str = ""
-    category: str = ""
+    source_id: str
+    source_label: str
+    commit: Optional[str] = None
+    licence: Optional[str] = None
+    upstream_url: Optional[str] = None
 
 
 class UserSkill(BaseModel):
@@ -22,15 +28,17 @@ class UserSkill(BaseModel):
 
     Mirrors :class:`agents.schemas.SkillManifestEntry`. ``type`` distinguishes
     references to globals (``"global"``) from user-owned custom skills
-    (``"custom"``). ``category`` is the parent folder in the global
+    (``"custom"``) and remote additions (``"remote"``, which carry
+    ``provenance``). ``category`` is the parent folder in the global
     hierarchy — empty string for custom skills.
     """
 
     name: str
-    type: Literal["global", "custom"]
+    type: PoolSkillType
     description: str = ""
     source_path: str
     category: str = ""
+    provenance: Optional[RemoteProvenance] = None
 
 
 class SkillFile(BaseModel):
@@ -55,12 +63,13 @@ class UserSkillDetail(BaseModel):
     full on-disk inventory."""
 
     name: str
-    type: Literal["global", "custom"]
+    type: PoolSkillType
     description: str = ""
     source_path: str
     category: str = ""
     content: str = ""
     files: List[SkillFile] = Field(default_factory=list)
+    provenance: Optional[RemoteProvenance] = None
 
 
 class CustomSkillCreateRequest(BaseModel):
@@ -73,3 +82,35 @@ class CustomSkillCreateRequest(BaseModel):
     name: str
     description: str = ""
     files: List[SkillFile] = Field(default_factory=list, max_length=30)
+
+
+class CatalogueSkill(BaseModel):
+    """One catalogue search result. Mirrors :class:`agents.schemas.CatalogueSkill`.
+
+    Added by ``(source_id, skill_id)``; ``commit`` is the upstream version an
+    Add would pin.
+    """
+
+    source_id: str
+    source_label: str
+    skill_id: str
+    name: str
+    description: str = ""
+    category: str = ""
+    licence: Optional[str] = None
+    commit: Optional[str] = None
+    upstream_url: Optional[str] = None
+
+
+class CatalogueSearchPage(BaseModel):
+    """A page of catalogue results — the response of ``GET /v1/skills/catalogue``.
+
+    ``total`` counts every match, not just this page; ``remote_enabled`` says
+    whether remote results can be added on this deployment at all.
+    """
+
+    results: List[CatalogueSkill] = Field(default_factory=list)
+    total: int = 0
+    limit: int = 10
+    offset: int = 0
+    remote_enabled: bool = False

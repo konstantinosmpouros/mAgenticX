@@ -105,9 +105,13 @@ magenticx/agents/
 │   │   ├── memory.py           AGENTS.md index helpers (remember tool backing)
 │   │   └── agent_md_template.py  AGENTS_MD_TEMPLATE seed string
 │   └── skill_registry/
-│       ├── seed_global_registry.py  Boot: copy image seed → global volume
-│       ├── global_manifest.py       Boot: scan global registry → manifest.json
-│       └── user_registry.py         Per-user skill pool CRUD
+│       ├── store.py                 SkillStore — pool, files, catalogue tables in agent_runtime
+│       ├── user_registry.py         Pool CRUD + validation, catalogue search, remote Add
+│       └── remote/                  Plan 30 — the remote skill catalogue
+│           ├── sources.py           Allowlist (in code) + every gate a skill must pass
+│           ├── client.py            The only outbound HTTP path: host check per redirect hop, byte caps
+│           ├── sync.py              Daily index sync (lifespan task)
+│           └── fetch.py             Add-time download: pinned, verified, capped
 ├── utils/
 │   ├── agents.py               Registry discovery (_discover_agents, AGENT_REGISTRY)
 │   ├── mcp_tools.py            MCP gateway SSE catalog + session helpers
@@ -115,7 +119,6 @@ magenticx/agents/
 │   ├── title.py                Title generation chain
 │   ├── suggestions.py          Starter suggestions chain
 │   ├── speech.py               Read-aloud TTS + realtime voice normalization
-│   ├── skills.py               Skills registry read-side wrappers
 │   └── checkpointer.py         release_checkpoint_unless_paused, emit_checkpoint_committed
 ├── router/
 │   ├── catalog.py              GET /agents, GET /tools
@@ -123,7 +126,7 @@ magenticx/agents/
 │   ├── generation.py           POST /titles/generate, POST /suggestions/generate
 │   ├── inference.py            POST /stream, POST /resume, PUT input-files, POST reap  ★ core
 │   ├── memories.py             GET/GET/DELETE memories
-│   ├── skills.py               10 skill endpoints (global catalog, user pool, per-agent enablement)
+│   ├── skills.py               11 skill endpoints (catalogue search, sources, user pool, remote Add, per-agent enablement)
 │   └── voice.py                POST /dictate/transcribe, /speech/read-aloud, /realtime/session
 ├── langgraph_agents/
 │   ├── __init__.py             re-exports HRPoliciesAgentV1, OrthodoxAgentV1, RetailAgentV1
@@ -146,13 +149,12 @@ magenticx/agents/
 
 **Lifespan** — `_lifespan` (`main.py:185-209`), in strict order:
 1. Install the loop exception handler.
-2. `seed_global_registry()` — copy the in-image skills **catalogue** seed (`/opt/skills_registry_seed`) into the mounted global volume (`cp -rn` semantics; existing folders win).
-3. `rebuild_global_manifest()` — scan the global catalogue → write `manifest.json`.
-4. `seed_global_agents()` then `refresh_registry()` — seed the built-in declarative agents onto the volume and re-scan so they join `AGENT_REGISTRY` (they are invisible at import, before the seed).
-5. `await init_durable_checkpointer(app)` (`harness/checkpointer/bootstrap.py`) — **fail fast/loud** if `agent_runtime` is unreachable.
-6. Spawn the **workspace-retention task** (`run_workspace_retention_loop`, `harness/filesystem/retention.py`) — TTL-erases conversation `input/`/`output/` cache files (both are copies of DB attachment blobs: input is bridge-seeded per run, presented outputs are blob-persisted at finalize). Sweeps every `WORKSPACE_SWEEP_INTERVAL_MINUTES` (jittered) in a worker thread with hard per-pass budgets; symlinks are deleted-as-links and logged as security events; a conversation with writes in the last 30 min is skipped (in-flight run protection); best-effort — failures log and retry, never kill the service.
-7. `yield`.
-8. Shutdown: cancel the retention task → `pool.close()` → restore loop handler → `shutdown_logging()`.
+2. `seed_global_agents()` then `refresh_registry()` — seed the built-in declarative agents onto the volume and re-scan so they join `AGENT_REGISTRY` (they are invisible at import, before the seed).
+3. `await init_durable_checkpointer(app)` (`harness/checkpointer/bootstrap.py`) — **fail fast/loud** if `agent_runtime` is unreachable.
+4. Spawn the **workspace-retention task** (`run_workspace_retention_loop`, `harness/filesystem/retention.py`) — TTL-erases conversation `input/`/`output/` cache files (both are copies of DB attachment blobs: input is bridge-seeded per run, presented outputs are blob-persisted at finalize). Sweeps every `WORKSPACE_SWEEP_INTERVAL_MINUTES` (jittered) in a worker thread with hard per-pass budgets; symlinks are deleted-as-links and logged as security events; a conversation with writes in the last 30 min is skipped (in-flight run protection); best-effort — failures log and retry, never kill the service.
+5. Spawn the **remote-skill sync task** (`run_remote_skill_sync_loop`, `harness/skill_registry/remote/sync.py`) — indexes the allowlisted skill sources into `agent_runtime` ~2 min after boot, then daily, under an advisory lock. Returns at once when `REMOTE_SKILLS_ENABLED=false`. See [remote-skills](../flows/remote-skills.md).
+6. `yield`.
+7. Shutdown: cancel both background tasks → `pool.close()` → restore loop handler → `shutdown_logging()`.
 
 > **There is no workspace-sync task any more.** A 900-second pass used to
 > reconcile this volume against `chat_db` in both directions, because custom
@@ -230,18 +232,19 @@ Every endpoint below carries `dependencies=[Depends(require_internal_caller)]` (
 | 10 | GET | `/agents/{slug}/users/{uid}/memories` | memories | — | `List[MemoryEntry]` | 200 |
 | 11 | GET | `/agents/{slug}/users/{uid}/memories/{name}` | memories | — | `MemoryDetail` | 200 |
 | 12 | DELETE | `/agents/{slug}/users/{uid}/memories/{name}` | memories | — | — | 204 |
-| 13 | GET | `/skills/global` | skills | `bypass_cache` (query) | `List[SkillManifest]` | 200 |
-| 14 | GET | `/users/{uid}/skills` | skills | — | `List[SkillManifestEntry]` | 200 |
-| 15 | GET | `/users/{uid}/skills/{skill_name}` | skills | — | `UserSkillDetail` | 200 |
-| 16 | POST | `/users/{uid}/skills/global/{skill_name}` | skills | — | — | 204 |
-| 17 | POST | `/users/{uid}/skills/custom` | skills | `CustomSkillCreate` | `SkillManifestEntry` | 201 |
-| 18 | DELETE | `/users/{uid}/skills/{skill_name}` | skills | — | — | 204 |
-| 19 | GET | `/agents/{slug}/users/{uid}/skills` | skills | — | `List[str]` | 200 |
-| 20 | PUT | `/agents/{slug}/users/{uid}/skills/{skill_name}` | skills | — | — | 204 |
-| 21 | DELETE | `/agents/{slug}/users/{uid}/skills/{skill_name}` | skills | — | — | 204 |
-| 22 | POST | `/dictate/transcribe` | voice | multipart file | `TranscriptionResponse` | 200 |
-| 23 | POST | `/speech/read-aloud` | voice | `ReadAloudRequest` | audio stream | 200 |
-| 24 | POST | `/realtime/session` | voice | `RealtimeSessionRequest` | `RealtimeSessionResponse` | 200 |
+| 13 | GET | `/skills/catalogue/search` | skills | `q`, `source`, `limit` ≤ 50, `offset` (query) | `CatalogueSearchPage` | 200 |
+| 14 | GET | `/skills/remote/sources` | skills | — | `List[RemoteSourceStatus]` | 200 |
+| 15 | GET | `/users/{uid}/skills` | skills | — | `List[SkillManifestEntry]` | 200 |
+| 16 | GET | `/users/{uid}/skills/{skill_name}` | skills | — | `UserSkillDetail` | 200 |
+| 17 | POST | `/users/{uid}/skills/remote/{source_id}/{skill_id}` | skills | — | `SkillManifestEntry` | 201 (404 / 409 / 422 / 502 / 503) |
+| 18 | POST | `/users/{uid}/skills/custom` | skills | `CustomSkillCreate` | `SkillManifestEntry` | 201 |
+| 19 | DELETE | `/users/{uid}/skills/{skill_name}` | skills | — | — | 204 |
+| 20 | GET | `/agents/{slug}/users/{uid}/skills` | skills | — | `List[str]` | 200 |
+| 21 | PUT | `/agents/{slug}/users/{uid}/skills/{skill_name}` | skills | — | — | 204 |
+| 22 | DELETE | `/agents/{slug}/users/{uid}/skills/{skill_name}` | skills | — | — | 204 |
+| 23 | POST | `/dictate/transcribe` | voice | multipart file | `TranscriptionResponse` | 200 |
+| 24 | POST | `/speech/read-aloud` | voice | `ReadAloudRequest` | audio stream | 200 |
+| 25 | POST | `/realtime/session` | voice | `RealtimeSessionRequest` | `RealtimeSessionResponse` | 200 |
 
 **Selected behaviors:**
 - **`GET /agents`** — reads `definition.manifest` for each `AGENT_REGISTRY` entry (built once at import), sorted by name.
@@ -473,9 +476,9 @@ agent_runtime (rows)                → mount
 
 ## 14. Skills & memory systems
 
-**Global skills catalogue** (boot, on-disk, two steps in the lifespan): `seed_global_registry()` copies the in-image seed into the `SKILLS_REGISTRY_GLOBAL_ROOT` volume (existing folders win) → `rebuild_global_manifest()` scans `<category>/<skill>/SKILL.md`, parses frontmatter (`name`, `description`), writes `manifest.json` atomically. There is no per-user step: a user's pool, their custom skill files and their per-agent assignments are rows in `agent_runtime`, so there are no per-user manifests to reconcile. The catalogue stays on the volume because it is build-time content — shipped in the image, identical for every user, never written at runtime.
+**The skill catalogue is remote** (plan 30). The image bundles no skills of its own: a daily lifespan task indexes eight allowlisted public sources into `skill_catalogue` in `agent_runtime`, the Skills tab searches that index, and a skill's content is downloaded — pinned to one upstream commit and verified file by file — only when someone adds it, then stored once as a shared copy. A user's pool, their custom skill files and their per-agent assignments are rows in the same database. The whole flow, its gates and its failure modes are in [remote-skills](../flows/remote-skills.md). Pool entries of the old `global` kind still read from the catalogue copy an earlier image seeded on the volume; nothing creates one.
 
-**Two tiers at *runtime*** (`/default_skills/` = what the agent ships with, `/skills/` = what the user enabled; defaults are loaded last so they win a name clash, and both mounts are write-denied — see [agent-development](agent-development.md)). **Three tiers in the *management* flow:** a global catalog (`GET /skills/global`) → a per-user **pool** (`/users/{uid}/skills`, add-global or create-custom) → per-(user, agent) **enablement** (`/agents/{slug}/users/{uid}/skills` — enabling copies the skill folder into the `/skills/` mount; **the folder's presence *is* the enabled record**, no DB row).
+**Two tiers at *runtime*** (`/default_skills/` = what the agent ships with, `/skills/` = what the user enabled; defaults are loaded last so they win a name clash, and both mounts are write-denied — see [agent-development](agent-development.md)). **Three tiers in the *management* flow:** the remote catalogue (`GET /skills/catalogue/search`) → a per-user **pool** (`/users/{uid}/skills`, add-remote or create-custom) → per-(user, agent) **enablement** (`/agents/{slug}/users/{uid}/skills`, an `agent_skills` row that the `/skills/` mount reads through `SkillStore`).
 
 **Memory** — per-(user, agent): the `remember` tool writes `entries/<slug>.yml` (atomic) + upserts a one-line index in `AGENTS.md` (auto-seeded from `AGENTS_MD_TEMPLATE` on first contact, never overwritten). Hard cap `MEMORY_MAX_ENTRIES=60` (new entries refused when full; updates always allowed). `search_past_conversations` reads cross-conversation via the bridge's internal memory endpoint (pgvector), opt-in per run.
 

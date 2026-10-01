@@ -21,7 +21,6 @@ import {
   CustomAgentWritePayload,
   CustomInstructions,
   CustomSkillCreatePayload,
-  Skill,
   ToolMetadata,
   UserAgentSkillSelection,
   UserPreferences,
@@ -157,18 +156,15 @@ type ProfilePanelProps = {
   onLogout: () => void;
   user: UserProfile | null;
   availableTools: (ToolMetadata & { enabled?: boolean })[];
-  // Global catalog — admin-curated, read-only at runtime. Surface searched
-  // from the My skills view via the "+ Add" path when the user wants to
-  // pull a global into their personal pool.
-  availableSkills: Skill[];
-  // User pool ("My skills"): the user's personal registry. Mixed globals
-  // (references) + customs (user-authored). Mutation handlers below.
+  // User pool ("My skills"): the user's personal registry — remote skills
+  // added from the catalogue search + customs (user-authored). The catalogue
+  // itself is a server-side search the Skills tab runs on its own.
   mySkills?: UserSkill[];
   loadingMySkills?: boolean;
   mySkillDetails?: Record<string, UserSkillDetail>;
   isMySkillDetailLoading?: (skillName: string) => boolean;
   onLoadMySkillDetail?: (skillName: string) => Promise<void>;
-  onAddGlobalSkillToPool?: (skillName: string) => Promise<void>;
+  onAddRemoteSkillToPool?: (sourceId: string, skillId: string) => Promise<boolean>;
   onCreateCustomSkill?: (payload: CustomSkillCreatePayload) => Promise<UserSkill | null>;
   onRemoveSkillFromPool?: (skillName: string) => Promise<void>;
   onRefreshMySkills?: () => Promise<void>;
@@ -233,13 +229,12 @@ export default function ProfilePanel({
   onLogout,
   user,
   availableTools,
-  availableSkills,
   mySkills,
   loadingMySkills = false,
   mySkillDetails,
   isMySkillDetailLoading,
   onLoadMySkillDetail,
-  onAddGlobalSkillToPool,
+  onAddRemoteSkillToPool,
   onCreateCustomSkill,
   onRemoveSkillFromPool,
   onRefreshMySkills,
@@ -501,13 +496,12 @@ export default function ProfilePanel({
 
                     {normalizedActiveTab === "skills" ? (
                       <SkillsTab
-                        availableSkills={availableSkills}
                         mySkills={mySkills}
                         loadingMySkills={loadingMySkills}
                         mySkillDetails={mySkillDetails}
                         isMySkillDetailLoading={isMySkillDetailLoading}
                         onLoadMySkillDetail={onLoadMySkillDetail}
-                        onAddGlobalSkillToPool={onAddGlobalSkillToPool}
+                        onAddRemoteSkillToPool={onAddRemoteSkillToPool}
                         onCreateCustomSkill={onCreateCustomSkill}
                         onRemoveSkillFromPool={onRemoveSkillFromPool}
                         onRefreshMySkills={onRefreshMySkills ?? (async () => {})}

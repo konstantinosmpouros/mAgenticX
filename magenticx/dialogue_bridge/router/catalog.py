@@ -59,13 +59,15 @@ async def get_available_tools(_: AuthUser = Depends(require_current_user)):
     response_model=dict[str, list[str]],
     status_code=status.HTTP_200_OK,
     summary="Generate personalized starter suggestions for a new chat",
-    # Proxies an LLM generation call on the agents service — per-user ceiling.
-    dependencies=[Depends(suggestions_rate_limit)],
 )
 async def getSuggestions(
     user_id: str,
     agentId: str | None = Query(None),
     current_user: AuthUser = Depends(validate_userId),
+    # Proxies an LLM generation call on the agents service — per-user ceiling.
+    # After auth + CSRF on purpose: the bucket is keyed on the path's {user_id},
+    # so it must only ever count requests that user actually made.
+    _rate_limited: None = Depends(suggestions_rate_limit),
     db: AsyncSession = Depends(get_db),
 ):
     """Generate starter suggestions from recent non-private user context."""

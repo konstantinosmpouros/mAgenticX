@@ -379,7 +379,7 @@ One consequence of the middleware: `skills_metadata` is loaded **once per sessio
 
 ##### User-authored custom skills (multi-file)
 
-End users author their own skills from the **Skills** tab in the profile panel. Unlike the admin-curated global catalogue — build-time content that ships on the volume — a custom skill is created at runtime and stored as rows in `agent_runtime` (`skill_pool` + `skill_files`). There is no per-user directory: the pool used to live at `$SKILLS_REGISTRY_USERS_ROOT/<user_id>/custom/<name>/` and be reconciled against a `chat_db` copy every 900 seconds, which is the cost this removed. See [database-schema](../architecture/database-schema.md#agent_runtime-tables).
+End users author their own skills from the **Skills** tab in the profile panel. A custom skill is created at runtime and stored as rows in `agent_runtime` (`skill_pool` + `skill_files`); skills added from the remote catalogue are rows there too, pointing at a shared pinned copy (see [remote-skills](../flows/remote-skills.md)). There is no per-user directory: the pool used to live at `$SKILLS_REGISTRY_USERS_ROOT/<user_id>/custom/<name>/` and be reconciled against a `chat_db` copy every 900 seconds, which is the cost this removed. See [database-schema](../architecture/database-schema.md#agent_runtime-tables).
 
 A custom skill is a **folder of files**, not a single `SKILL.md`. `POST /v1/users/{user_id}/skills/custom` accepts a file list:
 

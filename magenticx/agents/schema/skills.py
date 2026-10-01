@@ -1,37 +1,23 @@
-"""Skill-registry DTOs: the global/per-user manifest rows, skill folder files,
-and the create/detail payloads for custom skills."""
-from typing import List, Literal
+"""Skill-registry DTOs: a user's pool rows, skill folder files, the
+create/detail payloads for custom skills, and the remote catalogue search (plan 30)."""
+from typing import List, Literal, Optional
 from pydantic import BaseModel, Field
 
-
-class SkillManifest(BaseModel):
-    """One entry in the central skills registry (``harness/skill_registry/registry/``).
-
-    ``content`` is the markdown body that follows the frontmatter — agents
-    pull this in via the deepagents ``SkillsMiddleware`` when the user has
-    enabled the skill for that (user, agent) pair.
-
-    ``category`` is the parent folder under the global registry root. It
-    surfaces in the UI as a small label next to the skill name so users can
-    place a skill in context while searching.
-    """
-
-    name: str
-    description: str = ""
-    content: str = ""
-    category: str = ""
+#: The kinds of pool entry. ``remote`` came from an allowlisted remote source
+#: and resolves into a shared, pinned copy. ``global`` is legacy: a reference
+#: into the bundled catalogue that plan 30 removed, still readable from the
+#: volume until those entries are pruned — nothing can create one any more.
+PoolSkillType = Literal["global", "custom", "remote"]
 
 
 class SkillManifestEntry(BaseModel):
-    """One row in the on-disk manifest.json — global or per-user.
+    """One entry in a user's skill pool.
 
-    ``source_path`` is relative to the skills_registry root the agents
-    service joins it against. Globals: ``global/<category>/<name>``.
-    Customs: ``users/<user_id>/custom/<name>`` (no category folder; custom
-    skills are flat under each user's custom dir).
+    ``source_path`` is a display path only: ``users/<user_id>/custom/<name>``
+    for a custom skill, ``remote/<source>/<name>@<commit>`` for a remote one,
+    ``global/<category>/<name>`` for a legacy catalogue reference.
 
-    ``category`` is the parent folder name in the global hierarchy — empty
-    for custom skills.
+    ``category`` comes from the remote source's index, when it has one.
 
     ``origin`` records who authored the skill. It defaults to ``"user"`` so every
     manifest written before agent authoring existed deserialises unchanged and
@@ -41,7 +27,7 @@ class SkillManifestEntry(BaseModel):
     """
 
     name: str
-    type: Literal["global", "custom"]
+    type: PoolSkillType
     description: str = ""
     source_path: str
     category: str = ""
@@ -50,21 +36,9 @@ class SkillManifestEntry(BaseModel):
     created_by_agent: str | None = None
     #: ISO-8601 UTC timestamp of authoring; None for entries predating provenance.
     created_at: str | None = None
-
-
-class GlobalManifest(BaseModel):
-    """The on-disk ``$SKILLS_REGISTRY_GLOBAL_ROOT/manifest.json`` schema."""
-
-    version: int = 1
-    skills: List[SkillManifestEntry] = Field(default_factory=list)
-
-
-class UserManifest(BaseModel):
-    """The on-disk per-user manifest schema at
-    ``$SKILLS_REGISTRY_USERS_ROOT/<user_id>/manifest.json``."""
-
-    version: int = 1
-    skills: List[SkillManifestEntry] = Field(default_factory=list)
+    #: Remote entries only: where it came from, at which version, under which
+    #: licence — shown on the pool card so the user can see what they hold.
+    provenance: Optional["RemoteProvenance"] = None
 
 
 class SkillFile(BaseModel):
@@ -107,9 +81,70 @@ class UserSkillDetail(BaseModel):
     """
 
     name: str
-    type: Literal["global", "custom"]
+    type: PoolSkillType
     description: str = ""
     source_path: str
     category: str = ""
     content: str = ""
     files: List[SkillFile] = Field(default_factory=list)
+    provenance: Optional["RemoteProvenance"] = None
+
+
+class RemoteProvenance(BaseModel):
+    """Where a remote skill came from, as the user was shown it when adding.
+
+    ``commit`` is the upstream commit for a GitHub source, or the artifact's
+    ``sha256:`` digest for a ``.well-known`` one. ``licence`` is ``None`` for a
+    publisher-distributed skill, which carries no licence of its own.
+    """
+
+    source_id: str
+    source_label: str
+    commit: Optional[str] = None
+    licence: Optional[str] = None
+    upstream_url: Optional[str] = None
+
+
+class CatalogueSkill(BaseModel):
+    """One search result: a remote skill that passed every gate."""
+
+    source_id: str
+    source_label: str
+    skill_id: str
+    name: str
+    description: str = ""
+    category: str = ""
+    licence: Optional[str] = None
+    commit: Optional[str] = None
+    upstream_url: Optional[str] = None
+
+
+class CatalogueSearchPage(BaseModel):
+    """A page of catalogue search results.
+
+    ``total`` counts every match, not just this page. ``remote_enabled`` tells
+    the UI whether remote results can be added at all on this deployment.
+    """
+
+    results: List[CatalogueSkill] = Field(default_factory=list)
+    total: int = 0
+    limit: int = 10
+    offset: int = 0
+    remote_enabled: bool = False
+
+
+class RemoteSourceStatus(BaseModel):
+    """One allowlisted source and what its last sync recorded — the ops view."""
+
+    source_id: str
+    label: str
+    kind: str
+    source_ref: Optional[str] = None
+    synced_at: Optional[str] = None
+    last_error: Optional[str] = None
+    skill_count: int = 0
+    admitted_count: int = 0
+
+
+SkillManifestEntry.model_rebuild()
+UserSkillDetail.model_rebuild()

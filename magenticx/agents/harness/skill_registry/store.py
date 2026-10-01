@@ -19,22 +19,37 @@ exact shape ``/memories/`` has, mirrored rather than reinvented.
 one of them has rows here:
 
 * ``custom`` — the user authored it; the bytes are in ``skill_files``.
-* ``global`` — a *reference* to the platform catalogue, which stays on the
-  volume as build-time content. No rows, no copy; reads are served from
-  ``global/skills/<category>/<name>/`` at query time.
+* ``global`` — **legacy**: a *reference* into the bundled catalogue plan 30
+  deleted from the image. No rows, no copy; reads are still served from
+  ``global/skills/<category>/<name>/`` on the volume so an entry a user holds
+  keeps working until it is pruned. Nothing creates one any more.
+
+* ``remote`` — added from a remote source (plan 30). Also a pointer, into a
+  **shared, immutable** copy in ``remote_skill_files`` keyed by the skill's
+  content, so a skill a hundred users add is stored once and never changes
+  under any of them.
 
 Doing that dispatch inside the store means the mount stays one plain
 ``StoreBackend`` and inherits its directory synthesis (``ls`` splits keys on
 ``/`` and reports the first segment with ``is_dir=True``), which is what
 ``SkillsMiddleware`` discovery needs. No bespoke backend, no new contract.
+
+**The catalogue lives here too.** ``skill_catalogue`` indexes every remote
+skill the sync has seen, so one full-text query answers the Skills tab's search.
+Refused skills are kept as rows with their reason — that is what lets the next
+sync skip re-reading them — and are never returned by a search or accepted by
+an Add.
 """
 from __future__ import annotations
 
 import asyncio
 import base64
+import re
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any, AsyncGenerator, Iterable, Optional
 
 from langgraph.store.base import (
     BaseStore,
@@ -56,6 +71,15 @@ logger = get_logger(__name__)
 #: deliberately carry no ``skill_files`` rows.
 POOL_TYPE_CUSTOM = "custom"
 POOL_TYPE_GLOBAL = "global"
+#: Added from a remote source; reads resolve into the shared pinned copy.
+POOL_TYPE_REMOTE = "remote"
+
+#: Session-level advisory lock key for the remote sync. Any constant works as
+#: long as nothing else in `agent_runtime` uses it; this one spells "skil5".
+_SYNC_LOCK_KEY = 0x736B696C35
+
+#: Hard ceiling on a page of search results, whatever the caller asks for.
+MAX_SEARCH_LIMIT = 50
 
 #: Which mount a namespace addresses. ``ASSIGNED`` is tier ② — what the user
 #: switched on for this agent. ``DECLARED`` is tier ① for a *user-authored*
@@ -116,6 +140,82 @@ ALTER TABLE skill_pool  ADD COLUMN IF NOT EXISTS created_by_agent text;
 ALTER TABLE skill_pool  ADD COLUMN IF NOT EXISTS description      text NOT NULL DEFAULT '';
 ALTER TABLE skill_pool  ADD COLUMN IF NOT EXISTS deleted_at       timestamptz;
 ALTER TABLE skill_files ADD COLUMN IF NOT EXISTS encoding         text NOT NULL DEFAULT 'utf-8';
+
+-- Plan 30: remote entries point at a shared copy. `source_ref` is that copy's
+-- content hash; `source_commit` is the upstream commit (or artifact digest) it
+-- was fetched at, kept for provenance; `licence` is what the user was shown.
+ALTER TABLE skill_pool  ADD COLUMN IF NOT EXISTS source_id        text;
+ALTER TABLE skill_pool  ADD COLUMN IF NOT EXISTS source_ref       text;
+ALTER TABLE skill_pool  ADD COLUMN IF NOT EXISTS source_commit    text;
+ALTER TABLE skill_pool  ADD COLUMN IF NOT EXISTS licence          text;
+
+CREATE TABLE IF NOT EXISTS remote_skill_sources (
+    source_id      text PRIMARY KEY,
+    source_ref     text NOT NULL DEFAULT '',
+    synced_at      timestamptz,
+    last_error     text,
+    skill_count    integer NOT NULL DEFAULT 0,
+    admitted_count integer NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS skill_catalogue (
+    source_id     text NOT NULL,
+    skill_id      text NOT NULL,
+    name          text NOT NULL,
+    description   text NOT NULL DEFAULT '',
+    category      text NOT NULL DEFAULT '',
+    licence       text,
+    risk          text,
+    source_ref    text NOT NULL DEFAULT '',
+    entry_path    text NOT NULL DEFAULT '',
+    meta_sha      text NOT NULL DEFAULT '',
+    content_ref   text NOT NULL DEFAULT '',
+    artifact_url  text,
+    artifact_type text,
+    refusal       text,
+    withdrawn_at  timestamptz,
+    updated_at    timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (source_id, skill_id)
+);
+
+CREATE TABLE IF NOT EXISTS remote_skill_manifest (
+    source_id  text NOT NULL,
+    skill_id   text NOT NULL,
+    path       text NOT NULL,
+    blob_sha   text NOT NULL,
+    size       integer NOT NULL,
+    PRIMARY KEY (source_id, skill_id, path)
+);
+
+CREATE TABLE IF NOT EXISTS remote_skill_files (
+    source_id   text NOT NULL,
+    skill_id    text NOT NULL,
+    content_ref text NOT NULL,
+    path        text NOT NULL,
+    content     text NOT NULL,
+    encoding    text NOT NULL DEFAULT 'utf-8',
+    sha256      text NOT NULL,
+    fetched_at  timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (source_id, skill_id, content_ref, path)
+);
+
+-- Every column the search reads, asserted for a table created by an earlier
+-- version of this DDL (same reason as the skill_pool lines above).
+ALTER TABLE skill_catalogue ADD COLUMN IF NOT EXISTS refusal       text;
+ALTER TABLE skill_catalogue ADD COLUMN IF NOT EXISTS content_ref   text NOT NULL DEFAULT '';
+ALTER TABLE skill_catalogue ADD COLUMN IF NOT EXISTS artifact_type text;
+
+-- The search vector: name and folder id weigh most, then category, then the
+-- description. One configuration ('english') throughout, because a query is
+-- parsed with one configuration and a mismatch silently matches nothing.
+ALTER TABLE skill_catalogue ADD COLUMN IF NOT EXISTS search tsvector
+    GENERATED ALWAYS AS (
+        setweight(to_tsvector('english', coalesce(name, '') || ' ' || replace(skill_id, '-', ' ')), 'A') ||
+        setweight(to_tsvector('english', coalesce(category, '')), 'B') ||
+        setweight(to_tsvector('english', coalesce(description, '')), 'C')
+    ) STORED;
+CREATE INDEX IF NOT EXISTS skill_catalogue_search_idx ON skill_catalogue USING gin (search);
+CREATE INDEX IF NOT EXISTS skill_catalogue_skill_id_idx ON skill_catalogue (skill_id);
 """
 
 _COMMENTS = [
@@ -127,14 +227,61 @@ _COMMENTS = [
     "folder, e.g. SKILL.md or templates/plan.md.'",
     "COMMENT ON TABLE agent_skills IS "
     "'Tier 2: which pool skills the user switched on for which agent.'",
+    "COMMENT ON TABLE skill_catalogue IS "
+    "'Searchable index of platform + remote skills. refusal IS NOT NULL rows were "
+    "seen but failed a gate; they are kept so the sync can skip re-reading them.'",
+    "COMMENT ON TABLE remote_skill_manifest IS "
+    "'File list of each remote skill at the catalogue commit: path, git blob sha, "
+    "size. No content - it is what lets an Add verify every file.'",
+    "COMMENT ON TABLE remote_skill_files IS "
+    "'Shared, immutable copies of added remote skills, keyed by content hash.'",
+    "COMMENT ON TABLE remote_skill_sources IS "
+    "'One row per allowlisted source: last synced ref and outcome.'",
 ]
+
+# The two column lists below are interpolated into SQL text. They are module
+# constants and never carry input; every value still goes in as a bound parameter.
+_POOL_COLUMNS = (
+    "skill_name, type, category, description, origin, created_by_agent, added_at, "
+    "source_id, source_ref, source_commit, licence"
+)
+
+_CATALOGUE_COLUMNS = (
+    "source_id, skill_id, name, description, category, licence, risk, source_ref, "
+    "entry_path, meta_sha, content_ref, artifact_url, artifact_type, refusal, withdrawn_at"
+)
+
+
+@dataclass(frozen=True)
+class CatalogueEntry:
+    """One row of ``skill_catalogue`` as the sync writes it.
+
+    ``refusal`` is ``None`` for a skill that passed every gate; otherwise the
+    short reason it was refused, and the row is invisible to search and Add.
+    """
+
+    skill_id: str
+    name: str
+    description: str = ""
+    category: str = ""
+    licence: Optional[str] = None
+    risk: Optional[str] = None
+    source_ref: str = ""
+    entry_path: str = ""
+    meta_sha: str = ""
+    content_ref: str = ""
+    artifact_url: Optional[str] = None
+    artifact_type: Optional[str] = None
+    refusal: Optional[str] = None
 
 
 def _pool_row(row: Any) -> dict[str, Any]:
     """One ``skill_pool`` row as the shape the registry speaks.
 
     Rows arrive as mappings, not tuples: the pool this store borrows is built
-    with ``row_factory=dict_row`` because the checkpointer requires it.
+    with ``row_factory=dict_row`` because the checkpointer requires it. The
+    plan-30 columns are read with ``.get`` so a row from before they existed
+    reads as a plain custom/global entry.
     """
     return {
         "name": row["skill_name"],
@@ -144,7 +291,16 @@ def _pool_row(row: Any) -> dict[str, Any]:
         "origin": row["origin"],
         "created_by_agent": row["created_by_agent"],
         "added_at": _utc(row["added_at"]),
+        "source_id": row.get("source_id"),
+        "source_ref": row.get("source_ref"),
+        "source_commit": row.get("source_commit"),
+        "licence": row.get("licence"),
     }
+
+
+def _catalogue_row(row: Any) -> dict[str, Any]:
+    """One ``skill_catalogue`` row as a plain dict."""
+    return {key: row.get(key) for key in _CATALOGUE_COLUMNS.split(", ")}
 
 
 def _utc(value: Any) -> datetime:
@@ -155,11 +311,11 @@ def _utc(value: Any) -> datetime:
 
 
 def catalogue_dir(category: str, skill_name: str) -> Path:
-    """On-disk folder of a catalogue skill.
+    """On-disk folder of a legacy catalogue skill.
 
-    The catalogue is build-time content seeded from the image, shared by every
-    user and never written at runtime, so it stays on the volume — a global pool
-    entry points at it rather than copying it.
+    The image no longer ships the bundled catalogue (plan 30), but what an
+    earlier image seeded is still on the volume, and a ``global`` pool entry
+    reads from there until it is pruned.
     """
     return layout.global_skills_root() / category / skill_name
 
@@ -211,8 +367,7 @@ class SkillStore(BaseStore):
         """Every live pool entry for this user, newest name order stable."""
         async with self._pool.connection() as conn:
             cur = await conn.execute(
-                "SELECT skill_name, type, category, description, origin, "
-                "created_by_agent, added_at "
+                f"SELECT {_POOL_COLUMNS} "
                 "FROM skill_pool WHERE user_id = %s AND deleted_at IS NULL "
                 "ORDER BY skill_name",
                 (user_id,),
@@ -224,8 +379,7 @@ class SkillStore(BaseStore):
         """One live pool entry, or ``None`` when the user does not hold it."""
         async with self._pool.connection() as conn:
             cur = await conn.execute(
-                "SELECT skill_name, type, category, description, origin, "
-                "created_by_agent, added_at "
+                f"SELECT {_POOL_COLUMNS} "
                 "FROM skill_pool WHERE user_id = %s AND skill_name = %s "
                 "AND deleted_at IS NULL",
                 (user_id, skill_name),
@@ -292,6 +446,67 @@ class SkillStore(BaseStore):
                         (user_id, skill_name, path, content, encoding),
                     )
 
+    async def add_remote(
+        self,
+        user_id: str,
+        skill_name: str,
+        *,
+        source_id: str,
+        content_ref: str,
+        source_commit: str,
+        licence: Optional[str],
+        category: str = "",
+        description: str = "",
+        files: Optional[dict[str, tuple[str, str, str]]] = None,
+    ) -> None:
+        """Reference a remote skill's shared copy, writing the copy first if new.
+
+        ``files`` maps a relative path to ``(content, encoding, sha256)`` and is
+        ``None`` when the copy already exists (someone added this skill at this
+        content before), in which case the Add is a single row — O(1), like a
+        global entry. Copy and pool row commit together or not at all.
+
+        ``ON CONFLICT DO NOTHING`` on the copy makes two users adding the same
+        skill at once safe: identical content under an identical key.
+        """
+        async with self._pool.connection() as conn:
+            async with conn.transaction():
+                if files:
+                    async with conn.cursor() as cur:
+                        await cur.executemany(
+                            "INSERT INTO remote_skill_files "
+                            "(source_id, skill_id, content_ref, path, content, encoding, sha256) "
+                            "VALUES (%s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
+                            [
+                                (source_id, skill_name, content_ref, path, content, encoding, digest)
+                                for path, (content, encoding, digest) in sorted(files.items())
+                            ],
+                        )
+                await conn.execute(
+                    "INSERT INTO skill_pool (user_id, skill_name, type, category, description, "
+                    "origin, created_by_agent, source_id, source_ref, source_commit, licence, "
+                    "added_at, deleted_at) "
+                    "VALUES (%s, %s, %s, %s, %s, 'user', NULL, %s, %s, %s, %s, now(), NULL) "
+                    "ON CONFLICT (user_id, skill_name) DO UPDATE SET "
+                    "type = EXCLUDED.type, category = EXCLUDED.category, "
+                    "description = EXCLUDED.description, origin = EXCLUDED.origin, "
+                    "created_by_agent = NULL, source_id = EXCLUDED.source_id, "
+                    "source_ref = EXCLUDED.source_ref, source_commit = EXCLUDED.source_commit, "
+                    "licence = EXCLUDED.licence, added_at = now(), deleted_at = NULL",
+                    (user_id, skill_name, POOL_TYPE_REMOTE, category, description,
+                     source_id, content_ref, source_commit, licence),
+                )
+
+    async def has_remote_copy(self, source_id: str, skill_id: str, content_ref: str) -> bool:
+        """Whether a shared copy of this exact content is already stored."""
+        async with self._pool.connection() as conn:
+            cur = await conn.execute(
+                "SELECT 1 FROM remote_skill_files "
+                "WHERE source_id = %s AND skill_id = %s AND content_ref = %s LIMIT 1",
+                (source_id, skill_id, content_ref),
+            )
+            return await cur.fetchone() is not None
+
     async def remove(self, user_id: str, skill_name: str) -> bool:
         """Drop a skill from the pool, its files, and every agent assignment.
 
@@ -355,13 +570,18 @@ class SkillStore(BaseStore):
         """Every file of one skill as ``{relative path: (content, encoding)}``.
 
         Dispatches on the entry's kind: a custom skill's bytes are rows here, a
-        global entry's are read from the catalogue on the volume.
+        global entry's are read from the catalogue on the volume, and a remote
+        entry's from the shared copy its ``source_ref`` pins.
         """
         entry = await self.get_pool_entry(user_id, skill_name)
         if entry is None:
             return {}
         if entry["type"] == POOL_TYPE_GLOBAL:
             return _read_catalogue_files(entry["category"], skill_name)
+        if entry["type"] == POOL_TYPE_REMOTE:
+            return await self.read_remote_copy(
+                entry.get("source_id") or "", skill_name, entry.get("source_ref") or ""
+            )
 
         async with self._pool.connection() as conn:
             cur = await conn.execute(
@@ -371,6 +591,241 @@ class SkillStore(BaseStore):
             )
             rows = await cur.fetchall()
         return {row["path"]: (row["content"], row["encoding"]) for row in rows}
+
+    async def read_remote_copy(
+        self, source_id: str, skill_id: str, content_ref: str
+    ) -> dict[str, tuple[str, str]]:
+        """The files of one shared remote copy, as ``{path: (content, encoding)}``."""
+        async with self._pool.connection() as conn:
+            cur = await conn.execute(
+                "SELECT path, content, encoding FROM remote_skill_files "
+                "WHERE source_id = %s AND skill_id = %s AND content_ref = %s ORDER BY path",
+                (source_id, skill_id, content_ref),
+            )
+            rows = await cur.fetchall()
+        return {row["path"]: (row["content"], row["encoding"]) for row in rows}
+
+    # -- catalogue: sync side ----------------------------------------------
+    @asynccontextmanager
+    async def sync_lock(self) -> AsyncGenerator[bool, None]:
+        """Hold the sync's advisory lock for the duration of the block.
+
+        Yields whether the lock was taken. Session-level, on one checked-out
+        connection, so it is released when that connection's block exits even
+        if the pass raises — and two replicas can never sync at once.
+        """
+        async with self._pool.connection() as conn:
+            cur = await conn.execute("SELECT pg_try_advisory_lock(%s) AS taken", (_SYNC_LOCK_KEY,))
+            row = await cur.fetchone()
+            taken = bool(row and row["taken"])
+            try:
+                yield taken
+            finally:
+                if taken:
+                    await conn.execute("SELECT pg_advisory_unlock(%s)", (_SYNC_LOCK_KEY,))
+
+    async def get_source_state(self, source_id: str) -> Optional[dict[str, Any]]:
+        """What the last sync of this source recorded, or ``None`` if never synced."""
+        async with self._pool.connection() as conn:
+            cur = await conn.execute(
+                "SELECT source_id, source_ref, synced_at, last_error, skill_count, admitted_count "
+                "FROM remote_skill_sources WHERE source_id = %s",
+                (source_id,),
+            )
+            row = await cur.fetchone()
+        return None if row is None else dict(row)
+
+    async def list_source_states(self) -> list[dict[str, Any]]:
+        """Every source's last sync outcome — the ops view."""
+        async with self._pool.connection() as conn:
+            cur = await conn.execute(
+                "SELECT source_id, source_ref, synced_at, last_error, skill_count, admitted_count "
+                "FROM remote_skill_sources ORDER BY source_id"
+            )
+            rows = await cur.fetchall()
+        return [dict(row) for row in rows]
+
+    async def list_catalogue(self, source_id: str) -> dict[str, dict[str, Any]]:
+        """Every row this source has, refused ones included, keyed by skill id.
+
+        The sync reads it to decide which skills changed: a row whose
+        ``meta_sha`` still matches upstream is reused without a single read.
+        """
+        async with self._pool.connection() as conn:
+            cur = await conn.execute(
+                f"SELECT {_CATALOGUE_COLUMNS} FROM skill_catalogue WHERE source_id = %s",
+                (source_id,),
+            )
+            rows = await cur.fetchall()
+        return {row["skill_id"]: _catalogue_row(row) for row in rows}
+
+    async def apply_source_sync(
+        self,
+        source_id: str,
+        *,
+        source_ref: str,
+        entries: list[CatalogueEntry],
+        manifests: Optional[dict[str, list[tuple[str, str, int]]]],
+        record_state: bool = True,
+    ) -> None:
+        """Replace this source's slice of the catalogue, in one transaction.
+
+        * Every entry is upserted and un-withdrawn.
+        * A row the pass did not see is **withdrawn, not deleted**: users who
+          hold that skill keep their pinned copy, and nobody new can add it.
+        * ``manifests`` (``skill_id → [(path, blob_sha, size)]``) replaces the
+          source's file lists wholesale; ``None`` leaves them alone (a source
+          with no per-file manifest, or the platform's own catalogue).
+
+        Either all of it lands or none of it does — a sync never leaves the
+        catalogue half-updated for a search to read.
+        """
+        seen = [entry.skill_id for entry in entries]
+        admitted = sum(1 for entry in entries if entry.refusal is None)
+        async with self._pool.connection() as conn:
+            async with conn.transaction():
+                async with conn.cursor() as cur:
+                    if entries:
+                        await cur.executemany(
+                            "INSERT INTO skill_catalogue (source_id, skill_id, name, description, "
+                            "category, licence, risk, source_ref, entry_path, meta_sha, content_ref, "
+                            "artifact_url, artifact_type, refusal, withdrawn_at, updated_at) "
+                            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NULL, now()) "
+                            "ON CONFLICT (source_id, skill_id) DO UPDATE SET "
+                            "name = EXCLUDED.name, description = EXCLUDED.description, "
+                            "category = EXCLUDED.category, licence = EXCLUDED.licence, "
+                            "risk = EXCLUDED.risk, source_ref = EXCLUDED.source_ref, "
+                            "entry_path = EXCLUDED.entry_path, meta_sha = EXCLUDED.meta_sha, "
+                            "content_ref = EXCLUDED.content_ref, artifact_url = EXCLUDED.artifact_url, "
+                            "artifact_type = EXCLUDED.artifact_type, refusal = EXCLUDED.refusal, "
+                            "withdrawn_at = NULL, updated_at = now()",
+                            [
+                                (source_id, e.skill_id, e.name, e.description, e.category,
+                                 e.licence, e.risk, e.source_ref, e.entry_path, e.meta_sha,
+                                 e.content_ref, e.artifact_url, e.artifact_type, e.refusal)
+                                for e in entries
+                            ],
+                        )
+                    await cur.execute(
+                        "UPDATE skill_catalogue SET withdrawn_at = now(), updated_at = now() "
+                        "WHERE source_id = %s AND withdrawn_at IS NULL "
+                        "AND NOT (skill_id = ANY(%s))",
+                        (source_id, seen),
+                    )
+                    if manifests is not None:
+                        await cur.execute(
+                            "DELETE FROM remote_skill_manifest WHERE source_id = %s", (source_id,)
+                        )
+                        rows = [
+                            (source_id, skill_id, path, blob_sha, size)
+                            for skill_id, files in manifests.items()
+                            for path, blob_sha, size in files
+                        ]
+                        if rows:
+                            await cur.executemany(
+                                "INSERT INTO remote_skill_manifest "
+                                "(source_id, skill_id, path, blob_sha, size) "
+                                "VALUES (%s, %s, %s, %s, %s)",
+                                rows,
+                            )
+                    if record_state:
+                        await cur.execute(
+                            "INSERT INTO remote_skill_sources (source_id, source_ref, synced_at, "
+                            "last_error, skill_count, admitted_count) "
+                            "VALUES (%s, %s, now(), NULL, %s, %s) "
+                            "ON CONFLICT (source_id) DO UPDATE SET source_ref = EXCLUDED.source_ref, "
+                            "synced_at = now(), last_error = NULL, "
+                            "skill_count = EXCLUDED.skill_count, admitted_count = EXCLUDED.admitted_count",
+                            (source_id, source_ref, len(entries), admitted),
+                        )
+
+    async def record_source_error(self, source_id: str, reason: str) -> None:
+        """Note a failed pass without touching the catalogue.
+
+        The previous rows stay exactly as they were — a source that cannot be
+        read keeps serving its last good catalogue rather than going empty.
+        """
+        async with self._pool.connection() as conn:
+            await conn.execute(
+                "INSERT INTO remote_skill_sources (source_id, last_error, synced_at) "
+                "VALUES (%s, %s, now()) "
+                "ON CONFLICT (source_id) DO UPDATE SET last_error = EXCLUDED.last_error, "
+                "synced_at = now()",
+                (source_id, reason[:200]),
+            )
+
+    # -- catalogue: read side -----------------------------------------------
+    async def get_catalogue_entry(self, source_id: str, skill_id: str) -> Optional[dict[str, Any]]:
+        """One catalogue row, whatever its state — the caller checks refusal/withdrawal."""
+        async with self._pool.connection() as conn:
+            cur = await conn.execute(
+                f"SELECT {_CATALOGUE_COLUMNS} FROM skill_catalogue "
+                "WHERE source_id = %s AND skill_id = %s",
+                (source_id, skill_id),
+            )
+            row = await cur.fetchone()
+        return None if row is None else _catalogue_row(row)
+
+    async def get_manifest(self, source_id: str, skill_id: str) -> list[tuple[str, str, int]]:
+        """``(path, blob_sha, size)`` for every file of one remote skill."""
+        async with self._pool.connection() as conn:
+            cur = await conn.execute(
+                "SELECT path, blob_sha, size FROM remote_skill_manifest "
+                "WHERE source_id = %s AND skill_id = %s ORDER BY path",
+                (source_id, skill_id),
+            )
+            rows = await cur.fetchall()
+        return [(row["path"], row["blob_sha"], int(row["size"])) for row in rows]
+
+    async def search_catalogue(
+        self,
+        terms: list[str],
+        *,
+        source_ids: list[str],
+        limit: int = 10,
+        offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Rank admitted, live catalogue rows against ``terms``; ``(rows, total)``.
+
+        Each term is a prefix match (``react:*``), so results appear while the
+        user is still typing, and terms are OR-ed: ``ts_rank_cd`` already puts a
+        row matching more of them first. An exact folder-id hit is pinned to the
+        top. With no terms it is an alphabetical browse.
+
+        ``terms`` must already be sanitised by :func:`catalogue_query_terms` —
+        it is what keeps the tsquery syntactically valid; the value still goes
+        in as a bound parameter, never into the SQL text. ``source_ids`` is the
+        allowlist to search within, so rows a removed source left behind are
+        never returned.
+        """
+        limit = max(1, min(limit, MAX_SEARCH_LIMIT))
+        offset = max(0, offset)
+        params: dict[str, Any] = {"sources": source_ids, "limit": limit, "offset": offset}
+        live = (
+            "c.refusal IS NULL AND c.withdrawn_at IS NULL "
+            "AND c.source_id = ANY(%(sources)s)"
+        )
+        if terms:
+            params["tsq"] = " | ".join(f"{term}:*" for term in terms)
+            params["exact"] = "-".join(terms)
+            sql = (
+                f"SELECT {_CATALOGUE_COLUMNS}, count(*) OVER () AS total "
+                "FROM skill_catalogue c, to_tsquery('english', %(tsq)s) q "
+                f"WHERE {live} AND c.search @@ q "
+                "ORDER BY (c.skill_id = %(exact)s) DESC, ts_rank_cd(c.search, q) DESC, c.skill_id "
+                "LIMIT %(limit)s OFFSET %(offset)s"
+            )
+        else:
+            sql = (
+                f"SELECT {_CATALOGUE_COLUMNS}, count(*) OVER () AS total "
+                f"FROM skill_catalogue c WHERE {live} "
+                "ORDER BY c.skill_id, c.source_id LIMIT %(limit)s OFFSET %(offset)s"
+            )
+        async with self._pool.connection() as conn:
+            cur = await conn.execute(sql, params)
+            rows = await cur.fetchall()
+        total = int(rows[0]["total"]) if rows else 0
+        return [_catalogue_row(row) for row in rows], total
 
     async def _names_for(self, namespace: tuple[str, ...]) -> list[str]:
         """Skill names a namespace exposes.
@@ -451,6 +906,28 @@ class SkillStore(BaseStore):
         return items[offset : offset + limit]
 
 
+_TERM_RE = re.compile(r"[a-z0-9]+")
+_MAX_QUERY_TERMS = 8
+
+
+def catalogue_query_terms(query: str) -> list[str]:
+    """Reduce a free-text query to safe tsquery terms.
+
+    Lowercase ASCII alphanumerics only, 2-32 characters, at most eight. That is
+    what makes ``term:*`` always a valid tsquery fragment: no operator, quote or
+    backslash can survive, so a typed ``&`` or ``'`` cannot turn the search into
+    a syntax error (it is a bound parameter either way — this is about the
+    query parsing, not injection).
+    """
+    terms: list[str] = []
+    for term in _TERM_RE.findall((query or "").lower()):
+        if 2 <= len(term) <= 32 and term not in terms:
+            terms.append(term)
+        if len(terms) == _MAX_QUERY_TERMS:
+            break
+    return terms
+
+
 def _read_catalogue_files(category: str, skill_name: str) -> dict[str, tuple[str, str]]:
     """Read a catalogue skill's folder off the volume.
 
@@ -509,11 +986,15 @@ def _as_search_item(
 
 
 __all__ = [
+    "CatalogueEntry",
+    "MAX_SEARCH_LIMIT",
     "POOL_TYPE_CUSTOM",
     "POOL_TYPE_GLOBAL",
+    "POOL_TYPE_REMOTE",
     "SKILL_ENTRY_FILE",
     "TIER_ASSIGNED",
     "TIER_DECLARED",
     "SkillStore",
     "catalogue_dir",
+    "catalogue_query_terms",
 ]

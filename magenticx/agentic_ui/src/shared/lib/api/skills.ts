@@ -1,12 +1,18 @@
 /**
- * Skills API — the global registry, the per-(user, agent) enablement toggles,
- * and the user's personal skill pool (globals adopted + custom uploads).
+ * Skills API — the remote catalogue search, the per-(user, agent) enablement
+ * toggles, and the user's personal skill pool (remote additions + custom
+ * uploads).
  */
-import type { CustomSkillCreatePayload, Skill, UserSkill, UserSkillDetail } from "../types";
+import type {
+  CatalogueSearchPage,
+  CustomSkillCreatePayload,
+  UserSkill,
+  UserSkillDetail,
+} from "../types";
 import { requestJson, requestVoid } from "../http";
 import { PROXY_LIMIT_MB } from "../uploadGuards";
 import {
-  SkillListSchema,
+  CatalogueSearchPageSchema,
   StringListSchema,
   UserSkillDetailSchema,
   UserSkillListSchema,
@@ -14,20 +20,24 @@ import {
 } from "../schemas";
 import { SKILLS_BASE_PATH } from "./paths";
 
-// Fetch the central skills registry. Used by the bootstrap path
-// (auth handlers + auth rehydrate hook) the same way as ``getAgents`` and
-// ``getTools`` — fetched on every page refresh, with an IndexedDB snapshot
-// for instant paint while the request is in flight. Pass ``{ bypassRedis:
-// true }`` to force the bridge to skip its Redis cache and re-fetch from the
-// agents service — that path also upserts the cache so the next normal
-// request benefits from the new data. Only the manual refresh button uses
-// the bypass; everything else (login, page refresh) leaves it false so the
-// cache absorbs the load.
-export async function getSkills(options?: { bypassRedis?: boolean }): Promise<Skill[]> {
-  const url = options?.bypassRedis ? `${SKILLS_BASE_PATH}?bypass_redis=true` : SKILLS_BASE_PATH;
-  return requestJson(url, {
-    schema: SkillListSchema,
-    fallbackMessage: "Failed to fetch skills",
+// Search the remote skill catalogue (plan 30). The catalogue is a server-side
+// full-text index of the allowlisted sources — there is no list to download —
+// so the Skills tab calls this as the user types. `signal` lets a newer
+// keystroke cancel a request still in flight.
+export async function searchCatalogue(
+  query: string,
+  options: { limit: number; offset?: number; signal?: AbortSignal },
+): Promise<CatalogueSearchPage> {
+  const params = new URLSearchParams({
+    q: query,
+    limit: String(options.limit),
+    offset: String(options.offset ?? 0),
+  });
+  return requestJson(`${SKILLS_BASE_PATH}/catalogue?${params.toString()}`, {
+    schema: CatalogueSearchPageSchema,
+    signal: options.signal,
+    errorMessages: { 429: "Searching too quickly — wait a moment and try again." },
+    fallbackMessage: "Failed to search the skill catalogue",
   });
 }
 
@@ -101,14 +111,22 @@ export async function getMySkillDetail(
   });
 }
 
-// Append a global-catalog skill into the user's pool. 204 on success. 404 if
-// the skill isn't in the global catalog; 409 if it's already in the pool.
-export async function addGlobalSkillToPool(userId: string, skillName: string): Promise<void> {
-  const url = `${SKILLS_BASE_PATH}/users/${encodeURIComponent(userId)}/global/${encodeURIComponent(skillName)}`;
-  await requestVoid(url, {
+// Add a remote skill to the user's pool, pinned to the version the catalogue
+// showed. 201 with the new pool entry. The server downloads and verifies the
+// skill on the first Add anyone makes, so this can take a few seconds. 409 if
+// the name is already in the pool; 422 if the skill failed verification.
+export async function addRemoteSkillToPool(
+  userId: string,
+  sourceId: string,
+  skillId: string,
+): Promise<UserSkill> {
+  const url = `${SKILLS_BASE_PATH}/users/${encodeURIComponent(userId)}/remote/${encodeURIComponent(sourceId)}/${encodeURIComponent(skillId)}`;
+  return requestJson(url, {
     method: "POST",
     csrf: true,
-    fallbackMessage: `Failed to add global skill ${skillName} to pool`,
+    schema: UserSkillSchema,
+    errorMessages: { 429: "Too many skills added at once — wait a minute and try again." },
+    fallbackMessage: `Failed to add ${skillId} to your skills`,
   });
 }
 

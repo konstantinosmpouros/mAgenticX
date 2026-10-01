@@ -12,31 +12,173 @@ def _custom_body(name: str, description: str = "from api", extra_files=None):
     return {"name": name, "description": description, "files": files}
 
 
+def _catalogue_row(agents_service, skill_id: str, *, refusal=None, description="A remote skill"):
+    """A catalogue row as the sync writes it."""
+    return agents_service.skill_store.CatalogueEntry(
+        skill_id=skill_id, name=skill_id, description=description, licence="MIT",
+        source_ref="c" * 40, entry_path=f"skills/{skill_id}", meta_sha="m",
+        content_ref="ref-" + skill_id, refusal=refusal,
+    )
+
+
+async def _seed_catalogue(agents_service, store, source_id="ecc", rows=()):
+    await store.apply_source_sync(source_id, source_ref="c" * 40, entries=list(rows), manifests=None)
+
+
+def _enable_remote(agents_service, monkeypatch, enabled=True):
+    monkeypatch.setattr(agents_service.settings_module.settings.remote_skills, "enabled", enabled)
+
+
 # ---------------------------------------------------------------------------
-# GET /skills/global
+# The bundled catalogue is gone (plan 30)
 # ---------------------------------------------------------------------------
-async def test_get_global_skills_lists_catalog(client, skills_fs, internal_headers):
-    response = await client.get("/skills/global", headers=internal_headers)
+async def test_the_bundled_catalogue_routes_no_longer_exist(client, skill_store_memory, internal_headers):
+    assert (await client.get("/skills/global", headers=internal_headers)).status_code == 404
+    added = await client.post("/users/user-1/skills/global/deep-research", headers=internal_headers)
+    assert added.status_code in (404, 405)
+
+
+# ---------------------------------------------------------------------------
+# GET /skills/catalogue/search
+# ---------------------------------------------------------------------------
+async def test_search_returns_admitted_remote_rows_only(client, agents_service, skill_store_memory, internal_headers, monkeypatch):
+    _enable_remote(agents_service, monkeypatch)
+    await _seed_catalogue(agents_service, skill_store_memory, rows=[
+        _catalogue_row(agents_service, "postgres-patterns"),
+        _catalogue_row(agents_service, "postgres-secrets", refusal="no licence"),
+    ])
+    response = await client.get("/skills/catalogue/search?q=postgres", headers=internal_headers)
     assert response.status_code == 200
     body = response.json()
-    names = sorted(item["name"] for item in body)
-    assert names == ["deep-research", "design-system"]
-    research = next(i for i in body if i["name"] == "deep-research")
-    assert research["category"] == "research"
-    assert "deep research" in research["content"]
+    assert [r["skill_id"] for r in body["results"]] == ["postgres-patterns"]
+    assert body["total"] == 1 and body["remote_enabled"] is True
+    hit = body["results"][0]
+    assert hit["source_label"] == "affaan-m/ECC"
+    assert hit["upstream_url"] == f"https://github.com/affaan-m/ECC/tree/{'c' * 40}/skills/postgres-patterns"
 
 
-async def test_get_global_skills_bypass_cache_reindexes(client, skills_fs, internal_headers):
-    # Drop a new skill onto the volume after the cache was warmed.
-    new_dir = skills_fs.global_root / "ops" / "deploy-helper"
-    new_dir.mkdir(parents=True, exist_ok=True)
-    (new_dir / "SKILL.md").write_text("---\nname: deploy-helper\ndescription: ops\n---\nbody", encoding="utf-8")
+async def test_search_is_empty_while_remote_skills_are_off(client, agents_service, skill_store_memory, internal_headers, monkeypatch):
+    """Nothing could be added from it, so the catalogue shows nothing at all."""
+    _enable_remote(agents_service, monkeypatch, enabled=False)
+    await _seed_catalogue(agents_service, skill_store_memory, rows=[_catalogue_row(agents_service, "postgres-patterns")])
+    body = (await client.get("/skills/catalogue/search?q=postgres", headers=internal_headers)).json()
+    assert body["results"] == [] and body["remote_enabled"] is False
 
-    cached = await client.get("/skills/global", headers=internal_headers)
-    assert "deploy-helper" not in {i["name"] for i in cached.json()}
 
-    refreshed = await client.get("/skills/global?bypass_cache=true", headers=internal_headers)
-    assert "deploy-helper" in {i["name"] for i in refreshed.json()}
+async def test_search_never_returns_a_source_off_the_allowlist(client, agents_service, skill_store_memory, internal_headers, monkeypatch):
+    # Rows a removed source left behind must not resurface.
+    _enable_remote(agents_service, monkeypatch)
+    await _seed_catalogue(agents_service, skill_store_memory, source_id="gone", rows=[_catalogue_row(agents_service, "orphan")])
+    assert (await client.get("/skills/catalogue/search?q=orphan", headers=internal_headers)).json()["results"] == []
+    assert (await client.get("/skills/catalogue/search?q=orphan&source=gone", headers=internal_headers)).json()["results"] == []
+
+
+async def test_search_refuses_malformed_parameters(client, agents_service, skill_store_memory, internal_headers, monkeypatch):
+    _enable_remote(agents_service, monkeypatch)
+    for query in ("limit=51", "limit=0", "offset=-1", "source=../x", "q=" + "x" * 201):
+        response = await client.get(f"/skills/catalogue/search?{query}", headers=internal_headers)
+        assert response.status_code == 422, query
+
+
+# ---------------------------------------------------------------------------
+# GET /skills/remote/sources
+# ---------------------------------------------------------------------------
+async def test_sources_lists_every_allowlisted_source(client, agents_service, skill_store_memory, internal_headers):
+    await skill_store_memory.record_source_error("nvidia", "timeout")
+    body = (await client.get("/skills/remote/sources", headers=internal_headers)).json()
+    ids = [row["source_id"] for row in body]
+    assert ids == [src.source_id for src in agents_service.remote_sources.SOURCES]
+    assert next(r for r in body if r["source_id"] == "nvidia")["last_error"] == "timeout"
+
+
+# ---------------------------------------------------------------------------
+# POST /users/{user_id}/skills/remote/{source_id}/{skill_id}
+# ---------------------------------------------------------------------------
+async def test_remote_add_is_refused_while_the_feature_is_off(client, agents_service, skill_store_memory, internal_headers, monkeypatch):
+    _enable_remote(agents_service, monkeypatch, enabled=False)
+    response = await client.post("/users/user-1/skills/remote/ecc/postgres-patterns", headers=internal_headers)
+    assert response.status_code == 503
+    assert skill_store_memory.pool == {}
+
+
+async def test_remote_add_of_an_unknown_source_or_skill_is_404(client, agents_service, skill_store_memory, internal_headers, monkeypatch):
+    _enable_remote(agents_service, monkeypatch)
+    assert (await client.post("/users/user-1/skills/remote/nope/x", headers=internal_headers)).status_code == 404
+    assert (await client.post("/users/user-1/skills/remote/ecc/never-synced", headers=internal_headers)).status_code == 404
+
+
+async def test_a_refused_or_withdrawn_skill_cannot_be_added(client, agents_service, skill_store_memory, internal_headers, monkeypatch):
+    """Same 404 as a missing skill: the refusal reason is not an oracle."""
+    _enable_remote(agents_service, monkeypatch)
+    await _seed_catalogue(agents_service, skill_store_memory, rows=[
+        _catalogue_row(agents_service, "risky", refusal="risk=critical"),
+        _catalogue_row(agents_service, "gone-soon"),
+    ])
+    await _seed_catalogue(agents_service, skill_store_memory, rows=[
+        _catalogue_row(agents_service, "risky", refusal="risk=critical"),
+    ])  # "gone-soon" is now withdrawn
+    for skill in ("risky", "gone-soon"):
+        response = await client.post(f"/users/user-1/skills/remote/ecc/{skill}", headers=internal_headers)
+        assert response.status_code == 404, skill
+    assert skill_store_memory.pool == {}
+
+
+async def test_remote_add_downloads_once_then_shares_the_copy(client, agents_service, skill_store_memory, internal_headers, monkeypatch):
+    _enable_remote(agents_service, monkeypatch)
+    await _seed_catalogue(agents_service, skill_store_memory, rows=[_catalogue_row(agents_service, "postgres-patterns")])
+    fetches = []
+
+    async def fake_fetch(store, client_, source, entry):
+        fetches.append(entry["skill_id"])
+        return {"SKILL.md": ("---\nname: postgres-patterns\ndescription: d\n---\nbody", "utf-8", "f" * 64)}
+
+    monkeypatch.setattr(agents_service.user_registry, "fetch_remote_copy", fake_fetch)
+
+    first = await client.post("/users/user-1/skills/remote/ecc/postgres-patterns", headers=internal_headers)
+    assert first.status_code == 201
+    body = first.json()
+    assert body["type"] == "remote"
+    assert body["provenance"]["licence"] == "MIT"
+    assert body["provenance"]["commit"] == "c" * 40
+
+    second_user = await client.post("/users/user-2/skills/remote/ecc/postgres-patterns", headers=internal_headers)
+    assert second_user.status_code == 201
+    assert fetches == ["postgres-patterns"]          # the second Add downloaded nothing
+    assert skill_store_memory.copy_writes == 1
+
+    detail = (await client.get("/users/user-2/skills/postgres-patterns", headers=internal_headers)).json()
+    assert [f["path"] for f in detail["files"]] == ["SKILL.md"]
+
+    again = await client.post("/users/user-1/skills/remote/ecc/postgres-patterns", headers=internal_headers)
+    assert again.status_code == 409
+
+
+async def test_remote_add_maps_verification_and_upstream_failures(client, agents_service, skill_store_memory, internal_headers, monkeypatch):
+    _enable_remote(agents_service, monkeypatch)
+    await _seed_catalogue(agents_service, skill_store_memory, rows=[_catalogue_row(agents_service, "postgres-patterns")])
+    fetch = agents_service.remote_fetch
+
+    async def refuse(*_a):
+        raise fetch.RemoteSkillRefused("checksum mismatch")
+
+    async def unreachable(*_a):
+        raise fetch.RemoteSkillUnavailable("timeout")
+
+    monkeypatch.setattr(agents_service.user_registry, "fetch_remote_copy", refuse)
+    refused = await client.post("/users/user-1/skills/remote/ecc/postgres-patterns", headers=internal_headers)
+    assert refused.status_code == 422 and "checksum mismatch" in refused.json()["detail"]
+
+    monkeypatch.setattr(agents_service.user_registry, "fetch_remote_copy", unreachable)
+    down = await client.post("/users/user-1/skills/remote/ecc/postgres-patterns", headers=internal_headers)
+    assert down.status_code == 502
+    assert skill_store_memory.pool == {}              # nothing stored on either failure
+
+
+async def test_remote_add_refuses_malformed_ids(client, agents_service, skill_store_memory, internal_headers, monkeypatch):
+    _enable_remote(agents_service, monkeypatch)
+    for bad in ("ECC/x", "ecc/Has-Caps", "ecc/-lead", "ecc/a_b"):
+        response = await client.post(f"/users/user-1/skills/remote/{bad}", headers=internal_headers)
+        assert response.status_code in (404, 422), bad
 
 
 # ---------------------------------------------------------------------------
@@ -49,51 +191,41 @@ async def test_get_user_skill_pool_empty(client, skill_store_memory, skills_fs, 
 
 
 async def test_get_user_skill_pool_after_add(client, skill_store_memory, skills_fs, internal_headers):
-    add = await client.post("/users/user-1/skills/global/deep-research", headers=internal_headers)
-    assert add.status_code == 204
+    add = await client.post("/users/user-1/skills/custom", headers=internal_headers, json=_custom_body("my-skill"))
+    assert add.status_code == 201
 
     response = await client.get("/users/user-1/skills", headers=internal_headers)
     assert response.status_code == 200
     body = response.json()
-    assert [item["name"] for item in body] == ["deep-research"]
-    assert body[0]["type"] == "global"
+    assert [item["name"] for item in body] == ["my-skill"]
+    assert body[0]["type"] == "custom"
+
+
+async def test_a_legacy_global_entry_still_lists_and_reads(client, skill_store_memory, skills_fs, internal_headers):
+    """A pre-plan-30 pool row must not 500 the pool listing or the detail read."""
+    await skill_store_memory.add_global("user-1", "deep-research", category="research")
+    listing = (await client.get("/users/user-1/skills", headers=internal_headers)).json()
+    assert [(i["name"], i["type"]) for i in listing] == [("deep-research", "global")]
+    detail = await client.get("/users/user-1/skills/deep-research", headers=internal_headers)
+    assert detail.status_code == 200 and "deep research" in detail.json()["content"]
 
 
 # ---------------------------------------------------------------------------
 # GET /users/{user_id}/skills/{skill_name}
 # ---------------------------------------------------------------------------
 async def test_get_user_skill_detail_success(client, skill_store_memory, skills_fs, internal_headers):
-    await client.post("/users/user-1/skills/global/deep-research", headers=internal_headers)
-    response = await client.get("/users/user-1/skills/deep-research", headers=internal_headers)
+    await client.post("/users/user-1/skills/custom", headers=internal_headers, json=_custom_body("my-skill"))
+    response = await client.get("/users/user-1/skills/my-skill", headers=internal_headers)
     assert response.status_code == 200
     body = response.json()
-    assert body["name"] == "deep-research"
-    assert body["type"] == "global"
-    assert "deep research" in body["content"]
+    assert body["name"] == "my-skill"
+    assert body["type"] == "custom"
+    assert "api body" in body["content"]
 
 
 async def test_get_user_skill_detail_404(client, skill_store_memory, skills_fs, internal_headers):
     response = await client.get("/users/user-1/skills/missing", headers=internal_headers)
     assert response.status_code == 404
-
-
-# ---------------------------------------------------------------------------
-# POST /users/{user_id}/skills/global/{skill_name}
-# ---------------------------------------------------------------------------
-async def test_add_global_skill_204(client, skill_store_memory, skills_fs, internal_headers):
-    response = await client.post("/users/user-1/skills/global/design-system", headers=internal_headers)
-    assert response.status_code == 204
-
-
-async def test_add_global_skill_unknown_404(client, skill_store_memory, skills_fs, internal_headers):
-    response = await client.post("/users/user-1/skills/global/no-such", headers=internal_headers)
-    assert response.status_code == 404
-
-
-async def test_add_global_skill_conflict_409(client, skill_store_memory, skills_fs, internal_headers):
-    await client.post("/users/user-1/skills/global/deep-research", headers=internal_headers)
-    response = await client.post("/users/user-1/skills/global/deep-research", headers=internal_headers)
-    assert response.status_code == 409
 
 
 # ---------------------------------------------------------------------------
@@ -109,15 +241,6 @@ async def test_create_custom_skill_201(client, skill_store_memory, skills_fs, in
     body = response.json()
     assert body["name"] == "my-custom"
     assert body["type"] == "custom"
-
-
-async def test_create_custom_skill_conflict_with_global_409(client, skill_store_memory, skills_fs, internal_headers):
-    response = await client.post(
-        "/users/user-1/skills/custom",
-        headers=internal_headers,
-        json=_custom_body("deep-research"),
-    )
-    assert response.status_code == 409
 
 
 async def test_create_custom_skill_conflict_with_pool_409(client, skill_store_memory, skills_fs, internal_headers):
@@ -148,8 +271,8 @@ async def test_create_custom_skill_bad_base64_422(client, skill_store_memory, sk
 # DELETE /users/{user_id}/skills/{skill_name}
 # ---------------------------------------------------------------------------
 async def test_delete_user_skill_204(client, skill_store_memory, skills_fs, internal_headers):
-    await client.post("/users/user-1/skills/global/deep-research", headers=internal_headers)
-    response = await client.delete("/users/user-1/skills/deep-research", headers=internal_headers)
+    await client.post("/users/user-1/skills/custom", headers=internal_headers, json=_custom_body("my-skill"))
+    response = await client.delete("/users/user-1/skills/my-skill", headers=internal_headers)
     assert response.status_code == 204
 
     pool = await client.get("/users/user-1/skills", headers=internal_headers)
@@ -171,26 +294,26 @@ async def test_get_user_agent_skills_empty(client, skill_store_memory, skills_fs
 
 
 async def test_enable_and_list_user_agent_skill(client, skill_store_memory, skills_fs, internal_headers):
-    await client.post("/users/user-1/skills/global/deep-research", headers=internal_headers)
+    await client.post("/users/user-1/skills/custom", headers=internal_headers, json=_custom_body("my-skill"))
 
-    enable = await client.put("/agents/omni/users/user-1/skills/deep-research", headers=internal_headers)
+    enable = await client.put("/agents/omni/users/user-1/skills/my-skill", headers=internal_headers)
     assert enable.status_code == 204
 
     listing = await client.get("/agents/omni/users/user-1/skills", headers=internal_headers)
     assert listing.status_code == 200
-    assert listing.json() == ["deep-research"]
+    assert listing.json() == ["my-skill"]
 
 
 async def test_enable_user_agent_skill_not_in_pool_404(client, skill_store_memory, skills_fs, internal_headers):
-    response = await client.put("/agents/omni/users/user-1/skills/deep-research", headers=internal_headers)
+    response = await client.put("/agents/omni/users/user-1/skills/my-skill", headers=internal_headers)
     assert response.status_code == 404
 
 
 async def test_disable_user_agent_skill_204(client, skill_store_memory, skills_fs, internal_headers):
-    await client.post("/users/user-1/skills/global/deep-research", headers=internal_headers)
-    await client.put("/agents/omni/users/user-1/skills/deep-research", headers=internal_headers)
+    await client.post("/users/user-1/skills/custom", headers=internal_headers, json=_custom_body("my-skill"))
+    await client.put("/agents/omni/users/user-1/skills/my-skill", headers=internal_headers)
 
-    disable = await client.delete("/agents/omni/users/user-1/skills/deep-research", headers=internal_headers)
+    disable = await client.delete("/agents/omni/users/user-1/skills/my-skill", headers=internal_headers)
     assert disable.status_code == 204
 
     listing = await client.get("/agents/omni/users/user-1/skills", headers=internal_headers)
@@ -198,13 +321,14 @@ async def test_disable_user_agent_skill_204(client, skill_store_memory, skills_f
 
 
 async def test_disable_unassigned_user_agent_skill_is_idempotent_204(client, skill_store_memory, skills_fs, internal_headers):
-    response = await client.delete("/agents/omni/users/user-1/skills/deep-research", headers=internal_headers)
+    response = await client.delete("/agents/omni/users/user-1/skills/my-skill", headers=internal_headers)
     assert response.status_code == 204
 
 
 async def test_skill_routes_require_internal_caller(client, skill_store_memory, skills_fs):
-    response = await client.get("/skills/global")
-    assert response.status_code == 403
+    for path in ("/skills/catalogue/search", "/skills/remote/sources", "/users/user-1/skills"):
+        assert (await client.get(path)).status_code == 403, path
+    assert (await client.post("/users/user-1/skills/remote/ecc/x")).status_code == 403
 
 
 # ---------------------------------------------------------------------------

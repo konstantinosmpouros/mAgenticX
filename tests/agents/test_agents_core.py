@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 from fastapi import HTTPException
+from fastapi.exceptions import RequestValidationError
 from starlette.requests import Request
 
 
@@ -231,19 +232,30 @@ async def test_handle_http_exception_blank_detail_uses_fallback(agents_service):
 
 
 async def test_handle_validation_exception(agents_service):
+    """A real ``RequestValidationError``, not a fake of it.
+
+    The fake this replaced accepted ``errors(include_input=...)`` — a pydantic
+    ``ValidationError`` keyword the FastAPI class does not take — so the test
+    passed while every 422 in the service was really a 500. It also proves the
+    raw ``input`` (here, a secret) never reaches the log.
+    """
     logger = _RecordingLogger()
     handler = agents_service.error_handling.AgentServiceExceptionHandler(logger)
+    exc = RequestValidationError([{
+        "loc": ("query", "limit"), "msg": "Input should be less than or equal to 50",
+        "type": "less_than_equal", "input": "secret-value-51", "ctx": {"le": 50},
+    }])
 
-    class _FakeValidationError:
-        def errors(self, include_input: bool = True):
-            assert include_input is False
-            return [{"loc": ("body", "x"), "msg": "field required", "type": "missing"}]
-
-    response = await handler.handle_validation_exception(_make_request(), _FakeValidationError())
+    response = await handler.handle_validation_exception(_make_request(), exc)
 
     assert response.status_code == 422
     assert "Invalid request" in json.loads(response.body)["detail"]
-    assert logger.calls[0][0] == "warning"
+    method, _args, fields = logger.calls[0]
+    assert method == "warning"
+    assert fields["errors"] == [{
+        "loc": ["query", "limit"], "msg": "Input should be less than or equal to 50", "type": "less_than_equal",
+    }]
+    assert "secret-value-51" not in repr(logger.calls)
 
 
 async def test_handle_unhandled_exception(agents_service):

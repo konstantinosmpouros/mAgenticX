@@ -34,16 +34,18 @@ logger = get_logger(__name__)
     response_model=UpdateConversationResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Add a new message to an existing conversation",
-    # Each call may carry the full attachment budget — caps blob growth.
-    dependencies=[Depends(message_post_rate_limit)],
 )
 async def addMessageToConversation(
     user_id: str,
     conversation_id: str,
     payload: MessageIn,
     current_user: AuthUser = Depends(validate_userId),
-    current_conv: ConversationTable = Depends(validate_convId),
     _: None = Depends(require_csrf_protection),
+    # Each call may carry the full attachment budget — caps blob growth.
+    # After auth + CSRF on purpose: the bucket is keyed on the path's {user_id},
+    # so it must only ever count requests that user actually made.
+    _rate_limited: None = Depends(message_post_rate_limit),
+    current_conv: ConversationTable = Depends(validate_convId),
     db: AsyncSession = Depends(get_db),
 ) -> UpdateConversationResponse:
     """

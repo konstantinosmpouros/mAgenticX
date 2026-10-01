@@ -3,9 +3,16 @@
 // ------------------------------------------------------
 import type { SkillFile } from "../schemas";
 
-// `Skill`, `UserSkill`, `SkillFile`, `UserSkillDetail` are inferred from their
-// Zod schemas (see `../schemas`).
-export type { Skill, UserSkill, SkillFile, UserSkillDetail } from "../schemas";
+// The pool, file and catalogue shapes are inferred from their Zod schemas
+// (see `../schemas`) so the contract and the type cannot drift.
+export type {
+  CatalogueSearchPage,
+  CatalogueSkill,
+  RemoteProvenance,
+  SkillFile,
+  UserSkill,
+  UserSkillDetail,
+} from "../schemas";
 
 // Skills tab sub-view. The tab opens on the hub (a row per area); each row
 // navigates into a dedicated view, and a Back control returns to the hub.

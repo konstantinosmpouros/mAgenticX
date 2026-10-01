@@ -92,14 +92,16 @@ def _load_agents_service(monkeypatch):
         # skill registry + filesystem
         user_registry=importlib.import_module("harness.skill_registry.user_registry"),
         user_agents=importlib.import_module("harness.abstractions.user_agents"),
-        global_manifest=importlib.import_module("harness.skill_registry.global_manifest"),
+        remote_sources=importlib.import_module("harness.skill_registry.remote.sources"),
+        remote_client=importlib.import_module("harness.skill_registry.remote.client"),
+        remote_sync=importlib.import_module("harness.skill_registry.remote.sync"),
+        remote_fetch=importlib.import_module("harness.skill_registry.remote.fetch"),
         skill_store=importlib.import_module("harness.skill_registry.store"),
         definition_store=importlib.import_module("harness.agent_registry.store"),
         provisioner=importlib.import_module("harness.filesystem.provisioner"),
         # other utils
         suggestions=importlib.import_module("utils.suggestions"),
         speech=importlib.import_module("utils.speech"),
-        skills=importlib.import_module("utils.skills"),
     )
 
 
@@ -176,7 +178,6 @@ _DICT_CACHES = (
     ("utils.agents", "_USER_AGENT_CACHE"),
     ("utils.mcp_tools", "_MCP_TOOL_MANIFEST_CACHE"),
 )
-_SINGLETON_CACHES = (("harness.skill_registry.global_manifest", "_MANIFEST_CACHE"),)
 
 
 def _reset_service_caches() -> None:
@@ -194,11 +195,6 @@ def _reset_service_caches() -> None:
         module = sys.modules.get(module_name)
         if module is not None:
             getattr(module, attr).clear()
-
-    for module_name, attr in _SINGLETON_CACHES:
-        module = sys.modules.get(module_name)
-        if module is not None:
-            setattr(module, attr, None)
 
     service_prefix = str(SERVICE_ROOT)
     for module in list(sys.modules.values()):
@@ -314,10 +310,15 @@ async def client(agents_service):
 class FakeSkillStore:
     """Mirrors ``SkillStore``'s semantics with dicts.
 
-    The one behaviour deliberately kept real is the **global dispatch**: a
-    ``type='global'`` entry reads the catalogue off disk, so it delegates to the
-    store module's own reader. That is the branch least worth faking — a global
-    pool entry carrying no files of its own is the sharp edge of the whole model.
+    The one behaviour deliberately kept real is the **legacy global dispatch**:
+    a ``type='global'`` entry reads the old catalogue off disk, so it delegates
+    to the store module's own reader. That is the branch least worth faking — a
+    pool entry carrying no files of its own is the sharp edge of the model.
+
+    Plan 30 adds the remote half: shared copies keyed by content ref, the
+    searchable catalogue (rows with a ``refusal`` are hidden), per-skill file
+    manifests and per-source sync state. Search here is a plain substring match
+    — the tsvector ranking is SQL and is checked against real Postgres.
     """
 
     def __init__(self, store_module):
@@ -325,6 +326,11 @@ class FakeSkillStore:
         self.pool: dict[tuple[str, str], dict] = {}
         self.files: dict[tuple[str, str], dict[str, tuple[str, str]]] = {}
         self.assignments: set[tuple[str, str, str]] = set()
+        self.remote_copies: dict[tuple[str, str, str], dict[str, tuple[str, str, str]]] = {}
+        self.catalogue: dict[tuple[str, str], dict] = {}
+        self.manifests: dict[tuple[str, str], list[tuple[str, str, int]]] = {}
+        self.sources: dict[str, dict] = {}
+        self.copy_writes = 0
 
     async def list_pool(self, user_id):
         return [v for (u, _n), v in sorted(self.pool.items()) if u == user_id]
@@ -349,6 +355,92 @@ class FakeSkillStore:
         # Replace, never merge — a save carries the whole folder.
         self.files[(user_id, skill_name)] = dict(files)
 
+    async def add_remote(self, user_id, skill_name, *, source_id, content_ref, source_commit,
+                         licence, category="", description="", files=None):
+        if files:
+            self.copy_writes += 1
+            self.remote_copies.setdefault((source_id, skill_name, content_ref), dict(files))
+        self.pool[(user_id, skill_name)] = {
+            "name": skill_name, "type": "remote", "category": category,
+            "description": description, "origin": "user", "created_by_agent": None,
+            "added_at": STORE_NOW, "source_id": source_id, "source_ref": content_ref,
+            "source_commit": source_commit, "licence": licence,
+        }
+
+    async def has_remote_copy(self, source_id, skill_id, content_ref):
+        return (source_id, skill_id, content_ref) in self.remote_copies
+
+    async def read_remote_copy(self, source_id, skill_id, content_ref):
+        copy_ = self.remote_copies.get((source_id, skill_id, content_ref), {})
+        return {path: (content, encoding) for path, (content, encoding, _sha) in copy_.items()}
+
+    # -- the catalogue ------------------------------------------------------
+    def sync_lock(self):
+        store = self
+
+        class _Lock:
+            async def __aenter__(self):
+                taken = not getattr(store, "_locked", False)
+                store._locked = True
+                self._taken = taken
+                return taken
+
+            async def __aexit__(self, *exc):
+                if self._taken:
+                    store._locked = False
+                return False
+
+        return _Lock()
+
+    async def get_source_state(self, source_id):
+        return self.sources.get(source_id)
+
+    async def list_source_states(self):
+        return [dict(v, source_id=k) for k, v in sorted(self.sources.items())]
+
+    async def list_catalogue(self, source_id):
+        return {k[1]: dict(v) for k, v in self.catalogue.items() if k[0] == source_id}
+
+    async def apply_source_sync(self, source_id, *, source_ref, entries, manifests, record_state=True):
+        seen = {e.skill_id for e in entries}
+        for entry in entries:
+            row = dict(vars(entry))
+            row.update(source_id=source_id, withdrawn_at=None)
+            self.catalogue[(source_id, entry.skill_id)] = row
+        for (src, skill_id), row in self.catalogue.items():
+            if src == source_id and skill_id not in seen and row.get("withdrawn_at") is None:
+                row["withdrawn_at"] = STORE_NOW
+        if manifests is not None:
+            self.manifests = {k: v for k, v in self.manifests.items() if k[0] != source_id}
+            for skill_id, files in manifests.items():
+                self.manifests[(source_id, skill_id)] = list(files)
+        if record_state:
+            self.sources[source_id] = {
+                "source_ref": source_ref, "last_error": None, "synced_at": STORE_NOW,
+                "skill_count": len(entries),
+                "admitted_count": sum(1 for e in entries if e.refusal is None),
+            }
+
+    async def record_source_error(self, source_id, reason):
+        state = self.sources.setdefault(source_id, {"source_ref": "", "skill_count": 0, "admitted_count": 0})
+        state["last_error"] = reason
+
+    async def get_catalogue_entry(self, source_id, skill_id):
+        row = self.catalogue.get((source_id, skill_id))
+        return dict(row) if row else None
+
+    async def get_manifest(self, source_id, skill_id):
+        return list(self.manifests.get((source_id, skill_id), []))
+
+    async def search_catalogue(self, terms, *, source_ids, limit=10, offset=0):
+        rows = [
+            dict(row) for (src, _), row in sorted(self.catalogue.items())
+            if src in source_ids and row.get("refusal") is None and row.get("withdrawn_at") is None
+            and all(any(t in (row.get(f) or "").lower() for f in ("skill_id", "name", "description"))
+                    for t in terms)
+        ]
+        return rows[offset:offset + limit], len(rows)
+
     async def remove(self, user_id, skill_name):
         held = self.pool.pop((user_id, skill_name), None) is not None
         self.files.pop((user_id, skill_name), None)
@@ -372,6 +464,8 @@ class FakeSkillStore:
             return {}
         if entry["type"] == "global":
             return self._read_catalogue(entry["category"], skill_name)
+        if entry["type"] == "remote":
+            return await self.read_remote_copy(entry["source_id"], skill_name, entry["source_ref"])
         return dict(self.files.get((user_id, skill_name), {}))
 
 
@@ -480,9 +574,9 @@ def skills_fs(agents_service, tmp_path):
     """Point the agents filesystem at an isolated tmp tree.
 
     Redirects the two plane roots (``global_root`` / ``workspaces_root``) into
-    tmp_path, seeds two global skills into the catalogue, and resets the
-    in-memory global manifest cache so each test starts from a freshly indexed
-    catalogue.
+    tmp_path and seeds two skills into the *legacy* catalogue folder — what an
+    image before plan 30 left on the volume, which a ``global`` pool entry still
+    reads from.
 
     Exposed attributes mirror the consolidated layout:
 
@@ -492,7 +586,7 @@ def skills_fs(agents_service, tmp_path):
 
     There is deliberately no ``pool(user)`` any more: a user's skills are rows
     in ``agent_runtime``, not a directory, so nothing on this tmp tree backs
-    them. Only the *catalogue* — build-time content — is still on disk.
+    them. Only the legacy catalogue copy is still on disk.
     """
     fs = agents_service.settings_module.settings.filesystem
     layout = agents_service.filesystem_layout
@@ -508,9 +602,6 @@ def skills_fs(agents_service, tmp_path):
 
     _write_global_skill(catalogue, "research", "deep-research", "Run deep research", "Body for deep research.")
     _write_global_skill(catalogue, "frontend", "design-system", "Design system helper", "Body for design system.")
-
-    agents_service.global_manifest._MANIFEST_CACHE = None
-    agents_service.global_manifest.rebuild_global_manifest()
 
     return SimpleNamespace(
         global_root=catalogue,

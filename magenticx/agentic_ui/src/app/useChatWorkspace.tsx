@@ -136,7 +136,6 @@ export function useChatWorkspace({
   const isPrivateMode = useWorkspaceStore((s) => s.isPrivateMode);
   const agents = useWorkspaceStore((s) => s.agents);
   const availableTools = useWorkspaceStore((s) => s.availableTools);
-  const availableSkills = useWorkspaceStore((s) => s.availableSkills);
   const myRegistrySkills = useWorkspaceStore((s) => s.myRegistrySkills);
   const userPreferences = useWorkspaceStore((s) => s.userPreferences);
   const isSavingPreferences = useWorkspaceStore((s) => s.isSavingPreferences);
@@ -169,7 +168,6 @@ export function useChatWorkspace({
     setIsPrivateMode,
     setAgents,
     setAvailableTools,
-    setAvailableSkills,
     setMyRegistrySkills,
     setUserPreferences,
     setIsSavingPreferences,
@@ -383,7 +381,6 @@ export function useChatWorkspace({
     activeProfileTab,
     currentConversationId: currentConversation?.id ?? null,
     availableTools,
-    availableSkills,
     myRegistrySkills,
     agents,
     conversations,
@@ -524,7 +521,7 @@ export function useChatWorkspace({
     skillDetail: mySkillDetails,
     loadingSkillDetail,
     ensureSkillDetail,
-    handleAddGlobalSkill,
+    handleAddRemoteSkill,
     handleCreateCustomSkill,
     handleRemoveSkillFromPool,
     refreshMySkills,
@@ -788,7 +785,6 @@ export function useChatWorkspace({
     setAuthResolved,
     setAgents,
     setAvailableTools,
-    setAvailableSkills,
     setMyRegistrySkills,
     setUserPreferences,
     setConversations,
@@ -1082,7 +1078,6 @@ export function useChatWorkspace({
       setAgents,
       setConversationsLoading,
       setAvailableTools,
-      setAvailableSkills,
       setMyRegistrySkills,
       setUserPreferences,
       setConversations,
@@ -1319,7 +1314,6 @@ export function useChatWorkspace({
     userId,
     // store data
     availableTools,
-    availableSkills,
     isSavingPreferences,
     conversations,
     conversationsLoading,
@@ -1385,7 +1379,7 @@ export function useChatWorkspace({
     mySkillDetails,
     loadingSkillDetail,
     ensureSkillDetail,
-    handleAddGlobalSkill,
+    handleAddRemoteSkill,
     handleCreateCustomSkill,
     handleRemoveSkillFromPool,
     refreshMySkills,

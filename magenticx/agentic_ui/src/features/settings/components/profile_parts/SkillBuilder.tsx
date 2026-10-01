@@ -17,7 +17,7 @@ import {
 import { Button } from "@/shared/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { buildSkillFileTree, cn } from "@/shared/lib/utils";
-import type { CustomSkillCreatePayload, Skill, SkillTreeNode, UserSkill } from "@/shared/lib/types";
+import type { CustomSkillCreatePayload, SkillTreeNode, UserSkill } from "@/shared/lib/types";
 import { useFillAvailableHeight } from "@/features/settings/hooks/useFillAvailableHeight";
 
 // The "create a custom skill" builder. A custom skill is a folder of files —
@@ -34,7 +34,6 @@ type DraftFile = {
 
 type SkillBuilderProps = {
   mySkills: UserSkill[];
-  availableSkills: Skill[];
   initialName?: string;
   onCreate: (payload: CustomSkillCreatePayload) => Promise<UserSkill | null>;
   onClose: () => void;
@@ -142,7 +141,6 @@ const readFile = (file: File): Promise<DraftFile | { error: string }> =>
 
 export default function SkillBuilder({
   mySkills,
-  availableSkills,
   initialName,
   onCreate,
   onClose,
@@ -200,10 +198,8 @@ export default function SkillBuilder({
     if (/[\\/]/.test(trimmed) || trimmed.includes("..") || trimmed.startsWith("."))
       return "No slashes, '..', or a leading dot.";
     if (mySkills.some((s) => s.name === trimmed)) return "You already have a skill with that name.";
-    if (availableSkills.some((s) => s.name === trimmed))
-      return "That name collides with a global skill.";
     return "";
-  }, [name, mySkills, availableSkills]);
+  }, [name, mySkills]);
 
   const entryFile = files.find((f) => f.path === ENTRY_FILE);
   const skillMdEmpty = !entryFile || !entryFile.content.trim();

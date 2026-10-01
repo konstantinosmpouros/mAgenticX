@@ -535,6 +535,50 @@ class FilesystemSettings(BaseSettings):
         return v
 
 
+class RemoteSkillsSettings(BaseSettings):
+    """The remote skill sources (plan 30): a daily index sync, content on Add.
+
+    On by default — the remote sources are the whole skill catalogue now that
+    the image bundles none. Setting the flag false is the kill switch: no sync
+    loop starts, no outbound request is made, search returns nothing and the
+    Add route refuses with 503. The *sources* are not
+    configurable here on purpose — the allowlist is security policy and lives
+    in code (``harness/skill_registry/remote/sources.py``), where a change goes
+    through review; an env-editable list would be an SSRF lever.
+    """
+    model_config = _BASE_MODEL_CONFIG
+
+    enabled: bool = Field(True, validation_alias="REMOTE_SKILLS_ENABLED")
+    sync_interval_hours: int = Field(24, validation_alias="REMOTE_SKILLS_SYNC_INTERVAL_HOURS")
+    # The first pass waits this long after boot so it never competes with agent
+    # discovery and the checkpointer pool coming up.
+    initial_delay_seconds: int = Field(120, validation_alias="REMOTE_SKILLS_SYNC_INITIAL_DELAY_SECONDS")
+    # Parallel file reads per sync or Add. Measured: 8 turns a 34-file skill
+    # from 10.9 s sequential into 0.7 s, with no errors from GitHub.
+    fetch_concurrency: int = Field(8, validation_alias="REMOTE_SKILLS_FETCH_CONCURRENCY")
+    connect_timeout_seconds: float = Field(10.0, validation_alias="REMOTE_SKILLS_CONNECT_TIMEOUT_SECONDS")
+    read_timeout_seconds: float = Field(30.0, validation_alias="REMOTE_SKILLS_READ_TIMEOUT_SECONDS")
+    # Wall-clock ceiling on one Add, so a stalled upstream cannot hold the
+    # request (and the bridge's connection) open indefinitely.
+    add_timeout_seconds: float = Field(60.0, validation_alias="REMOTE_SKILLS_ADD_TIMEOUT_SECONDS")
+
+    @field_validator("sync_interval_hours", mode="after")
+    @classmethod
+    def _bound_interval(cls, v: int) -> int:
+        # Under an hour would spend the anonymous GitHub budget for nothing:
+        # sources change daily at most.
+        if v < 1 or v > 168:
+            raise ValueError("REMOTE_SKILLS_SYNC_INTERVAL_HOURS must be between 1 and 168.")
+        return v
+
+    @field_validator("fetch_concurrency", mode="after")
+    @classmethod
+    def _bound_concurrency(cls, v: int) -> int:
+        if v < 1 or v > 16:
+            raise ValueError("REMOTE_SKILLS_FETCH_CONCURRENCY must be between 1 and 16.")
+        return v
+
+
 class SummarizationSettings(BaseSettings):
     model_config = _BASE_MODEL_CONFIG
 
@@ -610,6 +654,7 @@ class Settings(BaseSettings):
     workflows: WorkflowsSettings = Field(default_factory=WorkflowsSettings)
     deep_agents: DeepAgentsSettings = Field(default_factory=DeepAgentsSettings)
     filesystem: FilesystemSettings = Field(default_factory=FilesystemSettings)
+    remote_skills: RemoteSkillsSettings = Field(default_factory=RemoteSkillsSettings)
     summarization: SummarizationSettings = Field(default_factory=SummarizationSettings)
     agui: AguiSettings = Field(default_factory=AguiSettings)
 

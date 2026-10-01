@@ -3,9 +3,6 @@ from utils.prompts import normalise_user_input, make_merge_with_template
 from utils.title import generate_title
 from utils.suggestions import generate_suggestions
 from utils.speech import generate_read_aloud_audio, normalize_realtime_voice
-from utils.skills import (
-    list_registry_skills,
-)
 from utils.mcp_tools import (
     MCPToolsClientError,
     build_tool_cache_key,
@@ -29,7 +26,6 @@ __all__ = [
     "get_cached_tool_manifests_map",
     "get_tool_cache_key",
     "list_mcp_tools",
-    "list_registry_skills",
     "make_merge_with_template",
     "mcp_session_context",
     "normalise_user_input",

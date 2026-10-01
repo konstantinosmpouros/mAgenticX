@@ -21,6 +21,10 @@ What stayed here is the part that was never about storage:
   newlines, leaving every other YAML indicator free to change how the block
   parses. That mattered little when a human typed both values; it matters more
   now that ``create_skill`` lets an agent supply them.
+* **The catalogue's two front doors** (plan 30): the search over the remote
+  skills, and the Add of one — whose download and verification
+  live in :mod:`harness.skill_registry.remote.fetch`, so this module only decides
+  *whether* a skill may be added, never *how* its bytes are checked.
 """
 from __future__ import annotations
 
@@ -33,18 +37,31 @@ from typing import Any
 import yaml
 
 from core.logging import get_logger
+from core.settings import settings
 from harness.filesystem.provisioner import _safe_segment
 from harness.memory.pool import get_memory_pool
-from harness.skill_registry.global_manifest import get_global_manifest, is_global_skill
+from harness.skill_registry.remote import (
+    SOURCES,
+    fetch_remote_copy,
+    get_source,
+    source_label,
+    upstream_url,
+)
+from harness.skill_registry.remote.client import RemoteSkillClient
 from harness.skill_registry.store import (
     POOL_TYPE_CUSTOM,
     POOL_TYPE_GLOBAL,
+    POOL_TYPE_REMOTE,
     SKILL_ENTRY_FILE,
     SkillStore,
-    catalogue_dir,
+    catalogue_query_terms,
 )
 from schema import (
+    CatalogueSearchPage,
+    CatalogueSkill,
     CustomSkillCreate,
+    RemoteProvenance,
+    RemoteSourceStatus,
     SkillFile,
     SkillManifestEntry,
     UserSkillDetail,
@@ -54,11 +71,15 @@ logger = get_logger(__name__)
 
 
 class SkillNameConflict(ValueError):
-    """A custom skill name collides with an existing pool entry or a global."""
+    """A skill name collides with an entry already in the user's pool."""
 
 
 class SkillValidationError(ValueError):
     """A custom-skill payload failed structural validation (path/size/type)."""
+
+
+class RemoteSkillsDisabled(RuntimeError):
+    """``REMOTE_SKILLS_ENABLED`` is off on this deployment. (→ 503)"""
 
 
 # Multi-file custom-skill limits. A custom skill is a small folder of text +
@@ -166,13 +187,30 @@ def _parse_skill_md(raw: str) -> tuple[str, str]:
 def _source_path(entry: dict[str, Any], user_id: str) -> str:
     """The display path the UI shows for a pool entry.
 
-    Kept for the response contract only: nothing resolves content through it any
-    more, because a global entry reads from the catalogue and a custom one reads
-    from the store.
+    Kept for the response contract only: nothing resolves content through it.
     """
     if entry["type"] == POOL_TYPE_GLOBAL:
         return f"global/{entry['category']}/{entry['name']}"
+    if entry["type"] == POOL_TYPE_REMOTE:
+        commit = (entry.get("source_commit") or "")[:12]
+        return f"remote/{entry.get('source_id') or ''}/{entry['name']}@{commit}"
     return f"users/{user_id}/custom/{entry['name']}"
+
+
+def _provenance(entry: dict[str, Any]) -> RemoteProvenance | None:
+    """What a remote pool entry came from — ``None`` for every other kind."""
+    if entry["type"] != POOL_TYPE_REMOTE:
+        return None
+    source_id = entry.get("source_id") or ""
+    source = get_source(source_id)
+    commit = entry.get("source_commit")
+    return RemoteProvenance(
+        source_id=source_id,
+        source_label=source_label(source_id),
+        commit=commit,
+        licence=entry.get("licence"),
+        upstream_url=upstream_url(source, entry["name"], commit) if source else None,
+    )
 
 
 def _as_manifest_entry(entry: dict[str, Any], user_id: str) -> SkillManifestEntry:
@@ -186,6 +224,7 @@ def _as_manifest_entry(entry: dict[str, Any], user_id: str) -> SkillManifestEntr
         origin=entry.get("origin", "user") or "user",
         created_by_agent=entry.get("created_by_agent"),
         created_at=added.isoformat() if isinstance(added, datetime) else None,
+        provenance=_provenance(entry),
     )
 
 
@@ -230,55 +269,13 @@ async def get_user_skill_detail(user_id: str, skill_name: str) -> UserSkillDetai
             SkillFile(path=path, content=content, encoding=encoding)
             for path, (content, encoding) in sorted(files.items())
         ],
+        provenance=_provenance(entry),
     )
 
 
 # ---------------------------------------------------------------------------
 # Pool writes
 # ---------------------------------------------------------------------------
-async def add_global_to_user(user_id: str, skill_name: str) -> SkillManifestEntry:
-    """Reference a catalogue skill from this user's pool.
-
-    Nothing is copied — the row is a pointer, and reads resolve against the
-    catalogue on the volume. That is what keeps adding a global skill O(1)
-    regardless of how many files it has.
-    """
-    manifest = get_global_manifest()
-    match = next((s for s in manifest.skills if s.name == skill_name), None)
-    if match is None:
-        # Not a conflict: `SkillNameConflict` is a ValueError and the route maps
-        # that to 409, so a name the catalogue never had would answer "already
-        # in the pool". A miss is a miss — 404.
-        raise FileNotFoundError(f"Unknown global skill: {skill_name!r}")
-
-    store = _store()
-    existing = await store.get_pool_entry(user_id, skill_name)
-    if existing is not None:
-        raise SkillNameConflict(f"Skill already in the pool: {skill_name!r}")
-
-    await store.add_global(
-        user_id, skill_name, category=match.category, description=match.description
-    )
-    logger.info(
-        "skill_pool_global_added",
-        "Referenced a catalogue skill from a user's pool",
-        user_id=user_id,
-        skill_name=skill_name,
-    )
-    return _as_manifest_entry(
-        {
-            "name": skill_name,
-            "type": POOL_TYPE_GLOBAL,
-            "category": match.category,
-            "description": match.description,
-            "origin": "user",
-            "created_by_agent": None,
-            "added_at": datetime.now(timezone.utc),
-        },
-        user_id,
-    )
-
-
 async def add_custom_to_user(
     user_id: str,
     payload: CustomSkillCreate,
@@ -291,7 +288,7 @@ async def add_custom_to_user(
     frontmatter. Every file is validated and decoded **before** anything is
     written, so a bad file cannot leave a partial skill behind.
 
-    Raises :class:`SkillNameConflict` on a name collision (→ 409) and
+    Raises :class:`SkillNameConflict` when the pool already holds the name (→ 409) and
     :class:`SkillValidationError` on a bad path/size/type/base64 (→ 422).
     """
     name = (payload.name or "").strip()
@@ -301,8 +298,6 @@ async def add_custom_to_user(
         _safe_segment(name)
     except ValueError as exc:
         raise SkillValidationError(str(exc)) from exc
-    if is_global_skill(name):
-        raise SkillNameConflict(f"Name collides with a catalogue skill: {name!r}")
 
     store = _store()
     if await store.get_pool_entry(user_id, name) is not None:
@@ -373,6 +368,79 @@ async def add_custom_to_user(
     )
 
 
+async def add_remote_to_user(user_id: str, source_id: str, skill_id: str) -> SkillManifestEntry:
+    """Add a remote skill to this user's pool, downloading it if nobody has yet.
+
+    The decision is made against the catalogue row the user was shown: it must
+    exist, have passed every gate, and not be withdrawn. Then either the shared
+    copy already exists (one row, O(1)) or :func:`fetch_remote_copy` downloads
+    and verifies it — and the copy and the pool row are written together.
+
+    Raises ``FileNotFoundError`` (→ 404) for an unknown, refused or withdrawn
+    skill, :class:`SkillNameConflict` (→ 409) when the name is already in the
+    pool, ``RemoteSkillRefused`` (→ 422) when the download fails a check,
+    ``RemoteSkillUnavailable`` (→ 502) when the source cannot be read, and
+    :class:`RemoteSkillsDisabled` (→ 503) when the feature is off.
+    """
+    if not settings.remote_skills.enabled:
+        raise RemoteSkillsDisabled("Remote skill sources are not enabled.")
+    source = get_source(source_id)
+    if source is None:
+        raise FileNotFoundError(f"Unknown skill source: {source_id!r}")
+
+    store = _store()
+    entry = await store.get_catalogue_entry(source_id, skill_id)
+    if entry is None or entry.get("refusal") or entry.get("withdrawn_at"):
+        # One answer for all three: a refused skill must be as unreachable as
+        # one that does not exist, so the reason is not an oracle.
+        raise FileNotFoundError(f"Unknown remote skill: {source_id}/{skill_id}")
+    if await store.get_pool_entry(user_id, skill_id) is not None:
+        raise SkillNameConflict(f"Skill already in the pool: {skill_id!r}")
+
+    files = None
+    if not await store.has_remote_copy(source_id, skill_id, entry["content_ref"]):
+        async with RemoteSkillClient() as client:
+            files = await fetch_remote_copy(store, client, source, entry)
+
+    await store.add_remote(
+        user_id,
+        skill_id,
+        source_id=source_id,
+        content_ref=entry["content_ref"],
+        source_commit=entry["source_ref"],
+        licence=entry.get("licence"),
+        category=entry.get("category") or "",
+        description=entry.get("description") or "",
+        files=files,
+    )
+    logger.info(
+        "skill_pool_remote_added",
+        "Added a remote skill to a user's pool",
+        user_id=user_id,
+        skill_name=skill_id,
+        source_id=source_id,
+        source_commit=(entry["source_ref"] or "")[:12],
+        downloaded=files is not None,
+        file_count=len(files) if files else 0,
+    )
+    return _as_manifest_entry(
+        {
+            "name": skill_id,
+            "type": POOL_TYPE_REMOTE,
+            "category": entry.get("category") or "",
+            "description": entry.get("description") or "",
+            "origin": "user",
+            "created_by_agent": None,
+            "added_at": datetime.now(timezone.utc),
+            "source_id": source_id,
+            "source_ref": entry["content_ref"],
+            "source_commit": entry["source_ref"],
+            "licence": entry.get("licence"),
+        },
+        user_id,
+    )
+
+
 async def remove_from_user(user_id: str, skill_name: str) -> None:
     """Drop a skill from the pool, with its files and every agent assignment."""
     removed = await _store().remove(user_id, skill_name)
@@ -383,6 +451,72 @@ async def remove_from_user(user_id: str, skill_name: str) -> None:
         skill_name=skill_name,
         was_present=removed,
     )
+
+
+# ---------------------------------------------------------------------------
+# The catalogue (plan 30)
+# ---------------------------------------------------------------------------
+def _as_catalogue_skill(row: dict[str, Any]) -> CatalogueSkill:
+    source_id = row["source_id"]
+    source = get_source(source_id)
+    return CatalogueSkill(
+        source_id=source_id,
+        source_label=source_label(source_id),
+        skill_id=row["skill_id"],
+        name=row["name"],
+        description=row.get("description") or "",
+        category=row.get("category") or "",
+        licence=row.get("licence"),
+        commit=row.get("source_ref"),
+        upstream_url=upstream_url(source, row["skill_id"], row.get("source_ref")) if source else None,
+    )
+
+
+async def search_catalogue(
+    query: str, *, source_id: str | None = None, limit: int = 10, offset: int = 0
+) -> CatalogueSearchPage:
+    """Full-text search over the admitted remote skills — the whole catalogue.
+
+    Empty while the feature is off: nothing could be added from it, so showing
+    rows would only produce dead buttons. A source that is not on the allowlist
+    (a row left behind by a removed source) is never returned.
+    """
+    remote_enabled = settings.remote_skills.enabled
+    if not remote_enabled or (source_id is not None and get_source(source_id) is None):
+        return CatalogueSearchPage(limit=limit, offset=offset, remote_enabled=remote_enabled)
+    rows, total = await _store().search_catalogue(
+        catalogue_query_terms(query),
+        source_ids=[source_id] if source_id else [source.source_id for source in SOURCES],
+        limit=limit,
+        offset=offset,
+    )
+    return CatalogueSearchPage(
+        results=[_as_catalogue_skill(row) for row in rows],
+        total=total,
+        limit=limit,
+        offset=offset,
+        remote_enabled=remote_enabled,
+    )
+
+
+async def list_remote_sources() -> list[RemoteSourceStatus]:
+    """Every allowlisted source with its last sync outcome — the ops view."""
+    states = {state["source_id"]: state for state in await _store().list_source_states()}
+    out: list[RemoteSourceStatus] = []
+    for source in SOURCES:
+        state = states.get(source.source_id) or {}
+        synced = state.get("synced_at")
+        out.append(RemoteSourceStatus(
+            source_id=source.source_id,
+            label=source.label,
+            kind=source.kind,
+            source_ref=state.get("source_ref") or None,
+            synced_at=synced.isoformat() if isinstance(synced, datetime) else None,
+            last_error=state.get("last_error"),
+            skill_count=int(state.get("skill_count") or 0),
+            admitted_count=int(state.get("admitted_count") or 0),
+        ))
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -411,16 +545,18 @@ async def unassign_user_skill_from_agent(user_id: str, agent_slug: str, skill_na
 
 
 __all__ = [
+    "RemoteSkillsDisabled",
     "SkillNameConflict",
     "SkillValidationError",
     "add_custom_to_user",
-    "add_global_to_user",
+    "add_remote_to_user",
     "assign_user_skill_to_agent",
-    "catalogue_dir",
     "get_user_skill_detail",
     "list_user_agent_skills",
     "list_user_skill_names",
+    "list_remote_sources",
     "list_user_skills",
     "remove_from_user",
+    "search_catalogue",
     "unassign_user_skill_from_agent",
 ]

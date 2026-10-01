@@ -43,14 +43,16 @@ logger = get_logger(__name__)
     response_model=RealtimeVoiceSessionOut,
     status_code=status.HTTP_200_OK,
     summary="Create a realtime voice WebRTC session",
-    # Opens a paid OpenAI Realtime session — strict per-user ceiling.
-    dependencies=[Depends(voice_session_rate_limit)],
 )
 async def createRealtimeVoiceSession(
     user_id: str,
     payload: RealtimeVoiceSessionIn,
     _current_user: AuthUser = Depends(validate_userId),
     _: None = Depends(require_csrf_protection),
+    # Opens a paid OpenAI Realtime session — strict per-user ceiling.
+    # After auth + CSRF on purpose: the bucket is keyed on the path's {user_id},
+    # so it must only ever count requests that user actually made.
+    _rate_limited: None = Depends(voice_session_rate_limit),
     db: AsyncSession = Depends(get_db),
 ) -> RealtimeVoiceSessionOut:
     set_context(user_id=user_id, conversation_id=payload.conversationId)

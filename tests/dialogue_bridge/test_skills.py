@@ -4,10 +4,10 @@ Every public function in ``utils.skills`` opens an ``httpx.AsyncClient`` and
 calls the agents service through ``upstream_error_handler.run_with_retries``.
 We monkeypatch ``utils.skills.httpx.AsyncClient`` with a fake client whose
 ``get``/``post``/``delete``/``request`` methods either return a fake response
-or raise an httpx transport error, and we stub the ``skills_cache`` layer with
-an in-memory dict so cache hits / misses / invalidations are observable
-without a real Redis. ``utils.skills.get_agent_by_id`` is patched directly to
-control slug resolution.
+or raise an httpx transport error. Nothing is cached any more — the bundled
+catalogue and its Redis cache were removed by plan 30 — so every test is about
+what is forwarded and how upstream answers are mapped.
+``utils.skills.get_agent_by_id`` is patched directly to control slug resolution.
 """
 from __future__ import annotations
 
@@ -18,16 +18,17 @@ import pytest
 import pytest_asyncio
 
 import utils.skills as skills_mod
+from schema import UserSkill, UserSkillDetail
 from utils.skills import (
-    add_global_skill_to_user_pool,
+    add_remote_skill_to_user_pool,
     create_custom_skill_in_pool,
     disable_user_agent_skill,
     enable_user_agent_skill,
     get_user_agent_skills,
     get_user_skill_detail,
-    list_skills,
     list_user_skills,
     remove_skill_from_user_pool,
+    search_catalogue,
     _resolve_agent_slug,
 )
 
@@ -107,57 +108,6 @@ def install_fake_client(monkeypatch, handler, calls=None):
     monkeypatch.setattr(skills_mod.httpx, "AsyncClient", factory)
 
 
-# ---------------------------------------------------------------------------
-# In-memory skills_cache stub
-# ---------------------------------------------------------------------------
-class FakeSkillsCache:
-    def __init__(self):
-        self.global_value = None
-        self.user_registry: dict[str, list] = {}
-        self.user_agent: dict[tuple[str, str], list] = {}
-        self.invalidated_registries: list[str] = []
-        self.invalidated_all_agent: list[str] = []
-        self.invalidated_agent: list[tuple[str, str]] = []
-        self.set_global_calls: list[list] = []
-
-    async def get_global(self):
-        return self.global_value
-
-    async def set_global(self, payload):
-        self.global_value = payload
-        self.set_global_calls.append(payload)
-
-    async def get_user_registry(self, user_id):
-        return self.user_registry.get(user_id)
-
-    async def set_user_registry(self, user_id, payload):
-        self.user_registry[user_id] = payload
-
-    async def invalidate_user_registry(self, user_id):
-        self.invalidated_registries.append(user_id)
-        self.user_registry.pop(user_id, None)
-
-    async def invalidate_all_user_agent_keys(self, user_id):
-        self.invalidated_all_agent.append(user_id)
-
-    async def get_user_agent_skills(self, user_id, agent_id):
-        return self.user_agent.get((user_id, agent_id))
-
-    async def set_user_agent_skills(self, user_id, agent_id, payload):
-        self.user_agent[(user_id, agent_id)] = payload
-
-    async def invalidate_user_agent_skills(self, user_id, agent_id):
-        self.invalidated_agent.append((user_id, agent_id))
-        self.user_agent.pop((user_id, agent_id), None)
-
-
-@pytest.fixture
-def fake_cache(monkeypatch):
-    cache = FakeSkillsCache()
-    monkeypatch.setattr(skills_mod, "skills_cache", cache)
-    return cache
-
-
 @pytest_asyncio.fixture
 async def db(session_factory):
     """A real session — the user pool and per-agent assignments live in chat_db
@@ -177,69 +127,45 @@ def patch_slug(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# list_skills
+# search_catalogue
 # ---------------------------------------------------------------------------
-async def test_list_skills_cache_hit_skips_upstream(monkeypatch, fake_cache):
-    fake_cache.global_value = [{"name": "cached-skill"}]
-
-    def handler(method, url, kwargs):  # pragma: no cover - must not be called
-        raise AssertionError("upstream must not be hit on cache hit")
-
-    install_fake_client(monkeypatch, handler)
-
-    result = await list_skills()
-    assert result == [{"name": "cached-skill"}]
-
-
-async def test_list_skills_cache_miss_fetches_and_upserts(monkeypatch, fake_cache):
-    payload = [{"name": "s1"}, {"name": "s2"}]
+async def test_search_forwards_query_and_paging(monkeypatch):
+    """The bridge holds no catalogue: a search is one upstream GET, uncached."""
+    page = {"results": [{"source_id": "nvidia", "skill_id": "cudf"}], "total": 1}
     calls: list = []
-    install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(json_data=payload), calls)
+    install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(json_data=page), calls)
 
-    result = await list_skills()
+    first = await search_catalogue(query="cuda", source=None, limit=10, offset=0)
+    await search_catalogue(query="cuda", source=None, limit=10, offset=0)
 
-    assert result == payload
-    assert fake_cache.global_value == payload
-    # cache-miss path passes params=None (no bypass query string)
-    assert calls[0][2]["params"] is None
+    assert first == page
+    assert len(calls) == 2                       # nothing cached in between
+    method, url, kwargs = calls[0]
+    assert method == "GET" and url.endswith("/skills/catalogue/search")
+    assert kwargs["params"] == {"q": "cuda", "limit": 10, "offset": 0}
 
 
-async def test_list_skills_bypass_skips_read_and_reupserts(monkeypatch, fake_cache):
-    fake_cache.global_value = [{"name": "stale"}]
-    fresh = [{"name": "fresh"}]
+async def test_search_passes_a_source_filter_only_when_given(monkeypatch):
     calls: list = []
-    install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(json_data=fresh), calls)
-
-    result = await list_skills(bypass_cache=True)
-
-    assert result == fresh
-    assert fake_cache.global_value == fresh
-    assert calls[0][2]["params"] == {"bypass_cache": "true"}
+    install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(json_data={"results": []}), calls)
+    await search_catalogue(query="", source="ecc", limit=5, offset=10)
+    assert calls[0][2]["params"] == {"q": "", "limit": 5, "offset": 10, "source": "ecc"}
 
 
-async def test_list_skills_non_list_payload_returns_empty(monkeypatch, fake_cache):
-    install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(json_data={"oops": 1}))
-    result = await list_skills()
-    assert result == []
-    # malformed payload is not cached
-    assert fake_cache.set_global_calls == []
-
-
-async def test_list_skills_http_error_raises_502(monkeypatch, fake_cache):
-    install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(status_code=500, raise_status=True))
-    # upstream_error_handler converts the upstream HTTP error to HTTPException(502)
+async def test_search_malformed_payload_502(monkeypatch):
+    install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(json_data=["not", "a", "page"]))
     with pytest.raises(Exception) as exc:
-        await list_skills()
+        await search_catalogue(query="x", source=None, limit=10, offset=0)
     assert getattr(exc.value, "status_code", None) == 502
 
 
-async def test_list_skills_request_error_raises_503(monkeypatch, fake_cache):
+async def test_search_request_error_503(monkeypatch):
     install_fake_client(
         monkeypatch,
         lambda m, u, k: httpx.ConnectError("down", request=httpx.Request("GET", "http://agents.test")),
     )
     with pytest.raises(Exception) as exc:
-        await list_skills()
+        await search_catalogue(query="x", source=None, limit=10, offset=0)
     assert getattr(exc.value, "status_code", None) == 503
 
 
@@ -267,7 +193,7 @@ async def test_list_user_skills_reads_upstream_every_time(monkeypatch):
     assert len(calls) == 2            # no read-through cache in between
 
 
-async def test_list_user_skills_non_list_returns_empty(monkeypatch, fake_cache):
+async def test_list_user_skills_non_list_returns_empty(monkeypatch):
     install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(json_data="not a list"))
     result = await list_user_skills(user_id="u3")
     assert result == []
@@ -305,45 +231,63 @@ async def test_get_user_skill_detail_http_error_502(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# add_global_skill_to_user_pool
+# add_remote_skill_to_user_pool
 # ---------------------------------------------------------------------------
-async def test_add_global_skill_is_a_pure_proxy(monkeypatch):
-    """Nothing is recorded locally — the agents service is the only writer, so
-    there is no second copy that can disagree with it."""
-    calls = []
-    install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(status_code=204), calls=calls)
-    await add_global_skill_to_user_pool(user_id="u", skill_name="s")
-    assert [c[0] for c in calls] == ["POST"]
+async def test_add_remote_is_one_post_and_returns_the_entry(monkeypatch):
+    entry = {"name": "cudf", "type": "remote", "source_path": "remote/nvidia/cudf@abc"}
+    calls: list = []
+    install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(status_code=201, json_data=entry), calls)
+    body = await add_remote_skill_to_user_pool(user_id="u", source_id="nvidia", skill_id="cudf")
+    assert body == entry
+    assert [(c[0], c[1].endswith("/users/u/skills/remote/nvidia/cudf")) for c in calls] == [("POST", True)]
 
 
-async def test_add_global_skill_404(monkeypatch, fake_cache):
-    install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(status_code=404))
-    with pytest.raises(Exception) as exc:
-        await add_global_skill_to_user_pool(user_id="u", skill_name="s")
-    assert getattr(exc.value, "status_code", None) == 404
-
-
-async def test_add_global_skill_409_conflict(monkeypatch, fake_cache):
-    install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(status_code=409))
-    with pytest.raises(Exception) as exc:
-        await add_global_skill_to_user_pool(user_id="u", skill_name="s")
-    assert getattr(exc.value, "status_code", None) == 409
-
-
-async def test_add_global_skill_request_error(monkeypatch, fake_cache):
+async def test_add_remote_is_never_retried(monkeypatch):
+    """An Add may download a whole skill upstream; a retry after a slow first
+    attempt would double the work and then answer 409 for a skill that had in
+    fact been added. A transport error therefore surfaces after ONE call."""
+    calls: list = []
     install_fake_client(
         monkeypatch,
-        lambda m, u, k: httpx.ConnectError("x", request=httpx.Request("POST", "http://agents.test")),
+        lambda m, u, k: httpx.ReadTimeout("slow", request=httpx.Request("POST", "http://agents.test")),
+        calls,
     )
     with pytest.raises(Exception) as exc:
-        await add_global_skill_to_user_pool(user_id="u", skill_name="s")
+        await add_remote_skill_to_user_pool(user_id="u", source_id="nvidia", skill_id="cudf")
     assert getattr(exc.value, "status_code", None) == 503
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("upstream, expected", [(404, 404), (409, 409), (502, 502), (503, 503)])
+async def test_add_remote_maps_upstream_statuses_to_reviewed_messages(monkeypatch, upstream, expected):
+    """The user sees the bridge's own wording, never an upstream detail string."""
+    install_fake_client(
+        monkeypatch,
+        lambda m, u, k: FakeResponse(status_code=upstream, json_data={"detail": "internal path /var/x"}),
+    )
+    with pytest.raises(Exception) as exc:
+        await add_remote_skill_to_user_pool(user_id="u", source_id="nvidia", skill_id="cudf")
+    assert getattr(exc.value, "status_code", None) == expected
+    assert "/var/x" not in str(getattr(exc.value, "detail", ""))
+
+
+async def test_add_remote_422_forwards_the_verification_reason(monkeypatch):
+    install_fake_client(
+        monkeypatch,
+        lambda m, u, k: FakeResponse(
+            status_code=422, json_data={"detail": "This skill failed verification (checksum mismatch)."}
+        ),
+    )
+    with pytest.raises(Exception) as exc:
+        await add_remote_skill_to_user_pool(user_id="u", source_id="nvidia", skill_id="cudf")
+    assert getattr(exc.value, "status_code", None) == 422
+    assert "checksum mismatch" in exc.value.detail
 
 
 # ---------------------------------------------------------------------------
 # create_custom_skill_in_pool
 # ---------------------------------------------------------------------------
-async def test_create_custom_skill_success(monkeypatch, fake_cache):
+async def test_create_custom_skill_success(monkeypatch):
     created = {"name": "new", "type": "custom", "source_path": "p"}
     install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(status_code=201, json_data=created))
     result = await create_custom_skill_in_pool(
@@ -354,14 +298,14 @@ async def test_create_custom_skill_success(monkeypatch, fake_cache):
     assert result == created
 
 
-async def test_create_custom_skill_409(monkeypatch, fake_cache):
+async def test_create_custom_skill_409(monkeypatch):
     install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(status_code=409))
     with pytest.raises(Exception) as exc:
         await create_custom_skill_in_pool(user_id="u", payload={"name": "dup"})
     assert getattr(exc.value, "status_code", None) == 409
 
 
-async def test_create_custom_skill_422_forwards_upstream_detail(monkeypatch, fake_cache):
+async def test_create_custom_skill_422_forwards_upstream_detail(monkeypatch):
     body = {"detail": "SKILL.md is required."}
     install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(status_code=422, json_data=body))
     with pytest.raises(Exception) as exc:
@@ -370,7 +314,7 @@ async def test_create_custom_skill_422_forwards_upstream_detail(monkeypatch, fak
     assert exc.value.detail == "SKILL.md is required."
 
 
-async def test_create_custom_skill_400_with_unparseable_body(monkeypatch, fake_cache):
+async def test_create_custom_skill_400_with_unparseable_body(monkeypatch):
     install_fake_client(
         monkeypatch,
         lambda m, u, k: FakeResponse(status_code=400, json_data=ValueError("no json")),
@@ -382,14 +326,14 @@ async def test_create_custom_skill_400_with_unparseable_body(monkeypatch, fake_c
     assert "could not be created" in exc.value.detail
 
 
-async def test_create_custom_skill_malformed_success_payload_502(monkeypatch, fake_cache):
+async def test_create_custom_skill_malformed_success_payload_502(monkeypatch):
     install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(status_code=201, json_data=["bad"]))
     with pytest.raises(Exception) as exc:
         await create_custom_skill_in_pool(user_id="u", payload={"name": "x"})
     assert getattr(exc.value, "status_code", None) == 502
 
 
-async def test_create_custom_skill_request_error(monkeypatch, fake_cache):
+async def test_create_custom_skill_request_error(monkeypatch):
     install_fake_client(
         monkeypatch,
         lambda m, u, k: httpx.ConnectError("x", request=httpx.Request("POST", "http://agents.test")),
@@ -413,14 +357,14 @@ async def test_remove_skill_is_a_pure_proxy(monkeypatch):
     assert [c[0] for c in calls] == ["DELETE"]
 
 
-async def test_remove_skill_http_error_502(monkeypatch, fake_cache):
+async def test_remove_skill_http_error_502(monkeypatch):
     install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(status_code=500, raise_status=True))
     with pytest.raises(Exception) as exc:
         await remove_skill_from_user_pool(user_id="u", skill_name="s")
     assert getattr(exc.value, "status_code", None) == 502
 
 
-async def test_remove_skill_request_error_503(monkeypatch, fake_cache):
+async def test_remove_skill_request_error_503(monkeypatch):
     install_fake_client(
         monkeypatch,
         lambda m, u, k: httpx.ReadError("x", request=httpx.Request("DELETE", "http://agents.test")),
@@ -464,7 +408,7 @@ async def test_resolve_agent_slug_500_when_no_slug(monkeypatch):
 # ---------------------------------------------------------------------------
 # get_user_agent_skills (read-through cache)
 # ---------------------------------------------------------------------------
-async def test_get_user_agent_skills_non_list_returns_empty(monkeypatch, fake_cache, patch_slug):
+async def test_get_user_agent_skills_non_list_returns_empty(monkeypatch, patch_slug):
     install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(json_data={"x": 1}))
     result = await get_user_agent_skills(user_id="u", agent_id="a")
     assert result == []
@@ -487,21 +431,21 @@ async def test_disable_user_agent_skill_uses_delete(monkeypatch, patch_slug):
     assert calls[0][0] == "DELETE"
 
 
-async def test_proxy_skill_mutation_404_not_in_pool(monkeypatch, fake_cache, patch_slug):
+async def test_proxy_skill_mutation_404_not_in_pool(monkeypatch, patch_slug):
     install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(status_code=404))
     with pytest.raises(Exception) as exc:
         await enable_user_agent_skill(user_id="u", agent_id="a", skill_name="s")
     assert getattr(exc.value, "status_code", None) == 404
 
 
-async def test_proxy_skill_mutation_http_error_502(monkeypatch, fake_cache, patch_slug):
+async def test_proxy_skill_mutation_http_error_502(monkeypatch, patch_slug):
     install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(status_code=500, raise_status=True))
     with pytest.raises(Exception) as exc:
         await disable_user_agent_skill(user_id="u", agent_id="a", skill_name="s")
     assert getattr(exc.value, "status_code", None) == 502
 
 
-async def test_proxy_skill_mutation_request_error_503(monkeypatch, fake_cache, patch_slug):
+async def test_proxy_skill_mutation_request_error_503(monkeypatch, patch_slug):
     install_fake_client(
         monkeypatch,
         lambda m, u, k: httpx.ConnectError("x", request=httpx.Request("PUT", "http://agents.test")),
@@ -521,10 +465,9 @@ async def test_proxy_skill_mutation_request_error_503(monkeypatch, fake_cache, p
 # only connected at the router. The producer moved upstream; the gap did not, so
 # these validate what the agents service actually sends against the real models.
 async def test_the_pool_payload_satisfies_the_user_skill_contract(monkeypatch):
-    from schema import UserSkill
-
-    # Exactly what `GET /users/{uid}/skills` returns — one global entry and one
-    # custom, which is where `category` and `source_path` differ.
+    # Exactly what `GET /users/{uid}/skills` returns — a legacy global entry, a
+    # custom one and a remote one, which is where `category`, `source_path` and
+    # `provenance` differ.
     upstream = [
         {"name": "global-one", "type": "global", "description": "d",
          "source_path": "global/x/global-one", "category": "x",
@@ -532,6 +475,12 @@ async def test_the_pool_payload_satisfies_the_user_skill_contract(monkeypatch):
         {"name": "custom-one", "type": "custom", "description": "d",
          "source_path": "users/uc/custom/custom-one", "category": "",
          "origin": "user", "created_by_agent": None, "created_at": None},
+        {"name": "cudf", "type": "remote", "description": "d",
+         "source_path": "remote/nvidia/cudf@08a438518961", "category": "",
+         "origin": "user", "created_by_agent": None, "created_at": None,
+         "provenance": {"source_id": "nvidia", "source_label": "NVIDIA/skills",
+                        "commit": "08a4385189" + "0" * 30, "licence": "CC-BY-4.0 AND Apache-2.0",
+                        "upstream_url": "https://github.com/NVIDIA/skills/tree/x/skills/cudf"}},
     ]
     install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(json_data=upstream))
 
@@ -540,8 +489,6 @@ async def test_the_pool_payload_satisfies_the_user_skill_contract(monkeypatch):
 
 
 async def test_the_detail_payload_satisfies_the_detail_contract(monkeypatch):
-    from schema import UserSkillDetail
-
     upstream = {
         "name": "custom-two", "type": "custom", "description": "d",
         "source_path": "users/ud/custom/custom-two", "category": "",

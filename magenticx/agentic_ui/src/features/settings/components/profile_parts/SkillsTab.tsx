@@ -1,12 +1,14 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   Bot,
+  Check,
   ChevronDown,
   FilePlus,
   Library,
   Loader2,
   Plus,
+  RotateCw,
   Search,
   Sparkles,
   X,
@@ -18,26 +20,28 @@ import { cn, skillMatchesTokens, tokenizeSkillQuery } from "@/shared/lib/utils";
 import { CATALOG_BROWSE_LIMIT, CATALOG_RESULT_LIMIT } from "@/shared/lib/consts";
 import type {
   Agent,
+  CatalogueSkill,
   CustomSkillCreatePayload,
-  Skill,
   SkillsSubView,
   UserAgentSkillSelection,
   UserSkill,
   UserSkillDetail,
 } from "@/shared/lib/types";
 import { usePanelHeader } from "@/features/settings/panel-header-context";
+import { useCatalogueSearch } from "@/features/settings/hooks/useCatalogueSearch";
 import { InfoCard, SkillHubRow, SoftPanel, ToggleSwitch } from "./shared";
 import SkillBuilder from "./SkillBuilder";
 import SkillFilesViewer from "./SkillFilesViewer";
+import SkillProvenance from "./SkillProvenance";
 
 type SkillsTabProps = {
-  availableSkills: Skill[];
   mySkills?: UserSkill[];
   loadingMySkills?: boolean;
   mySkillDetails?: Record<string, UserSkillDetail>;
   isMySkillDetailLoading?: (skillName: string) => boolean;
   onLoadMySkillDetail?: (skillName: string) => Promise<void>;
-  onAddGlobalSkillToPool?: (skillName: string) => Promise<void>;
+  /** Resolves true when the skill landed in the pool. */
+  onAddRemoteSkillToPool?: (sourceId: string, skillId: string) => Promise<boolean>;
   onCreateCustomSkill?: (payload: CustomSkillCreatePayload) => Promise<UserSkill | null>;
   onRemoveSkillFromPool?: (skillName: string) => Promise<void>;
   /** Re-read the pool from the server. Called on every tab entry. */
@@ -50,14 +54,18 @@ type SkillsTabProps = {
   isSkillToggling?: (agentId: string, skillName: string) => boolean;
 };
 
+// A catalogue result is identified by its source as well as its id: two sources
+// can publish a skill with the same name.
+const catalogKey = (skill: Pick<CatalogueSkill, "sourceId" | "skillId">) =>
+  `${skill.sourceId}/${skill.skillId}`;
+
 export default function SkillsTab({
-  availableSkills,
   mySkills,
   loadingMySkills = false,
   mySkillDetails,
   isMySkillDetailLoading,
   onLoadMySkillDetail,
-  onAddGlobalSkillToPool,
+  onAddRemoteSkillToPool,
   onCreateCustomSkill,
   onRemoveSkillFromPool,
   onRefreshMySkills,
@@ -185,8 +193,9 @@ export default function SkillsTab({
         "Every skill in your pool. Remove one to take it back out, or open it to read what it does.",
     },
     global: {
-      title: "Add from catalog",
-      description: "Browse the shared catalog and add a skill to your pool.",
+      title: "Add from the catalogue",
+      description:
+        "Search skills from trusted public sources. Each one is pinned to the version you add and checked before it's stored.",
     },
     create: {
       title: "New custom skill",
@@ -234,20 +243,21 @@ export default function SkillsTab({
   );
 
   const handleAddFromCatalog = useCallback(
-    async (skillName: string) => {
-      if (!onAddGlobalSkillToPool || addingSkills[skillName]) return;
-      setAddingSkills((prev) => ({ ...prev, [skillName]: true }));
+    async (skill: CatalogueSkill) => {
+      const key = catalogKey(skill);
+      if (!onAddRemoteSkillToPool || addingSkills[key]) return;
+      setAddingSkills((prev) => ({ ...prev, [key]: true }));
       try {
-        await onAddGlobalSkillToPool(skillName);
+        await onAddRemoteSkillToPool(skill.sourceId, skill.skillId);
       } finally {
         setAddingSkills((prev) => {
           const next = { ...prev };
-          delete next[skillName];
+          delete next[key];
           return next;
         });
       }
     },
-    [onAddGlobalSkillToPool, addingSkills],
+    [onAddRemoteSkillToPool, addingSkills],
   );
 
   // Registry filter — narrows the user's own pool. Cheap, runs on every
@@ -259,55 +269,17 @@ export default function SkillsTab({
     return pool.filter((s) => skillMatchesTokens(s, registryTokens));
   }, [mySkills, registryTokens]);
 
-  // Catalog search is deferred so scoring the (potentially large) global
-  // catalog never blocks typing.
-  const deferredCatalogSearch = useDeferredValue(catalogSearch);
-  const catalogTokens = useMemo(
-    () => tokenizeSkillQuery(deferredCatalogSearch),
-    [deferredCatalogSearch],
+  // The catalogue is a server-side search (plan 30): with a query → ranked
+  // matches; without → an alphabetical browse slice so the view is a useful
+  // starting point, never blank. Names already in the pool are shown, not
+  // hidden, with the Add disabled — hiding them would make counts lie.
+  const hasCatalogQuery = catalogSearch.trim().length > 0;
+  const catalog = useCatalogueSearch(
+    catalogSearch,
+    hasCatalogQuery ? CATALOG_RESULT_LIMIT : CATALOG_BROWSE_LIMIT,
   );
-  const hasCatalogQuery = catalogTokens.length > 0;
-
   const myPoolNames = useMemo(() => new Set((mySkills ?? []).map((s) => s.name)), [mySkills]);
-  const catalogPool = useMemo(
-    () => availableSkills.filter((s) => !myPoolNames.has(s.name)),
-    [availableSkills, myPoolNames],
-  );
-
-  const catalogMatches = useMemo(() => {
-    if (!hasCatalogQuery) return [];
-    return catalogPool
-      .filter((s) => skillMatchesTokens(s, catalogTokens))
-      .map((s) => {
-        const name = s.name.toLowerCase().replace(/[-_./]/g, "");
-        const category = s.category.toLowerCase().replace(/[-_./]/g, "");
-        let score = 0;
-        for (const tok of catalogTokens) {
-          if (name === tok) score += 1000;
-          else if (name.startsWith(tok)) score += 500;
-          else if (name.includes(tok)) score += 100;
-          if (category.includes(tok)) score += 20;
-        }
-        return { s, score };
-      })
-      .sort((a, b) => b.score - a.score)
-      .map((x) => x.s);
-  }, [catalogPool, catalogTokens, hasCatalogQuery]);
-
-  // With a query → ranked matches; without → an alphabetical browse slice so
-  // the "Add from catalog" section is a useful starting point, never blank.
-  const catalogResults = useMemo(() => {
-    if (!hasCatalogQuery) {
-      return [...catalogPool]
-        .sort((a, b) => a.name.localeCompare(b.name))
-        .slice(0, CATALOG_BROWSE_LIMIT);
-    }
-    return catalogMatches.slice(0, CATALOG_RESULT_LIMIT);
-  }, [hasCatalogQuery, catalogPool, catalogMatches]);
-
-  const catalogTruncated = hasCatalogQuery
-    ? Math.max(0, catalogMatches.length - catalogResults.length)
-    : Math.max(0, catalogPool.length - catalogResults.length);
+  const catalogTruncated = Math.max(0, catalog.total - catalog.results.length);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -318,9 +290,15 @@ export default function SkillsTab({
               index={0}
               reduceMotion={Boolean(prefersReducedMotion)}
               icon={<Library className="h-5 w-5" aria-hidden />}
-              title="Global registry"
-              subtitle="Browse the shared catalog"
-              meta={`${availableSkills.length} skills`}
+              title="Skill catalogue"
+              subtitle="Search skills from trusted sources"
+              meta={
+                !catalog.remoteEnabled
+                  ? "unavailable"
+                  : catalog.catalogueSize === null
+                    ? "loading…"
+                    : `${catalog.catalogueSize} skills`
+              }
               actionLabel="Manage"
               onClick={() => setSkillsView("global")}
             />
@@ -389,7 +367,7 @@ export default function SkillsTab({
 
                 {!loadingMySkills && (mySkills?.length ?? 0) === 0 ? (
                   <p className="text-sm text-muted-foreground">
-                    Nothing here yet — add from the Global registry, or Create a skill.
+                    Nothing here yet — add one from the Skill catalogue, or Create a skill.
                   </p>
                 ) : null}
 
@@ -431,6 +409,14 @@ export default function SkillsTab({
                               <p className="text-xs text-muted-foreground line-clamp-2">
                                 {skill.description || "No description provided."}
                               </p>
+                              {skill.provenance ? (
+                                <SkillProvenance
+                                  sourceLabel={skill.provenance.sourceLabel}
+                                  commit={skill.provenance.commit}
+                                  licence={skill.provenance.licence}
+                                  upstreamUrl={skill.provenance.upstreamUrl}
+                                />
+                              ) : null}
                             </div>
                             <div className="flex items-center gap-1">
                               {onRemoveSkillFromPool ? (
@@ -509,7 +495,7 @@ export default function SkillsTab({
                       value={catalogSearch}
                       onChange={(e) => setCatalogSearch(e.target.value)}
                       placeholder="Search skills to add…"
-                      aria-label="Search the skills catalog"
+                      aria-label="Search the skill catalogue"
                       className="w-full rounded-md border border-border/60 bg-background/60 py-2 pl-9 pr-9 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     />
                     <AnimatePresence>
@@ -531,46 +517,82 @@ export default function SkillsTab({
                       ) : null}
                     </AnimatePresence>
                   </div>
-                  <span className="shrink-0 rounded-full bg-muted/60 px-2.5 py-1 text-[11px] font-medium tabular-nums text-muted-foreground">
-                    {hasCatalogQuery
-                      ? `${catalogResults.length}${catalogTruncated > 0 ? "+" : ""} result${catalogResults.length === 1 ? "" : "s"}`
-                      : `${catalogPool.length} available`}
+                  <span
+                    className="shrink-0 rounded-full bg-muted/60 px-2.5 py-1 text-[11px] font-medium tabular-nums text-muted-foreground"
+                    aria-live="polite"
+                  >
+                    {catalog.loading
+                      ? "Searching…"
+                      : hasCatalogQuery
+                        ? `${catalog.total} result${catalog.total === 1 ? "" : "s"}`
+                        : `${catalog.total} available`}
                   </span>
                 </div>
 
-                {catalogPool.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    You've added every catalog skill to your pool.
+                {!catalog.remoteEnabled ? (
+                  <p className="rounded-[1.1rem] bg-muted/30 px-4 py-4 text-sm text-muted-foreground">
+                    The skill catalogue is not enabled on this server. You can still create your
+                    own skills.
                   </p>
-                ) : hasCatalogQuery && catalogResults.length === 0 ? (
+                ) : catalog.error ? (
+                  <div className="flex flex-col items-start gap-2 rounded-[1.1rem] bg-destructive/5 px-4 py-4">
+                    <p className="text-sm text-foreground">Could not search the catalogue.</p>
+                    <p className="text-xs text-muted-foreground">{catalog.error}</p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={catalog.retry}
+                      className="h-8 gap-1.5 px-3 text-xs"
+                    >
+                      <RotateCw className="h-3.5 w-3.5" aria-hidden />
+                      Try again
+                    </Button>
+                  </div>
+                ) : catalog.loading && catalog.results.length === 0 ? (
+                  <div className="flex flex-col gap-3" aria-hidden>
+                    {[0, 1, 2].map((row) => (
+                      <SoftPanel key={row} className="p-3">
+                        <div className="flex flex-col gap-2">
+                          <div className="h-3.5 w-40 animate-pulse rounded bg-muted" />
+                          <div className="h-3 w-full animate-pulse rounded bg-muted/70" />
+                          <div className="h-3 w-2/3 animate-pulse rounded bg-muted/50" />
+                        </div>
+                      </SoftPanel>
+                    ))}
+                  </div>
+                ) : hasCatalogQuery && catalog.results.length === 0 ? (
                   <div className="flex flex-col items-start gap-2 rounded-[1.1rem] bg-muted/30 px-4 py-4">
                     <p className="text-sm text-muted-foreground">
-                      No catalog skills match “{deferredCatalogSearch.trim()}”.
+                      No catalogue skills match “{catalogSearch.trim()}”.
                     </p>
                     <Button
                       type="button"
                       size="sm"
                       variant="outline"
-                      onClick={() => openAddView(deferredCatalogSearch.trim())}
+                      onClick={() => openAddView(catalogSearch.trim())}
                       className="h-8 gap-1.5 px-3 text-xs"
                     >
                       <Plus className="h-3.5 w-3.5" aria-hidden />
-                      Create “{deferredCatalogSearch.trim()}” as a custom skill
+                      Create “{catalogSearch.trim()}” as a custom skill
                     </Button>
                   </div>
+                ) : catalog.results.length === 0 ? (
+                  <p className="rounded-[1.1rem] bg-muted/30 px-4 py-4 text-sm text-muted-foreground">
+                    The catalogue is still being indexed. Check back in a few minutes.
+                  </p>
                 ) : (
                   <>
                     <AnimatePresence initial={false}>
-                      {catalogResults.map((skill, index) => {
-                        const adding = Boolean(addingSkills[skill.name]);
+                      {catalog.results.map((skill, index) => {
+                        const key = catalogKey(skill);
+                        const adding = Boolean(addingSkills[key]);
+                        const inPool = myPoolNames.has(skill.skillId);
                         return (
-                          <motion.div
-                            key={`${skill.category}/${skill.name}`}
-                            {...skillCardMotion(index)}
-                          >
+                          <motion.div key={key} {...skillCardMotion(index)}>
                             <SoftPanel className="p-3">
                               <div className="flex items-start justify-between gap-3">
-                                <div className="flex min-w-0 flex-col gap-0.5">
+                                <div className="flex min-w-0 flex-col gap-1">
                                   <div className="flex min-w-0 items-center gap-2">
                                     <p className="truncate text-sm font-medium text-foreground">
                                       {skill.name}
@@ -584,22 +606,36 @@ export default function SkillsTab({
                                   <p className="line-clamp-2 text-xs text-muted-foreground">
                                     {skill.description || "No description provided."}
                                   </p>
+                                  <SkillProvenance
+                                    sourceLabel={skill.sourceLabel}
+                                    commit={skill.commit}
+                                    licence={skill.licence}
+                                    upstreamUrl={skill.upstreamUrl}
+                                  />
                                 </div>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => void handleAddFromCatalog(skill.name)}
-                                  disabled={!onAddGlobalSkillToPool || adding}
-                                  className="h-7 shrink-0 gap-1 px-2.5 text-xs"
-                                >
-                                  {adding ? (
-                                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-                                  ) : (
-                                    <Plus className="h-3.5 w-3.5" aria-hidden />
-                                  )}
-                                  {adding ? "Adding…" : "Add"}
-                                </Button>
+                                {inPool ? (
+                                  <span className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2.5 text-xs text-muted-foreground">
+                                    <Check className="h-3.5 w-3.5" aria-hidden />
+                                    In your skills
+                                  </span>
+                                ) : (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => void handleAddFromCatalog(skill)}
+                                    disabled={!onAddRemoteSkillToPool || adding}
+                                    aria-label={`Add ${skill.name} from ${skill.sourceLabel}`}
+                                    className="h-7 shrink-0 gap-1 px-2.5 text-xs"
+                                  >
+                                    {adding ? (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                                    ) : (
+                                      <Plus className="h-3.5 w-3.5" aria-hidden />
+                                    )}
+                                    {adding ? "Adding…" : "Add"}
+                                  </Button>
+                                )}
                               </div>
                             </SoftPanel>
                           </motion.div>
@@ -610,7 +646,7 @@ export default function SkillsTab({
                       <p className="px-1 pt-1 text-[11px] text-muted-foreground">
                         {hasCatalogQuery
                           ? `+${catalogTruncated} more match${catalogTruncated === 1 ? "" : "es"}. Refine your search to narrow down.`
-                          : `+${catalogTruncated} more in the catalog. Search to find a specific skill.`}
+                          : `+${catalogTruncated} more in the catalogue. Search to find a specific skill.`}
                       </p>
                     ) : null}
                   </>
@@ -625,7 +661,6 @@ export default function SkillsTab({
             <InfoCard>
               <SkillBuilder
                 mySkills={mySkills ?? []}
-                availableSkills={availableSkills}
                 initialName={addPrefillName}
                 onCreate={onCreateCustomSkill ?? (async () => null)}
                 onClose={cancelAddView}

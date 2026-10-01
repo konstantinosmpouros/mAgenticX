@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  addGlobalSkillToPool,
+  addRemoteSkillToPool,
   createCustomSkill,
   disableUserAgentSkill,
   enableUserAgentSkill,
@@ -20,7 +20,7 @@ import type {
 // Owns three pieces of per-user skill state for the ProfilePanel "Skills" tab:
 //
 // 1. The user's personal skill pool (My skills view) — fetched at session
-//    bootstrap, mutated by add-global / create-custom / remove handlers.
+//    bootstrap, mutated by add-remote / create-custom / remove handlers.
 // 2. Per-(user, agent) skill assignments (Manage per agent view) — loaded
 //    lazily per agent on card expand. Source of truth is the on-disk
 //    filesystem on the agents service; the bridge proxies + Redis-caches.
@@ -28,9 +28,8 @@ import type {
 //    expands a card in My skills (avoids re-fetching the full SKILL.md
 //    body on every open).
 //
-// The hook does not own the global catalog (``availableSkills``); that lives
-// in page-level state and is fetched alongside ``getAgents`` / ``getTools``
-// during the auth-rehydrate flow.
+// The hook does not own the catalogue: that is a server-side search the
+// Skills tab runs itself (useCatalogueSearch).
 type ToastFn = (opts: {
   title: string;
   description?: string;
@@ -51,7 +50,8 @@ export type SkillsHandlers = {
   setMySkills: React.Dispatch<React.SetStateAction<UserSkill[]>>;
   loadingMySkills: boolean;
   refreshMySkills: () => Promise<void>;
-  addGlobalToPool: (skillName: string) => Promise<void>;
+  /** Resolves true when the skill landed in the pool, false when it did not. */
+  addRemoteToPool: (sourceId: string, skillId: string) => Promise<boolean>;
   createCustomInPool: (payload: CustomSkillCreatePayload) => Promise<UserSkill | null>;
   removeFromPool: (skillName: string) => Promise<void>;
 
@@ -278,26 +278,28 @@ export function useSkills(ctx: SkillsCtx): SkillsHandlers {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, authResolved]);
 
-  const addGlobalToPool = useCallback(
-    async (skillName: string) => {
+  const addRemoteToPool = useCallback(
+    async (sourceId: string, skillId: string): Promise<boolean> => {
       if (!userId) {
         toast({
           title: "Authentication required",
           description: "Please sign in again.",
           variant: "destructive",
         });
-        return;
+        return false;
       }
-      if (mySkills.some((s) => s.name === skillName)) return; // already in pool
+      if (mySkills.some((s) => s.name === skillId)) return false; // name already in pool
       try {
-        await addGlobalSkillToPool(userId, skillName);
-        // Refetch so the new entry carries the canonical description/source_path
-        // from the backend rather than something the frontend guessed.
+        await addRemoteSkillToPool(userId, sourceId, skillId);
+        // Refetch so the new entry carries the canonical provenance from the
+        // backend rather than something the frontend guessed.
         await refreshMySkills();
+        return true;
       } catch (error) {
-        toastError(toast, "Could not add skill to your pool", error, {
+        toastError(toast, "Could not add the skill", error, {
           description: error instanceof Error ? error.message : "Please try again.",
         });
+        return false;
       }
     },
     [userId, mySkills, refreshMySkills, toast],
@@ -409,7 +411,7 @@ export function useSkills(ctx: SkillsCtx): SkillsHandlers {
     setMySkills,
     loadingMySkills,
     refreshMySkills,
-    addGlobalToPool,
+    addRemoteToPool,
     createCustomInPool,
     removeFromPool,
     skillDetail,

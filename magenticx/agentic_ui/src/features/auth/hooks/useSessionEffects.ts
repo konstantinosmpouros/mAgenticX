@@ -3,7 +3,6 @@ import type {
   Agent,
   ConversationDetail,
   ConversationSummary,
-  Skill,
   ToolMetadata,
   UserPreferences,
   UserProfile,
@@ -18,7 +17,6 @@ import {
 import {
   getAgents,
   getConversations,
-  getSkills,
   getTools,
   getUserPreferences,
   restoreSession,
@@ -48,7 +46,6 @@ export function useAuthRehydrateEffect(params: {
   setAuthResolved?: (v: boolean) => void;
   setAgents: (v: any) => void;
   setAvailableTools?: (v: ToolMetadata[]) => void;
-  setAvailableSkills?: (v: Skill[]) => void;
   setMyRegistrySkills?: (v: UserSkill[]) => void;
   setUserPreferences?: (v: UserPreferences | null) => void;
   setConversations: (v: any) => void;
@@ -74,7 +71,6 @@ export function useAuthRehydrateEffect(params: {
     setAuthResolved,
     setAgents,
     setAvailableTools,
-    setAvailableSkills,
     setMyRegistrySkills,
     setUserPreferences,
     setConversations,
@@ -104,7 +100,6 @@ export function useAuthRehydrateEffect(params: {
           setUserProfile(null);
           setAgents([]);
           setAvailableTools?.([]);
-          setAvailableSkills?.([]);
           setUserPreferences?.(null);
           setConversations([]);
           setConversationsLoading?.(false);
@@ -138,9 +133,6 @@ export function useAuthRehydrateEffect(params: {
 
         let hasSnapshotAgents = false;
         let needsTools = Boolean(setAvailableTools);
-        // Skills always refetched from the bridge on rehydrate — they are not
-        // persisted to IndexedDB; their cache lives in Redis with a TTL.
-        const needsSkills = Boolean(setAvailableSkills);
         let needsPreferences = Boolean(setUserPreferences);
         let needsConversations = true;
 
@@ -162,9 +154,6 @@ export function useAuthRehydrateEffect(params: {
             setAgents(snapshot.agents ?? []);
             hasSnapshotAgents = Boolean(snapshot.agents && snapshot.agents.length > 0);
             if (setAvailableTools) setAvailableTools(snapshot.availableTools ?? []);
-            // Skills get the agents-style flow: read snapshot for instant
-            // paint, always refetch in parallel below to keep the list fresh.
-            if (setAvailableSkills) setAvailableSkills(snapshot.availableSkills ?? []);
             if (setMyRegistrySkills) setMyRegistrySkills(snapshot.myRegistrySkills ?? []);
             if (setUserPreferences) setUserPreferences(snapshot.userPreferences ?? null);
             setConversations(snapshot.conversations ?? []);
@@ -199,17 +188,6 @@ export function useAuthRehydrateEffect(params: {
               .catch((error) => {
                 console.error("Failed to fetch tools on rehydrate", error);
                 setAvailableTools?.([]);
-              }),
-          );
-        }
-
-        if (needsSkills) {
-          requests.push(
-            getSkills()
-              .then((skills) => setAvailableSkills?.(skills))
-              .catch((error) => {
-                console.error("Failed to fetch skills on rehydrate", error);
-                setAvailableSkills?.([]);
               }),
           );
         }
@@ -260,7 +238,6 @@ export function useAuthRehydrateEffect(params: {
         setUserProfile(null);
         setAgents([]);
         setAvailableTools?.([]);
-        setAvailableSkills?.([]);
         setUserPreferences?.(null);
         setConversations([]);
         setConversationsLoading?.(false);
@@ -284,7 +261,6 @@ export function useUISnapshotPersistence(params: {
   activeProfileTab: string;
   currentConversationId: string | null;
   availableTools: ToolMetadata[];
-  availableSkills: Skill[];
   myRegistrySkills?: UserSkill[];
   agents: Agent[];
   conversations: ConversationSummary[];
@@ -298,27 +274,25 @@ export function useUISnapshotPersistence(params: {
     activeProfileTab,
     currentConversationId,
     availableTools,
-    availableSkills,
     myRegistrySkills,
     agents,
     conversations,
     userPreferences,
   } = params;
 
-  // Skills follow the same snapshot-then-overwrite pattern as agents — the
-  // IndexedDB copy is just a paint accelerator on refresh; the always-fetch
-  // path overwrites it with whatever the bridge returns.
+  // The skill pool follows the same snapshot-then-overwrite pattern as agents
+  // — the IndexedDB copy is just a paint accelerator on refresh; the
+  // always-fetch path overwrites it with whatever the bridge returns.
   const uiSnapshot = useMemo<UISnapshotSerializable | null>(() => {
     if (!userId) return null;
     return {
-      version: 4,
+      version: 5,
       selectedAgent,
       isPrivateMode,
       sidebarOpen,
       activeProfileTab,
       lastConversationId: currentConversationId,
       availableTools,
-      availableSkills,
       myRegistrySkills: myRegistrySkills ?? [],
       agents,
       conversations,
@@ -332,7 +306,6 @@ export function useUISnapshotPersistence(params: {
     activeProfileTab,
     currentConversationId,
     availableTools,
-    availableSkills,
     myRegistrySkills,
     agents,
     conversations,
