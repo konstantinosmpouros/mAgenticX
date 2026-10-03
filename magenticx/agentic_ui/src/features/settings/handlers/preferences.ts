@@ -31,6 +31,7 @@ export type PreferencesHandlers = {
   handleToggleShowMessageTokenUsage: () => Promise<void>;
   handleToggleSearchPastConvs: () => Promise<void>;
   handleToggleUseMemory: () => Promise<void>;
+  handleToggleImproveModel: () => Promise<void>;
   handleSelectPersonality: (personality: PersonalityId) => Promise<void>;
   handleSaveCustomInstructions: (customInstructions: CustomInstructions) => Promise<boolean>;
   handleSelectVoiceModeVoice: (voice: RealtimeVoice) => Promise<void>;
@@ -64,6 +65,7 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
       showMessageTokenUsage: false,
       searchPastConvs: false,
       useMemory: true,
+      improveModel: false,
       personality: DEFAULT_PERSONALITY,
       customInstructions: normalizeCustomInstructions(undefined),
       voiceModeVoice: DEFAULT_REALTIME_VOICE,
@@ -88,6 +90,7 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
     showMessageTokenUsage: resolvedPreferences.showMessageTokenUsage === true,
     searchPastConvs: resolvedPreferences.searchPastConvs === true,
     useMemory: resolvedPreferences.useMemory !== false,
+    improveModel: resolvedPreferences.improveModel === true,
     personality: resolvedPreferences.personality,
     customInstructions: resolvedPreferences.customInstructions,
     voiceModeVoice: resolvedPreferences.voiceModeVoice,
@@ -157,6 +160,13 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
     );
   };
 
+  const handleToggleImproveModel = async () => {
+    await persistPrefs(
+      snapshotPrefs({ improveModel: !(resolvedPreferences.improveModel === true) }),
+      "Could not update preferences",
+    );
+  };
+
   const handleSelectPersonality = async (personality: PersonalityId) => {
     const nextPersonality = normalizePersonality(personality);
     if (nextPersonality === resolvedPreferences.personality) return;
@@ -199,6 +209,7 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
     handleToggleShowMessageTokenUsage,
     handleToggleSearchPastConvs,
     handleToggleUseMemory,
+    handleToggleImproveModel,
     handleSelectPersonality,
     handleSaveCustomInstructions,
     handleSelectVoiceModeVoice,

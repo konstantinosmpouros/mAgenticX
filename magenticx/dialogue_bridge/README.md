@@ -542,7 +542,7 @@ The preferences surface is:
 - `GET /v1/preferences/{user_id}`
 - `PUT /v1/preferences/{user_id}`
 
-Current payload fields: `suggestionsEnabled`, `showMessageTokenUsage`, `searchPastConvs`, `useMemory`, `personality`, `customInstructions`, `voiceModeVoice`, `voiceModeLanguage`.
+Current payload fields: `suggestionsEnabled`, `showMessageTokenUsage`, `searchPastConvs`, `useMemory`, `improveModel`, `personality`, `customInstructions`, `voiceModeVoice`, `voiceModeLanguage`.
 
 `prefersAgenticChat` was removed — it was persisted and returned but never consumed by inference routing or the UI.
 

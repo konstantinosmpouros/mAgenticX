@@ -24,6 +24,8 @@ function mapUserPreferences(data: unknown) {
   const searchPastConvs =
     typeof record.searchPastConvs === "boolean" ? record.searchPastConvs : false;
   const useMemory = typeof record.useMemory === "boolean" ? record.useMemory : true;
+  // Opt-in: anything but an explicit true reads as "not allowed".
+  const improveModel = record.improveModel === true;
   const personality = normalizePersonality(record.personality);
   const customInstructions = normalizeCustomInstructions(record.customInstructions);
   const voiceModeVoice = normalizeRealtimeVoice(record.voiceModeVoice);
@@ -34,6 +36,7 @@ function mapUserPreferences(data: unknown) {
     showMessageTokenUsage,
     searchPastConvs,
     useMemory,
+    improveModel,
     personality,
     customInstructions,
     voiceModeVoice,

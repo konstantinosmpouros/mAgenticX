@@ -34,6 +34,7 @@ async def get_user_preferences(
         "show_message_token_usage": bool(row.show_message_token_usage),
         "search_past_convs": bool(row.search_past_convs),
         "use_memory": bool(row.use_memory),
+        "improve_model": bool(row.improve_model),
         # Schema-level validators normalize both: unknown personality ids
         # collapse to "default", stored custom-instruction text is re-sanitized.
         "personality": row.personality,
@@ -69,6 +70,7 @@ async def upsert_user_preferences(
         existing.show_message_token_usage = bool(payload.showMessageTokenUsage)
         existing.search_past_convs = bool(payload.searchPastConvs)
         existing.use_memory = bool(payload.useMemory)
+        existing.improve_model = bool(payload.improveModel)
         existing.personality = payload.personality
         existing.custom_instructions = custom_instructions
         existing.voice_mode_voice = voice_mode_voice
@@ -81,6 +83,7 @@ async def upsert_user_preferences(
                 show_message_token_usage=bool(payload.showMessageTokenUsage),
                 search_past_convs=bool(payload.searchPastConvs),
                 use_memory=bool(payload.useMemory),
+                improve_model=bool(payload.improveModel),
                 personality=payload.personality,
                 custom_instructions=custom_instructions,
                 voice_mode_voice=voice_mode_voice,
@@ -95,6 +98,7 @@ async def upsert_user_preferences(
         "preferences_updated",
         "Updated user preferences",
         suggestions_enabled=bool(payload.suggestionsEnabled),
+        improve_model=bool(payload.improveModel),
         personality=payload.personality,
         custom_instructions_enabled=payload.customInstructions.enabled,
         voice_mode_voice=voice_mode_voice,
@@ -105,6 +109,7 @@ async def upsert_user_preferences(
         showMessageTokenUsage=bool(payload.showMessageTokenUsage),
         searchPastConvs=bool(payload.searchPastConvs),
         useMemory=bool(payload.useMemory),
+        improveModel=bool(payload.improveModel),
         personality=payload.personality,
         customInstructions=payload.customInstructions,
         voiceModeVoice=voice_mode_voice,

@@ -61,6 +61,13 @@ class UserPreferences(BaseModel):
         validation_alias=AliasChoices("use_memory", "useMemory"),
         serialization_alias="useMemory",
     )
+    # Opt-in: whether the user allows their conversations to be used to improve
+    # future models. Defaults to false so silence never counts as consent.
+    improveModel: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("improve_model", "improveModel"),
+        serialization_alias="improveModel",
+    )
     personality: str = Field(default="default")
     customInstructions: CustomInstructions = Field(
         default_factory=CustomInstructions,

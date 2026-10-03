@@ -160,6 +160,10 @@ class UserPreferencesTable(Base):
     # AGENT.md `/memories/` mount + future memory folder) for the run. Threaded
     # into the run config so memory can be disabled per user without code change.
     use_memory = Column(Boolean, nullable=False, server_default="true")
+    # Opt-in (default false): "Improve the model for everyone" in Settings → Data
+    # controls — whether this user allows their conversations to be used to
+    # improve future models. Stored only; nothing reads it yet.
+    improve_model = Column(Boolean, nullable=False, server_default="false")
     # Personality preset id for agent responses ("default" = the agent's own
     # voice, no injected directive). Normalized fail-closed against the preset
     # registry at the API boundary; the agents service re-validates on its side.

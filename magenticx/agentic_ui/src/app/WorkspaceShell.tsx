@@ -136,6 +136,7 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
     handleToggleShowMessageTokenUsage,
     handleToggleSearchPastConvs,
     handleToggleUseMemory,
+    handleToggleImproveModel,
     handleSelectPersonality,
     handleSaveCustomInstructions,
     handleSelectVoiceModeVoice,
@@ -325,6 +326,7 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
                   onToggleMessageTokenUsage={handleToggleShowMessageTokenUsage}
                   onToggleSearchPastConvs={handleToggleSearchPastConvs}
                   onToggleUseMemory={handleToggleUseMemory}
+                  onToggleImproveModel={handleToggleImproveModel}
                   onSelectPersonality={handleSelectPersonality}
                   onSaveCustomInstructions={handleSaveCustomInstructions}
                   onSelectVoiceModeVoice={handleSelectVoiceModeVoice}

@@ -73,6 +73,7 @@ The `user_preferences` table has a one-to-one relationship with `users`. A row i
 | `suggestions_enabled` | Boolean | `true` | Show/hide starter suggestion chips in the chat UI |
 | `search_past_convs` | Boolean | `false` | Opt-in: attach the deep-agent `search_past_conversations` memory tool. Migration `0011`. |
 | `use_memory` | Boolean | `true` | On by default: gates a deep agent's persistent memory (AGENT.md `/memories/` mount + future memory folder). Threaded into the run config; turn off to run agents without their stored memory. Migration `0012`. |
+| `improve_model` | Boolean | `false` | Opt-in: whether the user allows their conversations to be used to improve future models (Settings → Data controls). Stored only — nothing reads it yet. Migration `0027`. |
 | `personality` | String | `"default"` | Personality preset id for agent responses (`default` = no injected directive). Fail-closed against the preset registry. Migration `0015`. |
 | `custom_instructions` | JSON | `{}` | `{enabled, nickname, occupation, traits, about}` — user-authored instructions injected into deep-agent prompts while `enabled`. Migration `0015`. |
 | `voice_mode_voice` | String | `"alloy"` | OpenAI Realtime voice identity |
@@ -100,6 +101,7 @@ class UserPreferences(BaseModel):
     suggestionsEnabled: bool           # default: True
     searchPastConvs: bool              # default: False
     useMemory: bool                    # default: True
+    improveModel: bool                 # default: False (opt-in)
     personality: str                   # default: "default" (fail-closed to preset registry)
     customInstructions: CustomInstructions  # {enabled, nickname, occupation, traits, about}
     voiceModeVoice: str                # default: "alloy"
@@ -250,6 +252,7 @@ The handlers are:
 | `handleToggleSuggestionsEnabled()` | Flips `suggestionsEnabled` |
 | `handleToggleSearchPastConvs()` | Flips `searchPastConvs` (memory-tool gate) |
 | `handleToggleUseMemory()` | Flips `useMemory` (agent persistent-memory gate) |
+| `handleToggleImproveModel()` | Flips `improveModel` (Data controls → "Improve the model for everyone") |
 | `handleSelectPersonality(id)` | Sets `personality` (no-op when unchanged) |
 | `handleSaveCustomInstructions(doc)` | Replaces the whole `customInstructions` document; returns success so the dialog closes only when persisted |
 | `handleSelectVoiceModeVoice(voice)` | Sets `voiceModeVoice` |

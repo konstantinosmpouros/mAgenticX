@@ -24,6 +24,8 @@ export type UserPreferences = {
   showMessageTokenUsage?: boolean;
   searchPastConvs?: boolean;
   useMemory?: boolean;
+  // Opt-in: may this user's conversations be used to improve future models.
+  improveModel?: boolean;
   personality?: PersonalityId;
   customInstructions?: CustomInstructions;
   voiceModeVoice?: RealtimeVoice;

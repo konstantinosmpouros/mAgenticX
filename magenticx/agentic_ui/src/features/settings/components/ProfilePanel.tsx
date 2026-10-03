@@ -209,6 +209,7 @@ type ProfilePanelProps = {
   onToggleMessageTokenUsage?: () => void;
   onToggleSearchPastConvs?: () => void;
   onToggleUseMemory?: () => void;
+  onToggleImproveModel?: () => void;
   onSelectPersonality?: (personality: PersonalityId) => void;
   /** Persists the custom-instructions document; resolves true on success. */
   onSaveCustomInstructions?: (value: CustomInstructions) => Promise<boolean>;
@@ -269,6 +270,7 @@ export default function ProfilePanel({
   onToggleMessageTokenUsage,
   onToggleSearchPastConvs,
   onToggleUseMemory,
+  onToggleImproveModel,
   onSelectPersonality,
   onSaveCustomInstructions,
   onSelectVoiceModeVoice,
@@ -473,6 +475,9 @@ export default function ProfilePanel({
                         onLoadMoreSharedConversations={onLoadMoreSharedConversations}
                         onSelectSharedConversation={onSelectSharedConversation}
                         onRevokeSharedConversation={onRevokeSharedConversation}
+                        improveModel={userPreferences?.improveModel === true}
+                        onToggleImproveModel={onToggleImproveModel}
+                        preferencesSaving={preferencesSaving}
                       />
                     ) : null}
 
