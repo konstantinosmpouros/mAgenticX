@@ -1,6 +1,6 @@
 # Deployment — GitHub CD to Dennis
 
-Production runs on **Dennis** (Oracle Cloud ARM64 VM, Docker Swarm), and every application release reaches it the same way: the image tags in [`magenticx/docker-compose-denis.yaml`](../../magenticx/docker-compose-denis.yaml) are the release, and the single **`cd` job** of [`.github/workflows/pipeline.yml`](../../.github/workflows/pipeline.yml) turns them into running services. A push runs CI only. A release starts when the repository owner clicks **Actions → CI/CD → Run workflow** on `main` — that click is the approval — and then, once the `ci` job is green, `cd` builds each new tag natively on an ARM64 GitHub runner (one step per service), scans it, and publishes it to the **GitHub Container Registry** (`ghcr.io`, private packages). Its last steps call a **Portainer stack webhook** — Portainer, which manages the stack, pulls `main` from the private repository itself and runs the Swarm rolling update — and watch the public site until the new versions answer. GitHub never connects to Dennis over SSH (port 22 only accepts the operator's home IP), and Portainer stays the one thing that deploys, so the stack remains fully Portainer-managed. The webhook URL can do exactly one thing — redeploy what `main` already holds — which is why it is the trigger rather than a Portainer API key, which would be admin over the whole VM.
+Production runs on **Dennis** (Oracle Cloud ARM64 VM, Docker Swarm), and every application release reaches it the same way: the image tags in [`magenticx/docker-compose-denis.yaml`](../../magenticx/docker-compose-denis.yaml) are the release, and the single **`cd` job** of [`.github/workflows/pipeline.yml`](../../.github/workflows/pipeline.yml) turns them into running services. A release starts when a push to `main` changes `docker-compose-denis.yaml` (merging a pull request included), or when the repository owner clicks **Actions → CI/CD → Run workflow** on `main`; once the `ci` job is green, `cd` builds each new tag natively on an ARM64 GitHub runner (one step per service), scans it, and publishes it to the **GitHub Container Registry** (`ghcr.io`, private packages). Its last steps call a **Portainer stack webhook** — Portainer, which manages the stack, pulls `main` from the private repository itself and runs the Swarm rolling update — and watch the public site until the new versions answer. GitHub never connects to Dennis over SSH (port 22 only accepts the operator's home IP), and Portainer stays the one thing that deploys, so the stack remains fully Portainer-managed. The webhook URL can do exactly one thing — redeploy what `main` already holds — which is why it is the trigger rather than a Portainer API key, which would be admin over the whole VM.
 
 ---
 
@@ -8,7 +8,7 @@ Production runs on **Dennis** (Oracle Cloud ARM64 VM, Docker Swarm), and every a
 
 ```mermaid
 flowchart LR
-    You["you: Run workflow on main"] --> GHA["GitHub Actions<br/>pipeline.yml: ci → cd"]
+    You["push to main changing docker-compose-denis.yaml<br/>(or Run workflow)"] --> GHA["GitHub Actions<br/>pipeline.yml: ci → cd"]
     GHA -->|"docker push (GITHUB_TOKEN)"| GHCR["ghcr.io<br/>private packages"]
     GHA -->|"POST webhook (HTTPS via Cloudflare → NPM)"| Portainer["Portainer on Dennis"]
     Portainer -->|"git pull main (read-only repo token)"| GitHub["github.com repo (private)"]
@@ -21,7 +21,7 @@ flowchart LR
 
 ## A Release — Full Sequence
 
-The workflow has two jobs, `ci` and `cd`, each one job with a step per service. A push or a pull request runs `ci` only; `cd` runs only on a manual run of the workflow on `main`, and only after `ci` is green.
+The workflow has two jobs, `ci` and `cd`, each one job with a step per service. `ci` runs on every push and pull request and works out whether the change touched `docker-compose-denis.yaml`; `cd` runs only after `ci` is green — to **publish** for a push to `main` that touched it or a manual run, and to **check** (build + scan, nothing pushed) for a pull request that touches it.
 
 ```mermaid
 sequenceDiagram
@@ -32,7 +32,7 @@ sequenceDiagram
     participant PT as Portainer (Dennis)
     participant S as Swarm
 
-    Y->>CI: Actions → CI/CD → Run workflow (main)
+    Y->>CI: push to main changing the yml (or Run workflow)
     CI-->>CD: green
     CD->>CD: refuse unless the repository owner started the run
     loop one step per service
@@ -48,7 +48,7 @@ sequenceDiagram
     CD->>G: anonymous pull of every image must be refused (private)
     CD->>PT: POST stack webhook
     PT->>PT: git pull main
-    PT->>S: stack deploy (re-pull images)
+    PT->>S: stack deploy (new tags → Swarm pulls them)
     S->>S: rolling update, start-first; unhealthy → automatic rollback
     loop every 20 s, up to 15 min
         CD->>S: GET /api/health (.version) + /version.txt
@@ -58,16 +58,18 @@ sequenceDiagram
 
 ---
 
-## Phase 1 — Trigger: the manual run is the approval
+## Phase 1 — Trigger: the yml changed
 
-The repository is private, and on GitHub Free, Pro and Team an environment's **required reviewers** only exist for public repositories — so there is no approval button to put in front of the job. The manual run replaces it, on any plan: nothing reaches Dennis unless someone deliberately starts **Run workflow** on `main`. The job's first step **fails closed** unless that someone is the repository owner (`github.triggering_actor`), so a collaborator given write access later still cannot release.
+`docker-compose-denis.yaml` is the release, so a change to it is what starts `cd`. The `ci` job works that out with `git diff` over the push range (`before..sha`) or the pull request's range (`base..merge`) — GitHub's push payload for Actions carries no file lists — and hands `release=true|false` to `cd`. A manual run always counts as a release.
 
-| Key fact | Value / detail |
+| Event | `cd` does |
 | --- | --- |
-| Push / pull request | CI only — never builds or deploys |
-| Run workflow on another branch | `cd` is skipped (`github.ref` must be `main`) |
-| Concurrency | one release at a time (`deploy-production`); a second run queues, never cancels one halfway |
-| Re-run of a failed release | **Re-run failed jobs** — re-checked against the owner like a fresh run |
+| Push to `main` that changed the yml (merging a PR included) | **publish** — build, push, deploy, verify. Automatic |
+| **Run workflow** on `main` | **publish** — whether or not the yml changed (without a new tag it changes nothing) |
+| Pull request that changes the yml | **check** — build + scan each new tag; push nothing, deploy nothing |
+| Anything else (docs-only push, PR not touching the yml, Run workflow on another branch) | nothing — CI only |
+
+A pull request never publishes: Portainer only ever deploys `main`, so its images could not go live before the merge anyway, and publishing would permanently take the tag (tags are never overwritten) with code that is not merged yet. The merge is a push to `main`, and that releases. A publish run **fails closed** unless the repository owner (`github.triggering_actor`) pushed or started it, so a collaborator given write access later still cannot ship. One release runs at a time (`deploy-production`); a PR's check has its own lane and is superseded by the PR's next push.
 
 ---
 
@@ -102,9 +104,10 @@ The job POSTs the webhook stored as the repository secret `PORTAINER_WEBHOOK_URL
 
 | You do | What happens |
 | --- | --- |
-| Bump the changed service's tag in `docker-compose-denis.yaml` — **patch only** (`v1.21.14 → v1.21.15`) — and push | `ci` runs; nothing is built or deployed |
-| **Actions** → **CI/CD** → **Run workflow** → Branch `main` → **Run workflow** | `ci`, then `cd`: publishes the new tag, Portainer pulls `main` and deploys, `cd` goes green when the new versions answer |
-| **Roll back** | revert the tag in the compose file, push, Run workflow — the old image is still in GHCR. For an emergency, Portainer → Services → *service* → **Rollback** |
+| Open a pull request that bumps a tag in `docker-compose-denis.yaml` — **patch only** (`v1.21.14 → v1.21.15`) | `ci` + `cd` **check**: the new image builds and passes the scan, nothing is published |
+| Merge it (or push the bump straight to `main`) | `ci`, then `cd` **publishes** the new tag, Portainer pulls `main` and deploys, `cd` goes green when the new versions answer |
+| **Actions** → **CI/CD** → **Run workflow** → `main` | re-runs a release by hand (e.g. after a failed one) |
+| **Roll back** | revert the tag in the compose file and push / merge — the old image is still in GHCR. For an emergency, Portainer → Services → *service* → **Rollback** |
 
 ---
 
@@ -175,7 +178,8 @@ e) **Stacks** → **Add stack**:
 | Repository reference | `refs/heads/main` |
 | Compose path | `magenticx/docker-compose-denis.yaml` |
 | GitOps updates | ☑ → Mechanism **Webhook** → **copy the webhook URL** |
-| Re-pull image | ☑ |
+| Re-pull image / Force redeployment | leave **off** — Business Edition only, and not needed: every release is a new tag (so the service spec changes and Swarm pulls it) and a new commit (so Portainer has something to deploy) |
+| Skip TLS Verification | **off** |
 | Environment variables | none |
 | | **Deploy the stack** |
 
@@ -194,9 +198,11 @@ Labels can differ slightly between Portainer versions. If GitOps updates offers 
 - **No tag bump, no release** — a code change without a tag bump is never built (the existing tag is skipped). A Run workflow then only redeploys what is already there. Bump the tag in the same change as the code.
 - **Images are private, and every release proves it** — they exist only in GHCR (the runner is a throwaway VM; Dennis keeps its pulled copies locally). GHCR creates packages private, and the `Verify every image is private` step fails the release if any of them can be pulled anonymously — e.g. someone flipped a package to public in its settings.
 - **Tags are never overwritten** — to rebuild a service, bump its tag. Deleting a package version in GHCR is the only way to reuse a tag; don't.
+- **Portainer CE redeploys only on a new commit** — without the Business-only *Force redeployment*, a webhook call when `main` hasn't moved since the last deploy is a no-op. Harmless: a release always carries a new commit (the tag bump). It is also why tags must change per release — *Re-pull image* (Business) is what a reused tag would need.
 - **The compose file is edited in git only** — a Git-based stack has no editor in Portainer. Stack environment variables set in Portainer survive redeploys; anything in the file comes from `main`.
 - **Actions minutes are metered** — a private repository spends the plan's monthly Actions minutes (GitHub Free: 2,000) on every CI run and every release; ARM64 runners for private repositories have 2 vCPUs, so builds take longer than on a public repository.
-- **Destructive migrations run on the bridge's start** — read any new file under `core/database/migrations/versions/` before you click Run workflow.
+- **A push that changes the yml goes straight to production** — there is no approval step (required reviewers are public-repo-only on GitHub Free). The pull request's `cd` check is the review point: it proves the images build and pass the scan before you merge.
+- **Destructive migrations run on the bridge's start** — read any new file under `core/database/migrations/versions/` before you push or merge the tag bump.
 - **Three tokens expire** — the GHCR pull token (Swarm can no longer pull new images), the repository read token (Portainer can no longer pull `main`, so redeploys fail) and, if rotated, the webhook. Running tasks keep running either way; rotate before the dates recorded in [secrets.md](secrets.md).
 - **Cloudflare sits in front of both calls** — the webhook (`portainer.magenticx.com`) and the smoke check (`agents.magenticx.com`) go through Cloudflare. If Bot Fight Mode or "Under Attack" is ever enabled, GitHub's runners get challenged and the job fails; add a WAF skip rule for the webhook path rather than turning the protection off.
 - **A leaked webhook URL** can only redeploy what `main` already holds. Still: regenerate it in Portainer (stack → GitOps → webhook) and update the repository secret.
@@ -209,7 +215,7 @@ Labels can differ slightly between Portainer versions. If GitOps updates offers 
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| CI + CD jobs | [.github/workflows/pipeline.yml](../../.github/workflows/pipeline.yml) | `ci`, `cd` (its `if:`, the owner check, one step per service) |
+| CI + CD jobs | [.github/workflows/pipeline.yml](../../.github/workflows/pipeline.yml) | `ci` (its *Is this a release?* step), `cd` (its `if:`, `RELEASE_MODE`, the owner check, one step per service) |
 | Build, scan, push one service | [.github/scripts/release_image.sh](../../.github/scripts/release_image.sh) | tag lookup, "already published?" check, Trivy gate |
 | The release (tags + stack config) | [magenticx/docker-compose-denis.yaml](../../magenticx/docker-compose-denis.yaml) | `image: ghcr.io/...`, `deploy.update_config` / `rollback_config` |
 | Version baked into images | `magenticx/<service>/Dockerfile` | `ARG APP_VERSION` |

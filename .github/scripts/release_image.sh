@@ -1,24 +1,15 @@
 #!/usr/bin/env bash
-# Publish one service's release image to GHCR — the build/scan/push half of CD.
-#
+# Build, scan and (in publish mode) push one service's image to GHCR.
 #   bash .github/scripts/release_image.sh <service>
-#
-# Reads the service's tag from magenticx/docker-compose-denis.yaml (the tags
-# there ARE the release). If GHCR already has that tag, it does nothing: tags
-# are immutable, so a published tag is never rebuilt or overwritten — a re-run
-# is harmless and an old tag is always there to roll back to. Otherwise it
-# builds linux/arm64 with the tag baked in as APP_VERSION, refuses an image with
-# a fixable CRITICAL vulnerability (Trivy), and pushes it.
-#
-# Runs inside the `cd` job of .github/workflows/pipeline.yml, already logged in
-# to ghcr.io. Expects TRIVY_IMAGE plus the standard GITHUB_* variables.
+# Tag comes from docker-compose-denis.yaml; an already-published tag is skipped
+# (tags are never overwritten). Pushes only when RELEASE_MODE=publish.
 set -euo pipefail
 
 service="${1:?usage: release_image.sh <service>}"
 compose="${COMPOSE_FILE:-magenticx/docker-compose-denis.yaml}"
 trivy="${TRIVY_IMAGE:?TRIVY_IMAGE must be set}"
-# Prefixed like the OrthodoxAI images (orthodoxai_<service>): GHCR packages
-# share one account-wide namespace, and both projects have the same services.
+mode="${RELEASE_MODE:-check}"
+# Prefixed: OrthodoxAI shares the GHCR namespace and the service names.
 repo="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/magenticx_$service"
 
 # --- the release tag ---------------------------------------------------------
@@ -40,10 +31,8 @@ if out=$(docker manifest inspect "$image" 2>&1); then
   echo "::notice::$image is already published — nothing to build (tags are never overwritten)."
   exit 0
 fi
-# "denied" is safe to read as absent: if the package exists but this token can't
-# see it, the push below is refused too, so nothing is overwritten by mistake.
-# Anything else is network or registry trouble — fail rather than guess, because
-# a wrong guess would rebuild and overwrite a published tag.
+# "denied" counts as absent (the push would be refused too); anything else
+# fails rather than risk overwriting a published tag.
 if ! printf '%s' "$out" | grep -qiE "manifest unknown|no such manifest|not found|name unknown|denied"; then
   echo "::error::Could not tell whether $image exists: $out"
   exit 1
@@ -58,10 +47,14 @@ docker build --pull --platform linux/arm64 \
   --label org.opencontainers.image.version="$tag" \
   -t "$image" "magenticx/$service"
 
-# Unfixed CRITICALs are not blocked: there is nothing to upgrade to yet.
+# Blocks fixable CRITICALs only.
 docker run --rm -v /var/run/docker.sock:/var/run/docker.sock "$trivy" \
   image --scanners vuln --severity CRITICAL --ignore-unfixed \
   --exit-code 1 --no-progress "$image"
 
+if [ "$mode" != "publish" ]; then
+  echo "::notice::$image builds and passes the scan — not pushed (RELEASE_MODE=$mode)."
+  exit 0
+fi
 docker push "$image"
 echo "::notice::Published $image"

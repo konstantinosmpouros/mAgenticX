@@ -9,25 +9,46 @@ on:
   workflow_dispatch:
 
 jobs:
-  # ===========================================================================
-  # CI stage — one job, one step per service.
-  #
-  # Each backend service installs into its OWN virtualenv: the services pin
-  # their dependencies independently, and one shared environment would let one
-  # service's pins mask a conflict in another. Every service step runs even when
-  # an earlier one failed (`!cancelled()`), so a single run reports all of them;
-  # the job is still red if any step failed. Coverage is scoped per service.
-  # ===========================================================================
+  # CI — one job, one step per service. Details: docs/architecture/deployment.md
   ci:
     name: ci
     runs-on: ubuntu-latest
-    # Hard backstop above the normal run time (the services now run one after
-    # another) so a hang that slips past the per-test pytest-timeout can never
-    # pin the runner for hours.
     timeout-minutes: 45
+    outputs:
+      release: ${{ steps.release.outputs.release }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history for the release diff below
+
+      # A change to docker-compose-denis.yaml is a release. Diffed with git:
+      # Actions' push payload has no file lists.
+      - name: Is this a release? (docker-compose-denis.yaml changed)
+        id: release
+        env:
+          EVENT: ${{ github.event_name }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          COMPOSE_FILE: magenticx/docker-compose-denis.yaml
+        run: |
+          case "$EVENT" in
+            workflow_dispatch) release=true ;;
+            push) base="$PUSH_BEFORE" ;;
+            pull_request) base="$PR_BASE" ;;
+            *) release=false ;;
+          esac
+          if [ -z "${release:-}" ]; then
+            if [ -z "$base" ] || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+              release=true # no usable base: can't tell, so don't skip a release
+            elif git diff --quiet "$base" "$GITHUB_SHA" -- "$COMPOSE_FILE"; then
+              release=false
+            else
+              release=true
+            fi
+          fi
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+          echo "release=$release"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -47,7 +68,8 @@ jobs:
           cache: npm
           cache-dependency-path: magenticx/agentic_ui/package-lock.json
 
-      # --- backend services ---------------------------------------------------
+      # Each service gets its own venv so their pins can't mask each other.
+      # `!cancelled()` runs every service even if an earlier one failed.
 
       - name: dialogue_bridge — install + test
         if: ${{ !cancelled() }}
@@ -79,32 +101,24 @@ jobs:
             --cov=magenticx/rag_service --cov-report=term-missing \
             --cov-report=xml:coverage-rag_service.xml
 
-      # --- agentic_ui ---------------------------------------------------------
-
       - name: agentic_ui — install
         id: ui_install
         if: ${{ !cancelled() }}
         working-directory: magenticx/agentic_ui
         run: npm ci
 
-      # `lint:ceiling` is `eslint .` with --max-warnings pinned to the measured
-      # baseline in package.json. Plain `npm run lint` exits 0 on warnings, so it
-      # could never fail the build and the warning count was free to climb. The
-      # ceiling only ever goes DOWN: when you remove warnings, lower it.
+      # Fails above the warning count pinned in package.json (only ever lower it).
       - name: agentic_ui — lint (warning ceiling)
         if: ${{ !cancelled() && steps.ui_install.outcome == 'success' }}
         working-directory: magenticx/agentic_ui
         run: npm run lint:ceiling
 
-      # `npm run build` is `vite build`, which does NOT type-check — esbuild strips
-      # types without reading them. Without this step a type error reaches Docker.
+      # `vite build` doesn't type-check, so this is the only type gate.
       - name: agentic_ui — type-check
         if: ${{ !cancelled() && steps.ui_install.outcome == 'success' }}
         working-directory: magenticx/agentic_ui
         run: npm run typecheck
 
-      # Vitest suite lives in tests/agentic_ui/ alongside the Python contract
-      # tests, not beside the source it exercises.
       - name: agentic_ui — test
         if: ${{ !cancelled() && steps.ui_install.outcome == 'success' }}
         working-directory: magenticx/agentic_ui
@@ -115,7 +129,6 @@ jobs:
         working-directory: magenticx/agentic_ui
         run: npm run build
 
-      # Static frontend↔bridge contract checks (pytest, reads the TS source).
       - name: agentic_ui — contract tests
         if: ${{ !cancelled() }}
         run: |
@@ -131,56 +144,37 @@ jobs:
           path: coverage-*.xml
           if-no-files-found: ignore
 
-
-
-  # ===========================================================================
-  # CD stage — one job, one step per service.
-  # Full reference: docs/architecture/deployment.md
-  #
-  # The image tags in magenticx/docker-compose-denis.yaml ARE the release. Bump
-  # a service's tag (patch only) and push: that runs CI only. A release happens
-  # when the repository owner clicks Actions → CI/CD → Run workflow on main —
-  # that click IS the approval. Environments' required reviewers are not
-  # available to private repositories on GitHub Free/Pro/Team, so the manual
-  # run replaces them, on any plan. Once CI is green this job publishes every
-  # tag GHCR does not have yet, calls the Portainer stack webhook (Portainer
-  # pulls main from GitHub and redeploys the Swarm stack it manages), and
-  # watches the public site until the new versions answer. No tag bump, no
-  # new image.
-  #
-  # Pushes and pull requests never reach this job, so they never see the
-  # webhook secret or a token that can push images.
-  # ===========================================================================
+  # CD — one job, one step per service. Details: docs/architecture/deployment.md
+  #   publish: push to main that changed docker-compose-denis.yaml, or Run workflow
+  #   check:   pull request that changes it — build + scan only, nothing pushed
   cd:
     name: cd
     needs: [ci]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
-    # Dennis is ARM64 (Ampere A1). A native arm64 runner builds in minutes;
-    # QEMU emulation of the Python wheels takes ages. (Private repositories get
-    # these runners too, billed against the plan's Actions minutes.)
-    runs-on: ubuntu-24.04-arm
-    # Covers four builds plus the rollout wait.
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.ci.outputs.release == 'true') ||
+      (github.event_name == 'pull_request' && needs.ci.outputs.release == 'true')
+    runs-on: ubuntu-24.04-arm # Dennis is ARM64: build natively, no QEMU
     timeout-minutes: 90
-    # One release at a time; a second Run workflow queues behind the running
-    # one instead of cancelling it halfway.
+    # One release at a time; PR checks get their own lane.
     concurrency:
-      group: deploy-production
-      cancel-in-progress: false
+      group: ${{ github.event_name == 'pull_request' && format('cd-check-{0}', github.ref) || 'deploy-production' }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     permissions:
       contents: read
       packages: write
     env:
+      RELEASE_MODE: ${{ github.event_name == 'pull_request' && 'check' || 'publish' }}
       SITE: https://agents.magenticx.com
       COMPOSE_FILE: magenticx/docker-compose-denis.yaml
-      # Pinned by digest: this image scans what is about to ship.
       TRIVY_IMAGE: ghcr.io/aquasecurity/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa
     steps:
       - name: Checkout code
         uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
 
-      # Fail closed. The manual run is the approval, so it must be the owner's:
-      # anyone later given write access could otherwise start a release.
+      # Fail closed: only the repository owner can ship to production.
       - name: Only the repository owner can release
+        if: env.RELEASE_MODE == 'publish'
         env:
           ACTOR: ${{ github.triggering_actor }}
           OWNER: ${{ github.repository_owner }}
@@ -195,8 +189,8 @@ jobs:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: printf '%s' "$TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
 
-      # --- one step per service: publish its tag if GHCR doesn't have it ---
-      # A failure stops the job here, so a half-built release never deploys.
+      # Builds + scans each new tag; pushes only in publish mode. Any failure
+      # stops the job, so a half-built release never deploys.
 
       - name: dialogue_bridge — build, scan, push
         run: bash .github/scripts/release_image.sh dialogue_bridge
@@ -210,11 +204,9 @@ jobs:
       - name: agentic_ui — build, scan, push
         run: bash .github/scripts/release_image.sh agentic_ui
 
-      # The images must never be public. GHCR creates packages private, but a
-      # package's visibility can be flipped in its settings — so prove it on
-      # every release: an empty Docker config means NO credentials, and an
-      # anonymous pull must be refused. Fails before anything is deployed.
+      # An anonymous pull must be refused — fails the release if any image is public.
       - name: Verify every image is private
+        if: env.RELEASE_MODE == 'publish'
         run: |
           anon=$(mktemp -d)
           failed=0
@@ -233,9 +225,9 @@ jobs:
           rm -rf "$anon"
           exit "$failed"
 
-      # --- deploy ---------------------------------------------------------
-
+      # Portainer pulls main and redeploys. Safe to retry.
       - name: Tell Portainer to pull main and redeploy the stack
+        if: env.RELEASE_MODE == 'publish'
         env:
           WEBHOOK_URL: ${{ secrets.PORTAINER_WEBHOOK_URL }}
         run: |
@@ -243,16 +235,11 @@ jobs:
             echo "::error::PORTAINER_WEBHOOK_URL is not set (Settings → Secrets and variables → Actions → Repository secrets)."
             exit 1
           fi
-          # Safe to retry: the webhook redeploys whatever main holds, so a
-          # repeat changes nothing.
           curl -fsS --max-time 60 --retry 3 --retry-all-errors -X POST -o /dev/null "$WEBHOOK_URL"
 
-      # The webhook returns before Swarm finishes its rolling update, and the
-      # old tasks keep answering until the new ones are healthy — so wait until
-      # the public site reports the versions this release names. The bridge
-      # reports its tag on /api/health and the UI serves /version.txt; agents and
-      # rag_service are internal, guarded by Swarm's healthcheck rollback.
+      # Wait until the public site reports the new bridge + UI versions.
       - name: Wait for the release to go live
+        if: env.RELEASE_MODE == 'publish'
         run: |
           tag_of() {
             grep -E "^[[:space:]]+image:[[:space:]]+ghcr\.io/[^/]+/magenticx_$1:" "$COMPOSE_FILE" \
@@ -264,7 +251,6 @@ jobs:
           while :; do
             bridge=$(curl -fsS --max-time 10 "$SITE/api/health" \
               | python3 -c 'import json, sys; print(json.load(sys.stdin).get("version", ""))' 2>/dev/null || true)
-            # The query string defeats any edge cache between here and nginx.
             ui=$(curl -fsS --max-time 10 "$SITE/version.txt?t=$(date +%s)" | tr -d '[:space:]' || true)
             if [ "$bridge" = "$want_bridge" ] && [ "$ui" = "$want_ui" ]; then
               echo "Live: dialogue_bridge $bridge, agentic_ui $ui"
