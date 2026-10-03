@@ -10,27 +10,21 @@ on:
 
 jobs:
   # ===========================================================================
-  # CI stage
+  # CI stage — one job, one step per service.
+  #
+  # Each backend service installs into its OWN virtualenv: the services pin
+  # their dependencies independently, and one shared environment would let one
+  # service's pins mask a conflict in another. Every service step runs even when
+  # an earlier one failed (`!cancelled()`), so a single run reports all of them;
+  # the job is still red if any step failed. Coverage is scoped per service.
   # ===========================================================================
-
-  # One job per backend service: install only that service's deps, run only its
-  # tests, and report coverage scoped to its own source tree.
-  backend:
-    name: ci / ${{ matrix.service }}
+  ci:
+    name: ci
     runs-on: ubuntu-latest
-    # Hard backstop above the normal run time (~2-4 min) so a hang that slips
-    # past the per-test pytest-timeout can never pin the runner for hours.
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - service: dialogue_bridge
-            tests: tests/dialogue_bridge tests/integration
-          - service: agents
-            tests: tests/agents
-          - service: rag_service
-            tests: tests/rag_service
+    # Hard backstop above the normal run time (the services now run one after
+    # another) so a hang that slips past the per-test pytest-timeout can never
+    # pin the runner for hours.
+    timeout-minutes: 45
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -42,39 +36,9 @@ jobs:
           cache: pip
           cache-dependency-path: |
             tests/requirements.txt
-            magenticx/${{ matrix.service }}/requirements.txt
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r tests/requirements.txt
-          python -m pip install -r magenticx/${{ matrix.service }}/requirements.txt
-
-      - name: Run tests with coverage
-        run: >-
-          python -m pytest ${{ matrix.tests }}
-          --cov=magenticx/${{ matrix.service }}
-          --cov-report=term-missing
-          --cov-report=xml:coverage-${{ matrix.service }}.xml
-
-      - name: Upload coverage report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-${{ matrix.service }}
-          path: coverage-${{ matrix.service }}.xml
-          if-no-files-found: ignore
-
-  # Frontend service: lint (against a warning ceiling), type-check, the Vitest
-  # suite, build, plus the Python static-contract checks that guard the
-  # frontend↔bridge API contract. Both test suites live in tests/agentic_ui/.
-  agentic_ui:
-    name: ci / agentic_ui
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+            magenticx/dialogue_bridge/requirements.txt
+            magenticx/agents/requirements.txt
+            magenticx/rag_service/requirements.txt
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -83,71 +47,243 @@ jobs:
           cache: npm
           cache-dependency-path: magenticx/agentic_ui/package-lock.json
 
-      - name: Install frontend dependencies
+      # --- backend services ---------------------------------------------------
+
+      - name: dialogue_bridge — install + test
+        if: ${{ !cancelled() }}
+        run: |
+          python -m venv .venv/dialogue_bridge
+          .venv/dialogue_bridge/bin/python -m pip install --upgrade pip
+          .venv/dialogue_bridge/bin/python -m pip install -r tests/requirements.txt -r magenticx/dialogue_bridge/requirements.txt
+          .venv/dialogue_bridge/bin/python -m pytest tests/dialogue_bridge tests/integration \
+            --cov=magenticx/dialogue_bridge --cov-report=term-missing \
+            --cov-report=xml:coverage-dialogue_bridge.xml
+
+      - name: agents — install + test
+        if: ${{ !cancelled() }}
+        run: |
+          python -m venv .venv/agents
+          .venv/agents/bin/python -m pip install --upgrade pip
+          .venv/agents/bin/python -m pip install -r tests/requirements.txt -r magenticx/agents/requirements.txt
+          .venv/agents/bin/python -m pytest tests/agents \
+            --cov=magenticx/agents --cov-report=term-missing \
+            --cov-report=xml:coverage-agents.xml
+
+      - name: rag_service — install + test
+        if: ${{ !cancelled() }}
+        run: |
+          python -m venv .venv/rag_service
+          .venv/rag_service/bin/python -m pip install --upgrade pip
+          .venv/rag_service/bin/python -m pip install -r tests/requirements.txt -r magenticx/rag_service/requirements.txt
+          .venv/rag_service/bin/python -m pytest tests/rag_service \
+            --cov=magenticx/rag_service --cov-report=term-missing \
+            --cov-report=xml:coverage-rag_service.xml
+
+      # --- agentic_ui ---------------------------------------------------------
+
+      - name: agentic_ui — install
+        id: ui_install
+        if: ${{ !cancelled() }}
         working-directory: magenticx/agentic_ui
         run: npm ci
 
       # `lint:ceiling` is `eslint .` with --max-warnings pinned to the measured
-      # baseline (currently 124).
-      # Plain `npm run lint` exits 0 on warnings, so it could never fail the build
-      # and the warning count was free to climb. The ceiling only ever goes DOWN:
-      # when you remove warnings, lower the number in package.json to lock it in.
-      - name: Lint frontend (warning ceiling)
+      # baseline in package.json. Plain `npm run lint` exits 0 on warnings, so it
+      # could never fail the build and the warning count was free to climb. The
+      # ceiling only ever goes DOWN: when you remove warnings, lower it.
+      - name: agentic_ui — lint (warning ceiling)
+        if: ${{ !cancelled() && steps.ui_install.outcome == 'success' }}
         working-directory: magenticx/agentic_ui
         run: npm run lint:ceiling
 
       # `npm run build` is `vite build`, which does NOT type-check — esbuild strips
       # types without reading them. Without this step a type error reaches Docker.
-      - name: Type-check frontend
+      - name: agentic_ui — type-check
+        if: ${{ !cancelled() && steps.ui_install.outcome == 'success' }}
         working-directory: magenticx/agentic_ui
         run: npm run typecheck
 
       # Vitest suite lives in tests/agentic_ui/ alongside the Python contract
       # tests, not beside the source it exercises.
-      - name: Test frontend
+      - name: agentic_ui — test
+        if: ${{ !cancelled() && steps.ui_install.outcome == 'success' }}
         working-directory: magenticx/agentic_ui
         run: npm run test
 
-      - name: Build frontend
+      - name: agentic_ui — build
+        if: ${{ !cancelled() && steps.ui_install.outcome == 'success' }}
         working-directory: magenticx/agentic_ui
         run: npm run build
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      # Static frontend↔bridge contract checks (pytest, reads the TS source).
+      - name: agentic_ui — contract tests
+        if: ${{ !cancelled() }}
+        run: |
+          python -m venv .venv/contracts
+          .venv/contracts/bin/python -m pip install -r tests/requirements.txt
+          .venv/contracts/bin/python -m pytest tests/agentic_ui -q
+
+      - name: Upload coverage reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
         with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: tests/requirements.txt
+          name: coverage
+          path: coverage-*.xml
+          if-no-files-found: ignore
 
-      - name: Install test dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r tests/requirements.txt
 
-      - name: Run frontend contract tests
-        run: python -m pytest tests/agentic_ui -q
 
   # ===========================================================================
-  # CD stage — PLACEHOLDER, not yet implemented.
+  # CD stage — one job, one step per service.
+  # Full reference: docs/architecture/deployment.md
   #
-  # Deployment is currently manual (see CLAUDE.md § Deployment): images are
-  # built locally with `docker buildx --platform linux/arm64`, pushed to Docker
-  # Hub, and the Swarm stack is redeployed by hand from Portainer. This job only
-  # establishes the pipeline shape so the CD stage has a home; wire the real
-  # steps once the automated deploy path is decided.
+  # The image tags in magenticx/docker-compose-denis.yaml ARE the release. Bump
+  # a service's tag (patch only) and merge: once CI is green this job waits for
+  # YOUR approval on the `production` environment, publishes every tag GHCR
+  # does not have yet, calls the Portainer stack webhook (Portainer pulls main
+  # from GitHub and redeploys the Swarm stack it manages), and watches the
+  # public site until the new versions answer. No tag bump, no new image.
   #
-  # Intended future steps:
-  #   - docker buildx build --platform linux/arm64 -t <repo>/<svc>:<tag> --push
-  #   - trigger the Portainer stack redeploy (webhook) for magenticx
+  # It only starts for main when the push touched the Dennis compose file (new
+  # tags or config), or on a manual run — a docs-only merge never asks for an
+  # approval. Pull requests, fork PRs included, never reach it, so they never
+  # see the webhook secret or a token that can push images.
   # ===========================================================================
-  deploy:
-    name: cd / deploy (not yet implemented)
-    needs: [backend, agentic_ui]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+  cd:
+    name: cd
+    needs: [ci]
+    if: >-
+      github.ref == 'refs/heads/main' && (
+        github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'push' &&
+         contains(toJSON(github.event.commits), 'magenticx/docker-compose-denis.yaml'))
+      )
+    # Dennis is ARM64 (Ampere A1). A native arm64 runner (free for public
+    # repos) builds in minutes; QEMU emulation of the Python wheels takes ages.
+    runs-on: ubuntu-24.04-arm
+    # Covers four builds plus the rollout wait. Time spent waiting for the
+    # approval is not counted.
+    timeout-minutes: 90
+    environment:
+      name: production
+      url: https://agents.magenticx.com
+    # One release at a time; a newer merge queues behind the running one
+    # instead of cancelling it halfway.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write
+      actions: read
+    env:
+      SITE: https://agents.magenticx.com
+      COMPOSE_FILE: magenticx/docker-compose-denis.yaml
+      # Pinned by digest: this image scans what is about to ship.
+      TRIVY_IMAGE: ghcr.io/aquasecurity/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa
     steps:
-      - name: CD placeholder
+      - name: Checkout code
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+
+      # Fail closed. GitHub creates a missing environment on first use WITH NO
+      # protection, which would let this job run without anyone's approval.
+      - name: Refuse to release without an approval gate
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          echo "CI passed on main — CD stage reached."
-          echo "CD is not yet implemented: deploy is manual today"
-          echo "(buildx --platform linux/arm64 -> Docker Hub -> Portainer redeploy)."
+          reviewers=$(curl -fsS \
+            -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/environments/production" \
+            | python3 -c 'import json, sys; rules = json.load(sys.stdin).get("protection_rules") or []; print(sum(r.get("type") == "required_reviewers" for r in rules))')
+          if [ "${reviewers:-0}" -lt 1 ]; then
+            echo "::error::The 'production' environment has no required reviewer. Add one (Settings → Environments → production) before releasing."
+            exit 1
+          fi
+
+      - name: Log in to GHCR
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+      # --- one step per service: publish its tag if GHCR doesn't have it ---
+      # A failure stops the job here, so a half-built release never deploys.
+
+      - name: dialogue_bridge — build, scan, push
+        run: bash .github/scripts/release_image.sh dialogue_bridge
+
+      - name: agents — build, scan, push
+        run: bash .github/scripts/release_image.sh agents
+
+      - name: rag_service — build, scan, push
+        run: bash .github/scripts/release_image.sh rag_service
+
+      - name: agentic_ui — build, scan, push
+        run: bash .github/scripts/release_image.sh agentic_ui
+
+      # The images must never be public. GHCR creates packages private, but a
+      # package's visibility can be flipped in its settings — so prove it on
+      # every release: an empty Docker config means NO credentials, and an
+      # anonymous pull must be refused. Fails before anything is deployed.
+      - name: Verify every image is private
+        run: |
+          anon=$(mktemp -d)
+          failed=0
+          for svc in dialogue_bridge agents rag_service agentic_ui; do
+            image=$(grep -oE "ghcr\.io/[^/]+/magenticx_$svc:v[0-9]+\.[0-9]+\.[0-9]+" "$COMPOSE_FILE")
+            if out=$(DOCKER_CONFIG="$anon" docker manifest inspect "$image" 2>&1); then
+              echo "::error::$image can be pulled WITHOUT credentials — it is PUBLIC. Make it private: github.com/users/$GITHUB_REPOSITORY_OWNER/packages/container/magenticx_$svc/settings → Danger Zone → Change visibility."
+              failed=1
+            elif printf '%s' "$out" | grep -qiE "unauthorized|denied|authentication required"; then
+              echo "$image: private ✓"
+            else
+              echo "::error::Could not verify $image is private: $out"
+              failed=1
+            fi
+          done
+          rm -rf "$anon"
+          exit "$failed"
+
+      # --- deploy ---------------------------------------------------------
+
+      - name: Tell Portainer to pull main and redeploy the stack
+        env:
+          WEBHOOK_URL: ${{ secrets.PORTAINER_WEBHOOK_URL }}
+        run: |
+          if [ -z "$WEBHOOK_URL" ]; then
+            echo "::error::PORTAINER_WEBHOOK_URL is not set as a secret of the 'production' environment."
+            exit 1
+          fi
+          # Safe to retry: the webhook redeploys whatever main holds, so a
+          # repeat changes nothing.
+          curl -fsS --max-time 60 --retry 3 --retry-all-errors -X POST -o /dev/null "$WEBHOOK_URL"
+
+      # The webhook returns before Swarm finishes its rolling update, and the
+      # old tasks keep answering until the new ones are healthy — so wait until
+      # the public site reports the versions this release names. The bridge
+      # reports its tag on /api/health and the UI serves /version.txt; agents and
+      # rag_service are internal, guarded by Swarm's healthcheck rollback.
+      - name: Wait for the release to go live
+        run: |
+          tag_of() {
+            grep -E "^[[:space:]]+image:[[:space:]]+ghcr\.io/[^/]+/magenticx_$1:" "$COMPOSE_FILE" \
+              | sed -E 's/.*:(v[0-9]+\.[0-9]+\.[0-9]+)[[:space:]]*$/\1/'
+          }
+          want_bridge=$(tag_of dialogue_bridge)
+          want_ui=$(tag_of agentic_ui)
+          deadline=$((SECONDS + 900))
+          while :; do
+            bridge=$(curl -fsS --max-time 10 "$SITE/api/health" \
+              | python3 -c 'import json, sys; print(json.load(sys.stdin).get("version", ""))' 2>/dev/null || true)
+            # The query string defeats any edge cache between here and nginx.
+            ui=$(curl -fsS --max-time 10 "$SITE/version.txt?t=$(date +%s)" | tr -d '[:space:]' || true)
+            if [ "$bridge" = "$want_bridge" ] && [ "$ui" = "$want_ui" ]; then
+              echo "Live: dialogue_bridge $bridge, agentic_ui $ui"
+              exit 0
+            fi
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "::error::Not live after 15 min (bridge '${bridge:-none}', want $want_bridge; ui '${ui:-none}', want $want_ui). Check the stack in Portainer — a failed update rolls itself back."
+              exit 1
+            fi
+            echo "Waiting: bridge ${bridge:-none}/$want_bridge, ui ${ui:0:20}/$want_ui"
+            sleep 20
+          done

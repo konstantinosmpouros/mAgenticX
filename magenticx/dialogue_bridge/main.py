@@ -183,7 +183,11 @@ add_pagination(app)
 
 @app.get("/health", include_in_schema=False)
 async def health():
-    return {"status": "ok"}
+    # `version` is the release tag CD baked into the image (APP_VERSION). The
+    # deploy job polls it through the public /api/health to confirm a rollout
+    # actually went live. Not sensitive: the same tags are published in
+    # docker-compose-denis.yaml on the public repo.
+    return {"status": "ok", "version": settings.app.version}
 
 
 # Include API routers

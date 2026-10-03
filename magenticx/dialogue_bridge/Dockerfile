@@ -24,4 +24,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# The release tag, passed in by CD (`--build-arg APP_VERSION=v2.17.17`). Read by
+# settings.app.version: it stamps every log line and is reported by /health,
+# which is how the deploy job confirms the new image is actually serving.
+# Declared last so changing it never invalidates the dependency layers above.
+ARG APP_VERSION=dev
+ENV APP_VERSION=$APP_VERSION
+
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8002"]

@@ -34,5 +34,11 @@ RUN cp -r /app/harness/agents_seed /opt/agents_seed
 RUN mkdir -p /var/magenticx/global/agents /var/magenticx/global/skills /var/magenticx/workspaces/users \
     && chown -R 1000:1000 /var/magenticx
 
+# The release tag, passed in by CD (`--build-arg APP_VERSION=v1.21.14`). Read by
+# settings.app.version, which stamps every log line. Declared last so changing
+# it never invalidates the dependency layers above.
+ARG APP_VERSION=dev
+ENV APP_VERSION=$APP_VERSION
+
 EXPOSE 8003
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8003"]
