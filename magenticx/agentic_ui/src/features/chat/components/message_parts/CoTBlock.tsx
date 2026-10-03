@@ -16,9 +16,11 @@ import {
   ChainOfThoughtHeader,
   ChainOfThoughtStep,
 } from "@/shared/ui/ai-elements/chain-of-thought";
-import { toolIcon, toolIsBare, toolLabel } from "@/shared/lib/consts";
-import { ToolInput, ToolOutput } from "@/shared/ui/ai-elements/tool";
+import { toolIcon } from "@/shared/lib/consts";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/shared/ui/collapsible";
+import { toolMeta, toolTitle, toolTitleHint } from "@/features/chat/lib/toolPresentation";
+import { useWorkspaceStore } from "@/shared/stores/workspaceStore";
+import { ToolCallArgsView, ToolCallResultView } from "./ToolCallViews";
 import { ShimmeringText } from "@/shared/ui/shadcn-io/shimmering-text";
 import { MarkdownRenderer } from "@/shared/ui/markdownRenderer";
 import { useHitl, parseHitlInterrupt } from "@/features/inference";
@@ -106,6 +108,16 @@ const TimelineToolItem = memo(
     const hitl = useHitl();
     const args = useMemo(() => parseToolArgs(tool.argsText), [tool.argsText]);
     const duration = toolDurationLabel(tool);
+    // MCP tools arrive under bare names (`tavily-search`); the catalog says
+    // which server each belongs to, which is what makes them "Server · Tool".
+    const serverId = useWorkspaceStore(
+      (s) => s.availableTools.find((t) => t.toolName === tool.name)?.serverId || undefined,
+    );
+    // "Read report.csv" rather than `read_file`; the full path on hover.
+    const title = toolTitle(tool.name, args, serverId);
+    const titleHint = toolTitleHint(tool.name, args);
+    const meta =
+      tool.state === "output-error" ? undefined : toolMeta(tool.name, args, tool.result, serverId);
 
     const approval = tool.approval;
     const clientResolved = approval && hitl ? hitl.isInterruptResolved(runId, approval.id) : false;
@@ -131,9 +143,12 @@ const TimelineToolItem = memo(
           label={
             <CollapsibleTrigger
               className="flex max-w-full items-center gap-2 text-left transition-colors hover:text-foreground"
-              aria-label={`Toggle ${toolLabel(tool.name)} details`}
+              aria-label={`Toggle ${title} details`}
             >
-              <span className="truncate font-medium">{toolLabel(tool.name)}</span>
+              <span className="truncate font-medium" title={titleHint}>
+                {title}
+              </span>
+              {meta ? <span className="shrink-0 text-muted-foreground text-xs">{meta}</span> : null}
               {duration ? (
                 <span className="shrink-0 text-muted-foreground text-xs tabular-nums">
                   {duration}
@@ -155,9 +170,7 @@ const TimelineToolItem = memo(
           }
         >
           <CollapsibleContent className="space-y-3 outline-none data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 data-[state=closed]:animate-out data-[state=open]:animate-in">
-            {args !== null && args !== undefined && !toolIsBare(tool.name) ? (
-              <ToolInput input={args} />
-            ) : null}
+            <ToolCallArgsView tool={tool} args={args} serverId={serverId} />
             {face === "pending" ? (
               <div className="rounded-md border border-amber-500/25 bg-amber-500/[0.06] px-3 py-2 text-amber-500 text-xs">
                 Waiting for your approval — respond in the bar below.
@@ -169,11 +182,7 @@ const TimelineToolItem = memo(
                 ran.
               </div>
             ) : null}
-            <ToolOutput
-              output={tool.result}
-              truncated={tool.resultTruncated}
-              bare={toolIsBare(tool.name)}
-            />
+            <ToolCallResultView tool={tool} args={args} serverId={serverId} />
           </CollapsibleContent>
         </ChainOfThoughtStep>
       </Collapsible>

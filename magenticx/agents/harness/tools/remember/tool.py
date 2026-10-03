@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field
 from core.logging import get_logger
 from core.settings import settings
 from harness.memory import AgentMemoryStore, get_memory_pool, slugify_name
+from harness.tools.text_args import undo_double_escaping
 
 logger = get_logger(__name__)
 
@@ -68,8 +69,9 @@ def build_remember_tool(
         slug = slugify_name(name)
         if not slug:
             return "Could not save: 'name' must contain letters or digits."
-        summary = summary.strip()[:_MAX_SUMMARY]
-        content = content.strip()[:_MAX_CONTENT]
+        # Undo double-escaped line breaks before capping (text_args.py).
+        summary = undo_double_escaping(summary).strip()[:_MAX_SUMMARY]
+        content = undo_double_escaping(content).strip()[:_MAX_CONTENT]
         if not summary or not content:
             return "Could not save: both 'summary' and 'content' are required."
 

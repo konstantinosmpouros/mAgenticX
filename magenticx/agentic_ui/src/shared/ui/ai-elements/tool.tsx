@@ -17,7 +17,7 @@ import { CodeBlock } from "./code-block";
  * they expand the message to the height of the payload and push the rest of the
  * conversation off screen, so each pane caps and scrolls within itself instead.
  */
-const PAYLOAD_PANE = "scrollbar-muted max-h-72 overflow-auto overscroll-contain";
+export const PAYLOAD_PANE = "scrollbar-muted max-h-72 overflow-auto overscroll-contain";
 
 export type ToolInputProps = ComponentProps<"div"> & {
   input: unknown;

@@ -48,6 +48,7 @@ from harness.skill_registry import (
     assign_user_skill_to_agent,
 )
 from schema import CustomSkillCreate, SkillFile
+from harness.tools.text_args import undo_double_escaping
 
 logger = get_logger(__name__)
 
@@ -103,7 +104,9 @@ def build_create_skill_tool(*, user_id: str, agent_slug: str) -> StructuredTool:
     ) -> str:
         name = name.strip()
         description = description.strip()[:_MAX_DESCRIPTION]
-        instructions = instructions.strip()
+        # A model sometimes double-escapes the body's line breaks; saved
+        # as-is the SKILL.md would be one line. See harness/tools/text_args.py.
+        instructions = undo_double_escaping(instructions).strip()
         if not name:
             return "Could not create the skill: 'name' is required."
         if not description or not instructions:

@@ -166,3 +166,15 @@ async def test_a_store_failure_is_reported_not_raised(bind):
     tool, _ = bind(explode=True)
     out = await tool.ainvoke({"name": "a", "summary": "s", "content": "c"})
     assert out == "Could not save the memory right now."
+
+
+# ---------------------------------------------------------------------------
+# Double-escaped line breaks
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_double_escaped_line_breaks_are_restored(bind):
+    # A model sometimes sends `\n` (literal backslash + n) instead of a line
+    # break; stored as-is the memory would be one unreadable line.
+    tool, store = bind()
+    await tool.ainvoke({"name": "goals", "summary": "s", "content": "# Goals\n\n- ship CD"})
+    assert store.upserts[0]["content"] == "# Goals\n\n- ship CD"

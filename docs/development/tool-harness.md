@@ -98,7 +98,7 @@ Each auto-attach builtin's `builder(ctx)` returns the tool **or** `None` when it
 | `search_past_conversations` | Semantic recall across the user's earlier conversations (pgvector). | `search_past_convs` is opted in |
 | `render_chart` | Draws a chart inline in the reply from data the agent supplies — 8 types (`bar`, `line`, `area`, `pie`, `radar`, `radial`, `scatter`, `composed`) and 3 modifiers (`stacked`, `horizontal`, `show_values`). Not HITL-gated — it draws, it does not write. | a `conversation_id` exists (no preference gate) |
 | `present_artifact` | Hands a finished `output/` file to the user as a document card, placed inline at the point of the call — so an agent presents each document as it becomes ready rather than only at the end of the turn. | a `conversation_id` exists (no preference gate) |
-| `view_image` | Shows the model an image from `/conversation/input/` or `/conversation/output/`, whole or zoomed into a pixel `region`. Returns a `ToolMessage` carrying a text note plus an **image content block** — a JSON string of base64 would reach the model as text and be worth nothing. PNG/JPEG/GIF/WebP, capped by `VIEW_IMAGE_MAX_BYTES` (10 MB). Rendered *bare* in the UI: labelled "View image", no Parameters pane, no Result heading — just the picture, or the error. | a `conversation_id` exists (no preference gate) |
+| `view_image` | Shows the model an image from `/conversation/input/` or `/conversation/output/`, whole or zoomed into a pixel `region`. Returns a `ToolMessage` carrying a text note plus an **image content block** — a JSON string of base64 would reach the model as text and be worth nothing. PNG/JPEG/GIF/WebP, capped by `VIEW_IMAGE_MAX_BYTES` (10 MB). Rendered *bare* in the UI: titled with the file ("View photo.jpg"), no Parameters pane, no Result heading — just the picture, or the error. | a `conversation_id` exists (no preference gate) |
 | `create_skill` | Authors a reusable skill into the user's pool (`add_custom_to_user`) and enables it for the calling agent (`assign_user_skill_to_agent`). Both are writes to `agent_runtime`, so the skill is readable by the *next* tool call in the same run. Writes the **user-managed** tier (tier ②), so the user can still disable it in Settings → Agents — not the read-only tier ① an agent's declared `skills:` resolves to. | ungated, but **approval-gated by default** (see below) |
 
 Registration order in `registry.py` is the attach order: `remember → search_past_conversations → render_chart → view_image → present_artifact → create_skill`. These are **not** toggled in the Agents tab: `remember` and `search_past_conversations` follow the Personalization prefs above, while `render_chart`, `present_artifact` and `create_skill` are always on.
@@ -255,14 +255,42 @@ See [database-schema](../architecture/database-schema.md#agent_runtime-tables) f
   A crop over `MAX_DETAIL_EDGE` (2048px) is shrunk, so a zoom cannot return
   something bigger than the full view. Transparency survives (PNG); everything
   else re-encodes as JPEG q88.
+- **Prose arguments are un-double-escaped before saving.** A model sometimes sends a long multi-line argument with its line breaks escaped twice, so the tool receives a literal backslash + `n`; saved as-is, a SKILL.md becomes one line whose `#` title swallows the document. `create_skill` (its `instructions`) and `remember` (`summary`, `content`) pass their text through `harness/tools/text_args.py::undo_double_escaping`, which only acts on text with **no** real line break that **does** contain `\n` — so genuine backslash sequences in normal prose survive. It is deliberately not applied to `write_file` / `edit_file` contents, where a one-line script may legitimately contain `\n`. The UI's approval preview applies the same rule (`undoDoubleEscaping`), so what you approve is what gets saved.
 - **`view_image` maps extensions to mime types itself**, rather than calling
   `mimetypes.guess_type`, which reads the host mime database. The agents image
   does not know `.webp` there, so a format the tool advertises would have been
   refused depending on where it ran.
-- **A tool renders "bare" only if listed in the frontend's `TOOL_PRESENTATION`**
-  (`shared/lib/consts/tools.ts`). The map is opt-in: an unlisted tool gets the
-  generic name + Parameters + Result treatment, so a new backend tool renders
-  correctly with no frontend change.
+- **How a tool step looks in the UI is decided per tool, and opt-in.** The
+  frontend titles each step from its arguments (`read_file` → *Read report.csv*,
+  `grep` → *Search "x" in skills* · *12 matches*; `features/chat/lib/toolPresentation.ts`)
+  and shows each pane only where it adds something, in its natural form
+  (`message_parts/ToolCallViews.tsx`): an image read is just the image, a text
+  read is highlighted code, `ls`/`glob`/`grep` are path lists, `write_file` is the
+  content, `edit_file` a diff, `execute` a terminal block, and a routine success
+  message (*Updated file …*) is hidden because the title already says it. MCP
+  tools are titled **Server · Tool** (*Tavily · Search*, *arXiv · Read paper*). They
+  arrive under **bare names** (`tavily-search`, `read_paper`), so the server comes
+  from the workspace's tool catalog (`ToolMetadata.serverId`, which the agents service
+  derives in `utils/mcp_tools.py::_TOOL_SERVER_OVERRIDES`) — a new MCP server that
+  prefixes nothing needs an entry there to be titled. MCP steps show no arguments pane —
+  the title and meta carry the query, URL or paper id (a failed call still shows
+  its arguments through the generic view); Tavily and arXiv results have dedicated views
+  (`features/chat/lib/mcpToolPresentation.ts` + `message_parts/McpToolViews.tsx`):
+  web results and papers as cards, crawls and maps as page lists, `read_paper` as
+  Markdown, `download_paper` as a status + PDF link (the gateway's internal
+  `file://` path is never shown). Any other MCP tool's JSON renders as a readable
+  key/value tree. MCP output is **untrusted**: it is rendered without raw HTML and
+  without images (no tracking pixels), and links are http(s)-only with
+  `noopener noreferrer nofollow`. Because the bridge cuts stored results at 16,000
+  characters, JSON results are read **tolerantly** — complete array items are
+  salvaged and a cut string is decoded up to the cut, never shown as escaped JSON. Two guarantees keep it safe: a
+  **failed call** renders the generic arguments + raw result (debugging must
+  never lose information), and any tool or output the parsers don't recognise
+  falls back to the generic name + Parameters + Result view — so a new backend
+  tool, or a changed output format, still renders with no frontend change. The
+  parsers read the real formats: deepagents' `ls`/`glob` return a Python list
+  repr and `read_file` is `cat -n` style; a change upstream should come with a
+  case in `tests/agentic_ui/tool-calls.test.ts`.
 - **`present_artifact` is always on; native builtins can't be disabled here.** The Agents tab lists MCP tools only. `toggle_agent_tool` ignores native keys and `_apply_tool_disables` subtracts native keys from the disabled set — so even a legacy pre-model disable of a native is neutralized. `remember` / `search_past_conversations` are turned on/off via the Personalization prefs, not this tab.
 - **Framework builtins are un-disable-able.** They enter through `create_deep_agent`, downstream of `_apply_tool_disables`. Neither the Agents tab nor an override row can touch `write_todos`, `read_file`, etc. Native builtins are additionally subtracted from the disabled set inside `_apply_tool_disables`, so even a legacy row naming one is inert.
 - **The available catalog needs a warm manifest cache.** `list_agent_tools` reads the cached MCP manifest map (primed only by `list_mcp_tools()`, not the per-stream loader); the tools endpoint calls it before listing. If the gateway is down, the *available* list is empty but declared tools still show.
