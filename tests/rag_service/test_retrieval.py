@@ -93,3 +93,17 @@ async def test_retrieve_returns_503_when_vector_store_fails(client, rag_service,
 
     assert response.status_code == 503
     assert response.json()["detail"] == "Document retrieval is temporarily unavailable. Please try again."
+
+
+async def test_an_invalid_body_is_a_422_not_a_500(client, internal_headers):
+    """The validation handler used to call `exc.errors(include_input=False)` — a
+    pydantic keyword FastAPI's RequestValidationError does not take — so every
+    malformed request crashed the handler and surfaced as a 500."""
+    response = await client.post(
+        "/retrieve/hr_policies",
+        headers=internal_headers,
+        json={"query": {"not": "a string"}, "k": "many"},
+    )
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "Invalid request. Please check the submitted fields and try again."}

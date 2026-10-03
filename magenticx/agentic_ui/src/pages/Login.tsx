@@ -5,7 +5,7 @@ import { Loader2 } from "lucide-react";
 import { Card } from "@/shared/ui/card";
 import { Button } from "@/shared/ui/button";
 import ParticleNetwork from "@/shared/ui/react_bits/bg_particle_network";
-import { beginEntraLogin, restoreSession } from "@/shared/lib/api";
+import { beginEntraLogin, restoreSessionWhenReachable } from "@/shared/lib/api";
 import { loadSession, saveSession, updateSession } from "@/shared/lib/authStorage";
 import { useToast } from "@/shared/hooks/use-toast";
 
@@ -127,7 +127,6 @@ export default function Login({ decorative = false }: LoginProps = {}) {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
     if (decorative) {
       // The consent-gate wallpaper instance: restoring here would redirect
       // to "/", which re-mounts the gate and reloads forever.
@@ -138,11 +137,21 @@ export default function Login({ decorative = false }: LoginProps = {}) {
       // the user straight back to the app instead of letting them add one.
       return;
     }
+    const controller = new AbortController();
     const run = async () => {
       try {
         const existing = loadSession();
-        const restored = await restoreSession();
-        if (!cancelled && restored?.authenticated && restored.user && restored.user.id) {
+        // Retried until the bridge answers. This page is often reached straight
+        // after waking from sleep, before the network is back; a single attempt
+        // then failed and left a user with a valid session looking at the
+        // sign-in button until they reloaded. Stops when the page unmounts.
+        const restored = await restoreSessionWhenReachable({ signal: controller.signal });
+        if (
+          !controller.signal.aborted &&
+          restored?.authenticated &&
+          restored.user &&
+          restored.user.id
+        ) {
           const ttlSeconds =
             typeof restored.tokenTtl === "number" && restored.tokenTtl > 0
               ? restored.tokenTtl
@@ -162,13 +171,12 @@ export default function Login({ decorative = false }: LoginProps = {}) {
           window.location.assign("/");
         }
       } catch (error) {
-        console.error("Session restore failed:", error);
+        // An abort is just the page unmounting mid-retry, not a failure.
+        if (!controller.signal.aborted) console.error("Session restore failed:", error);
       }
     };
     void run();
-    return () => {
-      cancelled = true;
-    };
+    return () => controller.abort();
   }, [navigate, addAccountMode, decorative]);
 
   const handleMicrosoftSignIn = () => {

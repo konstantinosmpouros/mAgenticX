@@ -1,29 +1,34 @@
-from typing import List
+"""Skill routes: the remote catalogue search, a user's pool and its per-agent
+assignments. Every route is internal (the bridge is the caller) and thin — the
+rules live in ``harness.skill_registry``."""
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 
 from core.security.internal_trust import require_internal_caller
 from core.logging import get_logger
 from harness.skill_registry import (
+    RemoteSkillRefused,
+    RemoteSkillUnavailable,
+    RemoteSkillsDisabled,
     SkillNameConflict,
     add_custom_to_user,
-    add_global_to_user,
+    add_remote_to_user,
     assign_user_skill_to_agent,
     get_user_skill_detail,
+    list_remote_sources,
     list_user_skills,
-    rebuild_global_manifest,
     list_user_agent_skills,
     remove_from_user,
+    search_catalogue,
     unassign_user_skill_from_agent,
 )
 from schema import (
+    CatalogueSearchPage,
     CustomSkillCreate,
-    SkillManifest,
+    RemoteSourceStatus,
     SkillManifestEntry,
     UserSkillDetail,
-)
-from utils import (
-    list_registry_skills,
 )
 
 logger = get_logger(__name__)
@@ -32,45 +37,87 @@ router = APIRouter()
 
 
 # ------------------------------------------------------------------
-# Global Skills Registry
+# Catalogue search + remote sources (plan 30)
 # ------------------------------------------------------------------
+# Source and skill ids are lowercase ASCII with single hyphens everywhere they
+# are minted, so anything else is refused at the edge rather than looked up.
+_ID_PATTERN = r"^[a-z0-9][a-z0-9-]{0,63}$"
+
+
 @router.get(
-    "/skills/global",
-    response_model=List[SkillManifest],
+    "/skills/catalogue/search",
+    response_model=CatalogueSearchPage,
     status_code=status.HTTP_200_OK,
     dependencies=[Depends(require_internal_caller)],
 )
-async def get_global_skills(bypass_cache: bool = False) -> List[SkillManifest]:
-    """Return the global skills catalog (admin-curated).
-
-    With ``bypass_cache=true`` the agents service rescans the global volume
-    + rewrites manifest.json before responding — used by the UI's refresh
-    button when an admin has dropped a new skill into the volume.
-
-    The bridge caches the result in Redis (24 h TTL); ``bypass_cache=true``
-    also bypasses the bridge cache and refreshes it.
-    """
-    if bypass_cache:
-        rebuild_global_manifest()
-    skills = list_registry_skills()
+async def search_skill_catalogue(
+    q: str = Query("", max_length=200),
+    source: Optional[str] = Query(None, pattern=_ID_PATTERN),
+    limit: int = Query(10, ge=1, le=50),
+    offset: int = Query(0, ge=0, le=5000),
+) -> CatalogueSearchPage:
+    """Full-text search over platform and admitted remote skills, paginated."""
+    page = await search_catalogue(q, source_id=source, limit=limit, offset=offset)
     logger.info(
-        "skills_global_listed",
-        "Served global skills catalog",
-        count=len(skills),
-        bypass_cache=bypass_cache,
+        "skill_catalogue_searched",
+        "Served a catalogue search",
+        has_query=bool(q.strip()),
+        source=source,
+        returned=len(page.results),
+        total=page.total,
     )
-    return skills
+    return page
+
+
+@router.get(
+    "/skills/remote/sources",
+    response_model=List[RemoteSourceStatus],
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_internal_caller)],
+)
+async def get_remote_skill_sources() -> List[RemoteSourceStatus]:
+    """Every allowlisted source and its last sync outcome — for an ops glance."""
+    return await list_remote_sources()
+
+
+@router.post(
+    "/users/{user_id}/skills/remote/{source_id}/{skill_id}",
+    response_model=SkillManifestEntry,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_internal_caller)],
+)
+async def add_remote_skill_to_user(
+    user_id: str,
+    source_id: str = Path(..., pattern=_ID_PATTERN),
+    skill_id: str = Path(..., pattern=_ID_PATTERN),
+) -> SkillManifestEntry:
+    """Add a remote skill to the user's pool, downloading and verifying it if new."""
+    try:
+        return await add_remote_to_user(user_id, source_id, skill_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except SkillNameConflict as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except RemoteSkillRefused as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"This skill failed verification ({exc}) and was not added.",
+        ) from exc
+    except RemoteSkillUnavailable as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="The skill's source could not be reached. Please try again later.",
+        ) from exc
+    except RemoteSkillsDisabled as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
 
 
 # ------------------------------------------------------------------
 # Per-User Skill Pool (manifest-driven)
 # ------------------------------------------------------------------
-# Each user has a manifest.json under $SKILLS_REGISTRY_USERS_ROOT/<user_id>/
-# listing the skills in their pool. Pool entries reference either global
-# skills (no folder copy needed) or owned custom skills (folder lives in
-# users/<user_id>/custom/<name>/). The per-(user, agent) PUT below resolves
-# its source through this manifest — users can only assign skills they have
-# in their pool.
+# A user's pool lives in agent_runtime: custom skills they authored, remote
+# skills they added, and legacy references into the deleted bundled catalogue.
+# The per-(user, agent) PUT below only assigns a skill the user holds.
 @router.get(
     "/users/{user_id}/skills",
     response_model=List[SkillManifestEntry],
@@ -109,21 +156,6 @@ async def get_user_skill_detail_endpoint(user_id: str, skill_name: str) -> UserS
 
 
 @router.post(
-    "/users/{user_id}/skills/global/{skill_name}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_internal_caller)],
-)
-async def add_global_skill_to_user(user_id: str, skill_name: str) -> None:
-    """Append a reference to a global skill into the user's pool (manifest-only)."""
-    try:
-        await add_global_to_user(user_id, skill_name)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-
-
-@router.post(
     "/users/{user_id}/skills/custom",
     response_model=SkillManifestEntry,
     status_code=status.HTTP_201_CREATED,
@@ -132,7 +164,7 @@ async def add_global_skill_to_user(user_id: str, skill_name: str) -> None:
 async def create_user_custom_skill(user_id: str, payload: CustomSkillCreate) -> SkillManifestEntry:
     """Create a user-owned custom skill (multi-file folder + manifest entry).
 
-    409 on a name collision (with a global OR another pool entry); 422 on a
+    409 when the pool already holds the name; 422 on a
     structural validation failure (bad path, oversized file, disallowed type,
     invalid base64, or a missing SKILL.md).
     """

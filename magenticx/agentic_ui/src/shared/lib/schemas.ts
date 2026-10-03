@@ -92,30 +92,54 @@ export const StringListSchema = z
   .transform((entries) => entries.map(String));
 
 // ---------------------------------------------------------------------------
-// Skills catalog + user pool
+// Skills: the remote catalogue search + the user's pool
 // ---------------------------------------------------------------------------
-const toSkill = (raw: Record<string, unknown>) => ({
-  name: typeof raw.name === "string" ? raw.name : "unknown-skill",
-  description: typeof raw.description === "string" ? raw.description : "",
-  content: typeof raw.content === "string" ? raw.content : "",
-  category: typeof raw.category === "string" ? raw.category : "",
-});
-export const SkillSchema = z.record(z.unknown()).transform(toSkill);
-export const SkillListSchema = z
-  .array(z.unknown())
-  .catch([])
-  .transform((rows) => rows.map((row) => toSkill(row as Record<string, unknown>)));
-export type Skill = z.infer<typeof SkillSchema>;
+// An upstream link is rendered as an <a href>, so only an https URL survives —
+// a `javascript:` or `data:` value from a compromised response must never
+// reach the DOM as a link.
+const safeHttpsUrl = (value: unknown): string | null =>
+  typeof value === "string" && /^https:\/\/[^\s]+$/.test(value) ? value : null;
+const optionalString = (value: unknown): string | null =>
+  typeof value === "string" && value ? value : null;
 
-// Anything that is not exactly "custom" is a global reference — mirrors the old
-// `raw.type === "custom" ? "custom" : "global"`. `source_path` is opaque on the
-// frontend (only the agents service reads it) and kept snake_case.
+// Where a remote pool skill came from. `commit` is the upstream commit, or the
+// artifact's `sha256:` digest for a publisher-hosted skill; `licence` is null
+// for those (the publisher distributes them itself).
+const toRemoteProvenance = (
+  raw: unknown,
+): {
+  sourceId: string;
+  sourceLabel: string;
+  commit: string | null;
+  licence: string | null;
+  upstreamUrl: string | null;
+} | null => {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.source_id !== "string" || !r.source_id) return null;
+  return {
+    sourceId: r.source_id,
+    sourceLabel: typeof r.source_label === "string" ? r.source_label : r.source_id,
+    commit: optionalString(r.commit),
+    licence: optionalString(r.licence),
+    upstreamUrl: safeHttpsUrl(r.upstream_url),
+  };
+};
+export type RemoteProvenance = NonNullable<ReturnType<typeof toRemoteProvenance>>;
+
+// `type` keeps the three server kinds; anything unknown reads as "global" (the
+// legacy catalogue reference) rather than being promoted to something it is
+// not. `source_path` is opaque on the frontend and kept snake_case.
 const toUserSkill = (raw: Record<string, unknown>) => ({
   name: typeof raw.name === "string" ? raw.name : "unknown-skill",
-  type: (raw.type === "custom" ? "custom" : "global") as "global" | "custom",
+  type: (raw.type === "custom" || raw.type === "remote" ? raw.type : "global") as
+    | "global"
+    | "custom"
+    | "remote",
   description: typeof raw.description === "string" ? raw.description : "",
   source_path: typeof raw.source_path === "string" ? raw.source_path : "",
   category: typeof raw.category === "string" ? raw.category : "",
+  provenance: toRemoteProvenance(raw.provenance),
 });
 export const UserSkillSchema = z.record(z.unknown()).transform(toUserSkill);
 export const UserSkillListSchema = z
@@ -149,6 +173,36 @@ export const UserSkillDetailSchema = z.record(z.unknown()).transform((raw) => ({
     : [],
 }));
 export type UserSkillDetail = z.infer<typeof UserSkillDetailSchema>;
+
+// One result of the remote catalogue search. Added by (sourceId, skillId).
+const toCatalogueSkill = (raw: Record<string, unknown>) => ({
+  sourceId: typeof raw.source_id === "string" ? raw.source_id : "",
+  sourceLabel: typeof raw.source_label === "string" ? raw.source_label : "",
+  skillId: typeof raw.skill_id === "string" ? raw.skill_id : "",
+  name: typeof raw.name === "string" ? raw.name : "",
+  description: typeof raw.description === "string" ? raw.description : "",
+  category: typeof raw.category === "string" ? raw.category : "",
+  licence: optionalString(raw.licence),
+  commit: optionalString(raw.commit),
+  upstreamUrl: safeHttpsUrl(raw.upstream_url),
+});
+export type CatalogueSkill = ReturnType<typeof toCatalogueSkill>;
+
+// A page of search results. `total` counts every match, not just this page;
+// `remoteEnabled` is false when the server has remote sources switched off.
+// Rows without an id are dropped: they could not be added anyway.
+export const CatalogueSearchPageSchema = z.record(z.unknown()).transform((raw) => ({
+  results: Array.isArray(raw.results)
+    ? raw.results
+        .map((row) => toCatalogueSkill((row ?? {}) as Record<string, unknown>))
+        .filter((row) => row.sourceId && row.skillId)
+    : [],
+  total: typeof raw.total === "number" ? raw.total : 0,
+  limit: typeof raw.limit === "number" ? raw.limit : 0,
+  offset: typeof raw.offset === "number" ? raw.offset : 0,
+  remoteEnabled: raw.remote_enabled === true,
+}));
+export type CatalogueSearchPage = z.infer<typeof CatalogueSearchPageSchema>;
 
 // ---------------------------------------------------------------------------
 // User-authored agents (the agent builder) — /v1/agents/{user}/custom

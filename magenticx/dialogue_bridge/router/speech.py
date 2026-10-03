@@ -19,8 +19,11 @@ from utils import (
 
 
 # Every speech endpoint proxies a paid OpenAI audio API — one per-user ceiling
-# covers the whole router (dictation, read-aloud, previews).
-router = APIRouter(dependencies=[Depends(speech_rate_limit)])
+# (one shared "speech" bucket) covers dictation, read-aloud and previews. It is
+# declared on each route after auth + CSRF rather than on the router, because a
+# router-level dependency runs first and the bucket is keyed on the path's
+# {user_id}: an anonymous caller could otherwise drain anyone's budget.
+router = APIRouter()
 logger = get_logger(__name__)
 
 
@@ -34,6 +37,7 @@ async def transcribe_dictation(
     audio: UploadFile = File(...),
     _: AuthUser = Depends(validate_userId),
     __: None = Depends(require_csrf_protection),
+    ___: None = Depends(speech_rate_limit),
 ) -> DictationResponse:
     """
     Accept an audio upload from the UI, proxy it to the agents STT endpoint,
@@ -75,8 +79,9 @@ async def readMessageAloud(
     conversation_id: str,
     message_id: str,
     _current_user: AuthUser = Depends(validate_userId),
-    _current_conv: ConversationTable = Depends(validate_convId),
     _: None = Depends(require_csrf_protection),
+    _rate_limited: None = Depends(speech_rate_limit),
+    _current_conv: ConversationTable = Depends(validate_convId),
     db: AsyncSession = Depends(get_db),
 ):
     set_context(user_id=user_id, conversation_id=conversation_id, message_id=message_id)
@@ -119,6 +124,7 @@ async def previewReadAloudVoice(
     payload: ReadAloudPreviewRequest,
     _current_user: AuthUser = Depends(validate_userId),
     _: None = Depends(require_csrf_protection),
+    _rate_limited: None = Depends(speech_rate_limit),
 ):
     set_context(user_id=user_id)
     voice = normalize_realtime_voice(payload.voice)

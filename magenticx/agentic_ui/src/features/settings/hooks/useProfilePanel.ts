@@ -47,15 +47,16 @@ export function useProfilePanel({
   refreshAgentCatalog,
 }: UseProfilePanelCtx) {
   const skills = useSkills({ userId, toast, initialPool, authResolved });
-  const { addGlobalToPool, createCustomInPool, removeFromPool } = skills;
+  const { addRemoteToPool, createCustomInPool, removeFromPool } = skills;
   const userAgents = useUserAgents({ userId, toast, authResolved });
 
-  const handleAddGlobalSkill = useCallback(
-    async (skillName: string) => {
-      await addGlobalToPool(skillName);
-      requestPersist();
+  const handleAddRemoteSkill = useCallback(
+    async (sourceId: string, skillId: string): Promise<boolean> => {
+      const added = await addRemoteToPool(sourceId, skillId);
+      if (added) requestPersist();
+      return added;
     },
-    [addGlobalToPool, requestPersist],
+    [addRemoteToPool, requestPersist],
   );
 
   const handleCreateCustomSkill = useCallback(
@@ -115,7 +116,7 @@ export function useProfilePanel({
     handleCreateAgent,
     handleUpdateAgent,
     handleDeleteAgent,
-    handleAddGlobalSkill,
+    handleAddRemoteSkill,
     handleCreateCustomSkill,
     handleRemoveSkillFromPool,
   };

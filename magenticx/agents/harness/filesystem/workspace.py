@@ -34,7 +34,10 @@ from deepagents.backends.protocol import SandboxBackendProtocol
 from core.settings import settings
 from harness.agent_registry.store import AgentDefinitionStore
 from harness.memory import AgentMemoryStore, get_memory_pool
-from harness.skill_registry.store import TIER_ASSIGNED, TIER_DECLARED, SkillStore
+# Bound as a module, resolved at call time: the skill store imports
+# `harness.filesystem` (for the legacy catalogue path) while this package is
+# still initialising, so a `from ... import` of its names here is a cycle.
+import harness.skill_registry.store as skill_store
 from harness.filesystem.provisioner import (
     conversation_root,
     ensure_user_agent_filesystem,
@@ -205,8 +208,8 @@ def build_workspace_backend(
             # catalogue on the volume — so no per-user directory exists to
             # write, hash or reconcile.
             "/skills/": StoreBackend(
-                store=SkillStore(get_memory_pool()),
-                namespace=lambda _rt: (user_id, agent_slug, TIER_ASSIGNED),
+                store=skill_store.SkillStore(get_memory_pool()),
+                namespace=lambda _rt: (user_id, agent_slug, skill_store.TIER_ASSIGNED),
             ),
             "/conversation/input/": FilesystemBackend(
                 root_dir=str(input_path), virtual_mode=True
@@ -238,9 +241,9 @@ def build_workspace_backend(
             # resolved against the author's own pool. The names ride in the
             # namespace so the store never has to read an agent definition.
             routes["/default_skills/"] = StoreBackend(
-                store=SkillStore(get_memory_pool()),
+                store=skill_store.SkillStore(get_memory_pool()),
                 namespace=lambda _rt: (
-                    user_id, agent_slug, TIER_DECLARED, *declared_skills
+                    user_id, agent_slug, skill_store.TIER_DECLARED, *declared_skills
                 ),
             )
         if reference_dir is not None:

@@ -31,10 +31,18 @@ class AgentServiceExceptionHandler:
 
 
     async def handle_validation_exception(self, request: Request, exc: RequestValidationError) -> JSONResponse:
+        # RequestValidationError.errors() takes no arguments (`include_input` is
+        # pydantic's ValidationError API, so passing it raised a TypeError and
+        # turned every 422 into a 500), and its entries carry the raw `input`,
+        # which can be a password or a token. Log where and why, never what.
+        errors = [
+            {"loc": list(err.get("loc", ())), "msg": err.get("msg"), "type": err.get("type")}
+            for err in exc.errors()
+        ]
         self._logger.warning(
             "request_validation_failed",
             "Request validation failed",
-            errors=exc.errors(include_input=False),
+            errors=errors,
         )
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,

@@ -96,13 +96,12 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
     handleSetActiveProfileTab,
     handleLogout,
     availableTools,
-    availableSkills,
     mySkills,
     loadingMySkills,
     mySkillDetails,
     loadingSkillDetail,
     ensureSkillDetail,
-    handleAddGlobalSkill,
+    handleAddRemoteSkill,
     handleCreateCustomSkill,
     handleRemoveSkillFromPool,
     refreshMySkills,
@@ -284,13 +283,12 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
                   onLogout={handleLogout}
                   user={userProfile}
                   availableTools={availableTools}
-                  availableSkills={availableSkills}
                   mySkills={mySkills}
                   loadingMySkills={loadingMySkills}
                   mySkillDetails={mySkillDetails}
                   isMySkillDetailLoading={loadingSkillDetail}
                   onLoadMySkillDetail={ensureSkillDetail}
-                  onAddGlobalSkillToPool={handleAddGlobalSkill}
+                  onAddRemoteSkillToPool={handleAddRemoteSkill}
                   onCreateCustomSkill={handleCreateCustomSkill}
                   onRemoveSkillFromPool={handleRemoveSkillFromPool}
                   onRefreshMySkills={refreshMySkills}

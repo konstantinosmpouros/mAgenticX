@@ -1,13 +1,12 @@
 """Single source of truth for the bridge's async Redis client construction.
 
 Every raw-Redis consumer — the inference event log (``utils.event_log``), the
-logout denylist (``core.auth.session``), the OIDC state store
-(``core.auth.oidc``), and the skills cache backend (``core.cache.policies``) —
-opens its pool through this factory so the connection configuration
-(credentials, encoding, and especially TLS trust) can never drift: a prior
-divergence left the skills cache without the internal CA, so it failed every
-``rediss://`` handshake with CERTIFICATE_VERIFY_FAILED while the event log
-connected fine.
+logout denylist (``core.auth.session``) and the OIDC state store
+(``core.auth.oidc``) — opens its pool through this factory so the connection
+configuration (credentials, encoding, and especially TLS trust) can never
+drift: a prior divergence left a cache client without the internal CA, so it
+failed every ``rediss://`` handshake with CERTIFICATE_VERIFY_FAILED while the
+event log connected fine.
 
 The fastapi-redis-sdk integration (``core.cache.integration``) builds its own
 pool, but through :func:`redis_tls_kwargs` below — so there is exactly one

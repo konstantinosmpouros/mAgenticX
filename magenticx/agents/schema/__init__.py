@@ -27,12 +27,13 @@ from schema.inference import (
 )
 from schema.memories import MemoryDetail, MemoryEntry
 from schema.skills import (
+    CatalogueSearchPage,
+    CatalogueSkill,
     CustomSkillCreate,
-    GlobalManifest,
+    RemoteProvenance,
+    RemoteSourceStatus,
     SkillFile,
-    SkillManifest,
     SkillManifestEntry,
-    UserManifest,
     UserSkillDetail,
 )
 from schema.user_agents import (
@@ -56,6 +57,8 @@ __all__ = [
     "AgentResumeRequest",
     "AgentToolRow",
     "AgentToolsResponse",
+    "CatalogueSearchPage",
+    "CatalogueSkill",
     "ConversationSuggestions",
     "ConversationTitle",
     "CustomAgentValidation",
@@ -63,7 +66,6 @@ __all__ = [
     "CustomSkillCreate",
     "EmbedRequest",
     "EmbedResponse",
-    "GlobalManifest",
     "InputFileIn",
     "MemoryDetail",
     "MemoryEntry",
@@ -73,12 +75,13 @@ __all__ = [
     "RealtimeSessionRequest",
     "RealtimeSessionResponse",
     "ReapConversationRequest",
+    "RemoteProvenance",
+    "RemoteSourceStatus",
     "Request",
     "ResumeActionDecision",
     "SeedInputFilesRequest",
     "SeedInputFilesResponse",
     "SkillFile",
-    "SkillManifest",
     "SkillManifestEntry",
     "SuggestionsRequest",
     "TitleRequest",
@@ -86,6 +89,5 @@ __all__ = [
     "TranscriptionResponse",
     "UserAgentDetail",
     "UserAgentSummary",
-    "UserManifest",
     "UserSkillDetail",
 ]

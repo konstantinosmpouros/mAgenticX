@@ -133,6 +133,8 @@ Who signs session JWTs and which public keys verify them. Production signs with 
 | `EXPORT_PDF_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Conversation PDF exports (CPU-heavy render) per user. |
 | `SHARE_CREATE_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Share-link creation (mints public tokens) per user. |
 | `SKILL_UPLOAD_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Custom-skill uploads (agents-service disk writes) per user. |
+| `SKILL_CATALOGUE_SEARCH_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `60` / `60` | Skill catalogue searches per verified session (the search runs as the user types, debounced). |
+| `SKILL_REMOTE_ADD_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Remote-skill Adds per user — each can make the agents service download a skill, so the Add route cannot be used as a fetch amplifier. |
 | `MESSAGE_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `30` / `60` | Message creation (attachment/blob growth) per user. |
 | `SUGGESTIONS_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Starter-suggestion generation (LLM-backed) per user. |
 | `REFRESH_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Session refresh (OCI KMS mint) per client IP. |
@@ -140,6 +142,8 @@ Who signs session JWTs and which public keys verify them. Production signs with 
 | `USER_RATE_LIMIT_MAX_CALLS` | `300` | App-wide aggregate budget per verified user (per-IP fallback) per window. |
 | `USER_RATE_LIMIT_WINDOW_SECONDS` | `60` | Budget window. |
 | `INFERENCE_MAX_ACTIVE_RUNS_PER_USER` | `5` | Concurrent in-flight runs per user. |
+
+Every per-user limit (keyed on the path's `{user_id}`) is declared as an endpoint parameter **after** the auth and CSRF dependencies, never in `dependencies=[...]` on the route or router — FastAPI solves those first, which would let an anonymous caller drain any user's budget by naming them in the URL. `tests/dialogue_bridge/test_rate_limit_order.py` checks every route. The login/refresh limits (per IP) and the catalogue search (per verified session) stay route-level, because they must apply before authentication.
 
 All rate limits are counted in **Redis** via `fastapi-redis-sdk` (they survive restarts and hold across replicas) and **fail open** on a Redis outage. The SDK's own `REDIS_*` env settings are **not** read from the environment — `core/cache/integration.py` primes them programmatically from the values above plus the Redis section below (so the file-backed password and internal CA are honored), then scrubs the password back out of the process env.
 
@@ -152,9 +156,6 @@ All rate limits are counted in **Redis** via `fastapi-redis-sdk` (they survive r
 | `REDIS_STREAM_MAXLEN` | `20000` | Max entries per per-run event stream (approx-trimmed). |
 | `REDIS_STREAM_TERMINAL_TTL_SECONDS` | `3600` | TTL on a stream after the run reaches a terminal state. |
 | `REDIS_STREAM_READ_BLOCK_MS` | `30000` | Blocking-read timeout when tailing a stream. |
-| `REDIS_SKILLS_GLOBAL_TTL_SECONDS` | `86400` | Cache TTL for the global skills catalog. |
-| `REDIS_SKILLS_USER_REGISTRY_TTL_SECONDS` | `7200` | Cache TTL for a user's skill registry. |
-| `REDIS_SKILLS_USER_AGENT_TTL_SECONDS` | `7200` | Cache TTL for a user's per-agent skill set. |
 
 ### Attachments, speech, share, generation
 
@@ -199,6 +200,8 @@ Per-destination `httpx` timeouts, in seconds. Each destination has four knobs: `
 | `HTTP_SKILLS_` | 10 / 15 / 10 / 10 |
 | `HTTP_VOICE_` | 15 / 75 / 75 / 15 |
 | `HTTP_INFERENCE_` | 30 / 180 / 180 / 30 |
+
+`HTTP_SKILLS_REMOTE_ADD_READ_SECONDS` (default `75`) overrides only the read timeout for adding a remote skill: the agents service may download and verify up to 128 files before answering and caps that at 60 s, so the bridge waits just past it. That call is never retried.
 
 ### Proxy trust & logging
 
@@ -326,8 +329,6 @@ Each built-in workflow agent picks its models per node. All accept `openai:<mode
 | Env var | Default | What it does |
 | --- | --- | --- |
 | `AGENTS_FILESYSTEM_ROOT` | `/var/agents/filesystem` | Per-user filesystem root (volume-backed) for `CompositeBackend` mounts — AGENT.md + enabled skills survive restarts. |
-| `SKILLS_REGISTRY_GLOBAL_ROOT` | `/var/agents/skills_registry/global` | Admin-curated global skills catalog (seeded at boot). |
-| `SKILLS_REGISTRY_USERS_ROOT` | `/var/agents/skills_registry/users` | Per-user skill registries + manifests. |
 | `INPUT_MAX_FILE_BYTES` | `26214400` (25 MB) | Server-side per-file cap on the conversation-input seeding endpoint (defence in depth; mirrors the bridge). |
 | `VIEW_IMAGE_MAX_BYTES` | `10485760` (10 MB) | Largest image `view_image` will hand to the model. Unlike the AG-UI preview bounds this caps the **model's** copy, so it guards context cost rather than display size. |
 | `INPUT_MAX_FILES` | `10` | Server-side per-turn file cap. |
@@ -339,6 +340,21 @@ Each built-in workflow agent picks its models per node. All accept `openai:<mode
 | `SUMMARIZATION_KEEP_FRACTION` | `0.30` | Fraction of the window to retain after compaction. |
 | `SUMMARIZATION_TRIGGER_TOKENS` | `200000` | Fallback token trigger for profile-less models. |
 | `SUMMARIZATION_KEEP_MESSAGES` | `20` | Fallback recent-message retention. |
+
+### Remote skill sources (`RemoteSkillsSettings`)
+
+The skill catalogue is the allowlisted remote sources, indexed daily (see [remote-skills](../flows/remote-skills.md)). The **sources themselves are not configurable** — the allowlist is security policy and lives in code (`harness/skill_registry/remote/sources.py`), because an env-editable source URL would be an SSRF lever.
+
+| Env var | Default | What it does |
+| --- | --- | --- |
+| `REMOTE_SKILLS_ENABLED` | `true` | The kill switch. `false` → no sync loop, no outbound request, an empty catalogue search, and Add answers 503. Skills users already added keep working. |
+| `REMOTE_SKILLS_SYNC_INTERVAL_HOURS` | `24` | Sync cadence (jittered ±10 %; bounded 1–168). |
+| `REMOTE_SKILLS_SYNC_INITIAL_DELAY_SECONDS` | `120` | First pass after boot, so it never competes with startup. |
+| `REMOTE_SKILLS_FETCH_CONCURRENCY` | `8` | Parallel file reads per sync or Add (bounded 1–16). |
+| `REMOTE_SKILLS_CONNECT_TIMEOUT_SECONDS` / `_READ_TIMEOUT_SECONDS` | `10` / `30` | Per-request timeouts on every outbound call. |
+| `REMOTE_SKILLS_ADD_TIMEOUT_SECONDS` | `60` | Wall-clock ceiling on one Add's download and verification. |
+
+No GitHub token: the design spends at most four REST calls a day (the branch head is read from git's `info/refs`, which costs no quota), far inside the anonymous allowance.
 
 ---
 

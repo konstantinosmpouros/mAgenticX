@@ -570,6 +570,10 @@ class HttpTimeoutSettings(BaseSettings):
     skills_read_seconds: float = Field(15.0, validation_alias="HTTP_SKILLS_READ_SECONDS")
     skills_write_seconds: float = Field(10.0, validation_alias="HTTP_SKILLS_WRITE_SECONDS")
     skills_pool_seconds: float = Field(10.0, validation_alias="HTTP_SKILLS_POOL_SECONDS")
+    # Adding a remote skill may download and verify up to 128 files upstream
+    # before it answers (plan 30) — the agents service caps that at 60 s, so
+    # this read timeout sits just above it rather than at the 15 s default.
+    skills_remote_add_read_seconds: float = Field(75.0, validation_alias="HTTP_SKILLS_REMOTE_ADD_READ_SECONDS")
 
     voice_connect_seconds: float = Field(15.0, validation_alias="HTTP_VOICE_CONNECT_SECONDS")
     voice_read_seconds: float = Field(75.0, validation_alias="HTTP_VOICE_READ_SECONDS")
@@ -609,6 +613,15 @@ class HttpTimeoutSettings(BaseSettings):
         return httpx.Timeout(
             connect=self.skills_connect_seconds,
             read=self.skills_read_seconds,
+            write=self.skills_write_seconds,
+            pool=self.skills_pool_seconds,
+        )
+
+    @property
+    def skills_remote_add_timeout(self) -> httpx.Timeout:
+        return httpx.Timeout(
+            connect=self.skills_connect_seconds,
+            read=self.skills_remote_add_read_seconds,
             write=self.skills_write_seconds,
             pool=self.skills_pool_seconds,
         )
@@ -760,9 +773,6 @@ class RedisSettings(BaseSettings):
     stream_maxlen: int = Field(20000, validation_alias="REDIS_STREAM_MAXLEN")
     terminal_ttl_seconds: int = Field(3600, validation_alias="REDIS_STREAM_TERMINAL_TTL_SECONDS")
     read_block_ms: int = Field(30000, validation_alias="REDIS_STREAM_READ_BLOCK_MS")
-    skills_global_ttl_seconds: int = Field(86400, validation_alias="REDIS_SKILLS_GLOBAL_TTL_SECONDS")
-    skills_user_registry_ttl_seconds: int = Field(7200, validation_alias="REDIS_SKILLS_USER_REGISTRY_TTL_SECONDS")
-    skills_user_agent_ttl_seconds: int = Field(7200, validation_alias="REDIS_SKILLS_USER_AGENT_TTL_SECONDS")
 
     @field_validator("password", mode="before")
     @classmethod
@@ -805,6 +815,14 @@ class RateLimitSettings(BaseSettings):
     # Custom-skill upload writes multi-file folders onto the agents-service disk.
     skill_upload_max_attempts: int = Field(10, validation_alias="SKILL_UPLOAD_RATE_LIMIT_MAX_ATTEMPTS")
     skill_upload_window_seconds: int = Field(60, validation_alias="SKILL_UPLOAD_RATE_LIMIT_WINDOW_SECONDS")
+    # Catalogue search runs as the user types (debounced) — generous, but a
+    # ceiling, because each call is a full-text query on the agents service.
+    skill_catalogue_search_max_attempts: int = Field(60, validation_alias="SKILL_CATALOGUE_SEARCH_RATE_LIMIT_MAX_ATTEMPTS")
+    skill_catalogue_search_window_seconds: int = Field(60, validation_alias="SKILL_CATALOGUE_SEARCH_RATE_LIMIT_WINDOW_SECONDS")
+    # Adding a remote skill can trigger an outbound download — the tightest
+    # skill limit, so the Add route cannot be used as a fetch amplifier.
+    skill_remote_add_max_attempts: int = Field(10, validation_alias="SKILL_REMOTE_ADD_RATE_LIMIT_MAX_ATTEMPTS")
+    skill_remote_add_window_seconds: int = Field(60, validation_alias="SKILL_REMOTE_ADD_RATE_LIMIT_WINDOW_SECONDS")
     # Message creation can carry up to the full attachment budget per call —
     # caps blob-storage growth independent of the aggregate budget.
     message_post_max_attempts: int = Field(30, validation_alias="MESSAGE_RATE_LIMIT_MAX_ATTEMPTS")

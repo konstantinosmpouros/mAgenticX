@@ -48,13 +48,16 @@ router = APIRouter()
     "/runs/{user_id}/start",
     response_model=InferenceStartResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(inference_rate_limit)],  # per-user run-start ceiling
 )
 async def startInferenceFlow(
     user_id: str,
     payload: InferenceStartPayload,
     current_user: AuthUser = Depends(validate_userId),
     _: None = Depends(require_csrf_protection),
+    # Per-user run-start ceiling.
+    # After auth + CSRF on purpose: the bucket is keyed on the path's {user_id},
+    # so it must only ever count requests that user actually made.
+    _rate_limited: None = Depends(inference_rate_limit),
     db: AsyncSession = Depends(get_db),
 ) -> InferenceStartResponse:
     """Persist the user-side action, create the AI placeholder, and launch a backend-owned run."""

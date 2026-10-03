@@ -169,16 +169,18 @@ async def forkConversation(
     response_model=ConversationShareResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create a read-only share snapshot for a conversation branch",
-    # Mints a public token — outward-facing artifact, per-user ceiling.
-    dependencies=[Depends(share_create_rate_limit)],
 )
 async def shareConversation(
     user_id: str,
     conversation_id: str,
     payload: ConversationShareIn,
     current_user: AuthUser = Depends(validate_userId),
-    current_conv: ConversationTable = Depends(validate_convId_full),
     _: None = Depends(require_csrf_protection),
+    # Mints a public token — outward-facing artifact, per-user ceiling.
+    # After auth + CSRF on purpose: the bucket is keyed on the path's {user_id},
+    # so it must only ever count requests that user actually made.
+    _rate_limited: None = Depends(share_create_rate_limit),
+    current_conv: ConversationTable = Depends(validate_convId_full),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a public read-only snapshot link ending at the selected AI message."""
@@ -240,16 +242,18 @@ async def shareConversation(
 @router.post(
     "/{user_id}/{conversation_id}/share/export-pdf",
     summary="Create a transient PDF export for a conversation share scope",
-    # Full-conversation server-side render — CPU/memory heavy, per-user ceiling.
-    dependencies=[Depends(export_pdf_rate_limit)],
 )
 async def exportConversationPdf(
     user_id: str,
     conversation_id: str,
     payload: ConversationPdfExportIn,
     current_user: AuthUser = Depends(validate_userId),
-    current_conv: ConversationTable = Depends(validate_convId_full),
     _: None = Depends(require_csrf_protection),
+    # Full-conversation server-side render — CPU/memory heavy, per-user ceiling.
+    # After auth + CSRF on purpose: the bucket is keyed on the path's {user_id},
+    # so it must only ever count requests that user actually made.
+    _rate_limited: None = Depends(export_pdf_rate_limit),
+    current_conv: ConversationTable = Depends(validate_convId_full),
 ):
     """Return a generated PDF for the requested share scope without persisting it."""
     set_context(user_id=user_id, conversation_id=conversation_id, message_id=payload.messageId)

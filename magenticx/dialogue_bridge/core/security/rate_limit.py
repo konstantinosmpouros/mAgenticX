@@ -140,6 +140,25 @@ skill_upload_rate_limit = rate_limit(
     emit_headers=True,
 )
 
+# Search has no {user_id} in its path, so it keys on the verified session
+# instead — the same identity the global budget uses, unforgeable either way.
+skill_catalogue_search_rate_limit = rate_limit(
+    (
+        settings.rate_limit.skill_catalogue_search_max_attempts,
+        settings.rate_limit.skill_catalogue_search_window_seconds,
+    ),
+    scope="skill-catalogue-search",
+    identifier=verified_identity,
+    emit_headers=True,
+)
+
+skill_remote_add_rate_limit = rate_limit(
+    (settings.rate_limit.skill_remote_add_max_attempts, settings.rate_limit.skill_remote_add_window_seconds),
+    scope="skill-remote-add",
+    identifier=user_path_identity,
+    emit_headers=True,
+)
+
 message_post_rate_limit = rate_limit(
     (settings.rate_limit.message_post_max_attempts, settings.rate_limit.message_post_window_seconds),
     scope="message-post",

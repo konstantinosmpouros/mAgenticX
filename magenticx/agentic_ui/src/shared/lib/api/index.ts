@@ -13,7 +13,7 @@
 
 export {
   revokeAllSessions,
-  restoreSession,
+  restoreSessionWhenReachable,
   logoutSession,
   getAccounts,
   switchAccount,
@@ -38,13 +38,13 @@ export {
 export { getTools, getSuggestions } from "./catalog";
 
 export {
-  getSkills,
+  searchCatalogue,
   getUserAgentSkills,
   enableUserAgentSkill,
   disableUserAgentSkill,
   getMySkills,
   getMySkillDetail,
-  addGlobalSkillToPool,
+  addRemoteSkillToPool,
   createCustomSkill,
   removeSkillFromPool,
 } from "./skills";

@@ -2,15 +2,15 @@
 
 Two different things live behind one module, and the split is the point:
 
-* The **global catalogue** is genuinely remote. The agents service owns it (the
-  ``skills_registry/`` directory in its image), so it is fetched over HTTP and
-  read-through cached in Redis with a TTL.
+* The **catalogue** is the remote skill sources (plan 30), indexed by the agents
+  service into ``agent_runtime``. The bridge forwards a search and an Add; only
+  the agents service ever reaches a remote source.
 * The **user's pool, its content and its per-agent assignments** are owned by
   the agents service too, in ``agent_runtime``. They used to be mirrored into
   ``chat_db`` and kept in step by a 900-second reconciliation pass; that copy
   and that pass are both gone.
 
-So every function here is a proxy, and none of them touches a database. That is
+Every function here is a proxy, and none of them touches a database. That is
 the whole point of the change: with one copy of a skill there is nothing to keep
 in step, and the failure mode it removes — the two stores disagreeing about what
 a user has — cannot occur.
@@ -33,12 +33,11 @@ from core.security.tls import get_httpx_client_cert, get_httpx_verify
 from core.error_handling import upstream_error_handler
 
 from utils.agents import get_agent_by_id
-from utils.skills_cache import skills_cache
 
 logger = get_logger(__name__)
 
 _AGENTS_BASE_URL = settings.upstream.agents_service_url.rstrip("/")
-_AGENTS_GLOBAL_SKILLS_ENDPOINT = f"{_AGENTS_BASE_URL}/skills/global"
+_AGENTS_CATALOGUE_SEARCH_ENDPOINT = f"{_AGENTS_BASE_URL}/skills/catalogue/search"
 
 
 def _user_pool_url(user_id: str) -> str:
@@ -49,12 +48,12 @@ def _user_pool_item_url(user_id: str, skill_name: str) -> str:
     return f"{_user_pool_url(user_id)}/{skill_name}"
 
 
-def _user_pool_global_add_url(user_id: str, skill_name: str) -> str:
-    return f"{_user_pool_url(user_id)}/global/{skill_name}"
-
-
 def _user_pool_custom_create_url(user_id: str) -> str:
     return f"{_user_pool_url(user_id)}/custom"
+
+
+def _user_pool_remote_add_url(user_id: str, source_id: str, skill_id: str) -> str:
+    return f"{_user_pool_url(user_id)}/remote/{source_id}/{skill_id}"
 
 
 def _user_agent_skills_url(agent_slug: str, user_id: str) -> str:
@@ -86,83 +85,142 @@ async def _resolve_agent_slug(agent_id: str) -> str:
     return slug
 
 
-async def list_skills(*, bypass_cache: bool = False) -> List[Dict[str, Any]]:
-    """Return the skills registry, read-through cached in Redis.
+async def search_catalogue(
+    *, query: str, source: str | None, limit: int, offset: int
+) -> Dict[str, Any]:
+    """One page of the catalogue search, from the service that owns the index.
 
-    Cache contract:
-      - Cache hit → return the cached list, no upstream call.
-      - Cache miss → fetch from the agents service, store with TTL, return.
-      - ``bypass_cache=True`` → **skip the read**, fetch fresh from the agents
-        service, then **upsert** Redis with the new snapshot. This is the
-        path the UI's manual "refresh" button takes — it both renews the
-        cache for everyone else and gives the clicking user the latest list.
-      - Cache write failures are swallowed; we still return the upstream
-        result so a Redis outage degrades to "slightly slower" instead of
-        breaking the request.
-
-    Returns the raw JSON list (`{name, description, content}` per entry).
-    The router validates and converts to the bridge-side ``Skill`` schema.
+    Deliberately uncached: a query costs about a millisecond upstream, and a
+    cache keyed on free text would mostly hold one-off keystrokes.
     """
-    if not bypass_cache:
-        cached = await skills_cache.get_global()
-        if cached is not None:
-            logger.info("skills_list_cache_hit", "Served global skills from Redis cache", count=len(cached))
-            return cached
-
-    timeout = _default_timeout()
-    request_id = get_context().get("request_id")
-    upstream_headers = internal_service_headers(request_id)
-    # Forward bypass_cache so the agents service rebuilds its in-memory
-    # manifest before responding (catches admin volume edits without an
-    # agents-service restart).
-    params = {"bypass_cache": "true"} if bypass_cache else None
+    params: Dict[str, Any] = {"q": query, "limit": limit, "offset": offset}
+    if source:
+        params["source"] = source
+    upstream_headers = internal_service_headers(get_context().get("request_id"))
 
     try:
-        async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()) as client:
+        async with httpx.AsyncClient(
+            timeout=_default_timeout(), verify=get_httpx_verify(), cert=get_httpx_client_cert()
+        ) as client:
             resp = await upstream_error_handler.run_with_retries(
                 logger,
                 lambda: client.get(
-                    _AGENTS_GLOBAL_SKILLS_ENDPOINT,
-                    headers=upstream_headers,
-                    params=params,
+                    _AGENTS_CATALOGUE_SEARCH_ENDPOINT, headers=upstream_headers, params=params
                 ),
                 upstream_service="agents",
-                operation="skills_list",
+                operation="skill_catalogue_search",
             )
             resp.raise_for_status()
     except httpx.HTTPStatusError as exc:
         upstream_error_handler.raise_http_error(
             logger,
             exc,
-            event="skills_list_failed",
-            message="Agents service returned an HTTP error listing skills",
-            public_detail="Skill catalogue is temporarily unavailable. Please try again.",
+            event="skill_catalogue_search_failed",
+            message="Agents service returned an HTTP error searching the catalogue",
+            public_detail="Skill search is temporarily unavailable. Please try again.",
             upstream_service="agents",
-            operation="skills_list",
+            operation="skill_catalogue_search",
         )
     except httpx.RequestError as exc:
         upstream_error_handler.raise_request_error(
             logger,
             exc,
-            event="skills_list_failed",
-            message="Agents service is unreachable while listing skills",
-            public_detail="Skill catalogue is temporarily unavailable. Please try again.",
+            event="skill_catalogue_search_unreachable",
+            message="Agents service is unreachable while searching the catalogue",
+            public_detail="Skill search is temporarily unavailable. Please try again.",
             upstream_service="agents",
-            operation="skills_list",
+            operation="skill_catalogue_search",
         )
 
     payload = resp.json()
-    if not isinstance(payload, list):
-        logger.warning("skills_list_malformed", "Agents service returned non-list payload")
-        return []
-    # Upsert on both cache-miss and bypass paths — bypass is "the user wants
-    # the latest, and now everyone else does too." Same TTL applies either way.
-    await skills_cache.set_global(payload)
-    if bypass_cache:
-        logger.info("skills_list_bypass_refresh", "Bypassed Redis and re-upserted global catalog", count=len(payload))
-    else:
-        logger.info("skills_list_cache_miss", "Fetched global skills upstream and cached in Redis", count=len(payload))
+    if not isinstance(payload, dict):
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Agents service returned a malformed search payload.",
+        )
     return payload
+
+
+# The upstream statuses an Add can answer with, and what the user is told. The
+# agents service already phrases 422 for a person; everything else is mapped
+# here so an upstream message never reaches the UI unreviewed.
+_REMOTE_ADD_ERRORS = {
+    status.HTTP_404_NOT_FOUND: "That skill is no longer in the catalogue.",
+    status.HTTP_409_CONFLICT: "You already have a skill with this name.",
+    status.HTTP_502_BAD_GATEWAY: "The skill's source could not be reached. Please try again later.",
+    status.HTTP_503_SERVICE_UNAVAILABLE: "Remote skills are not enabled on this server.",
+}
+
+
+async def add_remote_skill_to_user_pool(
+    *, user_id: str, source_id: str, skill_id: str
+) -> Dict[str, Any]:
+    """Add a remote skill to the user's pool. Returns the new pool entry.
+
+    One attempt, never retried: the Add may download and verify a whole skill
+    upstream, so a retry after a slow first attempt would double the work and
+    then answer 409 for a skill that had in fact been added.
+    """
+    upstream_headers = internal_service_headers(get_context().get("request_id"))
+    url = _user_pool_remote_add_url(user_id, source_id, skill_id)
+
+    try:
+        async with httpx.AsyncClient(
+            timeout=settings.http.skills_remote_add_timeout,
+            verify=get_httpx_verify(),
+            cert=get_httpx_client_cert(),
+        ) as client:
+            resp = await client.post(url, headers=upstream_headers)
+            mapped = _REMOTE_ADD_ERRORS.get(resp.status_code)
+            if mapped is not None:
+                raise HTTPException(status_code=resp.status_code, detail=mapped)
+            if resp.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY:
+                detail = "This skill failed verification and was not added."
+                try:
+                    body = resp.json()
+                    if isinstance(body, dict) and isinstance(body.get("detail"), str):
+                        detail = body["detail"][:300]
+                except ValueError:
+                    pass
+                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detail)
+            resp.raise_for_status()
+    except HTTPException:
+        raise
+    except httpx.HTTPStatusError as exc:
+        upstream_error_handler.raise_http_error(
+            logger,
+            exc,
+            event="user_skill_add_remote_failed",
+            message="Agents service returned an HTTP error adding a remote skill",
+            public_detail="Could not add the skill. Please try again.",
+            upstream_service="agents",
+            operation="user_skill_add_remote",
+        )
+    except httpx.RequestError as exc:
+        upstream_error_handler.raise_request_error(
+            logger,
+            exc,
+            event="user_skill_add_remote_unreachable",
+            message="Agents service is unreachable adding a remote skill",
+            public_detail="Could not add the skill. Please try again.",
+            upstream_service="agents",
+            operation="user_skill_add_remote",
+        )
+
+    body = resp.json()
+    if not isinstance(body, dict):
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Agents service returned a malformed add-skill payload.",
+        )
+    logger.info(
+        "user_skill_add_remote_completed",
+        "Remote skill added to the user's pool",
+        user_id=user_id,
+        source_id=source_id,
+        skill_name=skill_id,
+    )
+    return body
 
 
 # ---------------------------------------------------------------------------
@@ -295,63 +353,6 @@ async def _fetch_user_skill_detail_upstream(
     return payload
 
 
-async def add_global_skill_to_user_pool(
-    *, user_id: str, skill_name: str
-) -> None:
-    """Append a global-skill reference to the user's pool.
-
-    409 if already in pool; 404 if not in global. Invalidates the user's
-    pool cache so the next GET reflects the new state.
-    """
-    timeout = _default_timeout()
-    request_id = get_context().get("request_id")
-    upstream_headers = internal_service_headers(request_id)
-    url = _user_pool_global_add_url(user_id, skill_name)
-
-    try:
-        async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()) as client:
-            resp = await upstream_error_handler.run_with_retries(
-                logger,
-                lambda: client.post(url, headers=upstream_headers),
-                upstream_service="agents",
-                operation="user_skill_add_global",
-            )
-            if resp.status_code == status.HTTP_404_NOT_FOUND:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Skill not in the global catalog.",
-                )
-            if resp.status_code == status.HTTP_409_CONFLICT:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="Skill is already in your pool.",
-                )
-            resp.raise_for_status()
-    except HTTPException:
-        raise
-    except httpx.HTTPStatusError as exc:
-        upstream_error_handler.raise_http_error(
-            logger,
-            exc,
-            event="user_skill_add_global_failed",
-            message="Agents service returned an HTTP error adding global to pool",
-            public_detail="Could not add the skill. Please try again.",
-            upstream_service="agents",
-            operation="user_skill_add_global",
-        )
-    except httpx.RequestError as exc:
-        upstream_error_handler.raise_request_error(
-            logger,
-            exc,
-            event="user_skill_add_global_unreachable",
-            message="Agents service is unreachable adding global to pool",
-            public_detail="Could not add the skill. Please try again.",
-            upstream_service="agents",
-            operation="user_skill_add_global",
-        )
-
-
-
 async def create_custom_skill_in_pool(
     *, user_id: str, payload: Dict[str, Any]
 ) -> Dict[str, Any]:
@@ -372,7 +373,7 @@ async def create_custom_skill_in_pool(
             if resp.status_code == status.HTTP_409_CONFLICT:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail="A skill with that name already exists in your pool or in the global catalog.",
+                    detail="A skill with that name already exists in your pool.",
                 )
             if resp.status_code in (
                 status.HTTP_400_BAD_REQUEST,
@@ -558,7 +559,7 @@ async def _proxy_skill_mutation(
             if resp.status_code == status.HTTP_404_NOT_FOUND:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Skill not in your pool — add it first from the global catalog or create a custom one.",
+                    detail="Skill not in your pool — add it from the catalogue or create a custom one first.",
                 )
             resp.raise_for_status()
     except HTTPException:

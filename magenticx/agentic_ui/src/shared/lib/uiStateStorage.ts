@@ -7,7 +7,6 @@ import { mapIcon } from "@/shared/lib/consts";
 import type {
   Agent,
   ConversationSummary,
-  Skill,
   ToolMetadata,
   UserPreferences,
   UserSkill,
@@ -31,18 +30,19 @@ type ConversationSummarySnapshot = Omit<ConversationSummary, "agent"> & {
   agent: AgentSnapshot;
 };
 
-// v4 adds the per-user skill pool snapshot alongside availableSkills (the
-// global catalog). Both are paint accelerators on refresh; the always-fetch
-// path in useAuthRehydrateEffect overwrites both with fresh server responses.
+// v5 drops `availableSkills`: the bundled global catalogue is gone (plan 30)
+// and the catalogue is now a server-side search, so there is no list to paint.
+// The literal below makes loadUISnapshot discard every v4 snapshot wholesale.
+// `myRegistrySkills` (the user's pool) stays a paint accelerator, overwritten by
+// the always-fetch path in useSkills.
 export type UISnapshotSerializable = {
-  version: 4;
+  version: 5;
   selectedAgent: string;
   isPrivateMode: boolean;
   activeProfileTab: string;
   sidebarOpen: boolean;
   lastConversationId: string | null;
   availableTools?: ToolMetadata[];
-  availableSkills?: Skill[];
   myRegistrySkills?: UserSkill[];
   agents?: Agent[];
   conversations?: ConversationSummary[];
@@ -52,12 +52,11 @@ export type UISnapshotSerializable = {
 
 type PersistedSnapshot = Omit<
   UISnapshotSerializable,
-  "agents" | "conversations" | "userPreferences" | "availableSkills" | "myRegistrySkills"
+  "agents" | "conversations" | "userPreferences" | "myRegistrySkills"
 > & {
   agents?: AgentSnapshot[];
   conversations?: ConversationSummarySnapshot[];
   userPreferences?: UserPreferences | null;
-  availableSkills?: Skill[];
   myRegistrySkills?: UserSkill[];
 };
 
@@ -84,14 +83,13 @@ const looseObject = z.object({}).passthrough();
 
 const snapshotSchema = z
   .object({
-    version: z.literal(4),
+    version: z.literal(5),
     selectedAgent: z.string(),
     isPrivateMode: z.boolean(),
     activeProfileTab: z.string(),
     sidebarOpen: z.boolean(),
     lastConversationId: z.string().nullable(),
     availableTools: z.array(looseObject).optional(),
-    availableSkills: z.array(looseObject).optional(),
     myRegistrySkills: z.array(looseObject).optional(),
     agents: z.array(looseObject).optional(),
     conversations: z.array(looseObject).optional(),
@@ -237,12 +235,11 @@ export async function saveUISnapshot(userId: string, data: UISnapshotSerializabl
   const payload: PersistedSnapshot = {
     ...rest,
     availableTools: serializeToolsForStorage(data.availableTools),
-    availableSkills: data.availableSkills ?? [],
     myRegistrySkills: data.myRegistrySkills ?? [],
     agents: serializeAgentsListForStorage(data.agents),
     conversations: serializeConversationSummaries(data.conversations),
     userPreferences: data.userPreferences ?? null,
-    version: 4,
+    version: 5,
   };
   await idbPut(STATE_STORE, userId, payload);
 }
@@ -257,7 +254,6 @@ export async function loadUISnapshot(userId: string): Promise<UISnapshotSerializ
   if (hasForbiddenKey(saved) || !snapshotSchema.safeParse(saved).success) return null;
   const {
     availableTools,
-    availableSkills,
     myRegistrySkills,
     agents,
     conversations,
@@ -269,14 +265,12 @@ export async function loadUISnapshot(userId: string): Promise<UISnapshotSerializ
     ...(rest as Omit<
       UISnapshotSerializable,
       | "availableTools"
-      | "availableSkills"
       | "myRegistrySkills"
       | "agents"
       | "conversations"
       | "userPreferences"
     >),
     availableTools: deserializeToolsFromStorage(availableTools),
-    availableSkills: Array.isArray(availableSkills) ? availableSkills : [],
     myRegistrySkills: Array.isArray(myRegistrySkills) ? myRegistrySkills : [],
     agents: deserializeAgentsListFromStorage(agents),
     conversations: deserializeConversationSummaries(conversations),

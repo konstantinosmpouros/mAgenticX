@@ -1,5 +1,4 @@
 import type {
-  Skill,
   ToolMetadata,
   UserPreferences,
   UserProfile,
@@ -10,7 +9,6 @@ import {
   getAgents,
   getConversations,
   getMySkills,
-  getSkills,
   getTools,
   getUserPreferences,
   logoutAccount,
@@ -30,7 +28,6 @@ export type AuthCtx = {
   setUserProfile: (v: UserProfile | null) => void;
   setAgents: (v: any) => void;
   setAvailableTools: (v: ToolMetadata[]) => void;
-  setAvailableSkills: (v: Skill[]) => void;
   setMyRegistrySkills?: (v: UserSkill[]) => void;
   setUserPreferences: (v: UserPreferences | null) => void;
   setConversations: (v: any) => void;
@@ -68,7 +65,6 @@ export function createAuthHandlers(ctx: AuthCtx) {
     setAgents,
     setConversations,
     setAvailableTools,
-    setAvailableSkills,
     setMyRegistrySkills,
     setUserPreferences,
     setConversationsLoading,
@@ -102,7 +98,6 @@ export function createAuthHandlers(ctx: AuthCtx) {
       // Fetch all bootstrap data in parallel; each result can fail independently without blocking login.
       const agentsPromise = getAgents();
       const toolsPromise = getTools();
-      const skillsPromise = getSkills();
       const mySkillsPromise = setMyRegistrySkills ? getMySkills(user.id) : null;
       const preferencesPromise = getUserPreferences(user.id);
       const conversationsPromise = getConversations(user.id, 1, CONV_INITIAL_PAGE_SIZE);
@@ -122,14 +117,6 @@ export function createAuthHandlers(ctx: AuthCtx) {
       } catch (e) {
         console.error("Failed to fetch tools after login:", e);
         setAvailableTools([]);
-      }
-
-      try {
-        const skillsList = await skillsPromise;
-        setAvailableSkills(skillsList);
-      } catch (e) {
-        console.error("Failed to fetch skills after login:", e);
-        setAvailableSkills([]);
       }
 
       if (mySkillsPromise && setMyRegistrySkills) {
@@ -190,7 +177,6 @@ export function createAuthHandlers(ctx: AuthCtx) {
       setUserId(null);
       setAgents([]);
       setAvailableTools([]);
-      setAvailableSkills([]);
       setMyRegistrySkills?.([]);
       setConversations([]);
       setConversationsLoading(false);

@@ -1,15 +1,15 @@
-"""The skill registry: the catalogue index, and the validation that guards a pool.
+"""The skill registry: the validation that guards a user's pool.
 
-Two halves, split by what each still owns now that storage moved into
-``agent_runtime``:
+``user_registry`` owns no files. What it does own is the part that was never
+about storage: path/size/type validation, strict base64, name conflicts and
+canonical frontmatter assembly. Those run against an in-memory stand-in for the
+store, so every rule is pinned with no database involved.
 
-* **``global_manifest``** still walks a real directory. The catalogue is
-  build-time content, seeded from the image and shared by every user, so it
-  stays on the volume — these tests keep using the ``skills_fs`` tmp tree.
-* **``user_registry``** owns no files any more. What is left is the part that was
-  never about storage: path/size/type validation, strict base64, name conflicts
-  and canonical frontmatter assembly. Those run against an in-memory stand-in
-  for the store, so every rule is pinned with no database involved.
+The bundled catalogue is gone (plan 30). What survives of it is the **legacy**
+``global`` pool entry — a pointer into the copy an older image left on the
+volume — which must keep reading until it is pruned, and which nothing can
+create any more. Remote skills, the catalogue's replacement, are pinned in the
+``test_remote_skills_*`` files.
 
 The store's own behaviour is pinned in ``test_skill_store.py``; the SQL behind it
 is exercised against real Postgres by the integration check in the same commit.
@@ -24,88 +24,6 @@ import yaml
 
 
 # ---------------------------------------------------------------------------
-# global_manifest
-# ---------------------------------------------------------------------------
-def test_rebuild_global_manifest_indexes_two_level_layout(skills_fs):
-    gm = skills_fs.service.global_manifest
-    manifest = gm.rebuild_global_manifest()
-
-    names = sorted(e.name for e in manifest.skills)
-    assert names == ["deep-research", "design-system"]
-    entry = next(e for e in manifest.skills if e.name == "deep-research")
-    assert entry.type == "global"
-    assert entry.category == "research"
-    assert entry.source_path == "global/research/deep-research"
-    assert gm.is_global_skill("deep-research") is True
-    assert gm.is_global_skill("not-a-skill") is False
-
-
-def test_get_global_manifest_rebuilds_when_cache_empty(skills_fs):
-    gm = skills_fs.service.global_manifest
-    gm._MANIFEST_CACHE = None
-    manifest = gm.get_global_manifest()
-    assert {e.name for e in manifest.skills} == {"deep-research", "design-system"}
-    assert gm._MANIFEST_CACHE is manifest
-    # Second call returns the cached object without rescanning.
-    assert gm.get_global_manifest() is manifest
-
-
-def test_scan_global_registry_skips_stray_and_missing_skill_md(skills_fs):
-    gm = skills_fs.service.global_manifest
-    # Stray SKILL.md directly under a category dir — logged, ignored.
-    (skills_fs.global_root / "research" / "SKILL.md").write_text("---\nname: stray\n---\nx", encoding="utf-8")
-    # Skill dir with no SKILL.md — skipped.
-    (skills_fs.global_root / "research" / "empty-skill").mkdir(parents=True, exist_ok=True)
-    # A plain file at the global root — not a category dir, skipped.
-    (skills_fs.global_root / "loose.txt").write_text("ignore me", encoding="utf-8")
-
-    entries = gm._scan_global_registry()
-    names = sorted(e.name for e in entries)
-    assert names == ["deep-research", "design-system"]
-
-
-def test_scan_global_registry_missing_root_returns_empty(skills_fs):
-    gm = skills_fs.service.global_manifest
-    # Repoint the whole global plane at a path that doesn't exist, so the
-    # derived catalogue root (<plane>/skills) is missing too.
-    skills_fs.service.settings_module.settings.filesystem.global_root = skills_fs.global_root / "does-not-exist"
-    assert gm._scan_global_registry() == []
-
-
-def test_parse_frontmatter_variants(skills_fs):
-    gm = skills_fs.service.global_manifest
-    skill_dir = skills_fs.global_root / "misc" / "frontmatter-skill"
-    skill_dir.mkdir(parents=True, exist_ok=True)
-    md = skill_dir / "SKILL.md"
-
-    # No frontmatter → falls back to directory name.
-    md.write_text("just a body, no frontmatter", encoding="utf-8")
-    name, desc = gm._parse_frontmatter(md)
-    assert name == "frontmatter-skill"
-    assert desc == ""
-
-    # Unterminated frontmatter → falls back to directory name.
-    md.write_text("---\nname: x\n", encoding="utf-8")
-    name, desc = gm._parse_frontmatter(md)
-    assert name == "frontmatter-skill"
-
-    # Full frontmatter → overrides.
-    md.write_text("---\nname: real-name\ndescription: a desc\nother: ignored\n---\nbody", encoding="utf-8")
-    name, desc = gm._parse_frontmatter(md)
-    assert name == "real-name"
-    assert desc == "a desc"
-
-
-def test_parse_frontmatter_read_failure_returns_dir_name(skills_fs):
-    gm = skills_fs.service.global_manifest
-    # Point at a directory (not a file) so read_text raises OSError.
-    missing = skills_fs.global_root / "ghost" / "SKILL.md"
-    name, desc = gm._parse_frontmatter(missing)
-    assert name == "ghost"
-    assert desc == ""
-
-
-# ---------------------------------------------------------------------------
 # The registry, over the in-memory store from conftest
 # ---------------------------------------------------------------------------
 def _payload(service, name, description="A custom skill", extra_files=None):
@@ -117,39 +35,34 @@ def _payload(service, name, description="A custom skill", extra_files=None):
 
 
 # ---------------------------------------------------------------------------
-# The pool — global entries
+# The pool — legacy global entries
 # ---------------------------------------------------------------------------
+async def _hold_legacy_global(ur, user_id="user-1", name="deep-research", category="research"):
+    """Seed a pre-plan-30 pool row. No code path can create one any more."""
+    await ur.store.add_global(user_id, name, category=category, description="Run deep research")
+
+
+def test_no_code_path_can_add_a_global_skill_any_more(ur):
+    # The bundled catalogue was deleted; adding from it must not be possible.
+    assert not hasattr(ur, "add_global_to_user")
+
+
 @pytest.mark.asyncio
-async def test_adding_a_global_skill_stores_a_pointer_not_a_copy(ur):
-    entry = await ur.add_global_to_user("user-1", "deep-research")
+async def test_a_legacy_global_entry_is_a_pointer_not_a_copy(ur):
+    await _hold_legacy_global(ur)
+    [entry] = await ur.list_user_skills("user-1")
     assert entry.type == "global"
     assert entry.source_path == "global/research/deep-research"
-
+    assert entry.provenance is None
     # The point of the model: no content was written for it anywhere.
     assert ur.store.files == {}
-    assert [s.name for s in await ur.list_user_skills("user-1")] == ["deep-research"]
-    assert await ur.list_user_skill_names("user-1") == ["deep-research"]
 
 
 @pytest.mark.asyncio
-async def test_a_catalogue_skill_that_does_not_exist_is_a_miss_not_a_conflict(ur):
-    """The route maps ``FileNotFoundError`` to 404 and every other ``ValueError``
-    to 409 — and ``SkillNameConflict`` is a ``ValueError``. Raising one here
-    answered "already in your pool" for a name the catalogue never had."""
-    with pytest.raises(FileNotFoundError):
-        await ur.add_global_to_user("user-1", "no-such-skill")
-
-
-@pytest.mark.asyncio
-async def test_adding_the_same_global_twice_is_a_conflict(ur):
-    await ur.add_global_to_user("user-1", "deep-research")
-    with pytest.raises(ur.SkillNameConflict):
-        await ur.add_global_to_user("user-1", "deep-research")
-
-
-@pytest.mark.asyncio
-async def test_a_global_entry_reads_its_body_from_the_catalogue(ur):
-    await ur.add_global_to_user("user-1", "deep-research")
+async def test_a_legacy_global_entry_still_reads_from_the_volume(ur):
+    """What an older image seeded is still on the volume, and a user who added
+    it before plan 30 must keep a working skill until it is pruned."""
+    await _hold_legacy_global(ur)
     detail = await ur.get_user_skill_detail("user-1", "deep-research")
     assert detail.type == "global"
     assert detail.category == "research"
@@ -166,10 +79,10 @@ async def test_opening_a_skill_the_user_does_not_hold_is_a_404_not_a_500(ur):
 
 
 @pytest.mark.asyncio
-async def test_a_global_entry_whose_catalogue_folder_vanished_still_lists(ur, skills_fs):
-    # A catalogue entry can disappear between image builds while a user still
-    # references it. The pool row must survive with no files rather than raise.
-    await ur.add_global_to_user("user-1", "deep-research")
+async def test_a_legacy_entry_whose_folder_vanished_still_lists(ur, skills_fs):
+    # The volume copy can be pruned while a user still references it. The pool
+    # row must survive with no files rather than raise.
+    await _hold_legacy_global(ur)
     shutil.rmtree(skills_fs.global_root / "research" / "deep-research")
 
     detail = await ur.get_user_skill_detail("user-1", "deep-research")
@@ -231,10 +144,11 @@ async def test_a_name_already_in_the_pool_is_refused(ur, skills_fs):
 
 
 @pytest.mark.asyncio
-async def test_a_name_that_shadows_a_catalogue_skill_is_refused(ur, skills_fs):
-    # Shadowing would make the same name resolve differently per user.
-    with pytest.raises(ur.SkillNameConflict):
-        await ur.add_custom_to_user("user-1", _payload(skills_fs.service, "deep-research"))
+async def test_only_the_pool_can_refuse_a_custom_name(ur, skills_fs):
+    """There is no bundled catalogue to shadow any more, so a name is refused
+    only when the user already holds it — even one a legacy folder still bears."""
+    entry = await ur.add_custom_to_user("user-1", _payload(skills_fs.service, "deep-research"))
+    assert entry.type == "custom"
 
 
 @pytest.mark.asyncio
@@ -364,8 +278,8 @@ async def test_removing_from_the_pool_cascades_to_every_assignment(ur, skills_fs
 
 
 @pytest.mark.asyncio
-async def test_removing_a_global_entry_never_touches_the_shared_catalogue(ur, skills_fs):
-    await ur.add_global_to_user("user-1", "deep-research")
+async def test_removing_a_legacy_entry_never_touches_the_volume_copy(ur, skills_fs):
+    await _hold_legacy_global(ur)
     await ur.remove_from_user("user-1", "deep-research")
 
     assert [s.name for s in await ur.list_user_skills("user-1")] == []

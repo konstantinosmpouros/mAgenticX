@@ -1,79 +1,74 @@
-"""Skills router — global catalog + per-user pool + per-(user, agent) selection.
+"""Skills router — the remote catalogue, a user's pool, and per-agent selection.
 
-Three tiers:
+- ``GET /v1/skills/catalogue`` searches the remote skill catalogue (plan 30).
+- ``GET / POST / DELETE /v1/skills/users/{user_id}[/...]`` manage the user's
+  pool: add a remote skill, create a custom one, remove (cascades to every
+  per-agent assignment).
+- ``GET / PUT / DELETE /v1/skills/users/{user_id}/agents/{agent_id}[/{name}]``
+  manage which pool skills are assigned to a deep agent.
 
-- ``GET /v1/skills`` returns the global admin-curated catalog.
-- ``GET / POST / DELETE /v1/users/{user_id}/skills[/...]`` manage the
-  user's personal pool — add globals by name, create owned customs,
-  remove (cascades to per-agent assignments).
-- ``GET / PUT / DELETE /v1/users/{user_id}/agents/{agent_id}/skills[/{name}]``
-  manage which pool skills are assigned to a deep agent. The agents service
-  resolves the source folder via the user's manifest at assignment time.
-
-The bridge proxies to the agents service (which owns every volume) and
-caches reads in Redis with short TTLs + explicit invalidation on every
-mutation.
-
-The selection state is **not stored in Postgres** — the on-disk filesystem
-under ``$SKILLS_REGISTRY_USERS_ROOT/<user_id>/`` and
-``$AGENTS_FILESYSTEM_ROOT/<user_id>/<agent_slug>/skills/`` IS the source of
-truth.
+Every route forwards to the agents service, which owns the skills in
+``agent_runtime`` and is the only service that reaches a remote source. Nothing
+here is stored or cached by the bridge.
 """
 from __future__ import annotations
 
 from typing import List
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Path, Query, status
 from core.logging import get_logger, set_context
 
 
 from core.auth.session import AuthUser, require_csrf_protection, require_current_user
-from core.security.rate_limit import skill_upload_rate_limit
+from core.security.rate_limit import (
+    skill_catalogue_search_rate_limit,
+    skill_remote_add_rate_limit,
+    skill_upload_rate_limit,
+)
 from schema import (
+    CatalogueSearchPage,
     CustomSkillCreateRequest,
-    Skill,
     UserSkill,
     UserSkillDetail,
 )
 from utils import validate_userId
 from utils.skills import (
-    add_global_skill_to_user_pool,
+    add_remote_skill_to_user_pool,
     create_custom_skill_in_pool,
     disable_user_agent_skill,
     enable_user_agent_skill,
     get_user_agent_skills,
     get_user_skill_detail,
-    list_skills,
     list_user_skills,
     remove_skill_from_user_pool,
+    search_catalogue,
 )
 
 router = APIRouter()
 logger = get_logger(__name__)
 
 
-@router.get("", response_model=List[Skill], status_code=status.HTTP_200_OK)
-async def get_skills(
-    bypass_redis: bool = Query(
-        default=False,
-        description=(
-            "When true, skip the Redis cache, fetch fresh from the agents "
-            "service (forcing its in-memory manifest rebuild), and upsert "
-            "the bridge cache with the response. Used by the manual "
-            "'refresh' button. A normal page refresh leaves this false."
-        ),
-    ),
+# Source and skill ids are lowercase ASCII with single hyphens wherever they are
+# minted, so anything else is refused here rather than forwarded.
+_ID_PATTERN = r"^[a-z0-9][a-z0-9-]{0,63}$"
+
+
+@router.get(
+    "/catalogue",
+    response_model=CatalogueSearchPage,
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(skill_catalogue_search_rate_limit)],
+)
+async def search_skill_catalogue(
+    q: str = Query("", max_length=200),
+    source: str | None = Query(None, pattern=_ID_PATTERN),
+    limit: int = Query(10, ge=1, le=50),
+    offset: int = Query(0, ge=0, le=5000),
     _: AuthUser = Depends(require_current_user),
-) -> List[Skill]:
-    """Return every skill in the global catalog (admin-curated). Requires a valid session."""
-    payload = await list_skills(bypass_cache=bypass_redis)
-    logger.info(
-        "skills_listed",
-        "Served global skills catalog to UI",
-        count=len(payload),
-        bypass_redis=bypass_redis,
-    )
-    return [Skill.model_validate(item) for item in payload]
+) -> CatalogueSearchPage:
+    """Search the remote skill catalogue. Requires a valid session."""
+    payload = await search_catalogue(query=q, source=source, limit=limit, offset=offset)
+    return CatalogueSearchPage.model_validate(payload)
 
 
 # ---------------------------------------------------------------------------
@@ -117,32 +112,43 @@ async def get_user_skill(
 
 
 @router.post(
-    "/users/{user_id}/global/{skill_name}",
-    status_code=status.HTTP_204_NO_CONTENT,
+    "/users/{user_id}/remote/{source_id}/{skill_id}",
+    response_model=UserSkill,
+    status_code=status.HTTP_201_CREATED,
 )
-async def add_global_to_pool(
+async def add_remote_to_pool(
     user_id: str,
-    skill_name: str,
+    source_id: str = Path(..., pattern=_ID_PATTERN),
+    skill_id: str = Path(..., pattern=_ID_PATTERN),
     _: AuthUser = Depends(validate_userId),
     __: None = Depends(require_csrf_protection),
-) -> None:
-    """Append a global-skill reference to the user's pool."""
+    # Each Add can make the agents service download a skill — per-user ceiling.
+    # After auth + CSRF on purpose: the bucket is keyed on the path's {user_id},
+    # so it must only ever count requests that user actually made.
+    ___: None = Depends(skill_remote_add_rate_limit),
+) -> UserSkill:
+    """Add a remote skill to the user's pool, pinned to the version shown."""
     set_context(user_id=user_id)
-    await add_global_skill_to_user_pool(user_id=user_id, skill_name=skill_name)
+    body = await add_remote_skill_to_user_pool(
+        user_id=user_id, source_id=source_id, skill_id=skill_id
+    )
+    return UserSkill.model_validate(body)
 
 
 @router.post(
     "/users/{user_id}/custom",
     response_model=UserSkill,
     status_code=status.HTTP_201_CREATED,
-    # Writes multi-file folders onto the agents-service disk — per-user ceiling.
-    dependencies=[Depends(skill_upload_rate_limit)],
 )
 async def create_custom_skill(
     user_id: str,
     payload: CustomSkillCreateRequest,
     _: AuthUser = Depends(validate_userId),
     __: None = Depends(require_csrf_protection),
+    # Writes multi-file skills into agent_runtime — per-user ceiling.
+    # After auth + CSRF on purpose: the bucket is keyed on the path's {user_id},
+    # so it must only ever count requests that user actually made.
+    ___: None = Depends(skill_upload_rate_limit),
 ) -> UserSkill:
     """Create a user-owned custom skill in the pool."""
     set_context(user_id=user_id)
@@ -205,9 +211,7 @@ async def enable_skill_for_user_agent(
 ) -> None:
     """Enable ``skill_name`` for this (user, agent) pair.
 
-    Proxies to the agents service which copies the registry's skill
-    directory into the per-user filesystem. Idempotent: re-enabling an
-    already-enabled skill is a no-op upstream.
+    Idempotent: re-enabling an already-enabled skill is a no-op upstream.
     """
     set_context(user_id=user_id, agent_id=agent_id)
     await enable_user_agent_skill(
@@ -228,9 +232,7 @@ async def disable_skill_for_user_agent(
 ) -> None:
     """Disable ``skill_name`` for this (user, agent) pair.
 
-    Proxies to the agents service which removes the skill's directory from
-    the per-user filesystem. Idempotent: disabling a not-enabled skill is
-    a no-op upstream.
+    Idempotent: disabling a not-enabled skill is a no-op upstream.
     """
     set_context(user_id=user_id, agent_id=agent_id)
     await disable_user_agent_skill(

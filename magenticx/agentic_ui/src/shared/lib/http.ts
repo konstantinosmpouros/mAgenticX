@@ -33,6 +33,11 @@ import { withSessionRequest } from "./utils";
  * ignores). `status` mirrors the HTTP status; `detail` is the backend's
  * `detail` field when present; `retryAfterSeconds` is parsed from the
  * `Retry-After` header when the caller asked for it (rate-limited login).
+ *
+ * `status` is `0` when there was no usable answer to report — the request got a
+ * 401 and the session refresh that would have repaired it could not reach the
+ * bridge. Deliberately not 401: that status means "signed out" to the rest of
+ * the app, and this is a connectivity problem, not a logout.
  */
 export class ApiError extends Error {
   readonly status: number;
@@ -145,6 +150,16 @@ export async function requestRaw(path: string, opts: ApiRequestOptions = {}): Pr
   // ensureFreshSession is single-flight, so a burst of 401s refreshes only once.
   if (res.status === 401 && !opts.skipAuthRetry) {
     const outcome = await ensureFreshSession();
+    if (outcome.status === "unavailable") {
+      // The refresh could not reach the bridge (offline, waking from sleep, a
+      // restart). The session may well still be valid, so this must NOT emit the
+      // logout — fail just this request. useSessionAutoRefreshEffect retries the
+      // refresh (immediately on `online`/tab focus, otherwise with backoff) and
+      // repairs the session once the bridge is reachable again.
+      throw new ApiError("Can't reach the server right now. Please try again in a moment.", {
+        status: 0,
+      });
+    }
     if (outcome.status !== "failed") {
       res = await fetch(path, withSessionRequest(buildInit(opts), { csrf: opts.csrf }));
       if (res.ok || opts.ignoreStatuses?.includes(res.status)) {

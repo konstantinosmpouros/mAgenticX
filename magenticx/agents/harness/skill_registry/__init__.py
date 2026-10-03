@@ -1,55 +1,60 @@
-"""Skill registry subsystem.
+"""Skill registry subsystem — a user's skill pool, and where its skills come from.
 
-Owns the two skills_registry tiers on disk:
+Every skill a user holds is a row in ``agent_runtime`` (:mod:`.store`), and the
+``/skills/`` and ``/default_skills/`` mounts are virtual routes over it. A pool
+entry is one of:
 
-- **Global registry** at ``$SKILLS_REGISTRY_GLOBAL_ROOT`` (admin-curated,
-  read-only at runtime). Seeded from the image on every boot via
-  ``seed_global_registry``; indexed by ``manifest.json`` written by
-  ``global_manifest.rebuild_global_manifest`` in the FastAPI lifespan.
-- **Per-user registry** at ``$SKILLS_REGISTRY_USERS_ROOT/<user_id>/``
-  (user-mutable). Phase B adds ``user_registry`` here; this module is the
-  shared home so all skill-registry filesystem helpers live together.
+* ``custom`` — authored by the user (or by an agent through ``create_skill``).
+* ``remote`` — added from an allowlisted remote source (plan 30). The catalogue
+  those come from is indexed daily by :mod:`.remote`, and its content is fetched
+  — pinned and verified — only when someone adds it.
+* ``global`` — **legacy**: a reference into the bundled catalogue plan 30
+  deleted. Still readable from the volume so nothing a user holds breaks; no
+  code path can create one.
 
-The runtime ``CompositeBackend`` still reads skills from the per-(user, agent)
-copy under ``$AGENTS_FILESYSTEM_ROOT/<user_id>/agents/<slug>/skills/`` —
-that's not part of this subsystem (see ``harness.filesystem``).
+A platform agent's own bundled ``skills/`` folder is a different thing (tier ①
+of that agent) and is not part of this subsystem.
 """
-from harness.skill_registry.global_manifest import (
-    get_global_manifest,
-    is_global_skill,
-    rebuild_global_manifest,
+from harness.skill_registry.remote import (
+    RemoteSkillRefused,
+    RemoteSkillUnavailable,
+    run_remote_skill_sync_loop,
 )
-from harness.skill_registry.seed_global_registry import seed_global_registry
 from harness.skill_registry.store import SkillStore
 from harness.skill_registry.user_registry import (
+    RemoteSkillsDisabled,
     SkillNameConflict,
     SkillValidationError,
     add_custom_to_user,
-    add_global_to_user,
+    add_remote_to_user,
     assign_user_skill_to_agent,
     get_user_skill_detail,
+    list_remote_sources,
     list_user_agent_skills,
     list_user_skill_names,
     list_user_skills,
     remove_from_user,
+    search_catalogue,
     unassign_user_skill_from_agent,
 )
 
 __all__ = [
-    "get_global_manifest",
-    "is_global_skill",
-    "rebuild_global_manifest",
-    "seed_global_registry",
+    "RemoteSkillRefused",
+    "RemoteSkillUnavailable",
+    "RemoteSkillsDisabled",
     "SkillNameConflict",
+    "SkillStore",
     "SkillValidationError",
     "add_custom_to_user",
-    "add_global_to_user",
+    "add_remote_to_user",
     "assign_user_skill_to_agent",
     "get_user_skill_detail",
+    "list_remote_sources",
     "list_user_agent_skills",
     "list_user_skill_names",
     "list_user_skills",
     "remove_from_user",
+    "run_remote_skill_sync_loop",
+    "search_catalogue",
     "unassign_user_skill_from_agent",
-    "SkillStore",
 ]

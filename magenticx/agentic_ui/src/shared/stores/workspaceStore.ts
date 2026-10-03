@@ -7,7 +7,6 @@ import type {
   ConversationDetail,
   ConversationShareListItem,
   ConversationSummary,
-  Skill,
   ToolMetadata,
   UserPreferences,
   UserProfile,
@@ -46,7 +45,6 @@ export type WorkspaceState = {
   // Catalogs + preferences
   agents: Agent[];
   availableTools: ToolMetadata[];
-  availableSkills: Skill[];
   myRegistrySkills: UserSkill[];
   userPreferences: UserPreferences | null;
   isSavingPreferences: boolean;
@@ -87,7 +85,6 @@ export type WorkspaceState = {
   setUserProfile: (v: SetStateArg<UserProfile | null>) => void;
   setAgents: (v: SetStateArg<Agent[]>) => void;
   setAvailableTools: (v: SetStateArg<ToolMetadata[]>) => void;
-  setAvailableSkills: (v: SetStateArg<Skill[]>) => void;
   setMyRegistrySkills: (v: SetStateArg<UserSkill[]>) => void;
   setUserPreferences: (v: SetStateArg<UserPreferences | null>) => void;
   setIsSavingPreferences: (v: SetStateArg<boolean>) => void;
@@ -127,7 +124,6 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
 
   agents: [],
   availableTools: [],
-  availableSkills: [],
   myRegistrySkills: [],
   userPreferences: null,
   isSavingPreferences: false,
@@ -174,7 +170,6 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
     set(() => ({
       agents: [],
       availableTools: [],
-      availableSkills: [],
       myRegistrySkills: [],
       userPreferences: null,
       isSavingPreferences: false,
@@ -204,7 +199,6 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   setUserProfile: (v) => set((s) => ({ userProfile: resolve(v, s.userProfile) })),
   setAgents: (v) => set((s) => ({ agents: resolve(v, s.agents) })),
   setAvailableTools: (v) => set((s) => ({ availableTools: resolve(v, s.availableTools) })),
-  setAvailableSkills: (v) => set((s) => ({ availableSkills: resolve(v, s.availableSkills) })),
   setMyRegistrySkills: (v) => set((s) => ({ myRegistrySkills: resolve(v, s.myRegistrySkills) })),
   setUserPreferences: (v) => set((s) => ({ userPreferences: resolve(v, s.userPreferences) })),
   setIsSavingPreferences: (v) =>
