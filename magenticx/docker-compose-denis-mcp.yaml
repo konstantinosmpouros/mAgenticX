@@ -17,6 +17,13 @@ services:
       - /opt/magenticx/mcp_config/mcp_catalog.yaml:/app/mcp_catalog.yaml:ro
       - /opt/magenticx/mcp_config/mcp_secret.env:/app/mcp_secret:ro
       - /opt/magenticx/mcp_config/mcp_config.yaml:/app/mcp_config.yaml:ro
+    # In memory, so every start is clean. A reboot kills this container
+    # mid-flight and Docker *restarts* (not re-creates) it, which kept the inner
+    # dockerd's PID files from the previous run; containerd then refused to
+    # start and the gateway waited for dockerd forever (Dennis, 2026-10-02).
+    # /run, not /var/run: in this image /var/run is a symlink to it.
+    tmpfs:
+      - /run
     restart: unless-stopped
     networks:
       - mcp_gateway
