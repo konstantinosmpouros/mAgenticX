@@ -5,8 +5,9 @@
  * read/refresh/logout, and the per-browser account switcher.
  */
 import type { AccountList, AuthResponse } from "../types";
-import { requestJson, requestVoid } from "../http";
+import { ApiError, requestJson, requestVoid } from "../http";
 import { AccountListSchema } from "../schemas";
+import { isSessionEndedStatus, sessionRetryDelay, waitForSessionRetry } from "../sessionRefresh";
 import { normalizeAuthResponse } from "../utils";
 import { AUTH_BASE_PATH } from "./paths";
 
@@ -22,20 +23,57 @@ export async function getSessionMe(): Promise<AuthResponse> {
   return normalizeAuthResponse(data);
 }
 
-// Attempt to restore user session, first by checking current session, then by trying to refresh if unauthorized
+/**
+ * Restore the session: read the current one, and on a 401 trade the refresh
+ * cookie for a new pair.
+ *
+ * Resolves `null` only when the bridge ANSWERED that there is no session (a 401
+ * on `/session`, then a 401/403 on the refresh). When it could not tell — offline,
+ * a 5xx, a 429 — this throws instead, so the caller can retry rather than treat a
+ * network blip as a sign-out. Swallowing those as `null` used to send a user
+ * with a perfectly valid refresh cookie to the login screen.
+ */
 export async function restoreSession(): Promise<AuthResponse | null> {
   try {
     return await getSessionMe();
   } catch (error) {
-    if ((error as { status?: number })?.status !== 401) {
+    if (!(error instanceof ApiError) || error.status !== 401) {
       throw error;
     }
   }
 
   try {
     return await refreshSession(false);
-  } catch {
-    return null;
+  } catch (error) {
+    if (error instanceof ApiError && isSessionEndedStatus(error.status)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+/**
+ * `restoreSession`, retried until the bridge gives an answer either way.
+ *
+ * The page-load paths need this because they run at the worst moment: a tab
+ * restored at browser start, or the login page reached straight after waking
+ * from sleep, fires before the network is back. Waits back off to 30s and are
+ * cut short by an `online` event or the tab becoming visible.
+ *
+ * @param opts.signal stops the retries (rejects with `AbortError`), e.g. on unmount.
+ * @param opts.onUnreachable called once, after the first attempt that got no
+ *   answer, so the caller can say why it is still waiting.
+ */
+export async function restoreSessionWhenReachable(
+  opts: { signal?: AbortSignal; onUnreachable?: () => void } = {},
+): Promise<AuthResponse | null> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await restoreSession();
+    } catch {
+      if (attempt === 0) opts.onUnreachable?.();
+      await waitForSessionRetry(sessionRetryDelay(attempt), opts.signal);
+    }
   }
 }
 

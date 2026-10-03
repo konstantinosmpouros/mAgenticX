@@ -13,7 +13,7 @@
 
 export {
   revokeAllSessions,
-  restoreSession,
+  restoreSessionWhenReachable,
   logoutSession,
   getAccounts,
   switchAccount,

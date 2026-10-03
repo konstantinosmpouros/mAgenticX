@@ -19,9 +19,9 @@ import {
   getConversations,
   getTools,
   getUserPreferences,
-  restoreSession,
+  restoreSessionWhenReachable,
 } from "@/shared/lib/api";
-import { ensureFreshSession } from "@/shared/lib/sessionRefresh";
+import { ensureFreshSession, sessionRetryDelay } from "@/shared/lib/sessionRefresh";
 import { sortByUpdatedAtDesc } from "@/shared/lib/utils";
 import { CONV_INITIAL_PAGE_SIZE } from "@/shared/lib/consts";
 
@@ -81,6 +81,7 @@ export function useAuthRehydrateEffect(params: {
     setActiveProfileTab,
     setSidebarOpen,
     persistUIState,
+    toast,
   } = params;
   const started = useRef(false);
 
@@ -91,7 +92,19 @@ export function useAuthRehydrateEffect(params: {
     const run = async () => {
       try {
         const existing = loadSession();
-        const restored = await restoreSession();
+        // Retried until the bridge answers, with the loader still up. A tab
+        // restored at browser start (or reloaded right after waking) often runs
+        // this before the network is back; giving up then would send a user with
+        // a valid session to the login screen.
+        const restored = await restoreSessionWhenReachable({
+          onUnreachable: () =>
+            toast?.({
+              title: "Can't reach the server",
+              description: "You'll be signed back in as soon as the connection returns.",
+              variant: "warning",
+              duration: 5000,
+            }),
+        });
 
         if (!restored?.authenticated || !restored.user || !restored.user.id) {
           clearSession();
@@ -365,6 +378,10 @@ export function useSessionAutoRefreshEffect(params: {
   const timerRef = useRef<number | null>(null);
   const refreshingRef = useRef(false);
   const scheduleRef = useRef<() => void>(() => {});
+  // Consecutive refreshes that got no answer from the bridge. Non-zero means a
+  // refresh is still owed: the scheduler retries it rather than waiting for the
+  // normal pre-expiry slot, and the count picks the backoff step.
+  const retryAttemptRef = useRef(0);
 
   const clearTimer = useCallback(() => {
     if (timerRef.current !== null) {
@@ -380,11 +397,28 @@ export function useSessionAutoRefreshEffect(params: {
       // ensureFreshSession does the single-flight refresh (cross-tab lock + fresh
       // marker skip + local persistence). We only sync React state and re-arm.
       const outcome = await ensureFreshSession();
+      if (outcome.status === "unavailable") {
+        // No answer from the bridge — offline, or the tab woke from sleep a few
+        // seconds before Wi-Fi (or Docker Desktop's port forward) came back. The
+        // session may be perfectly valid, so stay signed in and try again: on
+        // `online`/tab focus straight away (see the effect below), otherwise
+        // after the backoff. Logging out here used to sign people out on wake
+        // while their refresh cookie was still valid.
+        const delay = sessionRetryDelay(retryAttemptRef.current);
+        retryAttemptRef.current += 1;
+        clearTimer();
+        // Offline means no attempt can succeed; the `online` listener retries.
+        if (navigator.onLine !== false) {
+          timerRef.current = window.setTimeout(() => scheduleRef.current(), delay);
+        }
+        return;
+      }
       if (outcome.status === "failed") {
-        // Refresh token gone/expired (idle >12d, absolute >20d, or revoked) —
-        // the session is genuinely over.
+        // The bridge refused the refresh token (idle >12d, absolute >20d, or
+        // revoked) — the session is genuinely over.
         throw new Error("session refresh failed");
       }
+      retryAttemptRef.current = 0;
 
       // 'refreshed' carries the rotated user; 'already-fresh' means another tab
       // just refreshed, so read the shared persisted session for the profile.
@@ -401,6 +435,7 @@ export function useSessionAutoRefreshEffect(params: {
       scheduleRef.current();
     } catch (error) {
       console.error("Session refresh failed:", error);
+      retryAttemptRef.current = 0;
       clearTimer();
       clearSession();
       setIsLoggedIn(false);
@@ -426,7 +461,10 @@ export function useSessionAutoRefreshEffect(params: {
     if (!session) return;
 
     const remaining = session.expiresAt - Date.now();
-    if (remaining <= 0) {
+    // A refresh still owed after an unanswered attempt is retried now, whatever
+    // ran the scheduler (backoff timer, `online`, tab focus) — the normal
+    // pre-expiry slot below has already passed for it.
+    if (remaining <= 0 || retryAttemptRef.current > 0) {
       void performRefresh();
       return;
     }
@@ -453,6 +491,7 @@ export function useSessionAutoRefreshEffect(params: {
   useEffect(() => {
     if (!isLoggedIn) {
       clearTimer();
+      retryAttemptRef.current = 0;
       return;
     }
     scheduleRefresh();
@@ -470,13 +509,19 @@ export function useSessionAutoRefreshEffect(params: {
         scheduleRef.current();
       }
     };
+    // The network coming back is the moment an owed refresh can finally
+    // succeed. Visibility is irrelevant here: a backgrounded tab with an expired
+    // session should be repaired before the user returns to it.
+    const onOnline = () => scheduleRef.current();
     document.addEventListener("visibilitychange", onWake);
     window.addEventListener("focus", onWake);
+    window.addEventListener("online", onOnline);
 
     return () => {
       clearTimer();
       document.removeEventListener("visibilitychange", onWake);
       window.removeEventListener("focus", onWake);
+      window.removeEventListener("online", onOnline);
     };
   }, [isLoggedIn, scheduleRefresh, clearTimer]);
 }

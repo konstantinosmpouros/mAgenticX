@@ -257,17 +257,22 @@ export async function connectInferenceWebSocket(
       }
       if (err?.authExpired) {
         // Mirror the REST 401 flow: refresh the session once, then reconnect with
-        // the fresh cookie. A second auth expiry (or a failed refresh) means the
-        // session is really over — surface it as unauthorized and stop.
-        if (!authRefreshAttempted) {
+        // the fresh cookie. A refused refresh, or a second 4401 after a successful
+        // one, means the session is really over — surface it and stop.
+        const outcome = authRefreshAttempted ? null : await ensureFreshSession({ force: true });
+        if (outcome?.status === "refreshed" || outcome?.status === "already-fresh") {
           authRefreshAttempted = true;
-          const outcome = await ensureFreshSession({ force: true });
-          if (outcome.status !== "failed") {
-            continue;
-          }
+          continue;
         }
-        emitUnauthorized();
-        throw new PermanentInferenceWebSocketError(err.message || "Authentication required", 4401);
+        if (outcome?.status !== "unavailable") {
+          emitUnauthorized();
+          throw new PermanentInferenceWebSocketError(
+            err.message || "Authentication required",
+            4401,
+          );
+        }
+        // The refresh could not reach the bridge, which is not a refusal: keep
+        // the one refresh attempt for later and back off like a dropped socket.
       }
       if (err?.permanent) {
         throw err;

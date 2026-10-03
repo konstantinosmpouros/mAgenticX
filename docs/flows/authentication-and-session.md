@@ -326,12 +326,18 @@ sequenceDiagram
 
     App->>LS: loadSession() — synchronous read
     note over App: if null/expired → show login
-    App->>API: restoreSession() → GET /session (falls back to /session/refresh on 401)
+    App->>API: restoreSessionWhenReachable() → GET /session (falls back to /session/refresh on 401)
+    alt bridge unreachable (offline, 5xx, 429)
+        API--xApp: no answer
+        App->>App: keep the loader up, toast "Can't reach the server", retry (2s → 30s, sooner on `online`)
+    end
     API-->>App: AuthResponse {userId, tokenTtl, user}
     App->>App: saveSession() — refresh expiresAt
     App->>IDB: loadUISnapshot(userId) → hydrate sidebar immediately
     App->>API: GET /agents + /conversations + /tools (parallel) → merge
 ```
+
+`restoreSession()` resolves `null` (→ login screen) **only when the bridge answers** that there is no session: a `401` on `GET /session`, then a `401`/`403` on the refresh. Anything else — a network error, a `5xx`, a `429` — throws, and `restoreSessionWhenReachable()` retries it. The page-load path and the login page's own restore both use the retrying form, because both often run at the worst moment: a tab restored at browser start, or the login page reached right after waking from sleep, fires before the network is back. The login page aborts its retries on unmount.
 
 ### Auto-Refresh Scheduling
 
@@ -359,7 +365,7 @@ Silent refresh has **two triggers**, both routed through the single `ensureFresh
        end
    ```
 
-2. **Reactive (401 interceptor).** Every API call goes through `requestRaw` ([shared/lib/http.ts](../../magenticx/agentic_ui/src/shared/lib/http.ts)); a `401` triggers **one** silent refresh and **one** retry of the original request (rebuilt so it picks up the rotated CSRF cookie) before the app gives up. The inference **WebSocket** mirrors this: a `4401` close refreshes once and reconnects with the fresh cookie. This is what stops a stale access token — after device sleep, or a request racing the expiry — from bouncing an otherwise-valid session to the login screen. Only when the refresh **itself** fails (idle > 12 d, absolute > 20 d, or the `sid` was revoked) does the app emit `mx:unauthorized` and return to login.
+2. **Reactive (401 interceptor).** Every API call goes through `requestRaw` ([shared/lib/http.ts](../../magenticx/agentic_ui/src/shared/lib/http.ts)); a `401` triggers **one** silent refresh and **one** retry of the original request (rebuilt so it picks up the rotated CSRF cookie) before the app gives up. The inference **WebSocket** mirrors this: a `4401` close refreshes once and reconnects with the fresh cookie. This is what stops a stale access token — after device sleep, or a request racing the expiry — from bouncing an otherwise-valid session to the login screen. Only when the bridge **refuses** the refresh (idle > 12 d, absolute > 20 d, the `sid` was revoked, or the CSRF check failed) does the app emit `mx:unauthorized` and return to login.
 
    ```mermaid
    sequenceDiagram
@@ -379,6 +385,9 @@ Silent refresh has **two triggers**, both routed through the single `ensureFresh
            H->>B: RETRY GET /conversations (fresh cookie)
            B-->>H: 200
            H-->>C: data — user noticed nothing
+       else bridge unreachable (network error, 5xx, 429)
+           R-->>H: unavailable
+           H-->>C: ApiError(status 0) — this request fails, NO logout
        else refresh token dead / revoked
            B-->>R: 401
            R-->>H: failed
@@ -401,12 +410,25 @@ Silent refresh has **two triggers**, both routed through the single `ensureFresh
            W->>R: ensureFreshSession(force)
            R-->>W: refreshed
            W->>B: reconnect with fresh cookie
-       else refresh failed, or a 2nd 4401
+       else refresh unavailable
+           W->>W: back off like a dropped socket; the refresh attempt is kept for later
+       else refresh refused, or a 2nd 4401
            W->>W: emitUnauthorized() → logout
        end
    ```
 
 `ensureFreshSession()` calls `POST /v1/auth/session/refresh` (on success the server rotates all three cookies and returns a fresh `tokenTtl`, re-arming the proactive timer). It is **single-flight** on two levels: an in-process promise singleton dedupes a burst of concurrent `401`s within a tab, and the **cross-tab Web Locks** lock (`mx-session-refresh`) ensures only one tab across the origin performs the network refresh while the rest pick up the rotated token from the shared session marker — so tabs never rotate the refresh token concurrently (which would otherwise trip server-side reuse detection). The auth endpoints themselves (`login`, `session/refresh`, `GET /session`) opt out of the interceptor via `skipAuthRetry` so a failed refresh can never recurse.
+
+#### A refresh with no answer is not a logout
+
+`ensureFreshSession()` has two failure results, and they must never be confused:
+
+| Result | Means | What the app does |
+| --- | --- | --- |
+| `failed` | The bridge **answered** and refused: `401` (refresh token missing, expired or revoked) or `403` (CSRF double-submit failed) | The session is over — log out, back to `/login` |
+| `unavailable` | **No usable answer**: a network error (offline, a laptop still re-joining Wi-Fi after sleep, Docker Desktop's port forward not back yet), a `5xx`/`502` while the bridge restarts, or a `429` | Stay signed in and retry. The proactive timer retries with backoff (2 s → 5 s → 15 s → 30 s, capped, never exhausted) and **immediately** on `online` or tab focus; it skips the timer while `navigator.onLine` is `false` and waits for `online`. The 401 interceptor fails only the one request with `ApiError(status 0)` — deliberately not `401`, which means "signed out" to `toastError` and every caller |
+
+These used to be one result. Waking a laptop after more than 8 h made the tab visible a few seconds before the network came back; the refresh fetch rejected, the app treated it as a refused refresh token, and cleared the local session — while the refresh cookie on the server was still valid, so a page reload signed the user straight back in.
 
 These three end-states — and only these — return the user to login; every transient access-token expiry in between is repaired silently:
 
@@ -414,6 +436,7 @@ These three end-states — and only these — return the user to login; every tr
 stateDiagram-v2
     [*] --> LoggedIn: login at t=0
     LoggedIn --> LoggedIn: silent refresh (proactive + on 401)
+    LoggedIn --> LoggedIn: refresh unreachable → stay signed in, retry
     LoggedIn --> LoggedOut: inactive 12 days (idle cap)
     LoggedIn --> LoggedOut: 20 days elapsed (absolute cap)
     LoggedIn --> LoggedOut: explicit logout / sid revoked
@@ -598,7 +621,8 @@ holding dormant logins.
 | Sign-in tests | [tests/dialogue_bridge/test_auth.py](../../tests/dialogue_bridge/test_auth.py) | `/login` gone, Entra boot guard, oid-only resolution, no merge by email, refusals |
 | Rate limiting | [magenticx/dialogue_bridge/core/security/rate_limit.py](../../magenticx/dialogue_bridge/core/security/rate_limit.py) | `AUTHENTICATE_LIMIT`, `limiter` |
 | localStorage marker | [magenticx/agentic_ui/src/shared/lib/authStorage.ts](../../magenticx/agentic_ui/src/shared/lib/authStorage.ts) | `StoredSession`, `saveSession()`, `loadSession()` |
-| Silent-refresh primitive | [magenticx/agentic_ui/src/shared/lib/sessionRefresh.ts](../../magenticx/agentic_ui/src/shared/lib/sessionRefresh.ts) | `ensureFreshSession()` — single-flight + cross-tab refresh, shared by both triggers |
+| Silent-refresh primitive | [magenticx/agentic_ui/src/shared/lib/sessionRefresh.ts](../../magenticx/agentic_ui/src/shared/lib/sessionRefresh.ts) | `ensureFreshSession()` — single-flight + cross-tab refresh, shared by both triggers; `failed` vs `unavailable`; `sessionRetryDelay()` / `waitForSessionRetry()` backoff |
+| Session restore (page load, login page) | [magenticx/agentic_ui/src/shared/lib/api/auth.ts](../../magenticx/agentic_ui/src/shared/lib/api/auth.ts) | `restoreSession()` (`null` only on a refusal), `restoreSessionWhenReachable()` (retries until the bridge answers) |
 | 401 refresh-and-retry interceptor | [magenticx/agentic_ui/src/shared/lib/http.ts](../../magenticx/agentic_ui/src/shared/lib/http.ts) | `requestRaw` (reactive trigger; `skipAuthRetry` opt-out) |
 | Auto-refresh scheduling | [magenticx/agentic_ui/src/features/auth/hooks/useSessionEffects.ts](../../magenticx/agentic_ui/src/features/auth/hooks/useSessionEffects.ts) | `useSessionAutoRefreshEffect` (proactive trigger, 10-min buffer) |
 | Login / logout handlers | [magenticx/agentic_ui/src/features/auth/handlers/auth.ts](../../magenticx/agentic_ui/src/features/auth/handlers/auth.ts) | `handleLogin`, `handleLogout` |
