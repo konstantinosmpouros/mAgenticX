@@ -94,6 +94,7 @@ The Entra client secret expires on a date nobody will remember, and its lapsing 
 | `magenticx_entra_client_secret` | *record the date from the Entra app registration* | create a new client secret, create the Swarm secret under a versioned name, bump the compose, redeploy |
 | `magenticx_oci_signer_key` | no expiry date (created 2026-09-26) | add a second API key to `DenisTokenSigner`, create the new Swarm secret under a versioned name, update `OCI_API_KEY_FINGERPRINT`, redeploy, then delete the old key |
 | GHCR pull token (Portainer registry `ghcr`) | *record the date chosen when generating it* | generate a new classic token with only `read:packages`, update Portainer → Registries → `ghcr`, then delete the old token. A lapsed token stops every image update (running tasks keep running) |
+| Repository read token (Portainer stack Git auth) | *record the date chosen when generating it* | generate a new fine-grained token (only `mAgenticX`, Contents: Read-only), update the stack's Git credential in Portainer, then delete the old token. A lapsed token makes every redeploy fail (running tasks keep running) |
 
 **Retired with plan 29.** HashiCorp Vault — its unseal keys, root token, userpass users, AppRole identity (`magenticx_vault_role_id` / `magenticx_vault_secret_id`) and Transit key — is no longer used. The Transit key's *public* half survives for 20 days after the cutover as the verify-only `kid 1` public key file, so pre-cutover sessions stayed valid; then it is deleted. The Swarm secrets and the Vault Portainer stack are deleted during the plan 29 decommission.
 
@@ -101,12 +102,13 @@ The Entra client secret expires on a date nobody will remember, and its lapsing 
 
 ## Deployment credentials — GitHub and Portainer
 
-The CD pipeline ([deployment.md](deployment.md)) needs two credentials, and neither lives in Swarm. Pushing images needs none at all: the workflow's own short-lived `GITHUB_TOKEN` (`packages: write`) publishes to GHCR.
+The CD pipeline ([deployment.md](deployment.md)) needs three credentials, and none lives in Swarm. Pushing images needs none at all: the workflow's own short-lived `GITHUB_TOKEN` (`packages: write`) publishes to GHCR.
 
 | Credential | Where it lives | Purpose / functionality |
 | --- | --- | --- |
-| **`PORTAINER_WEBHOOK_URL`** | GitHub → repo Settings → Environments → `production` → **environment** secret (never a repository secret) | The `magenticx` stack's GitOps webhook. Calling it makes Portainer pull `main` and redeploy — nothing else, so a leak can only redeploy what is already on `main`. Kept on the environment so only the approved `cd` job can read it; PRs and forks never see it. Regenerate in Portainer (stack → GitOps → webhook) if exposed. |
+| **`PORTAINER_WEBHOOK_URL`** | GitHub → repo Settings → Secrets and variables → Actions → **repository** secret | The `magenticx` stack's GitOps webhook. Calling it makes Portainer pull `main` and redeploy — nothing else, so a leak can only redeploy what is already on `main`. Only the `cd` job reads it, and `cd` runs only on a manual run of `main` started by the repository owner; pull requests never see it. (A repository secret because environment secrets and required reviewers are public-repo-only on GitHub Free.) Regenerate in Portainer (stack → GitOps → webhook) if exposed. |
 | **GHCR pull token** | Portainer → Registries → `ghcr` (password field) | Classic GitHub token with **only** `read:packages`, so Swarm can pull the private images. Cannot push, cannot read code. **Expires — record the date above.** |
+| **Repository read token** | Portainer → the `magenticx` stack's Git authentication (saved credential `mAgenticX read`) | Fine-grained GitHub token for **only** the `mAgenticX` repository, **Contents: Read-only**, so Portainer can pull `docker-compose-denis.yaml` from the private repository. Cannot write, cannot see other repositories. **Expires — record the date above.** |
 
 ---
 

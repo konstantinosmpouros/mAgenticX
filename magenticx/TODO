@@ -5,7 +5,7 @@
 - Add as services in denis: n8n, penpot, appflowy, and other open source tools that can be used by the agents and the users.
 - **2026-10-17 — plan 29 day 20:** drop the verify-only legacy Vault key: remove `SESSION_SIGNING_LEGACY_KIDS` from both composes, delete `/opt/magenticx/dialogue_bridge/signing_keys/1.pem` on Dennis, update the stack ([plan 29](../plans/done/29-sso-only-login.md) §0.2 step 7). Everything else in plan 29 is deployed and Vault is decommissioned.
 - Speed up the `dialogue_bridge` test suite (~6.5 min).
-- Finish the CD cutover: run the one-time runbook in [deployment.md](../docs/architecture/deployment.md) (GitHub `production` environment, push, GHCR pull token, Portainer Git stack + webhook), then delete the Docker Hub repos and the CLAUDE.md published-tags table.
+- Finish the CD cutover: run the one-time runbook in [deployment.md](../docs/architecture/deployment.md) (make the repo private, push, Run workflow, GHCR pull + repo read tokens, Portainer Git stack + webhook secret), then delete the Docker Hub repos and the CLAUDE.md published-tags table.
 - Make it a platform with org level and user-level permissions, so that users can have their own workspaces and agents, and orgs can have their own workspaces and agents along with admins.
 - **Each user's own OpenAI key in the OCI Vault** — planned in [plan 31](../plans/31-user-openai-keys-in-oci-vault.md). The admin adds a person to the Entra group; they sign in and save their own OpenAI key under Settings → API keys (write-only, validated, stored as one OCI Vault secret per user); every OpenAI call made for them uses their key; no key = blocked. The shared `magenticx_openai_api_key` is retired.
 

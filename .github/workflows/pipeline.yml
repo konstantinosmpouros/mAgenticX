@@ -138,44 +138,37 @@ jobs:
   # Full reference: docs/architecture/deployment.md
   #
   # The image tags in magenticx/docker-compose-denis.yaml ARE the release. Bump
-  # a service's tag (patch only) and merge: once CI is green this job waits for
-  # YOUR approval on the `production` environment, publishes every tag GHCR
-  # does not have yet, calls the Portainer stack webhook (Portainer pulls main
-  # from GitHub and redeploys the Swarm stack it manages), and watches the
-  # public site until the new versions answer. No tag bump, no new image.
+  # a service's tag (patch only) and push: that runs CI only. A release happens
+  # when the repository owner clicks Actions → CI/CD → Run workflow on main —
+  # that click IS the approval. Environments' required reviewers are not
+  # available to private repositories on GitHub Free/Pro/Team, so the manual
+  # run replaces them, on any plan. Once CI is green this job publishes every
+  # tag GHCR does not have yet, calls the Portainer stack webhook (Portainer
+  # pulls main from GitHub and redeploys the Swarm stack it manages), and
+  # watches the public site until the new versions answer. No tag bump, no
+  # new image.
   #
-  # It only starts for main when the push touched the Dennis compose file (new
-  # tags or config), or on a manual run — a docs-only merge never asks for an
-  # approval. Pull requests, fork PRs included, never reach it, so they never
-  # see the webhook secret or a token that can push images.
+  # Pushes and pull requests never reach this job, so they never see the
+  # webhook secret or a token that can push images.
   # ===========================================================================
   cd:
     name: cd
     needs: [ci]
-    if: >-
-      github.ref == 'refs/heads/main' && (
-        github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'push' &&
-         contains(toJSON(github.event.commits), 'magenticx/docker-compose-denis.yaml'))
-      )
-    # Dennis is ARM64 (Ampere A1). A native arm64 runner (free for public
-    # repos) builds in minutes; QEMU emulation of the Python wheels takes ages.
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
+    # Dennis is ARM64 (Ampere A1). A native arm64 runner builds in minutes;
+    # QEMU emulation of the Python wheels takes ages. (Private repositories get
+    # these runners too, billed against the plan's Actions minutes.)
     runs-on: ubuntu-24.04-arm
-    # Covers four builds plus the rollout wait. Time spent waiting for the
-    # approval is not counted.
+    # Covers four builds plus the rollout wait.
     timeout-minutes: 90
-    environment:
-      name: production
-      url: https://agents.magenticx.com
-    # One release at a time; a newer merge queues behind the running one
-    # instead of cancelling it halfway.
+    # One release at a time; a second Run workflow queues behind the running
+    # one instead of cancelling it halfway.
     concurrency:
       group: deploy-production
       cancel-in-progress: false
     permissions:
       contents: read
       packages: write
-      actions: read
     env:
       SITE: https://agents.magenticx.com
       COMPOSE_FILE: magenticx/docker-compose-denis.yaml
@@ -185,18 +178,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
 
-      # Fail closed. GitHub creates a missing environment on first use WITH NO
-      # protection, which would let this job run without anyone's approval.
-      - name: Refuse to release without an approval gate
+      # Fail closed. The manual run is the approval, so it must be the owner's:
+      # anyone later given write access could otherwise start a release.
+      - name: Only the repository owner can release
         env:
-          GH_TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.triggering_actor }}
+          OWNER: ${{ github.repository_owner }}
         run: |
-          reviewers=$(curl -fsS \
-            -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
-            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/environments/production" \
-            | python3 -c 'import json, sys; rules = json.load(sys.stdin).get("protection_rules") or []; print(sum(r.get("type") == "required_reviewers" for r in rules))')
-          if [ "${reviewers:-0}" -lt 1 ]; then
-            echo "::error::The 'production' environment has no required reviewer. Add one (Settings → Environments → production) before releasing."
+          if [ "$ACTOR" != "$OWNER" ]; then
+            echo "::error::Releases are started by $OWNER only (this run was started by $ACTOR)."
             exit 1
           fi
 
@@ -250,7 +240,7 @@ jobs:
           WEBHOOK_URL: ${{ secrets.PORTAINER_WEBHOOK_URL }}
         run: |
           if [ -z "$WEBHOOK_URL" ]; then
-            echo "::error::PORTAINER_WEBHOOK_URL is not set as a secret of the 'production' environment."
+            echo "::error::PORTAINER_WEBHOOK_URL is not set (Settings → Secrets and variables → Actions → Repository secrets)."
             exit 1
           fi
           # Safe to retry: the webhook redeploys whatever main holds, so a
