@@ -242,6 +242,11 @@ async def test_an_expired_cooldown_frees_the_slot(session_factory, seeded_user):
     assert await data_export.claim_export(seeded_user.id) is not None
 
 
+def test_exports_are_on_by_default():
+    """DATA_EXPORT_ENABLED is only a kill switch; neither compose sets it."""
+    assert ExportSettings.model_fields["enabled"].default is True
+
+
 def test_the_cooldown_defaults_to_one_week_and_is_bounded():
     """One export per user per week; a zero or absurd window is refused at boot."""
     assert ExportSettings.model_fields["cooldown_minutes"].default == 7 * 24 * 60

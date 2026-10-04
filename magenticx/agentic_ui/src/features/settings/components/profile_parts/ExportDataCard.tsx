@@ -76,7 +76,7 @@ export function ExportDataCard({ userId }: { userId: string | null }) {
   const note = dataExport.loading
     ? "Checking export availability…"
     : !dataExport.status?.enabled
-      ? "Data export is not available yet."
+      ? "Data export is turned off right now."
       : `Large accounts can take a few minutes. One export per ${describeCooldownWindow(dataExport.status.cooldownMinutes)}, with or without attachments.`;
 
   return (

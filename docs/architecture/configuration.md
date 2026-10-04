@@ -164,7 +164,7 @@ See [data-export](../flows/data-export.md). The archive is streamed, so these bo
 
 | Env var | Default | What it does |
 | --- | --- | --- |
-| `DATA_EXPORT_ENABLED` | `false` | Off until one real export has been watched on Dennis; the local compose turns it on. |
+| `DATA_EXPORT_ENABLED` | `true` | Kill switch: `false` stops new exports (status reports it, the token is refused) without a release. Set in neither compose. |
 | `EXPORT_COOLDOWN_MINUTES` | `10080` | One export per user per window (a week), enforced on `users.last_export_at`; 1–43200 (30 days). |
 | `EXPORT_MAX_CONCURRENT` | `2` | Exports at once across the service (1–4), one per user. |
 | `EXPORT_PAGE_ROWS` | `50` | Rows per keyset page (1–500). |

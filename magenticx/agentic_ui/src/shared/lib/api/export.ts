@@ -33,7 +33,7 @@ export async function requestExportToken(
     schema: ExportTokenSchema,
     errorMessages: {
       429: "You exported your data recently. Please try again later.",
-      503: "Data export is not available yet.",
+      503: "Data export is turned off right now.",
     },
     fallbackMessage: "Could not prepare the export",
   });

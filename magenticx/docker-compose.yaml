@@ -138,8 +138,6 @@ services:
     security_opt:
       - no-new-privileges:true
     environment:
-      # Export my data (plan 27) is off by default; on locally to try it.
-      - DATA_EXPORT_ENABLED=true
       - DATABASE_URL=postgresql+asyncpg://admin:admin@chat_postgres:5432/chat_db
       - AGENTS_SERVICE_URL=http://agents:8003
       - SESSION_TOKEN_SECRET=${SESSION_TOKEN_SECRET}

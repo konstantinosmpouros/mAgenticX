@@ -332,7 +332,7 @@ def _retry_after_seconds(ready: Optional[datetime]) -> int:
 def _require_enabled() -> None:
     if not settings.export.enabled:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                            detail="Data export is not available yet.")
+                            detail="Data export is turned off right now.")
 
 
 async def issue_export_token(user_id: str, include_attachments: bool) -> dict[str, Any]:

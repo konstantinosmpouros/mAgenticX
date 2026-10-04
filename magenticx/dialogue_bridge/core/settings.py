@@ -515,8 +515,9 @@ class ExportSettings(BaseSettings):
     """
     model_config = _BASE_MODEL_CONFIG
 
-    # Off until one real export has been watched end to end on Dennis.
-    enabled: bool = Field(False, validation_alias="DATA_EXPORT_ENABLED")
+    # Kill switch, on by default: DATA_EXPORT_ENABLED=false stops new exports
+    # (status reports it, token minting is refused) without a release.
+    enabled: bool = Field(True, validation_alias="DATA_EXPORT_ENABLED")
     # One export per user per week, stored on users.last_export_at so it holds
     # even when Redis is down (rate limiting fails open; this must not). A week,
     # because a full export can be tens of GB of egress and disk reads on a VM

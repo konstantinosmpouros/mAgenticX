@@ -1,6 +1,6 @@
 # Export My Data
 
-A user can download everything mAgenticX holds about them — profile, settings, conversations, messages, attachments, scheduled tasks, custom agents and skills — as one `.zip`, from Settings → Data controls. The **dialogue_bridge** builds the archive; the **agents** service streams its part (custom agents and skills, which live in `agent_runtime`). The mental model is a **pipe, not a pile**: the archive is never assembled anywhere. A page of rows or a slice of a file is read, written into the zip, sent to the browser and dropped, so neither memory nor disk ever holds more than about a megabyte of it — which matters on Dennis, where 24 GB is shared by every stack on the box. Exports are off until `DATA_EXPORT_ENABLED` is set.
+A user can download everything mAgenticX holds about them — profile, settings, conversations, messages, attachments, scheduled tasks, custom agents and skills — as one `.zip`, from Settings → Data controls. The **dialogue_bridge** builds the archive; the **agents** service streams its part (custom agents and skills, which live in `agent_runtime`). The mental model is a **pipe, not a pile**: the archive is never assembled anywhere. A page of rows or a slice of a file is read, written into the zip, sent to the browser and dropped, so neither memory nor disk ever holds more than about a megabyte of it — which matters on Dennis, where 24 GB is shared by every stack on the box. Exports are on by default; `DATA_EXPORT_ENABLED=false` is the kill switch.
 
 ---
 
