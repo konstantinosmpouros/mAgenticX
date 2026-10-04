@@ -505,6 +505,67 @@ class AttachmentSettings(BaseSettings):
     stream_chunk_bytes: int = Field(512 * 1024, validation_alias="ATTACHMENT_STREAM_CHUNK_BYTES")
 
 
+class ExportSettings(BaseSettings):
+    """"Export my data" (plan 27): one streamed zip of everything a user owns.
+
+    Every bound here exists because the export is the one operation that reads a
+    user's whole history, on a box (Dennis) whose memory is shared by every stack.
+    The archive is streamed — read a page or a slice, write it, drop it — so its
+    size never reaches memory or disk; these numbers bound how much is in flight.
+    """
+    model_config = _BASE_MODEL_CONFIG
+
+    # Off until one real export has been watched end to end on Dennis.
+    enabled: bool = Field(False, validation_alias="DATA_EXPORT_ENABLED")
+    # One export per user per week, stored on users.last_export_at so it holds
+    # even when Redis is down (rate limiting fails open; this must not). A week,
+    # because a full export can be tens of GB of egress and disk reads on a VM
+    # every other stack shares; an export that does not finish hands it back.
+    cooldown_minutes: int = Field(7 * 24 * 60, validation_alias="EXPORT_COOLDOWN_MINUTES")
+    # Exports running at once across the service. Each holds a database
+    # connection only for one short query at a time, but runs for minutes.
+    max_concurrent: int = Field(2, validation_alias="EXPORT_MAX_CONCURRENT")
+    # Rows per keyset page; bounds the rows in memory at any moment.
+    page_rows: int = Field(50, validation_alias="EXPORT_PAGE_ROWS")
+    # Bytes per attachment slice read from Postgres.
+    chunk_bytes: int = Field(1024 * 1024, validation_alias="EXPORT_CHUNK_BYTES")
+    # Wall-clock ceiling: an export still running past this is aborted, so a
+    # stalled client cannot hold a slot forever.
+    max_seconds: int = Field(1800, validation_alias="EXPORT_MAX_SECONDS")
+    # Lifetime of the one-time download token minted by the CSRF-protected POST.
+    token_ttl_seconds: int = Field(60, validation_alias="EXPORT_TOKEN_TTL_SECONDS")
+
+    @field_validator("page_rows", mode="after")
+    @classmethod
+    def _bound_page(cls, v: int) -> int:
+        if v < 1 or v > 500:
+            raise ValueError("EXPORT_PAGE_ROWS must be between 1 and 500.")
+        return v
+
+    @field_validator("chunk_bytes", mode="after")
+    @classmethod
+    def _bound_chunk(cls, v: int) -> int:
+        if v < 64 * 1024 or v > 8 * 1024 * 1024:
+            raise ValueError("EXPORT_CHUNK_BYTES must be between 64 KiB and 8 MiB.")
+        return v
+
+    @field_validator("max_concurrent", mode="after")
+    @classmethod
+    def _bound_concurrency(cls, v: int) -> int:
+        if v < 1 or v > 4:
+            raise ValueError("EXPORT_MAX_CONCURRENT must be between 1 and 4.")
+        return v
+
+    @field_validator("cooldown_minutes", mode="after")
+    @classmethod
+    def _bound_cooldown(cls, v: int) -> int:
+        # Zero would remove the only bound on how often one user can pull their
+        # whole history; past 30 days a user could not get their data in time.
+        if v < 1 or v > 30 * 24 * 60:
+            raise ValueError("EXPORT_COOLDOWN_MINUTES must be between 1 and 43200 (30 days).")
+        return v
+
+
 class ShareSettings(BaseSettings):
     model_config = _BASE_MODEL_CONFIG
 
@@ -823,6 +884,10 @@ class RateLimitSettings(BaseSettings):
     # skill limit, so the Add route cannot be used as a fetch amplifier.
     skill_remote_add_max_attempts: int = Field(10, validation_alias="SKILL_REMOTE_ADD_RATE_LIMIT_MAX_ATTEMPTS")
     skill_remote_add_window_seconds: int = Field(60, validation_alias="SKILL_REMOTE_ADD_RATE_LIMIT_WINDOW_SECONDS")
+    # Minting an export download token. The export itself is bounded by the
+    # cooldown column; this only stops a client hammering the token endpoint.
+    export_token_max_attempts: int = Field(10, validation_alias="EXPORT_TOKEN_RATE_LIMIT_MAX_ATTEMPTS")
+    export_token_window_seconds: int = Field(60, validation_alias="EXPORT_TOKEN_RATE_LIMIT_WINDOW_SECONDS")
     # Message creation can carry up to the full attachment budget per call —
     # caps blob-storage growth independent of the aggregate budget.
     message_post_max_attempts: int = Field(30, validation_alias="MESSAGE_RATE_LIMIT_MAX_ATTEMPTS")
@@ -952,6 +1017,7 @@ class Settings(BaseSettings):
     speech: SpeechSettings = Field(default_factory=SpeechSettings)
     attachments: AttachmentSettings = Field(default_factory=AttachmentSettings)
     share: ShareSettings = Field(default_factory=ShareSettings)
+    export: ExportSettings = Field(default_factory=ExportSettings)
     generation: GenerationSettings = Field(default_factory=GenerationSettings)
     embeddings: EmbeddingsSettings = Field(default_factory=EmbeddingsSettings)
     http: HttpTimeoutSettings = Field(default_factory=HttpTimeoutSettings)

@@ -159,6 +159,13 @@ skill_remote_add_rate_limit = rate_limit(
     emit_headers=True,
 )
 
+export_token_rate_limit = rate_limit(
+    (settings.rate_limit.export_token_max_attempts, settings.rate_limit.export_token_window_seconds),
+    scope="export-token",
+    identifier=user_path_identity,
+    emit_headers=True,
+)
+
 message_post_rate_limit = rate_limit(
     (settings.rate_limit.message_post_max_attempts, settings.rate_limit.message_post_window_seconds),
     scope="message-post",

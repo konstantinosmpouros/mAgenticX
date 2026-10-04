@@ -34,6 +34,7 @@ from router import (
     inference_router,
     preferences_router,
     conversations_router,
+    export_router,
     messages_router,
     attachments_router,
     shared_conv_router,
@@ -257,6 +258,11 @@ app.include_router(
     search_router,
     prefix="/v1/search",
     tags=["Search"],
+)
+app.include_router(
+    export_router,
+    prefix="/v1/export",
+    tags=["Export"],
 )
 app.include_router(
     skills_router,

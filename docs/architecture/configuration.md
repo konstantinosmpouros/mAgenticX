@@ -134,6 +134,7 @@ Who signs session JWTs and which public keys verify them. Production signs with 
 | `SHARE_CREATE_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Share-link creation (mints public tokens) per user. |
 | `SKILL_UPLOAD_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Custom-skill uploads (agents-service disk writes) per user. |
 | `SKILL_CATALOGUE_SEARCH_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `60` / `60` | Skill catalogue searches per verified session (the search runs as the user types, debounced). |
+| `EXPORT_TOKEN_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Data-export download tokens per user (the export itself is bounded by the cooldown column). |
 | `SKILL_REMOTE_ADD_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Remote-skill Adds per user — each can make the agents service download a skill, so the Add route cannot be used as a fetch amplifier. |
 | `MESSAGE_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `30` / `60` | Message creation (attachment/blob growth) per user. |
 | `SUGGESTIONS_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Starter-suggestion generation (LLM-backed) per user. |
@@ -156,6 +157,20 @@ All rate limits are counted in **Redis** via `fastapi-redis-sdk` (they survive r
 | `REDIS_STREAM_MAXLEN` | `20000` | Max entries per per-run event stream (approx-trimmed). |
 | `REDIS_STREAM_TERMINAL_TTL_SECONDS` | `3600` | TTL on a stream after the run reaches a terminal state. |
 | `REDIS_STREAM_READ_BLOCK_MS` | `30000` | Blocking-read timeout when tailing a stream. |
+
+### Data export (`ExportSettings`)
+
+See [data-export](../flows/data-export.md). The archive is streamed, so these bound what is in flight, not its size.
+
+| Env var | Default | What it does |
+| --- | --- | --- |
+| `DATA_EXPORT_ENABLED` | `false` | Off until one real export has been watched on Dennis; the local compose turns it on. |
+| `EXPORT_COOLDOWN_MINUTES` | `10080` | One export per user per window (a week), enforced on `users.last_export_at`; 1–43200 (30 days). |
+| `EXPORT_MAX_CONCURRENT` | `2` | Exports at once across the service (1–4), one per user. |
+| `EXPORT_PAGE_ROWS` | `50` | Rows per keyset page (1–500). |
+| `EXPORT_CHUNK_BYTES` | `1048576` | Bytes per attachment slice (64 KiB – 8 MiB). |
+| `EXPORT_MAX_SECONDS` | `1800` | Wall-clock ceiling; a longer export is aborted. |
+| `EXPORT_TOKEN_TTL_SECONDS` | `60` | Lifetime of the one-time download token. |
 
 ### Attachments, speech, share, generation
 

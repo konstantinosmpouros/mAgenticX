@@ -827,6 +827,64 @@ class SkillStore(BaseStore):
         total = int(rows[0]["total"]) if rows else 0
         return [_catalogue_row(row) for row in rows], total
 
+    # -- export (plan 27): pages and slices, never a whole user at once ------
+    async def page_pool_entries(self, user_id: str, after_name: str, limit: int) -> list[dict[str, Any]]:
+        """One page of the user's live pool entries, keyed after ``after_name``."""
+        async with self._pool.connection() as conn:
+            cur = await conn.execute(
+                f"SELECT {_POOL_COLUMNS} FROM skill_pool "
+                "WHERE user_id = %s AND deleted_at IS NULL AND skill_name > %s "
+                "ORDER BY skill_name LIMIT %s",
+                (user_id, after_name, limit),
+            )
+            rows = await cur.fetchall()
+        return [_pool_row(row) for row in rows]
+
+    async def page_custom_file_refs(
+        self, user_id: str, after: tuple[str, str], limit: int
+    ) -> list[dict[str, Any]]:
+        """One page of ``(skill_name, path, encoding)`` for the user's **custom**
+        skills only. Remote and legacy entries carry no files of their own —
+        they are exported as references, never as third-party content."""
+        async with self._pool.connection() as conn:
+            cur = await conn.execute(
+                "SELECT f.skill_name, f.path, f.encoding FROM skill_files f "
+                "JOIN skill_pool p ON p.user_id = f.user_id AND p.skill_name = f.skill_name "
+                "WHERE f.user_id = %s AND p.deleted_at IS NULL AND p.type = %s "
+                "AND (f.skill_name, f.path) > (%s, %s) "
+                "ORDER BY f.skill_name, f.path LIMIT %s",
+                (user_id, POOL_TYPE_CUSTOM, after[0], after[1], limit),
+            )
+            return list(await cur.fetchall())
+
+    async def read_custom_file_slice(
+        self, user_id: str, skill_name: str, path: str, start: int, length: int
+    ) -> str:
+        """``length`` characters of one custom-skill file from 1-based ``start``."""
+        async with self._pool.connection() as conn:
+            cur = await conn.execute(
+                "SELECT substring(content from %s for %s) AS part FROM skill_files "
+                "WHERE user_id = %s AND skill_name = %s AND path = %s",
+                (start, length, user_id, skill_name, path),
+            )
+            row = await cur.fetchone()
+        return (row["part"] or "") if row else ""
+
+    async def page_assignments(
+        self, user_id: str, after: tuple[str, str], limit: int
+    ) -> list[dict[str, Any]]:
+        """One page of ``(agent_slug, skill_name, assigned_at)`` for live skills."""
+        async with self._pool.connection() as conn:
+            cur = await conn.execute(
+                "SELECT a.agent_slug, a.skill_name, a.assigned_at FROM agent_skills a "
+                "JOIN skill_pool p ON p.user_id = a.user_id AND p.skill_name = a.skill_name "
+                "WHERE a.user_id = %s AND p.deleted_at IS NULL "
+                "AND (a.agent_slug, a.skill_name) > (%s, %s) "
+                "ORDER BY a.agent_slug, a.skill_name LIMIT %s",
+                (user_id, after[0], after[1], limit),
+            )
+            return list(await cur.fetchall())
+
     async def _names_for(self, namespace: tuple[str, ...]) -> list[str]:
         """Skill names a namespace exposes.
 

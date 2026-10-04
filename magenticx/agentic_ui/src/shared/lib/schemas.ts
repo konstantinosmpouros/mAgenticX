@@ -512,3 +512,25 @@ export const parseToolResultImages = (output: unknown): ToolResultImage[] => {
     return parsed.success ? [parsed.data] : [];
   });
 };
+
+// ---------------------------------------------------------------------------
+// Export my data (plan 27)
+// ---------------------------------------------------------------------------
+// Whether exports are on, and when this user may start the next one.
+// `availableAt` is an ISO instant while the cooldown runs, null otherwise.
+// The cooldown falls back to the server's default window, one week.
+export const ExportStatusSchema = z.record(z.unknown()).transform((raw) => ({
+  enabled: raw.enabled === true,
+  availableAt: typeof raw.availableAt === "string" && raw.availableAt ? raw.availableAt : null,
+  cooldownMinutes:
+    typeof raw.cooldownMinutes === "number" && raw.cooldownMinutes > 0 ? raw.cooldownMinutes : 7 * 24 * 60,
+}));
+export type ExportStatus = z.infer<typeof ExportStatusSchema>;
+
+// A one-time download token. Only the URL-safe alphabet is accepted, since the
+// token is placed into a download URL.
+export const ExportTokenSchema = z.record(z.unknown()).transform((raw) => ({
+  token: typeof raw.token === "string" && /^[A-Za-z0-9_-]+$/.test(raw.token) ? raw.token : "",
+  expiresInSeconds: typeof raw.expiresInSeconds === "number" ? raw.expiresInSeconds : 0,
+}));
+export type ExportToken = z.infer<typeof ExportTokenSchema>;

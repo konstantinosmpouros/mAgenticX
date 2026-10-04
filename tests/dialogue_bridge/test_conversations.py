@@ -357,18 +357,20 @@ async def test_fork_conversation_clones_selected_branch(
     async with db_session_factory() as session:
         messages = (
             await session.execute(
-                select(MessageTable)
-                .where(MessageTable.conversation_id == payload["id"])
-                .order_by(MessageTable.created_at.asc())
+                select(MessageTable).where(MessageTable.conversation_id == payload["id"])
             )
         ).scalars().all()
 
-    assert [message.sender for message in messages] == ["user", "ai"]
-    assert messages[1].parent_message_id == messages[0].id
-    assert messages[1].raw_events == [{"type": "RUN_FINISHED"}]
+    # Matched by sender, not by row order: SQLite's CURRENT_TIMESTAMP is
+    # second-precision, so the two seeded rows usually share a created_at and
+    # any ORDER BY on it leaves their order to whichever index the planner picks.
+    by_sender = {message.sender: message for message in messages}
+    assert len(messages) == 2 and set(by_sender) == {"user", "ai"}
+    assert by_sender["ai"].parent_message_id == by_sender["user"].id
+    assert by_sender["ai"].raw_events == [{"type": "RUN_FINISHED"}]
     # Per-message agent attribution is preserved through the fork.
-    assert messages[1].agent_id == seeded_agent.id
-    assert messages[1].agent_name == seeded_agent.name
+    assert by_sender["ai"].agent_id == seeded_agent.id
+    assert by_sender["ai"].agent_name == seeded_agent.name
 
 
 async def test_fork_conversation_rejects_unfinished_ai_message(

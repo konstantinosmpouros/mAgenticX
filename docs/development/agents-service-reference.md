@@ -236,6 +236,7 @@ Every endpoint below carries `dependencies=[Depends(require_internal_caller)]` (
 | 14 | GET | `/skills/remote/sources` | skills | — | `List[RemoteSourceStatus]` | 200 |
 | 15 | GET | `/users/{uid}/skills` | skills | — | `List[SkillManifestEntry]` | 200 |
 | 16 | GET | `/users/{uid}/skills/{skill_name}` | skills | — | `UserSkillDetail` | 200 |
+| 17a | GET | `/users/{uid}/export` | export | — | framed NDJSON stream (see [data-export](../flows/data-export.md)) | 200 |
 | 17 | POST | `/users/{uid}/skills/remote/{source_id}/{skill_id}` | skills | — | `SkillManifestEntry` | 201 (404 / 409 / 422 / 502 / 503) |
 | 18 | POST | `/users/{uid}/skills/custom` | skills | `CustomSkillCreate` | `SkillManifestEntry` | 201 |
 | 19 | DELETE | `/users/{uid}/skills/{skill_name}` | skills | — | — | 204 |

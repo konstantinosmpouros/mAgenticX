@@ -262,6 +262,52 @@ class AgentDefinitionStore(BaseStore):
             )
         return removed
 
+    # -- export (plan 27): pages and slices, never a whole user at once ------
+    async def page_definitions(self, user_id: str, after_slug: str, limit: int) -> list[dict[str, Any]]:
+        """One page of this user's definitions, keyed after ``after_slug``.
+
+        Keyset paging on the primary key: each page is one short indexed query,
+        so an export never holds a connection or a transaction between pages.
+        """
+        async with self._pool.connection() as conn:
+            cur = await conn.execute(
+                "SELECT agent_slug, spec, created_at, updated_at FROM agent_definitions "
+                "WHERE user_id = %s AND agent_slug > %s ORDER BY agent_slug LIMIT %s",
+                (user_id, after_slug, limit),
+            )
+            rows = await cur.fetchall()
+        return [{**row, "spec": _spec(row["spec"])} for row in rows]
+
+    async def page_file_refs(
+        self, user_id: str, after: tuple[str, str], limit: int
+    ) -> list[dict[str, Any]]:
+        """One page of ``(agent_slug, path, encoding)`` — names only, no content.
+
+        Content is read separately in slices (:meth:`read_file_slice`) so a
+        large file never sits in memory whole.
+        """
+        async with self._pool.connection() as conn:
+            cur = await conn.execute(
+                "SELECT agent_slug, path, encoding FROM agent_definition_files "
+                "WHERE user_id = %s AND (agent_slug, path) > (%s, %s) "
+                "ORDER BY agent_slug, path LIMIT %s",
+                (user_id, after[0], after[1], limit),
+            )
+            return list(await cur.fetchall())
+
+    async def read_file_slice(
+        self, user_id: str, agent_slug: str, path: str, start: int, length: int
+    ) -> str:
+        """``length`` characters of one file from 1-based ``start``; ``""`` past the end."""
+        async with self._pool.connection() as conn:
+            cur = await conn.execute(
+                "SELECT substring(content from %s for %s) AS part FROM agent_definition_files "
+                "WHERE user_id = %s AND agent_slug = %s AND path = %s",
+                (start, length, user_id, agent_slug, path),
+            )
+            row = await cur.fetchone()
+        return (row["part"] or "") if row else ""
+
     # -- the one abstract method ------------------------------------------
     async def abatch(self, ops: Iterable[Any]) -> list[Result]:
         results: list[Result] = []

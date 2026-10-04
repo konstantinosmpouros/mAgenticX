@@ -478,6 +478,7 @@ export default function ProfilePanel({
                         improveModel={userPreferences?.improveModel === true}
                         onToggleImproveModel={onToggleImproveModel}
                         preferencesSaving={preferencesSaving}
+                        userId={user?.id ?? null}
                       />
                     ) : null}
 

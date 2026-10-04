@@ -125,6 +125,13 @@ class UserTable(Base):
     # every sign-in would log the user out everywhere else.
     sessions_revoked_at = Column(DateTime, nullable=True)
 
+    # When this user last *started* a data export (plan 27). The cooldown is
+    # enforced against this durable column rather than Redis, because rate
+    # limiting fails open and the export is the heaviest thing a user can ask
+    # for. Claimed atomically at download start; put back if the download fails,
+    # so a dropped connection does not lock the user out for the whole window.
+    last_export_at = Column(DateTime, nullable=True)
+
     is_active = Column(Boolean, nullable=False, server_default="true")
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
@@ -246,6 +253,11 @@ class MessageTable(Base):
             postgresql_where=text("streaming_status IN ('queued', 'running', 'cancelling')"),
             sqlite_where=text("streaming_status IN ('queued', 'running', 'cancelling')"),
         ),
+        # The export (plan 27) pages a conversation's messages by keyset on id —
+        # this index makes each page an ordered range scan with no sort, so
+        # nothing spills to a Postgres temp file. Keyed on id rather than
+        # created_at: ids compare exactly everywhere, timestamps do not.
+        Index("ix_messages_conversation_id_id", "conversation_id", "id"),
         Index(
             "ix_messages_streaming_status",
             "streaming_status",

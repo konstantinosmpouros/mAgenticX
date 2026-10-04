@@ -23,3 +23,4 @@ export const SKILLS_BASE_PATH = `${API_BASE_PATH}/skills`;
 export const MEMORIES_BASE_PATH = `${API_BASE_PATH}/memories`;
 export const SCHEDULED_TASKS_BASE_PATH = `${API_BASE_PATH}/scheduled-tasks`;
 export const USAGE_BASE_PATH = `${API_BASE_PATH}/usage`;
+export const EXPORT_BASE_PATH = `${API_BASE_PATH}/export`;

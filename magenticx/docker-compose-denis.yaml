@@ -304,6 +304,13 @@ services:
         failure_action: rollback
       rollback_config:
         order: start-first
+      resources:
+        limits:
+          # Hard memory cap (~3x the 156 MiB the bridge uses on Dennis). If it
+          # ever runs away, the kernel kills only this container and Swarm
+          # restarts it — never Postgres or another stack on the shared box.
+          # The data export streams in ~1 MB pieces and stays far below this.
+          memory: 512M
     volumes:
       - /opt/magenticx/dialogue_bridge/tls/entrypoint-tls.sh:/app/tls/entrypoint-tls.sh:ro
       - /opt/magenticx/dialogue_bridge/tls/tls.key:/app/tls/tls.key:ro

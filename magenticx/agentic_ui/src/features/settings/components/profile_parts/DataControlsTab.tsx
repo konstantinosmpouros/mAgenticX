@@ -7,6 +7,7 @@ import { cn, fmtDate } from "@/shared/lib/utils";
 import type { ConversationShareListItem, ConversationSummary } from "@/shared/lib/types";
 import { InfoCard, MetricCard, PrefToggleRow, SoftPanel } from "./shared";
 import { ComingSoonRow } from "./ComingSoon";
+import { ExportDataCard } from "./ExportDataCard";
 
 type DataControlsTabProps = {
   archivedConversations: ConversationSummary[];
@@ -24,6 +25,7 @@ type DataControlsTabProps = {
   improveModel?: boolean;
   onToggleImproveModel?: () => void;
   preferencesSaving?: boolean;
+  userId?: string | null;
 };
 
 const sharedActionButtonClass = `
@@ -64,6 +66,7 @@ export default function DataControlsTab({
   improveModel = false,
   onToggleImproveModel,
   preferencesSaving = false,
+  userId = null,
 }: DataControlsTabProps) {
   const [copiedShareId, setCopiedShareId] = useState<string | null>(null);
 
@@ -397,16 +400,14 @@ export default function DataControlsTab({
         </SoftPanel>
       </InfoCard>
 
+      <ExportDataCard userId={userId} />
+
       <InfoCard
         eyebrow="Planned"
         title="More data controls"
         description="Mirrored from the target settings layout — these land here once implemented."
       >
         <SoftPanel className="divide-y divide-border/40 overflow-hidden">
-          <ComingSoonRow
-            title="Export data"
-            description="Download a copy of your conversations and account data."
-          />
           <ComingSoonRow
             title="Delete account"
             description="Permanently remove this account and all of its data."

@@ -84,6 +84,11 @@ from schema.scheduled_tasks import (
 from schema.search import (
     WorkspaceSearchResult,
 )
+from schema.export import (
+    ExportStatus,
+    ExportTokenRequest,
+    ExportTokenResponse,
+)
 from schema.sharing import (
     ConversationPdfExportIn,
     ConversationShareIn,
@@ -123,6 +128,9 @@ from schema.voice import (
 )
 
 __all__ = [
+    "ExportStatus",
+    "ExportTokenRequest",
+    "ExportTokenResponse",
     "PERSONALITY_IDS",
     "AccountListResponse",
     "AccountSummary",
