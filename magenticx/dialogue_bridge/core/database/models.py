@@ -508,6 +508,61 @@ class ScheduledTaskTable(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 
 
+class AccountDeletionTable(Base):
+    """One "delete my account" request (plan 32): the purge's state and its record.
+
+    The row drives the whole lifecycle — requested, cancelled, purging (``step`` is
+    the last step that finished, so a crash resumes after it), completed — and then
+    stays as the proof that the deletion happened. It must therefore outlive the
+    user: ``user_id`` is ``SET NULL`` when the user row goes, and ``user_ref`` (an
+    HMAC of the id under the log-redaction key) is what remains. That correlates
+    with the hashed ids in the logs but cannot be reversed, and nothing else
+    personal — no email, name or content — is ever stored here.
+    """
+
+    __tablename__ = "account_deletions"
+    __table_args__ = (
+        # One open request per user: a second request, or a second purge
+        # worker, cannot start while one is pending.
+        Index(
+            "uq_account_deletions_one_open_per_user",
+            "user_id",
+            unique=True,
+            postgresql_where=text("cancelled_at IS NULL AND completed_at IS NULL"),
+            sqlite_where=text("cancelled_at IS NULL AND completed_at IS NULL"),
+        ),
+        # The purger's lookup: open requests whose grace period is over.
+        Index(
+            "ix_account_deletions_due",
+            "scheduled_for",
+            postgresql_where=text("cancelled_at IS NULL AND completed_at IS NULL"),
+            sqlite_where=text("cancelled_at IS NULL AND completed_at IS NULL"),
+        ),
+    )
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    user_id = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    user_ref = Column(String, nullable=False)
+
+    requested_at = Column(DateTime, nullable=False)
+    scheduled_for = Column(DateTime, nullable=False)
+    cancelled_at = Column(DateTime, nullable=True)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+
+    # Last purge step that finished (NULL = none yet).
+    step = Column(String, nullable=True)
+    attempts = Column(Integer, nullable=False, server_default="0")
+    next_attempt_at = Column(DateTime, nullable=True)
+    # Exception class name only — never a message, which could carry data.
+    last_error_type = Column(String, nullable=True)
+    # What each store gave up, e.g. {"blobs": 2088, "blob_bytes": ..., "messages": ...}.
+    counts = Column(JSON, nullable=True)
+
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
 class UserAgentToolPrefTable(Base):
     """One tool the user configured for a specific agent (Agents tab).
 

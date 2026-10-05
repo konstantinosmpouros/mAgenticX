@@ -16,6 +16,7 @@ from core.settings import settings
 from core.auth.signing import get_keyring
 from utils.inference_runs import cleanup_orphaned_inference_runs
 from utils.scheduled_tasks import scheduler
+from utils.account_deletion import run_account_purger
 from utils.embeddings import run_embedding_sweeper
 from core.logging import (
     RequestLoggingMiddleware,
@@ -27,6 +28,7 @@ from core.logging import (
 from core.cache.integration import install_redis_sdk
 
 from router import (
+    account_router,
     user_agents_router,
     agent_tools_router,
     auth_router,
@@ -138,13 +140,19 @@ async def lifespan(app: FastAPI):
     # off the request path (no-op if EMBEDDINGS_ENABLED is false).
     embedding_stop_event = asyncio.Event()
     embedding_task = asyncio.create_task(run_embedding_sweeper(embedding_stop_event))
+    # Account purger (plan 32): deletes accounts whose grace period is over, one
+    # at a time, in small batches; resumes any purge a restart interrupted.
+    purger_stop_event = asyncio.Event()
+    purger_task = asyncio.create_task(run_account_purger(purger_stop_event))
     yield
     embedding_stop_event.set()
+    purger_stop_event.set()
     await scheduler.stop()
-    try:
-        await asyncio.wait_for(embedding_task, timeout=10)
-    except asyncio.TimeoutError:
-        embedding_task.cancel()
+    for task in (embedding_task, purger_task):
+        try:
+            await asyncio.wait_for(task, timeout=10)
+        except asyncio.TimeoutError:
+            task.cancel()
     logger.info("service_shutdown", "Dialogue bridge shutdown completed")
 
 
@@ -263,6 +271,11 @@ app.include_router(
     export_router,
     prefix="/v1/export",
     tags=["Export"],
+)
+app.include_router(
+    account_router,
+    prefix="/v1/account",
+    tags=["Account"],
 )
 app.include_router(
     skills_router,

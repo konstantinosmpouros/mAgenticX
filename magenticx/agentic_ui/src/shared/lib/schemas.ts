@@ -534,3 +534,36 @@ export const ExportTokenSchema = z.record(z.unknown()).transform((raw) => ({
   expiresInSeconds: typeof raw.expiresInSeconds === "number" ? raw.expiresInSeconds : 0,
 }));
 export type ExportToken = z.infer<typeof ExportTokenSchema>;
+
+// ---------------------------------------------------------------------------
+// Delete account (plan 32)
+// ---------------------------------------------------------------------------
+const isoOrNull = (value: unknown): string | null =>
+  typeof value === "string" && value && !Number.isNaN(Date.parse(value)) ? value : null;
+
+// An account scheduled for deletion, as `/auth/session` reports it. Null unless
+// both dates are present and valid — a half-formed value must never put the
+// user on the pending-deletion screen.
+export const PendingDeletionSchema = z.unknown().transform((raw) => {
+  if (!raw || typeof raw !== "object") return null;
+  const record = raw as Record<string, unknown>;
+  const requestedAt = isoOrNull(record.requestedAt);
+  const scheduledFor = isoOrNull(record.scheduledFor);
+  if (!requestedAt || !scheduledFor) return null;
+  return { requestedAt, scheduledFor, inProgress: record.inProgress === true };
+});
+export type PendingDeletion = NonNullable<z.infer<typeof PendingDeletionSchema>>;
+
+// Everything the Delete account card and the pending screen need. Fails safe:
+// a missing flag reads as "re-authentication required" and "not enabled".
+export const AccountDeletionStatusSchema = z.record(z.unknown()).transform((raw) => ({
+  enabled: raw.enabled === true,
+  pending: raw.pending === true,
+  requestedAt: isoOrNull(raw.requestedAt),
+  scheduledFor: isoOrNull(raw.scheduledFor),
+  inProgress: raw.inProgress === true,
+  graceDays: typeof raw.graceDays === "number" && raw.graceDays > 0 ? raw.graceDays : 14,
+  reauthRequired: raw.reauthRequired !== false,
+  confirmWith: typeof raw.confirmWith === "string" ? raw.confirmWith : "",
+}));
+export type AccountDeletionStatus = z.infer<typeof AccountDeletionStatusSchema>;

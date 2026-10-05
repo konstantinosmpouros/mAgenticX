@@ -21,6 +21,7 @@ from schema import (
     MessageIn,
 )
 from core.settings import settings
+from utils.account_status import open_deletion_exists_for
 from utils.conversations import _preview, init_message
 
 
@@ -93,6 +94,9 @@ async def load_active_share(token: str, db: AsyncSession) -> ConversationShareTa
                 (ConversationShareTable.expires_at.is_(None))
                 | (ConversationShareTable.expires_at > now)
             ),
+            # The owner's account awaits deletion (plan 32): the link answers as
+            # if it did not exist. Gated, not revoked, so a cancel restores it.
+            ~open_deletion_exists_for(ConversationShareTable.owner_user_id),
         )
     )
     share = result.scalar_one_or_none()
@@ -124,6 +128,15 @@ async def create_conversation_from_share_record(
     agent = agent_result.scalar_one_or_none()
     if agent is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Shared conversation agent is unavailable.")
+    if agent.owner_user_id is not None and agent.owner_user_id != current_user.id:
+        # A custom agent is private to its owner: its instructions and tools must
+        # not run for whoever opens a share. (It would also tie the importer's
+        # conversation to someone else's agent — deleting that account would
+        # take the conversation with it.)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This conversation was made with a private agent, so it can't be continued.",
+        )
 
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     title = snapshot.get("title") or share.title or agent.name or "Shared conversation"

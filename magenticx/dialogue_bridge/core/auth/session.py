@@ -302,6 +302,9 @@ class AuthContext:
     # every rotation. The revoke-all watermark compares against this one, so a
     # refresh issued after the revoke is honoured while its predecessors are not.
     issued_at: int | None = None
+    # The account is scheduled for deletion (plan 32, the `pdl` claim): only the
+    # routes that let the user cancel, export or leave accept this session.
+    pending_deletion: bool = False
 
 
 @dataclass(slots=True)
@@ -320,12 +323,13 @@ def _claim_expiry(exp: int) -> datetime:
     return datetime.fromtimestamp(exp, tz=timezone.utc).replace(tzinfo=None)
 
 
-def build_auth_response(user, ttl_seconds: int) -> dict:
+def build_auth_response(user, ttl_seconds: int, pending_deletion: dict | None = None) -> dict:
     return {
         "authenticated": True,
         "user_id": user.id,
         "user": user,
         "tokenTtl": ttl_seconds,
+        "pendingDeletion": pending_deletion,
     }
 
 
@@ -436,15 +440,26 @@ def _get_refresh_token_from_request(request: Request) -> Optional[str]:
     return token.strip() if token else None
 
 
-async def mint_login_session(user) -> IssuedTokens:
-    """Mint a brand-new session (fresh sid) for a freshly authenticated user."""
-    return await mint_tokens(user.id, is_active=user.is_active)
+async def mint_login_session(user, *, pending_deletion: bool = False) -> IssuedTokens:
+    """Mint a brand-new session (fresh sid) for a freshly authenticated user.
+
+    ``pending_deletion`` comes from the caller's database read — this layer has
+    none — and marks the session as one that may only cancel, export or leave.
+    """
+    return await mint_tokens(user.id, is_active=user.is_active, pending_deletion=pending_deletion)
 
 
-async def rotate_session(ctx: AuthContext, *, is_active: bool = True) -> IssuedTokens:
+async def rotate_session(
+    ctx: AuthContext, *, is_active: bool = True, pending_deletion: bool = False
+) -> IssuedTokens:
     """Rotate the access + refresh pair, preserving the original sid and login_at
-    so the denylist still covers this login and the 10-day refresh cap doesn't slide."""
-    return await mint_tokens(ctx.user_id, sid=ctx.id, login_at=ctx.login_at, is_active=is_active)
+    so the denylist still covers this login and the 10-day refresh cap doesn't slide.
+
+    ``pending_deletion`` is re-read by the caller on every rotation, so a cancelled
+    deletion drops the marker at the next refresh."""
+    return await mint_tokens(
+        ctx.user_id, sid=ctx.id, login_at=ctx.login_at, is_active=is_active, pending_deletion=pending_deletion
+    )
 
 
 async def resolve_parked_refresh(token: str) -> AuthContext:
@@ -471,6 +486,7 @@ async def resolve_parked_refresh(token: str) -> AuthContext:
         login_at=claims.get("lat"),
         jti=claims.get("jti"),
         issued_at=claims.get("iat"),
+        pending_deletion=bool(claims.get("pdl")),
     )
 
 
@@ -500,6 +516,7 @@ async def _resolve(request: Request, token: str | None, expected_type: str) -> A
         login_at=claims.get("lat"),
         jti=claims.get("jti"),
         issued_at=claims.get("iat"),
+        pending_deletion=bool(claims.get("pdl")),
     )
 
 
@@ -523,14 +540,31 @@ async def require_session(request: Request) -> AuthContext:
     return ctx
 
 
+PENDING_DELETION_DETAIL = "Your account is scheduled for deletion."
+
+
 async def require_current_user(ctx: AuthContext = Depends(require_session)) -> AuthUser:
+    """The signed-in user, for every ordinary route.
+
+    A session marked ``pending_deletion`` is refused here (403): during the grace
+    period the account is frozen, and only the routes that depend on
+    :func:`require_current_user_even_if_pending` stay open.
+    """
+    if ctx.pending_deletion:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=PENDING_DELETION_DETAIL)
     return AuthUser(id=ctx.user_id, is_active=ctx.is_active)
 
 
-async def require_bound_user_id(
-    user_id: str,
-    current_user: AuthUser = Depends(require_current_user),
-) -> AuthUser:
+async def require_current_user_even_if_pending(ctx: AuthContext = Depends(require_session)) -> AuthUser:
+    """The signed-in user, accepted even while the account awaits deletion.
+
+    Only for the routes a user scheduled for deletion must still reach: the
+    deletion's own status and cancel, and downloading their data (plan 32).
+    """
+    return AuthUser(id=ctx.user_id, is_active=ctx.is_active)
+
+
+def _bind(user_id: str, current_user: AuthUser) -> AuthUser:
     if user_id != current_user.id:
         logger.warning("user_scope_mismatch", "Authenticated user attempted to access another user scope", requested_user_id=user_id, authenticated_user_id=current_user.id)
         raise HTTPException(
@@ -538,6 +572,21 @@ async def require_bound_user_id(
             detail="Token does not grant access to this user.",
         )
     return current_user
+
+
+async def require_bound_user_id(
+    user_id: str,
+    current_user: AuthUser = Depends(require_current_user),
+) -> AuthUser:
+    return _bind(user_id, current_user)
+
+
+async def require_bound_user_id_even_if_pending(
+    user_id: str,
+    current_user: AuthUser = Depends(require_current_user_even_if_pending),
+) -> AuthUser:
+    """:func:`require_bound_user_id` for the routes open during a pending deletion."""
+    return _bind(user_id, current_user)
 
 
 async def require_refresh_session(request: Request) -> AuthContext:
@@ -607,6 +656,10 @@ async def authenticate_websocket_user(
     if not sid or await logout_denylist.is_revoked(sid):
         return None
     if not claims.get("act", True):
+        return None
+    # A pending deletion freezes the account; live run streams are not among the
+    # few things it may still do.
+    if claims.get("pdl"):
         return None
     if claims.get("sub") != user_id:
         logger.warning(

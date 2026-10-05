@@ -6,7 +6,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { cn, fmtDate } from "@/shared/lib/utils";
 import type { ConversationShareListItem, ConversationSummary } from "@/shared/lib/types";
 import { InfoCard, MetricCard, PrefToggleRow, SoftPanel } from "./shared";
-import { ComingSoonRow } from "./ComingSoon";
+import { DeleteAccountCard } from "./DeleteAccountCard";
 import { ExportDataCard } from "./ExportDataCard";
 
 type DataControlsTabProps = {
@@ -402,18 +402,7 @@ export default function DataControlsTab({
 
       <ExportDataCard userId={userId} />
 
-      <InfoCard
-        eyebrow="Planned"
-        title="More data controls"
-        description="Mirrored from the target settings layout — these land here once implemented."
-      >
-        <SoftPanel className="divide-y divide-border/40 overflow-hidden">
-          <ComingSoonRow
-            title="Delete account"
-            description="Permanently remove this account and all of its data."
-          />
-        </SoftPanel>
-      </InfoCard>
+      <DeleteAccountCard userId={userId} />
     </div>
   );
 }

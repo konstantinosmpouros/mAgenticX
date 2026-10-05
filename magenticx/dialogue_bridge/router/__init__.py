@@ -5,6 +5,7 @@ from router.agent_tools import router as agent_tools_router
 from router.inference import router as inference_router
 from router.preferences import router as preferences_router
 from router.conversations import router as conversations_router
+from router.account import router as account_router
 from router.export import router as export_router
 from router.messages import router as messages_router
 from router.attachments import router as attachments_router
@@ -24,6 +25,7 @@ __all__ = [
     "auth_router",
     "catalog_router",
     "conversations_router",
+    "account_router",
     "export_router",
     "inference_router",
     "internal_memory_router",

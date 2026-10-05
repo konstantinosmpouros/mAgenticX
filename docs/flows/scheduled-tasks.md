@@ -61,12 +61,14 @@ Each tick, `claim_due_tasks` runs one transaction:
 ```sql
 SELECT * FROM scheduled_tasks
 WHERE status='active' AND next_run_at IS NOT NULL AND next_run_at <= now()
+  AND NOT EXISTS (open account_deletions row for scheduled_tasks.user_id)
 ORDER BY next_run_at ASC LIMIT :batch
 FOR UPDATE SKIP LOCKED;
 ```
 
 For each claimed row it advances `next_run_at` to the next slot (or flips `status='completed'` for a spent one-off / `max_runs` / `expires_at`), then **commits before firing**. Two consequences:
 
+- A user whose account awaits deletion is frozen ([account-deletion](account-deletion.md)): their tasks are **skipped**, not modified, so cancelling the deletion resumes them as they were.
 - `SKIP LOCKED` means a concurrent tick — e.g. the ~30s window during an `order: start-first` deploy when two bridge containers overlap — can never claim the same row. `replicas: 1` alone is *not* enough; this claim is the actual guard.
 - The row lock is released before the (possibly minutes-long) agent call, so the pool (size 5) never starves.
 

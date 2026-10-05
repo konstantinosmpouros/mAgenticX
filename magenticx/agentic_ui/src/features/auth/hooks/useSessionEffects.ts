@@ -3,6 +3,7 @@ import type {
   Agent,
   ConversationDetail,
   ConversationSummary,
+  PendingDeletion,
   ToolMetadata,
   UserPreferences,
   UserProfile,
@@ -44,6 +45,7 @@ export function useAuthRehydrateEffect(params: {
   setUserId: (v: string | null) => void;
   setUserProfile: (v: UserProfile | null) => void;
   setAuthResolved?: (v: boolean) => void;
+  setPendingDeletion?: (v: PendingDeletion | null) => void;
   setAgents: (v: any) => void;
   setAvailableTools?: (v: ToolMetadata[]) => void;
   setMyRegistrySkills?: (v: UserSkill[]) => void;
@@ -69,6 +71,7 @@ export function useAuthRehydrateEffect(params: {
     setUserId,
     setUserProfile,
     setAuthResolved,
+    setPendingDeletion,
     setAgents,
     setAvailableTools,
     setMyRegistrySkills,
@@ -142,6 +145,15 @@ export function useAuthRehydrateEffect(params: {
         setIsLoggedIn(true);
         setUserId(restored.user.id);
         setUserProfile(restored.user);
+
+        // The account awaits deletion (plan 32): the session is frozen — every
+        // workspace call would answer 403 — so load nothing. The shell shows the
+        // pending screen, which offers only cancel, download and sign out.
+        setPendingDeletion?.(restored.pendingDeletion ?? null);
+        if (restored.pendingDeletion) {
+          setAuthResolved?.(true);
+          return;
+        }
         setConversationsLoading?.(true);
 
         let hasSnapshotAgents = false;

@@ -354,6 +354,8 @@ Only `agentic_ui` (port 8050) is bound to the host. All other services are inter
 | `OPENAI_ORG` / `OPENAI_PROJ` | agents, rag_service | OpenAI org/project scope |
 | `EMBEDDING_MODEL` / `EMBEDDING_DIMENSIONS` | agents | Conversation-embedding model + dims served by `POST /embed` (default `text-embedding-3-small` / `1536`) |
 | `EMBEDDINGS_ENABLED` | dialogue_bridge | Master switch for the embedding sweeper + semantic search (default `true`). Other `EMBEDDINGS_*` knobs tune batch size, sweep cadence, and result limits. |
+| `DATA_EXPORT_ENABLED` | dialogue_bridge | Kill switch for "Export my data" (default `true`). `EXPORT_*` bound the stream and the weekly cooldown — see [configuration](configuration.md). |
+| `ACCOUNT_DELETION_ENABLED` | dialogue_bridge | Kill switch for "Delete account" and the purger (default `true`). `ACCOUNT_DELETION_*` / `ACCOUNT_PURGE_*` set the grace period, re-auth window, batches and the purge's write-rate cap — see [configuration](configuration.md). |
 | `ANTHROPIC_API_KEY` | agents | Claude model access (optional) |
 | `DATABASE_URL` | dialogue_bridge | async PostgreSQL connection string |
 | `DATABASE_POOL_SIZE` | dialogue_bridge | SQLAlchemy pool size |

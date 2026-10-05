@@ -107,6 +107,8 @@ manifest.json                        counts, sizes, missing parts — written la
 
 ## Sharp Edges and Behavioral Notes
 
+- **Open during an account's deletion grace period.** The three export routes use `validate_userId_even_if_pending`, so a user whose account awaits deletion can still download their data — the pending screen offers it ([account-deletion](account-deletion.md)).
+
 - **Allowlists, not `SELECT *`.** Every exported column is named in `utils/data_export.py`. A column added to any of these tables later is not exported until someone adds it there — so a future secret can never ship by accident.
 - **Never exported:** session or refresh tokens, CSRF secrets, share-link tokens and snapshots, raw agent event logs (`messages.raw_events`), message embeddings, agent memories (the user's choice), and the shared copies of remote skills (exported as references with source, commit and licence).
 - **A cut download is not a valid zip.** `manifest.json` and the zip directory are written last, so a stream that stops early fails to open rather than passing for a partial archive.

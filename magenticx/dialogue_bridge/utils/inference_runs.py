@@ -1402,6 +1402,14 @@ async def create_inference_run_record(
     starts a fresh branch thread. The per-turn delta-vs-fork-vs-full decision is
     re-derived in ``_run`` from the message tree.
     """
+    # Every run starts here, whatever the route, so this is where agent access is
+    # enforced: a platform agent, or a custom agent the user owns. An agent id is
+    # otherwise just a string the client sends (or a share snapshot carries).
+    if agent.owner_user_id is not None and agent.owner_user_id != user_id:
+        logger.warning("inference_agent_not_owned", "Refused a run on another user's private agent",
+                       agent_id=agent.id, failure_reason="agent_not_owned")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This agent is private to its owner.")
+
     await _fail_stale_queued_runs_for_conversation(db, conversation.id)
 
     user_active_count = await db.scalar(

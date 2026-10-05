@@ -106,7 +106,7 @@ from core.database import (
     UserTable,
     get_db,
 )
-from utils.validators import validate_userId
+from utils.validators import validate_userId, validate_userId_even_if_pending
 
 
 def utcnow() -> datetime:
@@ -182,6 +182,7 @@ def app(session_factory, seeded_user):
 
     bridge_app.dependency_overrides[get_db] = override_get_db
     bridge_app.dependency_overrides[validate_userId] = override_validate_user_id
+    bridge_app.dependency_overrides[validate_userId_even_if_pending] = override_validate_user_id
     bridge_app.dependency_overrides[require_csrf_protection] = override_csrf_protection
 
     try:
@@ -218,6 +219,7 @@ def sso_login(client, monkeypatch):
         subject: str | None = None,
         email: str | None = None,
         park: bool = False,
+        reauth_for: str | None = None,
     ):
         identity = AuthIdentity(
             subject=subject or f"oid::{username}",
@@ -233,8 +235,13 @@ def sso_login(client, monkeypatch):
         async def consume_park_intent(_state):
             return park
 
+        async def consume_reauth_intent(_state):
+            # A re-authentication (plan 32) started for this user id.
+            return reauth_for
+
         monkeypatch.setattr(auth_router_module, "complete_login", complete_login)
         monkeypatch.setattr(auth_router_module, "consume_park_intent", consume_park_intent)
+        monkeypatch.setattr(auth_router_module, "consume_reauth_intent", consume_reauth_intent)
         return await client.get("/v1/auth/oidc/callback", params={"state": "test-state", "code": "test-code"})
 
     return login

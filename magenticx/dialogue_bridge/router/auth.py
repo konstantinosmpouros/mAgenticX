@@ -37,6 +37,7 @@ from core.auth.parked import (
     ParkedSessionError,
     parked_sessions,
 )
+from utils.account_status import open_deletion, pending_deletion_summary
 from utils.auth import (
     revocation_watermark,
     revoke_all_sessions,
@@ -51,6 +52,7 @@ from core.auth.oidc import (
     begin_login,
     complete_login,
     consume_park_intent,
+    consume_reauth_intent,
     EntraOIDCError,
     EntraAccessDeniedError,
 )
@@ -71,7 +73,8 @@ async def session_me(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
     set_context(user_id=ctx.user_id, session_id=ctx.id)
     logger.debug("session_me", "Session introspection succeeded")
-    return AuthResponse(**build_auth_response(user, access_ttl_for_session(ctx)))
+    deletion = pending_deletion_summary(await open_deletion(db, user.id))
+    return AuthResponse(**build_auth_response(user, access_ttl_for_session(ctx), deletion))
 
 
 @router.post(
@@ -122,7 +125,10 @@ async def refresh_session(
         )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
 
-    issued = await rotate_session(ctx, is_active=user.is_active)
+    # Re-read on every rotation: a deletion requested or cancelled since the
+    # last refresh adds or drops the session's pending-deletion marker here.
+    deletion = await open_deletion(db, user.id)
+    issued = await rotate_session(ctx, is_active=user.is_active, pending_deletion=deletion is not None)
     # Advance the tracked jti to the freshly-minted one and grace the old jti, so a
     # legitimate concurrent/retried refresh in flight isn't misread as reuse.
     await refresh_guard.rotate(
@@ -133,7 +139,7 @@ async def refresh_session(
     set_context(user_id=user.id, session_id=issued.session_id)
     issue_session_cookies(response, issued)
     logger.info("session_refresh_succeeded", "Session refresh succeeded")
-    return AuthResponse(**build_auth_response(user, issued.access_ttl))
+    return AuthResponse(**build_auth_response(user, issued.access_ttl, pending_deletion_summary(deletion)))
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
@@ -336,7 +342,12 @@ async def switch_account(
 
     # Mint the incoming session, preserving its sid so the denylist and the
     # absolute refresh cap keep applying to the original login.
-    issued = await rotate_session(parked_ctx, is_active=target.is_active)
+    target_deletion = await open_deletion(db, target.id)
+    issued = await rotate_session(
+        parked_ctx,
+        is_active=target.is_active,
+        pending_deletion=target_deletion is not None,
+    )
     await refresh_guard.rotate(
         parked_ctx.id,
         parked_ctx.jti,
@@ -350,7 +361,11 @@ async def switch_account(
     if outgoing is not None:
         try:
             outgoing_refresh = await require_refresh_session(request)
-            outgoing_issued = await rotate_session(outgoing_refresh, is_active=outgoing.is_active)
+            outgoing_issued = await rotate_session(
+                outgoing_refresh,
+                is_active=outgoing.is_active,
+                pending_deletion=await open_deletion(db, outgoing.id) is not None,
+            )
             await refresh_guard.rotate(
                 outgoing_refresh.id,
                 outgoing_refresh.jti,
@@ -378,7 +393,7 @@ async def switch_account(
     issue_session_cookies(response, issued)
     issue_device_cookie(response, device_id)
     logger.info("account_switch_succeeded", "Switched the active account")
-    return AuthResponse(**build_auth_response(target, issued.access_ttl))
+    return AuthResponse(**build_auth_response(target, issued.access_ttl, pending_deletion_summary(target_deletion)))
 
 
 @router.post("/accounts/{target_user_id}/logout", status_code=status.HTTP_204_NO_CONTENT)
@@ -502,20 +517,34 @@ async def auth_config() -> dict:
     return {"oidcEnabled": settings.entra.enabled}
 
 
+def _with_query(base: str, query: dict) -> str:
+    """Append a query string to a configured redirect, whether or not it has one."""
+    return f"{base}{'&' if '?' in base else '?'}{urlencode(query)}"
+
+
 @router.get("/oidc/login", dependencies=[Depends(auth_rate_limit)])
-async def oidc_login(request: Request, park: bool = False) -> RedirectResponse:
+async def oidc_login(request: Request, park: bool = False, reauth: bool = False) -> RedirectResponse:
     """Begin the Entra auth-code flow — 302 the browser to Microsoft.
 
     ``?park=true`` is the "add another account" path. The intent cannot ride along
     with the redirect, so it is stored against the flow's single-use state and
     read back in the callback.
+
+    ``?reauth=true`` asks the *signed-in* user to prove it is still them (plan 32:
+    deleting the account needs a recent sign-in). Microsoft is told to ask for the
+    credentials again, and the callback accepts only the same account.
     """
     if not settings.entra.enabled:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SSO is not enabled.")
-    if park:
+    reauth_user_id: str | None = None
+    if reauth:
+        reauth_user_id = (await require_session(request)).user_id
+    elif park:
         await guard_add_account(request)
     try:
-        auth_uri = await begin_login(oidc_redirect_uri(request), park=park)
+        auth_uri = await begin_login(
+            oidc_redirect_uri(request), park=park and not reauth, reauth_user_id=reauth_user_id
+        )
     except EntraOIDCError as exc:
         logger.error(
             "oidc_login_start_failed",
@@ -550,8 +579,16 @@ async def oidc_callback(
     # intent is consumed here either way, and the flow's own state is validated
     # (and consumed) by complete_login below.
     park_previous = await consume_park_intent(request.query_params.get("state"))
+    reauth_user_id = await consume_reauth_intent(request.query_params.get("state"))
 
     def _deny(reason: str) -> RedirectResponse:
+        if reauth_user_id is not None:
+            # A failed re-authentication leaves the existing session untouched, so
+            # the user is still signed in: land back in the app, not on login.
+            return RedirectResponse(
+                _with_query(settings.entra.post_login_redirect, {"reauth": "failed", "reason": reason}),
+                status_code=status.HTTP_302_FOUND,
+            )
         query = {"sso": reason}
         if park_previous:
             query["add"] = "1"
@@ -569,6 +606,14 @@ async def oidc_callback(
     except EntraOIDCError:
         logger.warning("oidc_callback_rejected", "Microsoft sign-in was rejected", failure_reason="oidc_callback_rejected")
         return _deny("failed")
+
+    if reauth_user_id is not None:
+        # Checked BEFORE the user table is touched: a re-authentication as some
+        # other Microsoft account must neither switch accounts nor create one.
+        expected = await load_user(db, reauth_user_id)
+        if expected is None or expected.oidc_subject != identity.subject:
+            logger.warning("oidc_reauth_mismatch", "Re-authentication used a different account", failure_reason="reauth_mismatch")
+            return _deny("mismatch")
 
     login_time = datetime.now(timezone.utc).replace(tzinfo=None)
     display_name = (identity.claims or {}).get("name")
@@ -603,8 +648,18 @@ async def oidc_callback(
     # browser is parked instead of replaced. The shared finaliser owns the
     # cookies, the device cookie and the refresh-guard registration, so the
     # account switcher sees the same thing either way.
-    redirect = RedirectResponse(settings.entra.post_login_redirect, status_code=status.HTTP_302_FOUND)
-    await finalize_login(request, redirect, user, park_previous=park_previous)
+    target = settings.entra.post_login_redirect
+    if reauth_user_id is not None:
+        # The SPA reopens the action that asked for the re-authentication.
+        target = _with_query(target, {"reauth": "done"})
+    redirect = RedirectResponse(target, status_code=status.HTTP_302_FOUND)
+    await finalize_login(
+        request,
+        redirect,
+        user,
+        park_previous=park_previous and reauth_user_id is None,
+        pending_deletion=await open_deletion(db, user.id) is not None,
+    )
     logger.info(
         "oidc_login_succeeded",
         "User authenticated via Microsoft Entra",

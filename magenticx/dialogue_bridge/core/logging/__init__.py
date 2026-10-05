@@ -4,7 +4,7 @@ from core.logging.events import EventLogger, get_logger, log_event
 from core.logging.exception_handlers import register_exception_handlers
 from core.logging.middleware import RequestLoggingMiddleware
 from core.logging.operations import elapsed_ms, logged_db_operation
-from core.logging.redaction import scrub_url_credentials
+from core.logging.redaction import hash_identifier, scrub_url_credentials
 from core.logging.stream_metrics import StreamMetrics, iter_tracked_stream, log_stream_outcome
 
 __all__ = [
@@ -16,6 +16,7 @@ __all__ = [
     "elapsed_ms",
     "get_context",
     "get_logger",
+    "hash_identifier",
     "iter_tracked_stream",
     "log_event",
     "log_stream_outcome",

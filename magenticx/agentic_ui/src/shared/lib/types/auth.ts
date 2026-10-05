@@ -5,6 +5,7 @@
 // `AccountList` and `AccountSummary` are inferred from their Zod schemas in
 // `../schemas` — re-exported here so the auth surface stays in one place.
 export type { AccountList, AccountSummary } from "../schemas";
+import type { PendingDeletion } from "../schemas";
 
 export type UserProfile = {
   id: string;
@@ -25,4 +26,6 @@ export type AuthResponse = {
   authenticated: boolean;
   user?: UserProfile;
   tokenTtl?: number;
+  /** Set while the account awaits deletion (plan 32): the app shows only the pending screen. */
+  pendingDeletion?: PendingDeletion | null;
 };

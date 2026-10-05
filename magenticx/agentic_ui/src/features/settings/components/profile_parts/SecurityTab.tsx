@@ -6,7 +6,7 @@ import { revokeAllSessions } from "@/shared/lib/api";
 import { toastError } from "@/shared/lib/toast";
 import { useToast } from "@/shared/hooks/use-toast";
 
-import { InfoCard, SoftPanel } from "./shared";
+import { DangerButton, InfoCard, SoftPanel } from "./shared";
 
 /**
  * SecurityTab — "Security and login": per-device sign-out, revoke-everywhere,
@@ -68,14 +68,10 @@ export default function SecurityTab({ onLogout }: SecurityTabProps) {
                   Ends the current session immediately and returns you to the login screen.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={onLogout}
-                className="inline-flex h-10 shrink-0 items-center gap-2 rounded-full border border-destructive/40 bg-destructive/10 px-4 text-sm font-semibold text-destructive transition-colors hover:bg-destructive/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/50"
-              >
+              <DangerButton onClick={onLogout}>
                 <LogOut size={15} aria-hidden />
                 Log out
-              </button>
+              </DangerButton>
             </div>
           </div>
           <div className="px-5 py-4">
@@ -87,14 +83,10 @@ export default function SecurityTab({ onLogout }: SecurityTabProps) {
                   one. Use this if you think someone else has access.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setConfirmOpen(true)}
-                className="inline-flex h-10 shrink-0 items-center gap-2 rounded-full border border-destructive/40 bg-destructive/10 px-4 text-sm font-semibold text-destructive transition-colors hover:bg-destructive/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/50"
-              >
+              <DangerButton onClick={() => setConfirmOpen(true)}>
                 <MonitorSmartphone size={15} aria-hidden />
                 Log out everywhere
-              </button>
+              </DangerButton>
             </div>
           </div>
         </SoftPanel>

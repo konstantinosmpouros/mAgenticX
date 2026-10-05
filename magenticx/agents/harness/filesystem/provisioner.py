@@ -391,3 +391,19 @@ def delete_conversation_files(*, user_id: str, agent_slug: str, conversation_id:
         agent_slug=agent_slug,
         conversation_id=conversation_id,
     )
+
+
+def delete_user_files(user_id: str) -> bool:
+    """Remove the user's whole workspace folder — every agent, every conversation.
+
+    Account deletion (plan 32). Synchronous and possibly large, so callers run
+    it in a worker thread. ``layout.user_workspace`` refuses an id that is not a
+    single safe path segment (``ValueError``), so this can never climb out of
+    ``users/``. Idempotent: returns whether there was anything to remove.
+    """
+    root = layout.user_workspace(user_id)
+    if not root.exists():
+        return False
+    shutil.rmtree(root)
+    logger.info("user_files_deleted", "Removed a user's workspace folder", user_id=user_id)
+    return True

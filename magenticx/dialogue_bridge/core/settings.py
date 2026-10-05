@@ -567,6 +567,81 @@ class ExportSettings(BaseSettings):
         return v
 
 
+class AccountDeletionSettings(BaseSettings):
+    """"Delete account" (plan 32): a request, a grace period, then a resumable purge.
+
+    The purge removes everything one user holds across chat_db, agent_runtime and
+    the volume — up to tens of GB for one account — on a box every other stack
+    shares, so it runs in the background in small, separately committed batches.
+    These numbers bound one batch; none of them bounds the account's size.
+    """
+    model_config = _BASE_MODEL_CONFIG
+
+    # Kill switch, on by default: false stops new requests and pauses the purger.
+    enabled: bool = Field(True, validation_alias="ACCOUNT_DELETION_ENABLED")
+    # Days between the request and the purge; signing in during them can cancel.
+    grace_days: int = Field(14, validation_alias="ACCOUNT_DELETION_GRACE_DAYS")
+    # A request needs a Microsoft sign-in at most this old (the session's `lat`).
+    reauth_max_age_seconds: int = Field(600, validation_alias="ACCOUNT_DELETION_REAUTH_MAX_AGE_SECONDS")
+    # How often the purger looks for a deletion whose grace period is over.
+    purge_interval_seconds: int = Field(300, validation_alias="ACCOUNT_PURGE_INTERVAL_SECONDS")
+    # Conversations taken per purge round; each is emptied, then deleted.
+    conversation_batch: int = Field(25, validation_alias="ACCOUNT_PURGE_CONVERSATION_BATCH")
+    # Messages deleted per transaction inside one conversation.
+    message_batch: int = Field(1000, validation_alias="ACCOUNT_PURGE_MESSAGE_BATCH")
+    # Attachment blobs deleted per transaction — at most this many, and at most
+    # `blob_batch_bytes` of them (always at least one). Deleting a blob writes
+    # roughly its own size to the WAL (full-page images after each checkpoint),
+    # so bytes, not rows, are what make a delete transaction long: 20 × 25 MiB
+    # measured 15 s each in the 50 GB load test.
+    blob_batch: int = Field(20, validation_alias="ACCOUNT_PURGE_BLOB_BATCH")
+    blob_batch_bytes: int = Field(64 * 1024 * 1024, validation_alias="ACCOUNT_PURGE_BLOB_BATCH_BYTES")
+    # Ceiling on how fast the purge deletes attachment bytes — and so on the WAL
+    # it writes. The disk on Dennis is shared by every stack, and the purge is a
+    # background job with no deadline: a 50 GB account takes ~27 min at 32 MiB/s.
+    max_bytes_per_second: int = Field(32 * 1024 * 1024, validation_alias="ACCOUNT_PURGE_MAX_BYTES_PER_SECOND")
+    # Checkpoint thread ids sent to the agents service per call.
+    thread_batch: int = Field(200, validation_alias="ACCOUNT_PURGE_THREAD_BATCH")
+    # Ceiling for the retry backoff after a failed purge step.
+    retry_max_seconds: int = Field(3600, validation_alias="ACCOUNT_PURGE_RETRY_MAX_SECONDS")
+
+    @field_validator("grace_days", mode="after")
+    @classmethod
+    def _bound_grace(cls, v: int) -> int:
+        # The grace period is the safety net (plan 32, decision 5): never zero.
+        if v < 1 or v > 30:
+            raise ValueError("ACCOUNT_DELETION_GRACE_DAYS must be between 1 and 30.")
+        return v
+
+    @field_validator("reauth_max_age_seconds", mode="after")
+    @classmethod
+    def _bound_reauth(cls, v: int) -> int:
+        if v < 60 or v > 3600:
+            raise ValueError("ACCOUNT_DELETION_REAUTH_MAX_AGE_SECONDS must be between 60 and 3600.")
+        return v
+
+    @field_validator("purge_interval_seconds", "retry_max_seconds", mode="after")
+    @classmethod
+    def _bound_interval(cls, v: int) -> int:
+        if v < 10 or v > 86400:
+            raise ValueError("Account purge intervals must be between 10 seconds and one day.")
+        return v
+
+    @field_validator("blob_batch_bytes", "max_bytes_per_second", mode="after")
+    @classmethod
+    def _bound_bytes(cls, v: int) -> int:
+        if v < 1024 * 1024 or v > 1024 * 1024 * 1024:
+            raise ValueError("Account purge byte limits must be between 1 MiB and 1 GiB.")
+        return v
+
+    @field_validator("conversation_batch", "message_batch", "blob_batch", "thread_batch", mode="after")
+    @classmethod
+    def _bound_batch(cls, v: int) -> int:
+        if v < 1 or v > 5000:
+            raise ValueError("Account purge batch sizes must be between 1 and 5000.")
+        return v
+
+
 class ShareSettings(BaseSettings):
     model_config = _BASE_MODEL_CONFIG
 
@@ -889,6 +964,9 @@ class RateLimitSettings(BaseSettings):
     # cooldown column; this only stops a client hammering the token endpoint.
     export_token_max_attempts: int = Field(10, validation_alias="EXPORT_TOKEN_RATE_LIMIT_MAX_ATTEMPTS")
     export_token_window_seconds: int = Field(60, validation_alias="EXPORT_TOKEN_RATE_LIMIT_WINDOW_SECONDS")
+    # Requesting or cancelling an account deletion (plan 32): rare by nature.
+    account_deletion_max_attempts: int = Field(10, validation_alias="ACCOUNT_DELETION_RATE_LIMIT_MAX_ATTEMPTS")
+    account_deletion_window_seconds: int = Field(3600, validation_alias="ACCOUNT_DELETION_RATE_LIMIT_WINDOW_SECONDS")
     # Message creation can carry up to the full attachment budget per call —
     # caps blob-storage growth independent of the aggregate budget.
     message_post_max_attempts: int = Field(30, validation_alias="MESSAGE_RATE_LIMIT_MAX_ATTEMPTS")
@@ -1019,6 +1097,7 @@ class Settings(BaseSettings):
     attachments: AttachmentSettings = Field(default_factory=AttachmentSettings)
     share: ShareSettings = Field(default_factory=ShareSettings)
     export: ExportSettings = Field(default_factory=ExportSettings)
+    account_deletion: AccountDeletionSettings = Field(default_factory=AccountDeletionSettings)
     generation: GenerationSettings = Field(default_factory=GenerationSettings)
     embeddings: EmbeddingsSettings = Field(default_factory=EmbeddingsSettings)
     http: HttpTimeoutSettings = Field(default_factory=HttpTimeoutSettings)

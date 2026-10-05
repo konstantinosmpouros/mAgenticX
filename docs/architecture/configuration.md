@@ -135,6 +135,7 @@ Who signs session JWTs and which public keys verify them. Production signs with 
 | `SKILL_UPLOAD_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Custom-skill uploads (agents-service disk writes) per user. |
 | `SKILL_CATALOGUE_SEARCH_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `60` / `60` | Skill catalogue searches per verified session (the search runs as the user types, debounced). |
 | `EXPORT_TOKEN_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Data-export download tokens per user (the export itself is bounded by the cooldown column). |
+| `ACCOUNT_DELETION_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `3600` | Requesting or cancelling an account deletion, per user. |
 | `SKILL_REMOTE_ADD_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Remote-skill Adds per user — each can make the agents service download a skill, so the Add route cannot be used as a fetch amplifier. |
 | `MESSAGE_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `30` / `60` | Message creation (attachment/blob growth) per user. |
 | `SUGGESTIONS_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Starter-suggestion generation (LLM-backed) per user. |
@@ -171,6 +172,23 @@ See [data-export](../flows/data-export.md). The archive is streamed, so these bo
 | `EXPORT_CHUNK_BYTES` | `1048576` | Bytes per attachment slice (64 KiB – 8 MiB). |
 | `EXPORT_MAX_SECONDS` | `1800` | Wall-clock ceiling; a longer export is aborted. |
 | `EXPORT_TOKEN_TTL_SECONDS` | `60` | Lifetime of the one-time download token. |
+
+### Account deletion (`AccountDeletionSettings`)
+
+See [account-deletion](../flows/account-deletion.md). The batch and rate bounds are what keep a purge of a very large account from locking tables or saturating a disk the other stacks share; none of them limits the account's size.
+
+| Env var | Default | What it does |
+| --- | --- | --- |
+| `ACCOUNT_DELETION_ENABLED` | `true` | Kill switch: `false` refuses new requests and pauses the purger. Set in neither compose. |
+| `ACCOUNT_DELETION_GRACE_DAYS` | `14` | Days from the request to the purge; signing in during them can cancel (1–30, never 0). |
+| `ACCOUNT_DELETION_REAUTH_MAX_AGE_SECONDS` | `600` | A request needs a Microsoft sign-in at most this old (60–3600). |
+| `ACCOUNT_PURGE_INTERVAL_SECONDS` | `300` | How often the purger looks for a due deletion. |
+| `ACCOUNT_PURGE_CONVERSATION_BATCH` | `25` | Conversations per purge round. |
+| `ACCOUNT_PURGE_MESSAGE_BATCH` | `1000` | Messages per delete transaction. |
+| `ACCOUNT_PURGE_BLOB_BATCH` / `_BLOB_BATCH_BYTES` | `20` / `67108864` | Attachment blobs per transaction — at most this many and this many bytes (always at least one). |
+| `ACCOUNT_PURGE_MAX_BYTES_PER_SECOND` | `33554432` | Ceiling on attachment bytes deleted per second — and so on the WAL written (1 MiB – 1 GiB). |
+| `ACCOUNT_PURGE_THREAD_BATCH` | `200` | Checkpoint thread ids per call to the agents service. |
+| `ACCOUNT_PURGE_RETRY_MAX_SECONDS` | `3600` | Ceiling for the back-off after a failed purge step. |
 
 ### Attachments, speech, share, generation
 

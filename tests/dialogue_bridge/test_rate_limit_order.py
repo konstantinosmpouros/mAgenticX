@@ -14,7 +14,11 @@ from __future__ import annotations
 
 from core.auth.session import require_csrf_protection
 from core.security.rate_limit import user_path_identity
-from utils.validators import validate_userId
+from utils.validators import validate_userId, validate_userId_even_if_pending
+
+# Either user-scope check counts as auth: the second is the same check, open to
+# an account awaiting deletion (plan 32 — its status, cancel and the export).
+_AUTH = (validate_userId, validate_userId_even_if_pending)
 
 
 def _keys_on_path_user(call) -> bool:
@@ -39,9 +43,10 @@ def test_every_path_keyed_rate_limit_runs_after_auth_and_csrf(app):
             if not _keys_on_path_user(call):
                 continue
             checked += 1
-            assert validate_userId in calls[:limit_at], f"{route.path}: rate limit runs before auth"
+            assert any(auth in calls[:limit_at] for auth in _AUTH), f"{route.path}: rate limit runs before auth"
             if require_csrf_protection in calls:
                 assert require_csrf_protection in calls[:limit_at], f"{route.path}: rate limit runs before CSRF"
     # Inference, messages, share, PDF export, suggestions, voice session, the
-    # three speech routes, custom-skill upload and remote-skill add.
-    assert checked >= 11
+    # three speech routes, custom-skill upload, remote-skill add, the export
+    # token, and requesting / cancelling an account deletion.
+    assert checked >= 14

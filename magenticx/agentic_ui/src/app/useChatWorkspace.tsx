@@ -83,6 +83,7 @@ import { getAgents, getSuggestions } from "@/shared/lib/api";
 import ChatBody from "@/features/chat/components/ChatBody";
 import VoiceModeBody from "@/features/voice/components/VoiceModeBody";
 import { useScheduledTasks } from "@/features/tasks/hooks/useScheduledTasks";
+import { useAccountDeletionReauthReturn } from "@/features/settings/hooks/useAccountDeletionReauthReturn";
 import { clearUISnapshot } from "@/shared/lib/uiStateStorage";
 import { CONV_PAGE_SIZE } from "@/shared/lib/consts";
 
@@ -190,6 +191,7 @@ export function useChatWorkspace({
     setIsLoggedIn,
     setUserId,
     setAuthResolved,
+    setPendingDeletion,
     setLoadingConversation,
     setActiveProfileTab,
     setSidebarOpen,
@@ -402,6 +404,19 @@ export function useChatWorkspace({
     setShowUserProfile,
   } = settingsPanels;
 
+  // Back from "Sign in again" for deleting the account (plan 32): reopen Data
+  // controls once the session is known. Never for a frozen (pending) account —
+  // the shell shows only the pending screen then.
+  const pendingDeletion = useWorkspaceStore((s) => s.pendingDeletion);
+  // The user the workspace may load data for. A frozen account (pending
+  // deletion) answers 403 to everything but the pending screen's own calls, so
+  // every hook that loads on its own gets no user — no request, no error toast.
+  const workspaceUserId = pendingDeletion ? null : userId;
+  useAccountDeletionReauthReturn({
+    enabled: authResolved && isLoggedIn && !pendingDeletion,
+    openProfilePanel,
+  });
+
   /**
    * Re-pull the agent catalog after the user creates, edits or deletes an agent.
    *
@@ -451,7 +466,7 @@ export function useChatWorkspace({
     onOpen: dismissSidebarFloatingUi,
   });
 
-  const scheduledTasks = useScheduledTasks({ userId, active: isTasksRoute });
+  const scheduledTasks = useScheduledTasks({ userId: workspaceUserId, active: isTasksRoute });
 
   useEffect(() => {
     const title = resolveConversationTitle(currentConversation);
@@ -534,7 +549,7 @@ export function useChatWorkspace({
     handleUpdateAgent,
     handleDeleteAgent,
   } = useProfilePanel({
-    userId,
+    userId: workspaceUserId,
     toast: toastWrapper,
     initialPool: myRegistrySkills,
     requestPersist,
@@ -546,7 +561,7 @@ export function useChatWorkspace({
   // tab — read + delete only (the agent owns writes via its `remember` tool).
   // Not snapshot-persisted: memory lives on the agents filesystem, not the UI
   // snapshot, so it needs no requestPersist plumbing.
-  const memoryInspector = useMemories({ userId, toast: toastWrapper });
+  const memoryInspector = useMemories({ userId: workspaceUserId, toast: toastWrapper });
 
   // Keep ChatPage's myRegistrySkills mirrored from the hook so the snapshot
   // persistence path sees the live pool. The hook is the source of truth;
@@ -784,6 +799,7 @@ export function useChatWorkspace({
     setUserId,
     setUserProfile,
     setAuthResolved,
+    setPendingDeletion,
     setAgents,
     setAvailableTools,
     setMyRegistrySkills,

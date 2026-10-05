@@ -30,5 +30,5 @@
 
 - Profile panel — implement the "coming soon / not implemented" placeholders left by the ChatGPT-taxonomy refactor:
   - **Stub sections** (full ComingSoon pages): Notifications (lands with the Notification system + PWA item above), Plugins (OAuth app connectors — distinct from MCP Servers), Storage (attachment/artifact quotas + cleanup), Safety (content-safety / moderation preferences).
-  - **Stub rows** inside real tabs: General → UI language; Data controls → improve-the-model opt-in, Export data, Delete account.
+  - **Stub rows** inside real tabs: General → UI language.
   - **Edit profile dialog** is read-only (fields come from the IdP) — avatar upload + display-name editing need a bridge profile-update endpoint.

@@ -8,6 +8,7 @@ import ParticleNetwork from "@/shared/ui/react_bits/bg_particle_network";
 import { beginEntraLogin, restoreSessionWhenReachable } from "@/shared/lib/api";
 import { loadSession, saveSession, updateSession } from "@/shared/lib/authStorage";
 import { useToast } from "@/shared/hooks/use-toast";
+import { formatDeletionDate, readDeletionNotice } from "@/features/settings/lib/accountDeletion";
 
 // Microsoft's brand mark (the 4-colour squares). Justified custom component:
 // Lucide carries no brand logos, and Microsoft's sign-in branding guidelines
@@ -104,6 +105,26 @@ export default function Login({ decorative = false }: LoginProps = {}) {
       const rest = params.toString();
       window.history.replaceState({}, "", rest ? `${window.location.pathname}?${rest}` : window.location.pathname);
     }
+  }, [toast, decorative]);
+
+  // Arriving straight after "Delete account" (plan 32): say what happens next.
+  useEffect(() => {
+    if (decorative) return;
+    const notice = readDeletionNotice(window.location.search);
+    if (!notice) return;
+    const on = formatDeletionDate(notice.scheduledFor);
+    toast({
+      title: "Your account is scheduled for deletion",
+      description: on
+        ? `It will be permanently deleted on ${on}. Sign in before then to cancel.`
+        : "Sign in before the deletion date to cancel.",
+      duration: 12000,
+    });
+    const params = new URLSearchParams(window.location.search);
+    params.delete("deletion");
+    params.delete("on");
+    const rest = params.toString();
+    window.history.replaceState({}, "", rest ? `${window.location.pathname}?${rest}` : window.location.pathname);
   }, [toast, decorative]);
 
   useEffect(() => {

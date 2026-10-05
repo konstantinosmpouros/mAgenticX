@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { type ButtonHTMLAttributes, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import { ChevronRight } from "lucide-react";
 
@@ -57,6 +57,34 @@ export const InfoCard = ({
     </section>
   );
 };
+
+// The settings panel's one destructive button: outlined at rest, solid red on
+// hover — unmistakably destructive without shouting. Every red action in the
+// profile panel uses it, so they all look and behave alike. `sm` is for the
+// compact inline confirms inside list rows.
+export const DangerButton = ({
+  size = "md",
+  className,
+  children,
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement> & { size?: "md" | "sm" }) => (
+  <button
+    type="button"
+    {...props}
+    className={cn(
+      "inline-flex shrink-0 items-center justify-center border border-destructive/60 bg-transparent font-semibold text-destructive",
+      "transition-[background-color,border-color,color,transform] duration-200 ease-out",
+      "enabled:hover:border-destructive enabled:hover:bg-destructive enabled:hover:text-destructive-foreground",
+      "enabled:active:scale-[0.98] motion-reduce:transition-none motion-reduce:enabled:active:scale-100",
+      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+      "disabled:cursor-not-allowed disabled:opacity-50",
+      size === "sm" ? "h-7 gap-1 rounded-lg px-2.5 text-xs" : "h-10 gap-2 rounded-xl px-4 text-sm",
+      className,
+    )}
+  >
+    {children}
+  </button>
+);
 
 export const SoftPanel = ({ children, className }: { children: ReactNode; className?: string }) => (
   <div className={cn("rounded-[1.4rem] bg-muted/30", className)}>{children}</div>

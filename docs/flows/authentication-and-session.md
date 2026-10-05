@@ -189,8 +189,8 @@ Every `kid` the bridge accepts — each listed KMS version, plus any **verify-on
 
 | Token | TTL (default) | Claims |
 | --- | --- | --- |
-| **access** | 8 h (`JWT_ACCESS_TTL_SECONDS`) | `sub` (user id), `sid` (login/session id), `typ="access"`, `act` (is_active), `iss`, `aud`, `iat`, `nbf`, `exp`, `jti` |
-| **refresh** | **rolling** — `exp = min(now + IDLE, lat + ABSOLUTE)`; defaults **12 d idle** (`JWT_REFRESH_IDLE_TTL_SECONDS`) / **20 d absolute** (`JWT_REFRESH_ABSOLUTE_TTL_SECONDS`) | `sub`, `sid`, `typ="refresh"`, `lat` (login time), `iss`, `aud`, `iat`, `nbf`, `exp`, `jti` |
+| **access** | 8 h (`JWT_ACCESS_TTL_SECONDS`) | `sub` (user id), `sid` (login/session id), `typ="access"`, `act` (is_active), `lat` (login time), `iss`, `aud`, `iat`, `nbf`, `exp`, `jti`; `pdl` while the account awaits deletion |
+| **refresh** | **rolling** — `exp = min(now + IDLE, lat + ABSOLUTE)`; defaults **12 d idle** (`JWT_REFRESH_IDLE_TTL_SECONDS`) / **20 d absolute** (`JWT_REFRESH_ABSOLUTE_TTL_SECONDS`) | `sub`, `sid`, `typ="refresh"`, `lat` (login time), `iss`, `aud`, `iat`, `nbf`, `exp`, `jti`; `pdl` while the account awaits deletion |
 
 `sid` is a per-login id shared by both tokens (and stable across refresh) — the key the logout denylist and refresh-reuse detection use. The refresh window is **rolling**: each refresh slides `exp` forward by the idle window, but never past `lat + ABSOLUTE`. Net effect — an active user stays signed in up to the absolute cap; being idle longer than the idle window logs them out; the absolute cap forces a periodic full re-auth regardless of activity. The per-refresh `jti` is what makes rotation + reuse detection possible (Phase 6).
 
@@ -249,7 +249,7 @@ flowchart TD
 
 `verify()` fails closed: the algorithm allow-list is **`RS256` only** (rejecting `alg:none` and HS/RS confusion), `iss`/`aud`/`exp`/`iat`/`nbf`/`sub` are required, and the `typ` claim must match — so an access token cannot be replayed at the refresh endpoint, or vice versa. Every accepted public key is loaded from a file when the keyring is built, so verification never makes a network call of any kind — a KMS outage cannot affect it. A `kid` the bridge was not configured with is rejected as "not recognised".
 
-`require_current_user` returns a lightweight `AuthUser(id, is_active)` built **from the claims** (no DB). User-scoped endpoints add `require_bound_user_id`, which checks the `user_id` path parameter equals the token's `sub`. The two auth endpoints that return the full profile (`GET /session`, refresh) load the `UserTable` row from Postgres explicitly — that is the only place a user row is read on the auth path.
+`require_current_user` returns a lightweight `AuthUser(id, is_active)` built **from the claims** (no DB) — and refuses a session carrying `pdl` with 403 (see *Re-authentication and accounts awaiting deletion* below). User-scoped endpoints add `require_bound_user_id`, which checks the `user_id` path parameter equals the token's `sub`. The two auth endpoints that return the full profile (`GET /session`, refresh) load the `UserTable` row from Postgres explicitly — that is the only place a user row is read on the auth path.
 
 ---
 
@@ -701,3 +701,34 @@ Two routes, orthogonal scopes, easy to confuse:
 | --- | --- |
 | `/v1/auth/accounts/logout-all` | every **account** on this **browser** |
 | `/v1/auth/sessions/revoke-all` | every **browser** for this **account** |
+
+## Re-authentication and accounts awaiting deletion (plan 32)
+
+Deleting an account ([account-deletion](account-deletion.md)) added two things to the session model.
+
+### A recent sign-in, without a database read
+
+`lat` — the original sign-in time, preserved across every rotation — used to be on the refresh token only. It is now on the access token too, so a sensitive action can require a *recent* sign-in from the session alone. A token minted before the change has no `lat` and counts as too old (fail closed).
+
+To refresh it, the SPA sends the user through `GET /v1/auth/oidc/login?reauth=true`:
+
+| | Ordinary sign-in | Re-authentication |
+| --- | --- | --- |
+| Needs a session | no | **yes** (401 without one) |
+| Entra `prompt` | `select_account` | **`login`** — the credentials are asked for again |
+| Flow state in Redis | `auth:oidc:flow:<state>` (+ `auth:oidc:park:` for "add account") | + `auth:oidc:reauth:<state>` = the session's user id |
+| Callback | resolves or creates the user by `oid` | the returned `oid` must equal the session user's **before** the user table is touched — a mismatch neither switches nor creates an account |
+| Lands on | `ENTRA_POST_LOGIN_REDIRECT` | the same, with `?reauth=done` (or `?reauth=failed&reason=…`, the old session untouched) |
+
+### The `pdl` claim: a frozen session
+
+While an account has an open `account_deletions` row, every session minted for it — at sign-in (`finalize_login`), refresh, and account switch, each reading the row it already has a database session for — carries `pdl: true`. On the hot path nothing new is read:
+
+| Dependency | `pdl` session |
+| --- | --- |
+| `require_current_user`, `require_bound_user_id`, `validate_userId` | **403** *"Your account is scheduled for deletion."* |
+| `require_current_user_even_if_pending`, `require_bound_user_id_even_if_pending`, `validate_userId_even_if_pending` | allowed — used only by the deletion's status and cancel, and the data export |
+| `require_session` (`/session`, sign-out, account switching) | allowed — `/session` returns `pendingDeletion` so the SPA shows the pending screen |
+| `authenticate_websocket_user` | refused |
+
+Cancelling the deletion does not re-mint the session; the SPA calls `/session/refresh`, which re-reads the row and mints tokens without `pdl`.

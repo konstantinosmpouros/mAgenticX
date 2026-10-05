@@ -166,6 +166,14 @@ export_token_rate_limit = rate_limit(
     emit_headers=True,
 )
 
+# Requesting / cancelling an account deletion (plan 32) — per user, after auth.
+account_deletion_rate_limit = rate_limit(
+    (settings.rate_limit.account_deletion_max_attempts, settings.rate_limit.account_deletion_window_seconds),
+    scope="account-deletion",
+    identifier=user_path_identity,
+    emit_headers=True,
+)
+
 message_post_rate_limit = rate_limit(
     (settings.rate_limit.message_post_max_attempts, settings.rate_limit.message_post_window_seconds),
     scope="message-post",

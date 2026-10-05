@@ -33,4 +33,5 @@ export type * from "./tasks";
 export type * from "./search";
 export type * from "./usage";
 export type * from "./export";
+export type * from "./account";
 export type * from "./ui";

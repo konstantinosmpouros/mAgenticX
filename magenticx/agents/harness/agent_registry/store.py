@@ -262,6 +262,26 @@ class AgentDefinitionStore(BaseStore):
             )
         return removed
 
+    async def purge_user(self, user_id: str) -> dict[str, int]:
+        """Delete every definition and definition file the user holds (plan 32).
+
+        One transaction, so a retry after a failure never meets half a user.
+        Idempotent: a second call deletes nothing and reports zeros. A user's
+        definitions are a handful of small text rows, so one statement per
+        table is bounded in practice.
+        """
+        async with self._pool.connection() as conn, conn.transaction():
+            files = await conn.execute(
+                "DELETE FROM agent_definition_files WHERE user_id = %s", (user_id,)
+            )
+            definitions = await conn.execute(
+                "DELETE FROM agent_definitions WHERE user_id = %s", (user_id,)
+            )
+            return {
+                "agent_definitions": definitions.rowcount,
+                "agent_definition_files": files.rowcount,
+            }
+
     # -- export (plan 27): pages and slices, never a whole user at once ------
     async def page_definitions(self, user_id: str, after_slug: str, limit: int) -> list[dict[str, Any]]:
         """One page of this user's definitions, keyed after ``after_slug``.

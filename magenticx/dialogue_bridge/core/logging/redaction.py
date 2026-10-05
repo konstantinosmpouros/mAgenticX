@@ -104,6 +104,17 @@ def _hash_identifier(value: Any) -> str:
     return value if _is_hashed(value) else _stable_hash(value)
 
 
+def hash_identifier(value: Any) -> str:
+    """The keyed hash the logs use for ids (``h:<16 hex>``), for records kept outside them.
+
+    A record that must correlate with the logs but must not hold the raw id —
+    the account-deletion record outlives its user (plan 32) — stores this. Keyed
+    with the log-redaction secret, so it cannot be reversed or recomputed
+    without it.
+    """
+    return _hash_identifier(value)
+
+
 def sanitize_context_value(key: str, value: Any) -> Any:
     if value is None:
         return None

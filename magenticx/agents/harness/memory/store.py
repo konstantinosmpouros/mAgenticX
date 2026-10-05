@@ -505,6 +505,18 @@ class AgentMemoryStore(BaseStore):
             )
         return removed
 
+    async def purge_user(self, user_id: str) -> int:
+        """Delete every memory the user holds, across all agents (plan 32).
+
+        One statement, so it is atomic on its own; idempotent. Returns the
+        number of memories removed.
+        """
+        async with self._pool.connection() as conn:
+            cur = await conn.execute(
+                "DELETE FROM agent_memories WHERE user_id = %s", (user_id,)
+            )
+            return cur.rowcount
+
     async def count_pair(self, user_id: str, agent_slug: str) -> int:
         """Row count for the ``MEMORY_MAX_ENTRIES`` cap the tool enforces."""
         async with self._pool.connection() as conn:

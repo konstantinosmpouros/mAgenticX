@@ -116,7 +116,8 @@ Import-time `sys.path.append(PACKAGE_ROOT)` (`main.py:1-7`) → absolute imports
 2. `await cleanup_orphaned_inference_runs()` — flip every `messages` row in an active streaming state to `failed` and clear every `active_assistant_message_id` (a process restart killed those asyncio tasks; runs *before* the scheduler so a restart-interrupted scheduled fire reads as failed).
 3. `scheduler.start()` — in-process scheduled-tasks loop (no-op if `SCHEDULER_ENABLED=false`).
 4. Launch `run_embedding_sweeper(stop_event)` as a background task (no-op if `EMBEDDINGS_ENABLED=false`).
-5. `yield`. Shutdown: set the sweeper stop event → `scheduler.stop()` → `await asyncio.wait_for(embedding_task, 10)` (cancel on timeout).
+5. Launch `run_account_purger(stop_event)` — purges accounts whose deletion grace period is over, one at a time, and resumes any purge a restart interrupted (no-op if `ACCOUNT_DELETION_ENABLED=false`; see [account-deletion](../flows/account-deletion.md)).
+6. `yield`. Shutdown: set both stop events → `scheduler.stop()` → `await asyncio.wait_for(task, 10)` for the sweeper and the purger (cancel on timeout).
 
 **App** — `FastAPI(title="Bridge Service", lifespan=lifespan)`, `register_exception_handlers(app)` (handles `HTTPException`, `RequestValidationError`, catch-all `Exception`; 429s are produced by fastapi-redis-sdk's own `RateLimitExceeded` handler, registered by `install_redis_sdk`).
 

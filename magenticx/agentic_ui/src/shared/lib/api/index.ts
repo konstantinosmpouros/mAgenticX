@@ -14,6 +14,7 @@
 export {
   revokeAllSessions,
   restoreSessionWhenReachable,
+  refreshSession,
   logoutSession,
   getAccounts,
   switchAccount,
@@ -108,3 +109,9 @@ export {
 } from "./tasks";
 
 export { getExportStatus, requestExportToken, exportDownloadUrl } from "./export";
+export {
+  getAccountDeletionStatus,
+  requestAccountDeletion,
+  cancelAccountDeletion,
+  beginReauthentication,
+} from "./account";

@@ -79,6 +79,7 @@ async def finalize_login(
     user: UserTable,
     *,
     park_previous: bool,
+    pending_deletion: bool = False,
 ) -> "object":
     """Mint the session cookies for a successful login.
 
@@ -89,8 +90,12 @@ async def finalize_login(
 
     A device cookie is (re)issued whenever multi-account is enabled, so the very
     first login establishes the browser's parked-session index.
+
+    ``pending_deletion`` (read by the caller, which holds the database session)
+    marks the new session as frozen: signing in during a deletion's grace period
+    is how a user cancels it, and that is all the session may do (plan 32).
     """
-    issued = await mint_login_session(user)
+    issued = await mint_login_session(user, pending_deletion=pending_deletion)
     await refresh_guard.register(
         issued.session_id, issued.refresh_jti, settings.jwt.refresh_absolute_ttl_seconds
     )
@@ -102,6 +107,8 @@ async def finalize_login(
                 previous = await require_refresh_session(request)
                 if previous.user_id != user.id:
                     previous_user = await load_user_active(previous.user_id)
+                    # No pending-deletion marker needed on a parked token:
+                    # switching back to it re-reads that from the database.
                     rotated = await rotate_session(previous, is_active=previous_user)
                     await refresh_guard.rotate(
                         previous.id,

@@ -5,6 +5,7 @@ catalog, skills, user_agents, memories, agent_tools. Re-exported so callers
 keep the stable ``from schema import ...`` import surface regardless of which
 module a DTO lives in.
 """
+from schema.account import PurgeThreadsRequest, PurgeThreadsResponse, PurgeUserResponse
 from schema.agent_tools import AgentToolRow, AgentToolsResponse
 from schema.catalog import AgentDefinition, AgentManifest, ToolManifest
 from schema.embeddings import EmbedRequest, EmbedResponse
@@ -51,6 +52,9 @@ from schema.voice import (
 )
 
 __all__ = [
+    "PurgeThreadsRequest",
+    "PurgeThreadsResponse",
+    "PurgeUserResponse",
     "AgentDefinition",
     "AgentFile",
     "AgentManifest",

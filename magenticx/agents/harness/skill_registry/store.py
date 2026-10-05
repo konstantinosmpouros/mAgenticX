@@ -533,6 +533,32 @@ class SkillStore(BaseStore):
                 )
         return removed
 
+    async def purge_user(self, user_id: str) -> dict[str, int]:
+        """Delete everything skill-related the user holds (plan 32).
+
+        Unlike :meth:`remove` this is a real ``DELETE`` of the pool rows,
+        tombstones included: the tombstone guards a *living* user's view, and
+        there is no user left to read it. The shared copies of remote skills
+        are public content keyed by commit, not the user's — they stay.
+        One transaction; idempotent.
+        """
+        async with self._pool.connection() as conn:
+            async with conn.transaction():
+                assignments = await conn.execute(
+                    "DELETE FROM agent_skills WHERE user_id = %s", (user_id,)
+                )
+                files = await conn.execute(
+                    "DELETE FROM skill_files WHERE user_id = %s", (user_id,)
+                )
+                pool = await conn.execute(
+                    "DELETE FROM skill_pool WHERE user_id = %s", (user_id,)
+                )
+                return {
+                    "agent_skills": assignments.rowcount,
+                    "skill_files": files.rowcount,
+                    "skill_pool": pool.rowcount,
+                }
+
     # -- per-agent assignment ---------------------------------------------
     async def list_agent_skills(self, user_id: str, agent_slug: str) -> list[str]:
         """Skill names this user switched on for this agent (tier ②)."""

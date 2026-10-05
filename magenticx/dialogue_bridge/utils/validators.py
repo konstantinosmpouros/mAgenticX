@@ -10,7 +10,7 @@ from core.database import (
     MessageTable,
     get_db,
 )
-from core.auth.session import AuthUser, require_bound_user_id
+from core.auth.session import AuthUser, require_bound_user_id, require_bound_user_id_even_if_pending
 
 
 async def validate_userId(
@@ -18,6 +18,16 @@ async def validate_userId(
     current_user: AuthUser = Depends(require_bound_user_id),
 ) -> AuthUser:
     """Ensure the caller's authenticated session authorizes access to the requested user."""
+    set_context(user_id=user_id)
+    return current_user
+
+
+async def validate_userId_even_if_pending(
+    user_id: str,
+    current_user: AuthUser = Depends(require_bound_user_id_even_if_pending),
+) -> AuthUser:
+    """:func:`validate_userId` for the routes a user awaiting deletion may still use:
+    the deletion's status and cancel, and downloading their data (plan 32)."""
     set_context(user_id=user_id)
     return current_user
 

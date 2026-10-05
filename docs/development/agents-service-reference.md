@@ -237,6 +237,8 @@ Every endpoint below carries `dependencies=[Depends(require_internal_caller)]` (
 | 15 | GET | `/users/{uid}/skills` | skills | — | `List[SkillManifestEntry]` | 200 |
 | 16 | GET | `/users/{uid}/skills/{skill_name}` | skills | — | `UserSkillDetail` | 200 |
 | 17a | GET | `/users/{uid}/export` | export | — | framed NDJSON stream (see [data-export](../flows/data-export.md)) | 200 |
+| 17b | POST | `/users/{uid}/purge/threads` | account | `PurgeThreadsRequest` (≤ 500 ids) | `PurgeThreadsResponse` — deletes those checkpoint threads (see [account-deletion](../flows/account-deletion.md)) | 200 (503 → the bridge retries) |
+| 17c | DELETE | `/users/{uid}` | account | — | `PurgeUserResponse` — the user's six `agent_runtime` tables, `users/{uid}/` and the per-user agent cache | 200 (400 bad id / 503 → retry) |
 | 17 | POST | `/users/{uid}/skills/remote/{source_id}/{skill_id}` | skills | — | `SkillManifestEntry` | 201 (404 / 409 / 422 / 502 / 503) |
 | 18 | POST | `/users/{uid}/skills/custom` | skills | `CustomSkillCreate` | `SkillManifestEntry` | 201 |
 | 19 | DELETE | `/users/{uid}/skills/{skill_name}` | skills | — | — | 204 |

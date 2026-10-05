@@ -17,7 +17,7 @@ from core.auth.session import AuthUser, require_csrf_protection
 from core.logging import set_context
 from core.security.rate_limit import export_token_rate_limit
 from schema import ExportStatus, ExportTokenRequest, ExportTokenResponse
-from utils import validate_userId
+from utils import validate_userId_even_if_pending
 from utils.data_export import export_status, issue_export_token, start_export_download
 
 router = APIRouter()
@@ -26,7 +26,7 @@ router = APIRouter()
 @router.get("/{user_id}/status", response_model=ExportStatus, status_code=status.HTTP_200_OK)
 async def get_export_status(
     user_id: str,
-    _: AuthUser = Depends(validate_userId),
+    _: AuthUser = Depends(validate_userId_even_if_pending),
 ) -> ExportStatus:
     """Whether exports are on, and when this user may start the next one."""
     set_context(user_id=user_id)
@@ -37,7 +37,7 @@ async def get_export_status(
 async def create_export_token(
     user_id: str,
     payload: ExportTokenRequest,
-    _: AuthUser = Depends(validate_userId),
+    _: AuthUser = Depends(validate_userId_even_if_pending),
     __: None = Depends(require_csrf_protection),
     # After auth + CSRF on purpose: the bucket is keyed on the path's {user_id},
     # so it must only ever count requests that user actually made.
@@ -54,7 +54,7 @@ async def create_export_token(
 async def download_export(
     user_id: str,
     token: str = Query(..., min_length=16, max_length=512),
-    _: AuthUser = Depends(validate_userId),
+    _: AuthUser = Depends(validate_userId_even_if_pending),
 ) -> StreamingResponse:
     """The archive, streamed as it is built."""
     set_context(user_id=user_id)

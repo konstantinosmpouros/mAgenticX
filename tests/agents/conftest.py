@@ -97,6 +97,8 @@ def _load_agents_service(monkeypatch):
         remote_sync=importlib.import_module("harness.skill_registry.remote.sync"),
         remote_fetch=importlib.import_module("harness.skill_registry.remote.fetch"),
         data_export=importlib.import_module("utils.data_export"),
+        account_purge=importlib.import_module("utils.account_purge"),
+        memory_store=importlib.import_module("harness.memory.store"),
         skill_store=importlib.import_module("harness.skill_registry.store"),
         definition_store=importlib.import_module("harness.agent_registry.store"),
         provisioner=importlib.import_module("harness.filesystem.provisioner"),

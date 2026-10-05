@@ -22,12 +22,22 @@ class UserProfile(BaseModel):
     updatedAt: UTCDateTime = Field(..., validation_alias="updated_at")
 
 
+class PendingDeletion(BaseModel):
+    """An account scheduled for deletion (plan 32): dates only, nothing else."""
+    requestedAt: UTCDateTime
+    scheduledFor: UTCDateTime
+    # True once the purge has started — it can no longer be cancelled.
+    inProgress: bool = False
+
+
 class AuthResponse(BaseModel):
     """Schema for user authentication response."""
     authenticated: bool = False
     user_id: str | None = None
     user: UserProfile | None = None
     tokenTtl: Optional[int] = None
+    # Set while the account awaits deletion: the SPA shows the cancel screen.
+    pendingDeletion: Optional[PendingDeletion] = None
 
 
 class AccountSummary(BaseModel):

@@ -15,6 +15,7 @@ import ReportConversationDialog from "@/features/reporting/components/ReportPane
 import SearchPanel from "@/features/search/components/SearchPanel";
 import EditProfileDialog from "@/features/settings/components/EditProfileDialog";
 import HelpPanel from "@/features/settings/components/HelpPanel";
+import { PendingDeletionScreen } from "@/features/settings/components/PendingDeletionScreen";
 import ProfilePanel from "@/features/settings/components/ProfilePanel";
 import ShortcutsPanel from "@/features/settings/components/ShortcutsPanel";
 import ShareConversationDialog from "@/features/sharing/components/SharePanel";
@@ -158,6 +159,7 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
   // Store-backed, read directly rather than through the bundle.
   const agents = useWorkspaceStore((s) => s.agents);
   const currentConversation = useWorkspaceStore((s) => s.currentConversation);
+  const pendingDeletion = useWorkspaceStore((s) => s.pendingDeletion);
   // Main Chat Interface
   if (!authResolved) {
     return (
@@ -168,6 +170,11 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
   }
   if (!isLoggedIn || !userId) {
     return null;
+  }
+  // The account awaits deletion (plan 32): its session is frozen, so render only
+  // the pending screen — no workspace is mounted, and nothing in it can call out.
+  if (pendingDeletion) {
+    return <PendingDeletionScreen userId={userId} pending={pendingDeletion} onLogout={handleLogout} />;
   }
   // Swapping the active account: render ONLY the interstitial. Returning here
   // unmounts the entire workspace tree, which is the real safety mechanism —

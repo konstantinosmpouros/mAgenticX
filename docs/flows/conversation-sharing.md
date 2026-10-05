@@ -315,6 +315,8 @@ There are no endpoints to list or resolve reports via the public API. Report man
 - **Conversation deletion removes all its shares.** The `conversation_id` FK has `CASCADE DELETE`, so deleting a conversation immediately invalidates all share links for it. Existing recipients get a 404. There is no grace period.
 
 - **Only `full` shares can be forked.** Attempting inference start with `mode: "shared_continue"` for a `branch` or `message` share returns 400. The share mode is enforced strictly because forking requires a complete, coherent message tree.
+- **A share made with a private custom agent cannot be continued.** `create_conversation_from_share_record` accepts the snapshot's agent only if it is a platform agent or the importer's own; otherwise 400 *"This conversation was made with a private agent, so it can't be continued."* Before plan 32 it accepted any active agent, which let the importer run someone else's private agent — and tied their conversation to it, so deleting the owner's account would have cascaded into it.
+- **Hidden while the owner's account awaits deletion.** `load_active_share` skips shares whose owner has an open `account_deletions` row: the public link answers 404 during the grace period and comes back unchanged if the deletion is cancelled ([account-deletion](account-deletion.md)).
 
 - **Revocation is permanent.** Setting `is_active = false` cannot be reversed via the API. If a user wants to re-share, they must create a new share with a new token.
 

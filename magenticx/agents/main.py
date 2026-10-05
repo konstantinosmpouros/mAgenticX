@@ -24,6 +24,7 @@ from core.logging import (
 from harness.skill_registry import run_remote_skill_sync_loop
 from harness.abstractions import seed_global_agents
 from utils.agents import refresh_registry
+from router.account import router as account_router
 from router.catalog import router as catalog_router
 from router.embeddings import router as embeddings_router
 from router.export import router as export_router
@@ -127,6 +128,7 @@ async def health():
     return {"status": "ok"}
 
 
+app.include_router(account_router)
 app.include_router(catalog_router)
 app.include_router(embeddings_router)
 app.include_router(export_router)

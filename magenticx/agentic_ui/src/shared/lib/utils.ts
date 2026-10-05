@@ -22,6 +22,7 @@ import {
   type RealtimeVoice,
   type VoiceModeLanguage,
 } from "./consts";
+import { PendingDeletionSchema } from "./schemas";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -169,6 +170,11 @@ export function normalizeAuthResponse(data: unknown): AuthResponse {
       updatedAt: rest.updatedAt ? new Date(rest.updatedAt) : new Date(),
       lastLoginAt: rest.lastLoginAt ? new Date(rest.lastLoginAt) : undefined,
     };
+  }
+  if (isAuthResponseRecord(normalized)) {
+    // Through its contract: a malformed value reads as "not pending" (null)
+    // rather than locking the user onto the pending-deletion screen.
+    normalized.pendingDeletion = PendingDeletionSchema.parse(normalized.pendingDeletion);
   }
   return normalized as AuthResponse;
 }

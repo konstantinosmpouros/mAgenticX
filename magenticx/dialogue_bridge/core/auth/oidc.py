@@ -39,6 +39,8 @@ _FLOW_TTL_SECONDS = 600  # 10 minutes to complete the redirect round-trip
 # a fresh GET from Microsoft carrying none of our own query, so the intent is
 # parked server-side against the same single-use state.
 _PARK_KEY_PREFIX = "auth:oidc:park:"
+# Which user a re-authentication (plan 32) was started for, keyed by the flow state.
+_REAUTH_KEY_PREFIX = "auth:oidc:reauth:"
 
 
 class EntraOIDCError(Exception):
@@ -107,19 +109,24 @@ async def _get_redis() -> aioredis.Redis:
 # ---------------------------------------------------------------------------
 # Flow
 # ---------------------------------------------------------------------------
-async def begin_login(redirect_uri: str, *, park: bool = False) -> str:
+async def begin_login(redirect_uri: str, *, park: bool = False, reauth_user_id: str | None = None) -> str:
     """Start the auth-code flow: build the Entra authorize URL, persist the flow
     (state/nonce/PKCE) single-use in Redis, and return the URL to redirect to.
 
     ``park`` records that this sign-in should *add* an account rather than replace
-    the current one; :func:`consume_park_intent` reads it back in the callback."""
+    the current one; :func:`consume_park_intent` reads it back in the callback.
+
+    ``reauth_user_id`` makes it a re-authentication (plan 32): Microsoft is asked
+    for the credentials again (``prompt=login``, no silent single sign-on), and
+    the callback must resolve to this same user — :func:`consume_reauth_intent`."""
     app = await _get_app()
-    # prompt=select_account lets the user pick which Microsoft account to use.
+    # prompt=select_account lets the user pick which Microsoft account to use;
+    # prompt=login forces a fresh credential entry for a re-authentication.
     flow = await asyncio.to_thread(
         app.initiate_auth_code_flow,
         [],
         redirect_uri=redirect_uri,
-        prompt="select_account",
+        prompt="login" if reauth_user_id else "select_account",
     )
     state = flow.get("state")
     auth_uri = flow.get("auth_uri")
@@ -127,9 +134,34 @@ async def begin_login(redirect_uri: str, *, park: bool = False) -> str:
         raise EntraOIDCError("MSAL did not return a usable authorization request.")
     client = await _get_redis()
     await client.setex(f"{_FLOW_KEY_PREFIX}{state}", _FLOW_TTL_SECONDS, json.dumps(flow))
-    if park:
+    if reauth_user_id:
+        await client.setex(f"{_REAUTH_KEY_PREFIX}{state}", _FLOW_TTL_SECONDS, reauth_user_id)
+    elif park:
         await client.setex(f"{_PARK_KEY_PREFIX}{state}", _FLOW_TTL_SECONDS, "1")
     return auth_uri
+
+
+async def consume_reauth_intent(state: str | None) -> str | None:
+    """The user a re-authentication was started for, or ``None``. Single use.
+
+    Read-and-delete, like the park intent. A Redis error answers ``None``: the
+    callback then completes an ordinary sign-in — which proves only who signed
+    in, never that it was the user who asked, so nothing sensitive rides on it.
+    """
+    if not state:
+        return None
+    try:
+        client = await _get_redis()
+        key = f"{_REAUTH_KEY_PREFIX}{state}"
+        value = await client.get(key)
+        if value is not None:
+            await client.delete(key)
+    except Exception:
+        logger.warning("oidc_reauth_intent_unavailable", "Could not read the re-authentication intent")
+        return None
+    if value is None:
+        return None
+    return value.decode() if isinstance(value, bytes) else str(value)
 
 
 async def consume_park_intent(state: str | None) -> bool:

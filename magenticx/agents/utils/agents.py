@@ -242,6 +242,20 @@ async def _load_user_agent(user_id: str, slug: str) -> AgentDefinition | None:
     return definition
 
 
+def forget_user_agents(user_id: str) -> int:
+    """Drop every cached definition of one user's agents. Returns how many.
+
+    Account deletion (plan 32). Memory hygiene, not correctness: the loader
+    reads the row before it consults this cache, so a purged agent is never
+    served from it — but its parsed definition would otherwise sit here for the
+    life of the process.
+    """
+    keys = [key for key in _USER_AGENT_CACHE if key[0] == user_id]
+    for key in keys:
+        del _USER_AGENT_CACHE[key]
+    return len(keys)
+
+
 async def resolve_agent_definition(
     slug: str, owner_user_id: str | None = None
 ) -> AgentDefinition | None:

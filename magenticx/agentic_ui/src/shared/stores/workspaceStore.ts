@@ -7,6 +7,7 @@ import type {
   ConversationDetail,
   ConversationShareListItem,
   ConversationSummary,
+  PendingDeletion,
   ToolMetadata,
   UserPreferences,
   UserProfile,
@@ -41,6 +42,10 @@ export type WorkspaceState = {
   isLoggedIn: boolean;
   authResolved: boolean;
   userProfile: UserProfile | null;
+  /** The account awaits deletion (plan 32): the shell shows only the pending screen. */
+  pendingDeletion: PendingDeletion | null;
+  /** How a re-sign-in for deleting the account ended, until the dialog reads it. */
+  accountDeletionReauth: "done" | "failed" | null;
 
   // Catalogs + preferences
   agents: Agent[];
@@ -82,6 +87,8 @@ export type WorkspaceState = {
   resetForAccountSwitch: () => void;
   setIsLoggedIn: (v: SetStateArg<boolean>) => void;
   setAuthResolved: (v: SetStateArg<boolean>) => void;
+  setPendingDeletion: (v: SetStateArg<PendingDeletion | null>) => void;
+  setAccountDeletionReauth: (v: SetStateArg<"done" | "failed" | null>) => void;
   setUserProfile: (v: SetStateArg<UserProfile | null>) => void;
   setAgents: (v: SetStateArg<Agent[]>) => void;
   setAvailableTools: (v: SetStateArg<ToolMetadata[]>) => void;
@@ -121,6 +128,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   isLoggedIn: false,
   authResolved: false,
   userProfile: initialSession?.user ?? null,
+  pendingDeletion: null,
+  accountDeletionReauth: null,
 
   agents: [],
   availableTools: [],
@@ -168,6 +177,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
    */
   resetForAccountSwitch: () =>
     set(() => ({
+      pendingDeletion: null,
+      accountDeletionReauth: null,
       agents: [],
       availableTools: [],
       myRegistrySkills: [],
@@ -196,6 +207,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
 
   setIsLoggedIn: (v) => set((s) => ({ isLoggedIn: resolve(v, s.isLoggedIn) })),
   setAuthResolved: (v) => set((s) => ({ authResolved: resolve(v, s.authResolved) })),
+  setPendingDeletion: (v) => set((s) => ({ pendingDeletion: resolve(v, s.pendingDeletion) })),
+  setAccountDeletionReauth: (v) =>
+    set((s) => ({ accountDeletionReauth: resolve(v, s.accountDeletionReauth) })),
   setUserProfile: (v) => set((s) => ({ userProfile: resolve(v, s.userProfile) })),
   setAgents: (v) => set((s) => ({ agents: resolve(v, s.agents) })),
   setAvailableTools: (v) => set((s) => ({ availableTools: resolve(v, s.availableTools) })),

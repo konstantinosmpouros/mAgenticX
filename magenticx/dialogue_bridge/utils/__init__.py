@@ -52,7 +52,12 @@ from utils.voice import (
     recent_history_for_voice_instructions,
 )
 from utils.usage import compute_usage_summary
-from utils.validators import validate_convId, validate_convId_full, validate_userId
+from utils.validators import (
+    validate_convId,
+    validate_convId_full,
+    validate_userId,
+    validate_userId_even_if_pending,
+)
 
 __all__ = [
     "_preview",
@@ -101,4 +106,5 @@ __all__ = [
     "validate_convId",
     "validate_convId_full",
     "validate_userId",
+    "validate_userId_even_if_pending",
 ]

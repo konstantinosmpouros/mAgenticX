@@ -8,7 +8,7 @@ import { cn } from "@/shared/lib/utils";
 import type { Agent } from "@/shared/lib/types";
 import type { MemoriesHandlers } from "@/features/settings/hooks/useMemories";
 import { usePanelHeader } from "@/features/settings/panel-header-context";
-import { InfoCard, SkillHubRow, SoftPanel } from "./shared";
+import { DangerButton, InfoCard, SkillHubRow, SoftPanel } from "./shared";
 
 // Props are the useMemories hook output (spread straight in by ProfilePanel)
 // plus the agent list to drill into.
@@ -233,22 +233,19 @@ export default function MemoriesTab({
                             </button>
                             {confirming ? (
                               <div className="flex shrink-0 items-center gap-1">
-                                <Button
-                                  type="button"
+                                <DangerButton
                                   size="sm"
-                                  variant="destructive"
                                   disabled={deleting}
                                   onClick={() => {
                                     setConfirmingDelete(null);
                                     void deleteMemory(selectedAgent.id, mem.name);
                                   }}
-                                  className="h-7 gap-1 px-2 text-xs"
                                 >
                                   {deleting ? (
-                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
                                   ) : null}
                                   Delete
-                                </Button>
+                                </DangerButton>
                                 <Button
                                   type="button"
                                   size="sm"

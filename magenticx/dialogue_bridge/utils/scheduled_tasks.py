@@ -52,6 +52,7 @@ from schema import (
     ScheduledTaskOut,
     ScheduledTaskUpdate,
 )
+from utils.account_status import open_deletion_exists_for
 from utils.agents import get_agent_by_id
 from utils.inference_runs import ACTIVE_RUN_STATUSES, inference_run_manager
 from utils.inference_start import start_inference_flow
@@ -305,6 +306,9 @@ async def claim_due_tasks(db: AsyncSession, limit: int) -> list[str]:
             ScheduledTaskTable.status == "active",
             ScheduledTaskTable.next_run_at.is_not(None),
             ScheduledTaskTable.next_run_at <= now,
+            # A pending account deletion freezes the account (plan 32): its tasks
+            # are skipped, not modified, so cancelling resumes them as they were.
+            ~open_deletion_exists_for(ScheduledTaskTable.user_id),
         )
         .order_by(ScheduledTaskTable.next_run_at.asc())
         .limit(limit)

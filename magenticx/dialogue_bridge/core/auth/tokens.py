@@ -75,12 +75,19 @@ async def mint_tokens(
     sid: str | None = None,
     login_at: int | None = None,
     is_active: bool = True,
+    pending_deletion: bool = False,
 ) -> IssuedTokens:
     """Mint an access + refresh JWT pair (RS256, signed via ``core.auth.signing``).
 
     A login mints a fresh ``sid``; a refresh reuses the original ``sid`` and
     ``login_at`` so the instant-logout denylist still covers the rotated tokens
     and the refresh lifetime is an absolute cap (it does not slide on refresh).
+
+    Both tokens carry ``lat`` (the original sign-in time), so a sensitive action
+    can demand a *recent* sign-in without a database read. ``pending_deletion``
+    adds ``pdl``: the account is scheduled for deletion (plan 32) and the access
+    path refuses everything but the few routes that let the user cancel, export
+    or leave — again without a database read on the hot path.
     """
     cfg = settings.jwt
     sid = sid or _new_id()
@@ -92,6 +99,7 @@ async def mint_tokens(
         **base,
         "typ": ACCESS_TYPE,
         "act": is_active,
+        "lat": login_at,
         "exp": issued + cfg.access_ttl_seconds,
         "jti": _new_id(),
     }
@@ -110,6 +118,9 @@ async def mint_tokens(
         "exp": refresh_exp,
         "jti": refresh_jti,
     }
+    if pending_deletion:
+        access_claims["pdl"] = True
+        refresh_claims["pdl"] = True
     # Independent signatures: with KMS each is one network round trip, so
     # concurrently halves the wait a login spends on signing.
     access_token, refresh_token = await asyncio.gather(_sign(access_claims), _sign(refresh_claims))

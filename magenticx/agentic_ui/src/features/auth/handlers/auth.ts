@@ -236,6 +236,12 @@ export function createAuthHandlers(ctx: AuthCtx) {
       if (!response.authenticated || !response.user?.id) {
         throw new Error("The switch did not return a session.");
       }
+      if (response.pendingDeletion) {
+        // That account awaits deletion and its session is frozen: a full load
+        // lets start-up put it on the pending screen instead of the workspace.
+        window.location.assign("/");
+        return true;
+      }
 
       const ttlSeconds =
         typeof response.tokenTtl === "number" && response.tokenTtl > 0 ? response.tokenTtl : 3600;
