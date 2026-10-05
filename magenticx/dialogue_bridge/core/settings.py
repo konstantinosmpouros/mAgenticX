@@ -530,9 +530,17 @@ class ExportSettings(BaseSettings):
     page_rows: int = Field(50, validation_alias="EXPORT_PAGE_ROWS")
     # Bytes per attachment slice read from Postgres.
     chunk_bytes: int = Field(1024 * 1024, validation_alias="EXPORT_CHUNK_BYTES")
-    # Wall-clock ceiling: an export still running past this is aborted, so a
-    # stalled client cannot hold a slot forever.
-    max_seconds: int = Field(1800, validation_alias="EXPORT_MAX_SECONDS")
+    # Absolute ceiling on one export's duration. A backstop only: what actually
+    # ends a dead download is the stall timeout below. At the rate cap, 6 h
+    # covers ~500 GiB.
+    max_seconds: int = Field(6 * 3600, validation_alias="EXPORT_MAX_SECONDS")
+    # A download whose client accepts nothing for this long is ended, freeing its
+    # slot and handing the cooldown back. Checked on every write to the client —
+    # a client that stops reading blocks the write, and nothing else would notice.
+    stall_seconds: int = Field(300, validation_alias="EXPORT_STALL_SECONDS")
+    # Ceiling on one export's speed (~200 Mbit/s): a fast client cannot take most
+    # of the uplink and the disk reads of a VM every other stack shares.
+    max_bytes_per_second: int = Field(25 * 1024 * 1024, validation_alias="EXPORT_MAX_BYTES_PER_SECOND")
     # Lifetime of the one-time download token minted by the CSRF-protected POST.
     token_ttl_seconds: int = Field(60, validation_alias="EXPORT_TOKEN_TTL_SECONDS")
 
@@ -555,6 +563,27 @@ class ExportSettings(BaseSettings):
     def _bound_concurrency(cls, v: int) -> int:
         if v < 1 or v > 4:
             raise ValueError("EXPORT_MAX_CONCURRENT must be between 1 and 4.")
+        return v
+
+    @field_validator("max_seconds", mode="after")
+    @classmethod
+    def _bound_duration(cls, v: int) -> int:
+        if v < 600 or v > 24 * 3600:
+            raise ValueError("EXPORT_MAX_SECONDS must be between 600 and 86400.")
+        return v
+
+    @field_validator("stall_seconds", mode="after")
+    @classmethod
+    def _bound_stall(cls, v: int) -> int:
+        if v < 30 or v > 3600:
+            raise ValueError("EXPORT_STALL_SECONDS must be between 30 and 3600.")
+        return v
+
+    @field_validator("max_bytes_per_second", mode="after")
+    @classmethod
+    def _bound_rate(cls, v: int) -> int:
+        if v < 1024 * 1024 or v > 1024 * 1024 * 1024:
+            raise ValueError("EXPORT_MAX_BYTES_PER_SECOND must be between 1 MiB and 1 GiB.")
         return v
 
     @field_validator("cooldown_minutes", mode="after")

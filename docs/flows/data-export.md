@@ -50,7 +50,7 @@ The download is a plain `GET` so the browser can save the stream straight to dis
 
 The **cooldown** (one export per user per week, `EXPORT_COOLDOWN_MINUTES`) lives on `users.last_export_at`, not in Redis, because rate limiting fails open and this must not. It is claimed with an optimistic `UPDATE … WHERE last_export_at = <value just read>`, so two racing downloads cannot both win. If the export does not finish, the claim is **handed back** (in a shielded scope, so a client disconnect cannot cancel it), so a dropped connection does not lock the user out for a week. A week because a full export can be tens of GB of egress and disk reads on a VM every other stack shares (measured locally: 53.7 GB in 5 min 36 s).
 
-**Slots** cap concurrency at `EXPORT_MAX_CONCURRENT` (2), one per user. They are leases, not a semaphore: a lease whose stream never started (client gone before the first byte, so no `finally` ran) expires after the export's own time limit instead of leaking a slot forever. Process-local, matching the bridge's single worker and replica.
+**Slots** cap concurrency at `EXPORT_MAX_CONCURRENT` (2), one per user. They are leases, not a semaphore, renewed every time a chunk goes out: a lease whose stream never started (client gone before the first byte, so no `finally` ran) or stopped moving expires a stall timeout (+ 60 s) later instead of leaking a slot. Process-local, matching the bridge's single worker and replica.
 
 ---
 
@@ -112,7 +112,9 @@ manifest.json                        counts, sizes, missing parts — written la
 - **Allowlists, not `SELECT *`.** Every exported column is named in `utils/data_export.py`. A column added to any of these tables later is not exported until someone adds it there — so a future secret can never ship by accident.
 - **Never exported:** session or refresh tokens, CSRF secrets, share-link tokens and snapshots, raw agent event logs (`messages.raw_events`), message embeddings, agent memories (the user's choice), and the shared copies of remote skills (exported as references with source, commit and licence).
 - **A cut download is not a valid zip.** `manifest.json` and the zip directory are written last, so a stream that stops early fails to open rather than passing for a partial archive.
-- **The wall-clock limit** (`EXPORT_MAX_SECONDS`, 30 min) aborts an export a stalled client is holding open.
+- **A client that stops reading is cut off.** Under backpressure a write simply waits — forever, if the client neither reads nor disconnects — and the generator, suspended at its `yield`, cannot notice. `StallGuardedStreamingResponse` bounds every write by `EXPORT_STALL_SECONDS` (5 min); past it the download is abandoned and the generator closed, which frees the slot and hands the cooldown back.
+- **One export is capped at `EXPORT_MAX_BYTES_PER_SECOND`** (25 MiB/s, ~200 Mbit/s), so a fast client cannot take most of the uplink and disk reads of a VM every other stack shares. A slow client is already slower and is not delayed further.
+- **`EXPORT_MAX_SECONDS` (6 h) is only a backstop.** It used to be the 30-minute limit that cut off large exports on ordinary connections; at the rate cap 6 h covers ~500 GiB.
 - **The bridge has a 512 MB memory cap on Dennis** (`deploy.resources.limits.memory`). An export uses a few MB; the cap only matters if something runs away, and then only the bridge restarts.
 - **The cooldown applies to both kinds of export.** A text-only export starts the week too.
 

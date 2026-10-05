@@ -170,7 +170,9 @@ See [data-export](../flows/data-export.md). The archive is streamed, so these bo
 | `EXPORT_MAX_CONCURRENT` | `2` | Exports at once across the service (1–4), one per user. |
 | `EXPORT_PAGE_ROWS` | `50` | Rows per keyset page (1–500). |
 | `EXPORT_CHUNK_BYTES` | `1048576` | Bytes per attachment slice (64 KiB – 8 MiB). |
-| `EXPORT_MAX_SECONDS` | `1800` | Wall-clock ceiling; a longer export is aborted. |
+| `EXPORT_MAX_SECONDS` | `21600` | Absolute ceiling on one export (600–86400) — a backstop; the stall timeout is what ends a dead download. |
+| `EXPORT_STALL_SECONDS` | `300` | A download whose client accepts nothing for this long is ended, freeing its slot and cooldown (30–3600). |
+| `EXPORT_MAX_BYTES_PER_SECOND` | `26214400` | Speed cap for one export (~200 Mbit/s; 1 MiB – 1 GiB). |
 | `EXPORT_TOKEN_TTL_SECONDS` | `60` | Lifetime of the one-time download token. |
 
 ### Account deletion (`AccountDeletionSettings`)

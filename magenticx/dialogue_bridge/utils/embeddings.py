@@ -3,11 +3,12 @@
 The bridge has no OpenAI key, so embeddings are produced by the agents service
 (``POST /embed``, the same proxy pattern as realtime voice) and stored locally
 in ``message_embeddings``. A background **sweeper** fills embeddings in off the
-request path: each pass claims a batch of messages that have no embedding yet
-(finalized, non-error, non-empty content, conversation not private), embeds them
-in one call, and upserts. Because it works off "rows without an embedding", the
-same loop handles both freshly-created messages and the historical backfill, and
-is self-healing — a failed embed is simply retried on the next pass.
+request path: each pass reads a batch of messages it has not looked at yet
+(``messages.embedding_checked_at IS NULL``, served by a partial index), embeds
+the ones that qualify (finalized, non-error, non-empty content, conversation not
+private) in one call, and marks the whole batch checked in the same transaction.
+The same loop handles freshly-created messages and the historical backfill, and
+is self-healing — a failed embed commits nothing, so the batch is retried.
 
 Retrieval embeds the query the same way and runs a cosine KNN over the vectors,
 then rolls the nearest messages up to their conversations (best match wins),
@@ -16,42 +17,71 @@ strictly scoped to the requesting user and excluding private conversations.
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 
 import httpx
 from fastapi import HTTPException, status
-from sqlalchemy import text
+from sqlalchemy import or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.database import SessionLocal
+from core.database import ConversationTable, MessageTable, SessionLocal
 from core.security.internal_trust import internal_service_headers
 from core.security.tls import get_httpx_client_cert, get_httpx_verify
 from core.settings import settings
 from core.logging import get_context, get_logger
 from schema import MemoryMessageMatch
+from utils.inference_runs import ACTIVE_RUN_STATUSES
 
 logger = get_logger(__name__)
 
 
-# Messages eligible for embedding: finalized (user messages have NULL streaming
-# status; AI messages only once 'completed'), not an error, non-empty content,
-# and belonging to a non-private conversation. Newest first so recent chats
-# become searchable fastest while the historical backlog drains behind them.
-_CLAIM_SQL = text(
+def _utcnow() -> datetime:
+    """Naive UTC, matching the ``timestamp without time zone`` columns."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _pending_batch_query(limit: int):
+    """The next messages the sweeper has not looked at, newest first.
+
+    Served by ``ix_messages_embedding_pending`` (only unchecked rows), so a pass
+    reads one batch whatever the table's size — and nothing at all when there is
+    no backlog. A run still in flight is left for a later pass: its content is
+    not final yet.
     """
-    SELECT m.id AS id, m.content AS content
-    FROM messages m
-    JOIN conversations c ON c.id = m.conversation_id
-    LEFT JOIN message_embeddings e ON e.message_id = m.id
-    WHERE e.message_id IS NULL
-      AND m.content IS NOT NULL
-      AND length(btrim(m.content)) > 0
-      AND m.is_error = false
-      AND c.is_private = false
-      AND (m.streaming_status IS NULL OR m.streaming_status = 'completed')
-    ORDER BY m.created_at DESC
-    LIMIT :limit
-    """
-)
+    return (
+        select(
+            MessageTable.id,
+            MessageTable.content,
+            MessageTable.is_error,
+            MessageTable.streaming_status,
+            ConversationTable.is_private,
+        )
+        .join(ConversationTable, ConversationTable.id == MessageTable.conversation_id)
+        .where(
+            MessageTable.embedding_checked_at.is_(None),
+            or_(
+                MessageTable.streaming_status.is_(None),
+                MessageTable.streaming_status.not_in(ACTIVE_RUN_STATUSES),
+            ),
+        )
+        .order_by(MessageTable.created_at.desc())
+        .limit(limit)
+    )
+
+
+def _embeddable(row) -> bool:
+    """Whether a looked-at message gets a vector: finalized (user messages have
+    no streaming status; AI messages only once 'completed'), not an error, with
+    content, in a conversation that is not private. A conversation's privacy is
+    fixed at creation, so "not embeddable" is final — the message is marked
+    checked and never looked at again."""
+    return (
+        bool(row.content and row.content.strip())
+        and not row.is_error
+        and not row.is_private
+        and row.streaming_status in (None, "completed")
+    )
+
 
 # ON CONFLICT DO NOTHING makes the upsert idempotent (and safe if two sweepers
 # ever race over the same message under multi-replica).
@@ -144,22 +174,34 @@ async def embed_texts(texts: list[str]) -> tuple[list[list[float]], str]:
     return embeddings, model
 
 
-async def _embed_pending_batch(db: AsyncSession) -> int:
-    """Embed one batch of pending messages. Returns how many were stored."""
-    rows = (await db.execute(_CLAIM_SQL, {"limit": settings.embeddings.sweeper_batch_size})).all()
+async def _embed_pending_batch(db: AsyncSession) -> tuple[int, int]:
+    """Look at one batch of queued messages; embed those that qualify.
+
+    Returns ``(looked_at, embedded)``. The vectors and the "checked" marks commit
+    together, so a failed embed leaves the whole batch queued for the next pass.
+    """
+    rows = (await db.execute(_pending_batch_query(settings.embeddings.sweeper_batch_size))).all()
     if not rows:
-        return 0
+        return 0, 0
 
-    texts = [_slice_for_embedding(content) for _, content in rows]
-    vectors, model = await embed_texts(texts)
-
-    params = [
-        {"message_id": message_id, "embedding": _vector_literal(vector), "model": model}
-        for (message_id, _content), vector in zip(rows, vectors)
-    ]
-    await db.execute(_STORE_SQL, params)
+    targets = [row for row in rows if _embeddable(row)]
+    if targets:
+        vectors, model = await embed_texts([_slice_for_embedding(row.content) for row in targets])
+        await db.execute(
+            _STORE_SQL,
+            [
+                {"message_id": row.id, "embedding": _vector_literal(vector), "model": model}
+                for row, vector in zip(targets, vectors)
+            ],
+        )
+    # Bookkeeping, not an edit: keep updated_at as it was.
+    await db.execute(
+        update(MessageTable)
+        .where(MessageTable.id.in_([row.id for row in rows]))
+        .values(embedding_checked_at=_utcnow(), updated_at=MessageTable.updated_at)
+    )
     await db.commit()
-    return len(params)
+    return len(rows), len(targets)
 
 
 async def run_embedding_sweeper(stop_event: asyncio.Event) -> None:
@@ -175,12 +217,13 @@ async def run_embedding_sweeper(stop_event: asyncio.Event) -> None:
 
     logger.info("embedding_sweeper_started", "Embedding sweeper started")
     while not stop_event.is_set():
-        embedded = 0
+        looked_at = 0
         try:
             async with SessionLocal() as db:
-                embedded = await _embed_pending_batch(db)
-            if embedded:
-                logger.info("embedding_sweeper_pass", "Embedded message batch", embedded_count=embedded)
+                looked_at, embedded = await _embed_pending_batch(db)
+            if looked_at:
+                logger.info("embedding_sweeper_pass", "Embedded message batch",
+                            embedded_count=embedded, checked_count=looked_at)
         except (httpx.HTTPError, ValueError) as exc:
             logger.warning(
                 "embedding_sweeper_embed_failed",
@@ -194,9 +237,11 @@ async def run_embedding_sweeper(stop_event: asyncio.Event) -> None:
                 exc_info=True,
             )
 
+        # Keep going while there is a queue — a batch of non-embeddable rows
+        # is still progress — and back off only when it is empty.
         delay = (
             settings.embeddings.sweeper_active_seconds
-            if embedded
+            if looked_at
             else settings.embeddings.sweeper_idle_seconds
         )
         try:

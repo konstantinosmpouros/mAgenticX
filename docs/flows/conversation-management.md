@@ -6,7 +6,7 @@ A conversation is the top-level container for every chat session — it owns a m
 
 ## Client-side routing — the URL is the source of truth
 
-The browser URL decides which view is shown. `App.tsx` is a **layout route**: a persistent `ChatShell` ([pages/ChatPage.tsx](../../magenticx/agentic_ui/src/pages/ChatPage.tsx)) wraps an `<Outlet/>` and **never unmounts** across the chat routes; only the routed view inside it changes:
+The browser URL decides which view is shown. `App.tsx` is a **layout route**: a persistent `WorkspaceShell` ([app/WorkspaceShell.tsx](../../magenticx/agentic_ui/src/app/WorkspaceShell.tsx)) wraps an `<Outlet/>` and **never unmounts** across the chat routes; only the routed view inside it changes:
 
 | Route | View (in the shell's `<Outlet/>`) |
 | --- | --- |
@@ -153,7 +153,7 @@ A branch with no committed checkpoint yet (new conversation, pre-migration branc
 
 A run lives on a specific path through the message tree — `MessageTable.streaming_message_path` records the root-to-running-AI-message lineage, exposed to the frontend as `InferenceRun.messagePath`. When the user re-enters a conversation that has an active run, the run's branch may not be the default branch (e.g., they retried an AI message, putting the streaming reply on a sibling), so the default `branchSelections` (index 0 at every fork) would hide the running message.
 
-`useInferenceRuns.deriveBranchSelectionsForActiveRun(detail)` walks `run.messagePath` against the fetched `messages` list and returns the `{parentId → childIndex}` map that puts the running message on the visible path. It's called in two spots in [`pages/ChatPage.tsx`](../../magenticx/agentic_ui/src/pages/ChatPage.tsx):
+`useInferenceRuns.deriveBranchSelectionsForActiveRun(detail)` walks `run.messagePath` against the fetched `messages` list and returns the `{parentId → childIndex}` map that puts the running message on the visible path. It's called in two spots in [`useActiveRunBranchSnap.ts`](../../magenticx/agentic_ui/src/features/chat/hooks/useActiveRunBranchSnap.ts):
 
 1. **The URL-driven load effect** — when the route's `:conversationId` resolves to a fetched detail, right before `setCurrentConversation`. Combined with `hydrateConversationDetailFromLiveRun` (which overlays in-memory `rawEvents`/`content`/`plan`/`subagents`) the conversation opens on the running branch with the live state already populated. This single effect covers both clicking a sidebar row and a fresh page load / refresh on `/c/:id` (the old separate "session restore on mount" path is gone).
 2. **`snappedRunIdRef`-guarded effect** — fires when `runsByConversation` populates *after* the conversation is already mounted (the race condition: on a refresh the conversation detail can arrive before `getActiveInferenceRuns` does, so the first snap runs with an empty map). The ref ensures the snap fires exactly once per run id — the user can then navigate branches manually without being snapped back.
@@ -174,7 +174,7 @@ Archiving is a soft-delete — the conversation is hidden from the default list 
 
 ### Delete
 
-`DELETE /{user_id}/{conversation_id}` — cascades through messages → attachments → blobs via DB foreign key cascade. The bridge does not implement soft-delete for conversations: deletion is permanent and immediate.
+`DELETE /{user_id}/{conversation_id}` — the foreign-key cascade removes the messages and their attachments, and the `trg_attachments_delete_blob` trigger (migration `0030`) removes each attachment's blob. The cascade alone never reached the blobs — the key points from the attachment to the blob — so until `0030` every deleted conversation left its files behind (see [database-schema](../architecture/database-schema.md), `blobs`). The bridge does not implement soft-delete for conversations: deletion is permanent and immediate.
 
 **Checkpoint reap.** Conversation delete is the *only* time durable checkpoint threads are reaped (there is no time-based sweep — threads otherwise persist indefinitely). Before/alongside the DB cascade, the bridge collects the distinct `checkpoint_thread_id` values across the conversation's AI messages and calls the agents endpoint `POST /agents/{slug}/users/{user_id}/conversations/{conversation_id}/reap` with `{thread_ids: [...]}`. The agents service `adelete_thread`s each thread from the `agent_runtime` checkpoint DB and `rmtree`s the conversation's filesystem directory (uploaded input files + agent output artifacts — see [attachments.md](attachments.md)). A failed reap of one thread is logged and does not block the rest.
 
@@ -341,4 +341,4 @@ When a conversation reaches its first AI response, the bridge calls the agents s
 | Conversation action handlers | [magenticx/agentic_ui/src/features/chat/handlers/conversations.ts](../../magenticx/agentic_ui/src/features/chat/handlers/conversations.ts) | `handleConversationSelect`, `handleForkConversation`, `handleDeleteConversation`, `clearChatAndStopThinking` |
 | Send message flow | [magenticx/agentic_ui/src/features/inference/inference.ts](../../magenticx/agentic_ui/src/features/inference/inference.ts) | `handleSendMessage()` — new, existing, edit, retry, shared continuation start modes |
 | Sidebar rendering | [magenticx/agentic_ui/src/features/chat/components/ChatSidebar.tsx](../../magenticx/agentic_ui/src/features/chat/components/ChatSidebar.tsx) | Scroll trigger, auto-load, rename inline edit, action menu |
-| Conversation state | [magenticx/agentic_ui/src/pages/ChatPage.tsx](../../magenticx/agentic_ui/src/pages/ChatPage.tsx) | `currentConversation`, `conversations`, `branchSelections`, pagination state |
+| Conversation state | [magenticx/agentic_ui/src/app/useChatWorkspace.tsx](../../magenticx/agentic_ui/src/app/useChatWorkspace.tsx) + [shared/stores/workspaceStore.ts](../../magenticx/agentic_ui/src/shared/stores/workspaceStore.ts) | `currentConversation`, `conversations`, `branchSelections`, pagination state |

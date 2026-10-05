@@ -348,7 +348,7 @@ def test_deletion_settings_are_safe_by_default_and_bounded():
 
 
 def test_a_blob_batch_is_bounded_by_bytes_but_always_takes_one():
-    budget = account_deletion._within_byte_budget
+    budget = account_deletion.within_byte_budget
     assert budget([("a", 30), ("b", 30), ("c", 30)], 64) == (["a", "b"], 60)
     assert budget([("big", 100), ("b", 1)], 64) == (["big"], 100)        # one oversized blob still goes
     assert budget([("a", None)], 64) == (["a"], 0)
@@ -365,8 +365,8 @@ async def test_the_purge_waits_out_its_byte_rate_only_when_ahead(monkeypatch):
     monkeypatch.setattr(settings.account_deletion, "max_bytes_per_second", 10 * 1024 * 1024)
     now = account_deletion.time.monotonic()
 
-    await account_deletion._pace(10 * 1024 * 1024, now)          # finished instantly: owes ~1 s
-    await account_deletion._pace(10 * 1024 * 1024, now - 5)      # the disk was the bottleneck: owes nothing
+    await account_deletion.pace_bytes(10 * 1024 * 1024, now)          # finished instantly: owes ~1 s
+    await account_deletion.pace_bytes(10 * 1024 * 1024, now - 5)      # the disk was the bottleneck: owes nothing
 
     assert len(slept) == 1 and 0.9 < slept[0] <= 1.0
 

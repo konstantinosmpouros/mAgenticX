@@ -612,7 +612,7 @@ holding dormant logins.
 | Normalized identity | [magenticx/dialogue_bridge/core/auth/providers.py](../../magenticx/dialogue_bridge/core/auth/providers.py) | `AuthIdentity` |
 | JWT mint / verify | [magenticx/dialogue_bridge/core/auth/tokens.py](../../magenticx/dialogue_bridge/core/auth/tokens.py) | `mint_tokens()`, `verify()`, claim model |
 | Session deps + cookies | [magenticx/dialogue_bridge/core/auth/session.py](../../magenticx/dialogue_bridge/core/auth/session.py) | `require_session`, `require_current_user`, `require_refresh_session`, `require_csrf_protection`, `issue_session_cookies`, `revoke_current_session` |
-| Instant-logout denylist | [magenticx/dialogue_bridge/core/logout_denylist.py](../../magenticx/dialogue_bridge/core/logout_denylist.py) | `LogoutDenylist` (fail-open) |
+| Instant-logout denylist | [magenticx/dialogue_bridge/core/auth/session.py](../../magenticx/dialogue_bridge/core/auth/session.py) | `LogoutDenylist` (fail-open) |
 | Auth endpoints | [magenticx/dialogue_bridge/router/auth.py](../../magenticx/dialogue_bridge/router/auth.py) | `session_me`, `refresh_session`, `logout`, `auth_config`, `oidc_login`, `oidc_callback` |
 | Entra OIDC flow (MSAL) | [magenticx/dialogue_bridge/core/auth/oidc.py](../../magenticx/dialogue_bridge/core/auth/oidc.py) | `begin_login`, `complete_login`, group gate |
 | User resolution | [magenticx/dialogue_bridge/core/database/models.py](../../magenticx/dialogue_bridge/core/database/models.py) | `upsert_user_from_identity` (by `oid` only), `IdentityConflictError` |

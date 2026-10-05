@@ -35,6 +35,7 @@ exported as references instead).
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
 import hashlib
@@ -284,9 +285,10 @@ async def release_claim(claim: ExportClaim) -> None:
 class _ExportSlots:
     """At most ``EXPORT_MAX_CONCURRENT`` exports at once, one per user.
 
-    Leases rather than a semaphore: a lease whose stream never started (the
-    client left before the first byte, so no ``finally`` ran) expires after the
-    export's own wall-clock ceiling instead of leaking a slot forever.
+    Leases rather than a semaphore, renewed while data flows (:meth:`touch`): a
+    lease whose stream never started — the client left before the first byte,
+    so no ``finally`` ran — or stopped moving expires a stall timeout later,
+    instead of leaking a slot for as long as an export may legitimately run.
     Process-local, which matches the bridge's single worker and replica.
     """
 
@@ -295,12 +297,17 @@ class _ExportSlots:
 
     def try_acquire(self, user_id: str) -> bool:
         now = time.monotonic()
-        horizon = settings.export.max_seconds + 60
+        horizon = settings.export.stall_seconds + 60
         self._leases = {uid: t for uid, t in self._leases.items() if now - t < horizon}
         if user_id in self._leases or len(self._leases) >= settings.export.max_concurrent:
             return False
         self._leases[user_id] = now
         return True
+
+    def touch(self, user_id: str) -> None:
+        """Renew a running export's lease — it is still moving."""
+        if user_id in self._leases:
+            self._leases[user_id] = time.monotonic()
 
     def release(self, user_id: str) -> None:
         self._leases.pop(user_id, None)
@@ -378,7 +385,7 @@ async def start_export_download(user_id: str, token: str) -> StreamingResponse:
     filename = f"magenticx-export-{_utcnow():%Y-%m-%d}{'' if include_attachments else '-text-only'}.zip"
     logger.info("export_started", "Data export started", user_id=user_id,
                 include_attachments=include_attachments)
-    return StreamingResponse(
+    return StallGuardedStreamingResponse(
         stream_export(user_id, include_attachments=include_attachments, claim=claim),
         media_type="application/zip",
         headers={
@@ -390,6 +397,52 @@ async def start_export_download(user_id: str, token: str) -> StreamingResponse:
             "X-Accel-Buffering": "no",
         },
     )
+
+
+class StallGuardedStreamingResponse(StreamingResponse):
+    """A streamed download that ends itself when the client stops reading.
+
+    uvicorn applies backpressure: when the client stops reading, ``send`` simply
+    waits — forever, if the client never resumes and never disconnects. Nothing
+    inside the generator can notice, because it is suspended at its ``yield``.
+    So every write here is bounded by ``EXPORT_STALL_SECONDS``; past it, the
+    download is abandoned and the generator closed, which runs its ``finally``:
+    the slot is freed and the cooldown handed back. The client is left with an
+    incomplete archive, which cannot pass for a whole one (its directory is
+    written last).
+    """
+
+    async def stream_response(self, send) -> None:
+        stall = settings.export.stall_seconds
+        await send({"type": "http.response.start", "status": self.status_code, "headers": self.raw_headers})
+        try:
+            async for chunk in self.body_iterator:
+                try:
+                    await asyncio.wait_for(
+                        send({"type": "http.response.body", "body": chunk, "more_body": True}), timeout=stall
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning("export_stalled", "The client stopped reading; the export was ended",
+                                   stall_seconds=stall)
+                    # Returning without completing the response makes the server
+                    # close the connection — the only way to end it under ASGI.
+                    return
+            await send({"type": "http.response.body", "body": b"", "more_body": False})
+        finally:
+            aclose = getattr(self.body_iterator, "aclose", None)
+            if aclose is not None:
+                await aclose()
+
+
+async def _pace(bytes_out: int, started: float) -> None:
+    """Hold one export to ``EXPORT_MAX_BYTES_PER_SECOND`` on average.
+
+    Waits only when the export is ahead of the cap — a slow client is already
+    slower, and backpressure has throttled it.
+    """
+    owed = bytes_out / settings.export.max_bytes_per_second - (time.monotonic() - started)
+    if owed > 0:
+        await asyncio.sleep(owed)
 
 
 # ---------------------------------------------------------------------------
@@ -672,11 +725,14 @@ async def stream_export(user_id: str, *, include_attachments: bool, claim: Expor
             parts.append(_attachment_files(zs, em, user_id))
         parts.append(_agents_and_skills(zs, em, user_id))
 
+        paced_from = time.monotonic()
         for part in parts:
             async for chunk in part:
                 if chunk:
                     em.bytes_out += len(chunk)
                     yield chunk
+                    SLOTS.touch(user_id)
+                    await _pace(em.bytes_out, paced_from)
 
         manifest = {
             "format_version": FORMAT_VERSION,

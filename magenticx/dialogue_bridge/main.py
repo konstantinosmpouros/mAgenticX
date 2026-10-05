@@ -18,6 +18,7 @@ from utils.inference_runs import cleanup_orphaned_inference_runs
 from utils.scheduled_tasks import scheduler
 from utils.account_deletion import run_account_purger
 from utils.embeddings import run_embedding_sweeper
+from utils.orphaned_blobs import prune_orphaned_blobs
 from core.logging import (
     RequestLoggingMiddleware,
     configure_logging,
@@ -144,9 +145,13 @@ async def lifespan(app: FastAPI):
     # at a time, in small batches; resumes any purge a restart interrupted.
     purger_stop_event = asyncio.Event()
     purger_task = asyncio.create_task(run_account_purger(purger_stop_event))
+    # One-shot (delete once it has run on Dennis): the blobs orphaned before
+    # migration 0030, removed in the background, batched and paced.
+    orphan_task = asyncio.create_task(prune_orphaned_blobs())
     yield
     embedding_stop_event.set()
     purger_stop_event.set()
+    orphan_task.cancel()
     await scheduler.stop()
     for task in (embedding_task, purger_task):
         try:

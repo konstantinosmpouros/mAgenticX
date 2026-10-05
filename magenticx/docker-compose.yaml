@@ -91,6 +91,10 @@ services:
   chat_postgres: # 5432
     image: pgvector/pgvector:pg16  # Postgres 16 + pgvector (per-conversation message embeddings)
     container_name: chat_postgres
+    # /dev/shm for Postgres's parallel workers; Docker's 64 MB default made a
+    # parallel VACUUM fail. A ceiling, not a reservation (Dennis: a tmpfs mount,
+    # since Swarm ignores shm_size).
+    shm_size: 1g
     environment:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: admin

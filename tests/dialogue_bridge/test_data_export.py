@@ -26,6 +26,7 @@ import pytest
 from pydantic import ValidationError
 
 import utils.data_export as data_export
+from utils.attachments import generate_docx_preview_token
 from core.database import AttachmentTable, BlobTable, ConversationShareTable, MessageTable, UserTable
 from core.settings import ExportSettings, settings
 
@@ -264,11 +265,76 @@ def test_slots_bound_concurrency_and_one_per_user(monkeypatch):
     assert slots.try_acquire("c")
 
 
-def test_a_lease_whose_stream_never_ran_expires(monkeypatch):
+def test_a_lease_whose_stream_never_ran_expires_a_stall_timeout_later():
     slots = data_export._ExportSlots()
     assert slots.try_acquire("a")
-    slots._leases["a"] -= settings.export.max_seconds + 120             # an abandoned lease
+    slots._leases["a"] -= settings.export.stall_seconds + 120           # an abandoned lease
     assert slots.try_acquire("a")
+
+
+def test_a_moving_export_keeps_its_lease():
+    slots = data_export._ExportSlots()
+    assert slots.try_acquire("a")
+    slots._leases["a"] -= settings.export.stall_seconds + 120
+    slots.touch("a")                                                     # data just flowed
+    assert not slots.try_acquire("a")
+
+
+@pytest.mark.asyncio
+async def test_an_export_is_paced_only_when_ahead_of_its_cap(monkeypatch):
+    slept: list[float] = []
+
+    async def fake_sleep(seconds):
+        slept.append(seconds)
+
+    monkeypatch.setattr(data_export.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(settings.export, "max_bytes_per_second", 10 * 1024 * 1024)
+    now = data_export.time.monotonic()
+    await data_export._pace(10 * 1024 * 1024, now)        # 10 MiB in no time: owes ~1 s
+    await data_export._pace(10 * 1024 * 1024, now - 5)    # already slower than the cap
+    assert len(slept) == 1 and 0.9 < slept[0] <= 1.0
+
+
+async def _body(closed: list[bool]):
+    try:
+        yield b"one"
+        yield b"two"
+    finally:
+        closed.append(True)
+
+
+@pytest.mark.asyncio
+async def test_a_client_that_stops_reading_is_cut_off_and_the_stream_closed(monkeypatch):
+    monkeypatch.setattr(settings.export, "stall_seconds", 0.05)
+    closed: list[bool] = []
+    sent: list[dict] = []
+
+    async def send(message):
+        sent.append(message)
+        if message["type"] == "http.response.body":
+            await asyncio.Event().wait()                                 # the client never reads
+
+    response = data_export.StallGuardedStreamingResponse(_body(closed), media_type="application/zip")
+    await asyncio.wait_for(response.stream_response(send), timeout=2)
+
+    assert closed == [True]                                              # finally ran: slot + cooldown freed
+    assert not any(m.get("more_body") is False for m in sent)            # never presented as complete
+
+
+@pytest.mark.asyncio
+async def test_a_reading_client_gets_the_whole_stream(monkeypatch):
+    monkeypatch.setattr(settings.export, "stall_seconds", 1)
+    closed: list[bool] = []
+    sent: list[dict] = []
+
+    async def send(message):
+        sent.append(message)
+
+    response = data_export.StallGuardedStreamingResponse(_body(closed), media_type="application/zip")
+    await response.stream_response(send)
+
+    assert [m.get("body") for m in sent[1:]] == [b"one", b"two", b""]
+    assert sent[-1]["more_body"] is False and closed == [True]
 
 
 def test_the_download_token_is_bound_to_user_kind_and_time():
@@ -283,8 +349,6 @@ def test_the_download_token_is_bound_to_user_kind_and_time():
 
 def test_a_docx_preview_token_is_not_an_export_token():
     """Both are signed with the same key; the purpose tag keeps them apart."""
-    from utils.attachments import generate_docx_preview_token
-
     docx = generate_docx_preview_token("blob-1", "application/pdf", settings.session.token_secret.get_secret_value())
     assert data_export.verify_export_token(docx, "blob-1") is None
 

@@ -6,7 +6,7 @@ from ``core.database`` so callers keep importing ``from core.database import ...
 """
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-from sqlalchemy import or_, select
+from sqlalchemy import DDL, event, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import (
     Column,
@@ -264,6 +264,15 @@ class MessageTable(Base):
             postgresql_where=text("streaming_status IS NOT NULL"),
             sqlite_where=text("streaming_status IS NOT NULL"),
         ),
+        # The embedding sweeper's queue: only messages it has not looked at yet,
+        # newest first. Lets each pass read one batch instead of anti-joining
+        # every message against message_embeddings (migration 0031).
+        Index(
+            "ix_messages_embedding_pending",
+            "created_at",
+            postgresql_where=text("embedding_checked_at IS NULL"),
+            sqlite_where=text("embedding_checked_at IS NULL"),
+        ),
     )
 
     id = Column(String, primary_key=True, default=gen_uuid)
@@ -337,6 +346,11 @@ class MessageTable(Base):
     # (Redis only carries the live frames and expires them). ondelete is SET NULL
     # so deleting a task never deletes the runs/results it produced.
     scheduled_task_id = Column(String, ForeignKey("scheduled_tasks.id", ondelete="SET NULL"), nullable=True, index=True)
+
+    # When the embedding sweeper looked at this message — embedded or found not
+    # embeddable (private, empty, an error, a failed run). NULL = still queued.
+    # Bookkeeping, not content: messages stay append-only.
+    embedding_checked_at = Column(DateTime, nullable=True)
 
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
@@ -425,6 +439,38 @@ class BlobTable(Base):
 
     # Back-reference for the 1:1 relationship
     attachment = relationship("AttachmentTable", back_populates="blob", uselist=False)
+
+
+# Deleting an attachment row deletes its blob (migration 0030). The foreign key
+# points attachments → blobs, so a cascade from a conversation, message or user
+# reaches the attachment but never its bytes; without this every deleted
+# conversation left its files behind, where not even an account deletion could
+# find them. Declared here as well so `create_all` (the test database) has it.
+event.listen(
+    AttachmentTable.__table__,
+    "after_create",
+    DDL(
+        "CREATE TRIGGER trg_attachments_delete_blob AFTER DELETE ON attachments "
+        "FOR EACH ROW WHEN OLD.blob_id IS NOT NULL "
+        "BEGIN DELETE FROM blobs WHERE id = OLD.blob_id; END"
+    ).execute_if(dialect="sqlite"),
+)
+event.listen(
+    AttachmentTable.__table__,
+    "after_create",
+    DDL(
+        "CREATE OR REPLACE FUNCTION delete_attachment_blob() RETURNS trigger LANGUAGE plpgsql AS $$ "
+        "BEGIN DELETE FROM blobs WHERE id = OLD.blob_id; RETURN NULL; END; $$"
+    ).execute_if(dialect="postgresql"),
+)
+event.listen(
+    AttachmentTable.__table__,
+    "after_create",
+    DDL(
+        "CREATE TRIGGER trg_attachments_delete_blob AFTER DELETE ON attachments "
+        "FOR EACH ROW WHEN (OLD.blob_id IS NOT NULL) EXECUTE FUNCTION delete_attachment_blob()"
+    ).execute_if(dialect="postgresql"),
+)
 
 
 class ScheduledTaskTable(Base):

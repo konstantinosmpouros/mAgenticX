@@ -375,7 +375,7 @@ async def _step_agent_runtime(user_id: str, deletion_id: str, counts: dict[str, 
     counts["workspace_removed"] = bool(body.get("workspace_removed")) or bool(counts.get("workspace_removed"))
 
 
-def _within_byte_budget(rows: list, budget: int) -> tuple[list[str], int]:
+def within_byte_budget(rows: list, budget: int) -> tuple[list[str], int]:
     """The leading blobs of ``rows`` (``(blob_id, length)``) that fit ``budget`` —
     always at least one, so a single blob larger than the budget still goes."""
     chosen: list[str] = []
@@ -389,7 +389,7 @@ def _within_byte_budget(rows: list, budget: int) -> tuple[list[str], int]:
     return chosen, total
 
 
-async def _pace(batch_bytes: int, started: float) -> None:
+async def pace_bytes(batch_bytes: int, started: float) -> None:
     """Hold the purge to ``ACCOUNT_PURGE_MAX_BYTES_PER_SECOND``.
 
     A batch that finished faster than its share of the budget waits out the
@@ -421,7 +421,7 @@ async def _delete_conversation_batch(conversation_ids: list[str], deletion_id: s
             ).all()
             if not rows:
                 break
-            blob_ids, batch_bytes = _within_byte_budget(rows, cfg.blob_batch_bytes)
+            blob_ids, batch_bytes = within_byte_budget(rows, cfg.blob_batch_bytes)
             removed = await session.execute(delete(AttachmentTable).where(AttachmentTable.blob_id.in_(blob_ids)))
             await session.execute(delete(BlobTable).where(BlobTable.id.in_(blob_ids)))
             await session.commit()
@@ -429,7 +429,7 @@ async def _delete_conversation_batch(conversation_ids: list[str], deletion_id: s
         counts["blob_bytes"] = counts.get("blob_bytes", 0) + batch_bytes
         counts["attachments"] = counts.get("attachments", 0) + (removed.rowcount or 0)
         await _save_progress(deletion_id, counts)
-        await _pace(batch_bytes, started)
+        await pace_bytes(batch_bytes, started)
 
     # 2. Attachments without bytes, then messages (with their embeddings).
     async with SessionLocal() as session:

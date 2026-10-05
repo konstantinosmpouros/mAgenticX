@@ -64,7 +64,7 @@ Each message gets its **own** vector (one per message, not one per conversation)
 
 ## Phase 2 — Generation (the sweeper)
 
-Embeddings are produced by a background loop (`run_embedding_sweeper`) started in the bridge lifespan, **not** by hooks in the inference path. Each pass claims a batch of messages that have no embedding row yet — defined purely by a `LEFT JOIN … IS NULL` — embeds them in one `/embed` call, and upserts. Because eligibility is "row without a vector", the *same* mechanism handles fresh messages (picked up within seconds) and the entire historical backfill (drained newest-first behind them), and it is self-healing: a failed pass leaves the rows unembedded so they're retried next tick. This deliberately decouples embedding from the request/streaming path — nothing a user does ever blocks on or waits for an embedding.
+Embeddings are produced by a background loop (`run_embedding_sweeper`) started in the bridge lifespan, **not** by hooks in the inference path. Each pass reads a batch of messages the sweeper has not looked at yet — `messages.embedding_checked_at IS NULL`, served newest-first by the partial index `ix_messages_embedding_pending` — embeds the ones that qualify in one `/embed` call, and marks the **whole** batch checked in the same transaction: embedded, or found not embeddable (private, empty, an error, a failed run). A run still in flight is left for a later pass. The *same* mechanism handles fresh messages (picked up within seconds) and the historical backfill (drained newest-first behind them), and it is self-healing: a failed pass commits nothing, so the batch is retried next tick. Until migration `0031` the batch was found with `LEFT JOIN message_embeddings … IS NULL` — a scan of every message on every pass, which with a 200k-message backlog spilled 4.4 GB of temp files and, with no backlog, still scanned every message every few seconds. To re-embed (e.g. after a model change), delete the vectors and reset `embedding_checked_at` to `NULL`. This deliberately decouples embedding from the request/streaming path — nothing a user does ever blocks on or waits for an embedding.
 
 | Key fact | Value / detail |
 | --- | --- |
@@ -103,7 +103,7 @@ The tool is built **per run**, closing over the current `user_id` + `conversatio
 - **Embeddings lag, by design.** A new message is searchable within a sweep tick (seconds), not instantly. This is intentional: embedding is fully off the request path, so streaming/latency is never affected. Don't add inline embedding hooks expecting real-time freshness.
 - **First-boot `ConnectError` is normal.** If the bridge's sweeper runs before the agents service is ready, the pass logs `embedding_sweeper_embed_failed (ConnectError)` and simply retries on the next tick — no rows are lost.
 - **Vectors are bound as text + `CAST(... AS vector)`.** The bridge never reads raw vectors back into Python, so it intentionally avoids the asyncpg `register_vector` codec; vectors are sent as `'[…]'` literals and cast in SQL. Keep it that way unless you start selecting the `embedding` column into the app.
-- **Dimension is fixed at DDL time.** Changing the model/dimension means a new migration *and* a full re-embed (truncate `message_embeddings` and let the sweeper refill). The three dimension constants must move together.
+- **Dimension is fixed at DDL time.** Changing the model/dimension means a new migration *and* a full re-embed (truncate `message_embeddings`, reset `messages.embedding_checked_at` to `NULL`, and let the sweeper refill). The three dimension constants must move together.
 - **No backwards re-embed on model swap.** The `model` column records which model produced each vector; a future model change can re-embed selectively by filtering on it rather than wiping everything.
 - **Postgres image is load-bearing.** pgvector requires `pgvector/pgvector:pg16` (same PG16 base as before, so the data volume is unaffected). On a stock `postgres:16.x` image, migration `0010`'s `CREATE EXTENSION vector` fails and the bridge won't boot.
 
@@ -114,7 +114,7 @@ The tool is built **per run**, closing over the current `user_id` + `conversatio
 | Concept | File | What to look for |
 | --- | --- | --- |
 | Embed endpoint (provider call) | [magenticx/agents/router/embeddings.py](../../magenticx/agents/router/embeddings.py) | `POST /embed`, `OpenAIEmbeddings.aembed_documents` |
-| Embed request/response schema | [magenticx/agents/schemas.py](../../magenticx/agents/schemas.py) | `EmbedRequest`, `EmbedResponse` |
+| Embed request/response schema | [magenticx/agents/schema/embeddings.py](../../magenticx/agents/schema/embeddings.py) | `EmbedRequest`, `EmbedResponse` |
 | Embedding model config (agents) | [magenticx/agents/core/settings.py](../../magenticx/agents/core/settings.py) | `RuntimeModelsSettings.embedding`, `embedding_dimensions` |
 | Agent memory tool | [magenticx/agents/harness/tools/memory_search/tool.py](../../magenticx/agents/harness/tools/memory_search/tool.py) | `build_memory_search_tool`, `search_past_conversations` |
 | Tool injection into deep agents | [magenticx/agents/harness/abstractions/deep_agent.py](../../magenticx/agents/harness/abstractions/deep_agent.py) | `DeepAgent._builtin_tools`, `build_deep_agent(tools=...)` |
