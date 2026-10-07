@@ -83,6 +83,11 @@ class TokenUsageEvent(BaseModel):
 
     Emitted once per settled AI message (main agent or sub-agent). The bridge
     sums these across the whole run — message_id lets it dedupe defensively.
+
+    The second group comes from ``UsageMetricsMiddleware``: the model that made
+    the call, how long it took, and how full its context window was
+    (``context_tokens`` of ``context_window``). Absent for a reply that did not
+    pass through the middleware.
     """
     input_tokens: Optional[int] = None
     output_tokens: Optional[int] = None
@@ -90,6 +95,12 @@ class TokenUsageEvent(BaseModel):
     input_token_details: Optional[Dict[str, Any]] = None
     output_token_details: Optional[Dict[str, Any]] = None
     message_id: Optional[str] = None
+    model: Optional[str] = None
+    latency_ms: Optional[int] = None
+    context_window: Optional[int] = None
+    context_tokens: Optional[int] = None
+    context_percent: Optional[float] = None
+    compaction_percent: Optional[float] = None
 
 
 # ------------------------------------------------------------------

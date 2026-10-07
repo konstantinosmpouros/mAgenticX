@@ -6,10 +6,11 @@ from ``core.database`` so callers keep importing ``from core.database import ...
 """
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-from sqlalchemy import DDL, event, or_, select
+from sqlalchemy import DDL, case, event, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import (
     Column,
+    Float,
     String,
     DateTime,
     Boolean,
@@ -222,7 +223,19 @@ class ConversationTable(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
         foreign_keys="MessageTable.conversation_id",
-        order_by="MessageTable.created_at.asc()",
+        # Ties on created_at are real, not theoretical: a run writes the user
+        # message and its AI placeholder in one transaction, and Postgres now()
+        # is the transaction's start time, so both rows carry the same
+        # timestamp. Without a tie-breaker the database may return them in any
+        # order — and with ix_messages_conversation_id_id it reads them in
+        # random-UUID order, putting the reply before its question about half
+        # the time. A user message always precedes the reply created with it,
+        # so the role breaks the tie; the id makes the order total.
+        order_by=lambda: (
+            MessageTable.created_at.asc(),
+            case((MessageTable.sender == "user", 0), else_=1).asc(),
+            MessageTable.id.asc(),
+        ),
     )
     report = relationship(
         "ConversationReportTable",
@@ -295,6 +308,17 @@ class MessageTable(Base):
     # messages and historical rows.
     input_tokens = Column(Integer, nullable=True)
     output_tokens = Column(Integer, nullable=True)
+    # The rest of the run's usage (migration 0032), from the agents service's
+    # UsageMetricsMiddleware: cached and reasoning tokens and time spent in the
+    # model, summed over every call; and the main agent's context on its LAST
+    # call — prompt size, the model's window, where it compacts, which model.
+    cached_input_tokens = Column(Integer, nullable=True)
+    reasoning_tokens = Column(Integer, nullable=True)
+    model_latency_ms = Column(Integer, nullable=True)
+    context_tokens = Column(Integer, nullable=True)
+    context_window = Column(Integer, nullable=True)
+    compaction_percent = Column(Float, nullable=True)
+    model_name = Column(String, nullable=True)
 
     # error info
     is_error = Column(Boolean, nullable=False, server_default="false")

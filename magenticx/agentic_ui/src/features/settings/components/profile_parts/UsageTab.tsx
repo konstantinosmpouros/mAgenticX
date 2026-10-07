@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { AlertCircle, Gauge, MessagesSquare, RefreshCw } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
@@ -10,6 +10,7 @@ import {
   type ChartConfig,
 } from "@/shared/ui/chart";
 import { Skeleton } from "@/shared/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { cn, formatCompactTokens } from "@/shared/lib/utils";
 import type { ConversationUsage, UsageSummary, UsageWindow } from "@/shared/lib/types";
 import { InfoCard, MetricCard, SoftPanel } from "./shared";
@@ -52,6 +53,49 @@ const WindowPill = ({ label, window: win }: { label: string; window: UsageWindow
   </div>
 );
 
+/**
+ * Icon-only refresh: the label is the tooltip and the accessible name.
+ *
+ * Every click turns the icon at least once, even when the summary comes back
+ * from cache in a few milliseconds — otherwise a fast refresh looks like a
+ * click that did nothing. The spin stops on a full turn (`animationiteration`)
+ * rather than the moment loading ends, so the icon never snaps back mid-turn.
+ */
+const RefreshButton = ({ loading, onRefresh }: { loading: boolean; onRefresh: () => void }) => {
+  const [spinning, setSpinning] = useState(loading);
+
+  useEffect(() => {
+    if (loading) setSpinning(true);
+  }, [loading]);
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={() => {
+            setSpinning(true);
+            onRefresh();
+          }}
+          disabled={loading}
+          aria-label="Refresh usage"
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-muted/50 text-muted-foreground transition-[background-color,color,transform] duration-150 hover:bg-muted hover:text-foreground active:scale-[0.94] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed"
+        >
+          <RefreshCw
+            size={15}
+            aria-hidden
+            className={cn(spinning && "animate-spin motion-reduce:animate-none")}
+            onAnimationIteration={() => {
+              if (!loading) setSpinning(false);
+            }}
+          />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="left">Refresh usage</TooltipContent>
+    </Tooltip>
+  );
+};
+
 /** Fill the sparse daily series into a dense last-30-days axis (UTC days). */
 const fillDailySeries = (summary: UsageSummary) => {
   const byDate = new Map(summary.daily.map((point) => [point.date, point]));
@@ -86,19 +130,6 @@ export default function UsageTab({
   const dailySeries = useMemo(() => (summary ? fillDailySeries(summary) : []), [summary]);
   const maxAgentTokens = summary?.perAgent[0]?.totalTokens ?? 0;
   const hasWorkspaceUsage = (summary?.totals.aiMessages ?? 0) > 0;
-
-  const refreshButton = (
-    <button
-      type="button"
-      onClick={onRefresh}
-      disabled={loading}
-      aria-label="Refresh usage"
-      className="inline-flex h-8 items-center gap-1.5 rounded-full bg-muted/50 px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
-    >
-      <RefreshCw size={13} className={cn(loading && "animate-spin")} aria-hidden />
-      Refresh
-    </button>
-  );
 
   return (
     <div className="space-y-8">
@@ -136,7 +167,7 @@ export default function UsageTab({
         eyebrow="Workspace"
         title="All-time usage"
         description="Everything your agents have processed across every conversation."
-        headerAction={refreshButton}
+        headerAction={<RefreshButton loading={loading} onRefresh={onRefresh} />}
       >
         {error ? (
           <SoftPanel className="flex items-center justify-between gap-4 px-5 py-4">

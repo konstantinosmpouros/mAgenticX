@@ -57,6 +57,10 @@ async def init_message(
     msg = MessageTable(
         conversation_id=conv.id,
         parent_message_id=parent_message_id,
+        # Stamped here, not by the database: Postgres's now() is fixed for the
+        # whole transaction, so a user message and the AI reply created with it
+        # would tie and come back in whatever order an index scan yields.
+        created_at=datetime.now(timezone.utc).replace(tzinfo=None),
         sender=payload.sender,
         content=payload.content,
         reasoning_steps=payload.thinking,

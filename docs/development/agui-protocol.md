@@ -101,7 +101,7 @@ All custom events share a wrapper shape:
 | `TASK_SUBAGENT` | `TaskSubAgentEvent` | Orchestrator delegated a task to a sub-agent |
 | `SUBAGENT_EVENT` | `SubAgentEvent` | An AG-UI event emitted by a sub-agent, wrapped with task context |
 | `BEFORE_AGENT_EVENT` | `BeforeAgentEvent` | Pre-execution message injected by `PatchToolCallsMiddleware` into a sub-agent |
-| `TOKEN_USAGE` | `TokenUsageEvent` | Per-AI-message token usage (input/output), one per settled `AIMessage`; namespace-attributed for sub-agents |
+| `TOKEN_USAGE` | `TokenUsageEvent` | Per-AI-message token usage, one per settled `AIMessage`; namespace-attributed for sub-agents. Input/output/total plus `input_token_details` (cached) and `output_token_details` (reasoning); and, from `UsageMetricsMiddleware`, `model`, `latency_ms`, `context_window`, `context_tokens`, `context_percent`, `compaction_percent`. The middleware stamps them on `AIMessage.response_metadata["mx_usage_metrics"]` — deep agents do not stream the custom channel — and the normalizer folds them into this event. The UI keeps the main agent's latest context on `RunTimeline.context` (the composer gauge) |
 | `HITL_INTERRUPT` | `HITLInterruptEvent` | Graph paused — waiting for human input |
 | `CHECKPOINT_COMMITTED` | `{thread_id, checkpoint_id}` | Terminal event emitted by the agent once its durable LangGraph checkpoint is written. The bridge captures it in `apply_event` and `_finish_run` persists `checkpoint_id` on the AI message, so the branch's next turn can resume/fork from the right head. Carries the branch-scoped checkpoint `thread_id`, not the run id. |
 | `PRESENT_ARTIFACT` | `PresentArtifactEvent` | A deep-agent deliverable explicitly designated via the `present_artifact` tool. Synthesized by the normalizer when it detects the tool call **by name for the top-level orchestrator only** (a sub-agent's call is dropped), carrying `{artifact_id, path, filename, title, summary, mime, status}` display metadata (no bytes). The bridge captures it in `apply_event` into `runtime.presented_artifacts`, and `_finish_run` reads the files back from the agents service and persists them as `attachments(origin='generated')` on the AI message. Lands in `raw_events` so the artifact card survives reconnection. |
@@ -384,9 +384,9 @@ flowchart TD
     A["apply_event(event)"] --> S["seq-stamp event\n(+ truncate TOOL_CALL_RESULT)"]
     S --> B{event.type}
     B -->|"CUSTOM"| C{event.name}
-    C -->|"SUBAGENT_EVENT"| F["if inner is HITL_INTERRUPT:\nregister_interrupt(inner.value)\nelif inner is TOKEN_USAGE:\n_accumulate_usage(inner.value)"]
+    C -->|"SUBAGENT_EVENT"| F["if inner is HITL_INTERRUPT:\nregister_interrupt(inner.value)\nelif inner is TOKEN_USAGE:\n_accumulate_usage(inner.value, main_agent=False)"]
     C -->|"HITL_INTERRUPT"| H["register_interrupt(value)"]
-    C -->|"TOKEN_USAGE"| N["_accumulate_usage(value)"]
+    C -->|"TOKEN_USAGE"| N["_accumulate_usage(value, main_agent=True)\n(only the main agent moves the context snapshot)"]
     C -->|"CHECKPOINT_COMMITTED"| CC["capture checkpoint_id\n(persisted by _finish_run)"]
     B -->|"THINKING_START"| I["thinking_start = perf_counter()\nthinking_end = 0.0"]
     B -->|"THINKING_TEXT_MESSAGE_CONTENT"| J["thoughts.append(delta)"]

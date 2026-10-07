@@ -1,6 +1,6 @@
 import type { AttachmentOut } from "../../types/attachments";
 import type { MessageOut } from "../../types/messages";
-import { toDate } from "./base";
+import { toDate, toOptionalNumber, toOptionalString } from "./base";
 
 // Transform attachment object from backend to frontend type.
 // The explicit return type is load-bearing, not decoration: this mapper is
@@ -39,6 +39,13 @@ export const transformMessage = (message: Record<string, any>): MessageOut => ({
   thinkingTime: message.thinkingTime ?? undefined,
   inputTokens: message.inputTokens ?? message.input_tokens ?? undefined,
   outputTokens: message.outputTokens ?? message.output_tokens ?? undefined,
+  cachedInputTokens: toOptionalNumber(message.cachedInputTokens ?? message.cached_input_tokens),
+  reasoningTokens: toOptionalNumber(message.reasoningTokens ?? message.reasoning_tokens),
+  modelLatencyMs: toOptionalNumber(message.modelLatencyMs ?? message.model_latency_ms),
+  contextTokens: toOptionalNumber(message.contextTokens ?? message.context_tokens),
+  contextWindow: toOptionalNumber(message.contextWindow ?? message.context_window),
+  compactionPercent: toOptionalNumber(message.compactionPercent ?? message.compaction_percent),
+  modelName: toOptionalString(message.modelName ?? message.model_name),
   error: message.error ?? undefined,
   errorMessage: message.errorMessage ?? undefined,
   streamingStatus: message.streamingStatus ?? message.streaming_status ?? null,

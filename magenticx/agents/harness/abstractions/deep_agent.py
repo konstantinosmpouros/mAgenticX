@@ -16,6 +16,7 @@ from harness.tools.registry import NativeToolContext, build_auto_attach_tools
 from harness.middlewares import (
     ConfigurableSummarizationMiddleware,
     ToolErrorMiddleware,
+    UsageMetricsMiddleware,
     build_summarization_middleware,
     exclude_stock_summarization,
 )
@@ -94,6 +95,7 @@ class DeepAgent(BaseAgent, ABC):
     tool_error_middleware = ToolErrorMiddleware
     summarization_middleware = ConfigurableSummarizationMiddleware
     build_summarization_middleware = staticmethod(build_summarization_middleware)
+    usage_metrics_middleware = UsageMetricsMiddleware
 
 
     def __init__(self, *, config: Optional[Mapping[str, Any]] = None) -> None:
@@ -238,10 +240,11 @@ class DeepAgent(BaseAgent, ABC):
     def default_middleware(self, model: Any, backend: Any) -> list[Any]:
         """The middleware stack a deep agent gets unless it overrides this.
 
-        Override to add/drop/reconfigure middleware. ``ToolErrorMiddleware`` is
-        force-guaranteed by ``build_deep_agent`` regardless, so it's safe to omit
-        here. The summarizer replaces deepagents' stock one with env-tuned
-        thresholds and offloads to ``backend`` (the shared per-conversation disk).
+        Override to add/drop/reconfigure middleware. ``ToolErrorMiddleware`` and
+        ``UsageMetricsMiddleware`` are force-guaranteed by ``build_deep_agent``
+        regardless, so it's safe to omit them here. The summarizer replaces
+        deepagents' stock one with env-tuned thresholds and offloads to
+        ``backend`` (the shared per-conversation disk).
         """
         return [
             self.tool_error_middleware(),
@@ -305,6 +308,28 @@ class DeepAgent(BaseAgent, ABC):
         return items
 
 
+    @staticmethod
+    def _ensure_usage_metrics_middleware(stack: Optional[Sequence[Any]]) -> list[Any]:
+        """Return ``stack`` with ``UsageMetricsMiddleware`` guaranteed (appended if
+        missing, never duplicated), so every model call — main agent and every
+        sub-agent — reports its model, latency and context occupancy.
+
+        Its "compacts at" marker is set only when the stack really carries our
+        summarizer (a sub-agent runs deepagents' stock one, a custom stack may
+        run none), so the UI never shows a threshold that is not there.
+        """
+        items = list(stack or [])
+        if any(isinstance(m, UsageMetricsMiddleware) for m in items):
+            return items
+        has_summarizer = any(isinstance(m, ConfigurableSummarizationMiddleware) for m in items)
+        items.append(
+            UsageMetricsMiddleware(
+                compaction_fraction=settings.summarization.trigger_fraction if has_summarizer else None
+            )
+        )
+        return items
+
+
     def prompt_context(self, *, has_subagents: bool = False) -> PromptContext:
         """What this run has, for the prompt composer to describe.
 
@@ -356,6 +381,7 @@ class DeepAgent(BaseAgent, ABC):
         backend = self._build_composite_backend()
         stack = middleware if middleware is not None else self.default_middleware(model, backend)
         stack = self._ensure_tool_error_middleware(stack)  # guarantee on the main agent
+        stack = self._ensure_usage_metrics_middleware(stack)
         exclude_stock_summarization(model if isinstance(model, str) else "")
 
         # The agent's own instructions lead; the platform sections are appended
@@ -378,7 +404,12 @@ class DeepAgent(BaseAgent, ABC):
         augmented_subagents: SubAgentsT = subagents
         if isinstance(subagents, (list, tuple)):
             augmented_subagents = [
-                {**spec, "middleware": self._ensure_tool_error_middleware(spec.get("middleware"))}
+                {
+                    **spec,
+                    "middleware": self._ensure_usage_metrics_middleware(
+                        self._ensure_tool_error_middleware(spec.get("middleware"))
+                    ),
+                }
                 if isinstance(spec, dict) and "runnable" not in spec
                 else spec
                 for spec in subagents

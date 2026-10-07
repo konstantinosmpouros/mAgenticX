@@ -325,10 +325,13 @@ class AGUIEmitter:
         usage_metadata: Dict[str, Any],
         *,
         message_id: Optional[str] = None,
+        metrics: Optional[Dict[str, Any]] = None,
         writer: Any = None,
         namespace: Optional[str] = None,
     ) -> CustomEvent:
-        """Emit per-AI-message token usage from ``AIMessage.usage_metadata``."""
+        """Emit per-AI-message token usage from ``AIMessage.usage_metadata``,
+        plus the call's model / latency / context metrics when present."""
+        metrics = metrics or {}
         payload = TokenUsageEvent(
             input_tokens=usage_metadata.get("input_tokens"),
             output_tokens=usage_metadata.get("output_tokens"),
@@ -336,6 +339,12 @@ class AGUIEmitter:
             input_token_details=usage_metadata.get("input_token_details"),
             output_token_details=usage_metadata.get("output_token_details"),
             message_id=message_id,
+            model=metrics.get("model"),
+            latency_ms=metrics.get("latency_ms"),
+            context_window=metrics.get("context_window"),
+            context_tokens=metrics.get("context_tokens"),
+            context_percent=metrics.get("context_percent"),
+            compaction_percent=metrics.get("compaction_percent"),
         )
         custom_event = CustomEvent(
             type=EventType.CUSTOM,

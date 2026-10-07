@@ -56,6 +56,8 @@ export default function ChatView() {
     resumeInferenceRunHandler,
     canShowStarterSuggestions,
     handleStarterSuggestionSelect,
+    conversationContext,
+    conversationStats,
   } = useChatWorkspaceContext();
 
   // Read straight from the store rather than through the workspace bundle.
@@ -143,6 +145,8 @@ export default function ChatView() {
           isPrivateMode={isPrivateMode}
           thinkingActive={isCurrentConversationBusy && thinkingState?.isActive}
           isStreaming={isCurrentConversationBusy}
+          contextUsage={conversationContext}
+          conversationStats={conversationStats}
           currentMessage={composer.currentMessage}
           setCurrentMessage={composer.setCurrentMessage}
           handlePaste={composer.handlePaste}

@@ -18,7 +18,8 @@ import { useVoiceVisualizer, VoiceVisualizer } from "react-voice-visualizer";
 import { Loader } from "@/shared/ui/shadcn-io/loader";
 import { Suggestion, Suggestions } from "@/shared/ui/ai-elements/suggestion";
 
-import type { DictationStatus } from "@/shared/lib/types";
+import type { ConversationStats, DictationStatus, RunContextUsage } from "@/shared/lib/types";
+import { ContextMeter } from "@/features/chat/components/ContextMeter";
 import { INTERACTIVE_SURFACE } from "@/shared/lib/consts";
 export type { DictationStatus };
 export type ChatInputMode = "chat" | "voice";
@@ -46,6 +47,10 @@ type ChatInputBarProps = {
   isPrivateMode: boolean;
   thinkingActive?: boolean;
   isStreaming?: boolean;
+  /** How full the model's context window is (composer gauge); null hides it. */
+  contextUsage?: RunContextUsage | null;
+  /** The open conversation's totals, shown in the context gauge's card. */
+  conversationStats?: ConversationStats | null;
   currentMessage: string;
   setCurrentMessage: (v: string) => void;
   handlePaste: React.ClipboardEventHandler<HTMLTextAreaElement>;
@@ -118,6 +123,8 @@ export function ChatInputBar(props: ChatInputBarProps) {
     isPrivateMode,
     thinkingActive,
     isStreaming = false,
+    contextUsage = null,
+    conversationStats = null,
     currentMessage,
     setCurrentMessage,
     handlePaste,
@@ -898,6 +905,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
                               <p>Attach files & photos</p>
                             </TooltipContent>
                           </Tooltip>
+                          <ContextMeter context={contextUsage ?? null} stats={conversationStats} />
                         </div>
 
                         {dictationStatus === "idle" ? (

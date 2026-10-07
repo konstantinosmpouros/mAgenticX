@@ -13,6 +13,7 @@ import type {
 } from "@/shared/lib/types";
 import { usePreferencesHandlers } from "@/features/settings/handlers/preferences";
 import { computeConversationUsage } from "@/shared/lib/utils";
+import { selectConversationContext, selectConversationStats } from "@/features/chat/lib/contextUsage";
 import { useProfilePanel } from "@/features/settings/hooks/useProfilePanel";
 import { useSettingsPanels } from "@/features/settings/hooks/useSettingsPanels";
 import { useAttachmentPreview } from "@/features/attachments/hooks/useAttachmentPreview";
@@ -575,6 +576,21 @@ export function useChatWorkspace({
   const conversationUsage = useMemo(
     () => computeConversationUsage(activeMessages),
     [activeMessages],
+  );
+
+  // The composer's context gauge: the live run's latest main-agent call while
+  // one runs, else the latest AI message on the visible branch that recorded one.
+  const conversationContext = useMemo(
+    () => selectConversationContext(activeMessages, activeConversationRun),
+    [activeMessages, activeConversationRun],
+  );
+
+  // The context card's "This conversation" block: every finished answer in the
+  // tree, replaced ones included, with their model and tool calls.
+  const conversationMessages = currentConversation?.messages;
+  const conversationStats = useMemo(
+    () => selectConversationStats(conversationMessages ?? [], activeMessages),
+    [conversationMessages, activeMessages],
   );
 
   useEffect(() => {
@@ -1382,6 +1398,8 @@ export function useChatWorkspace({
     setSearchQuery,
     closeSearchPanel,
     conversationUsage,
+    conversationContext,
+    conversationStats,
     activeConversationRun,
     pendingRunInterrupts,
     activeHitlInterrupt,

@@ -24,6 +24,16 @@ export type InferenceRun = {
   rawEvents?: Record<string, any>[];
   inputTokens?: number | null;
   outputTokens?: number | null;
+  // The rest of the run's usage (plan: usage metrics). Summed over the run:
+  // cached and reasoning tokens, time in the model. The main agent's context
+  // on its last call: prompt size of the model's window, where it compacts.
+  cachedInputTokens?: number;
+  reasoningTokens?: number;
+  modelLatencyMs?: number;
+  contextTokens?: number;
+  contextWindow?: number;
+  compactionPercent?: number;
+  modelName?: string;
   pendingInterrupts?: number;
   errorMessage?: string | null;
   startedAt: Date;

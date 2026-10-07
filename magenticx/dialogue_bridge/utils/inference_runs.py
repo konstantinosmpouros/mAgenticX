@@ -93,6 +93,20 @@ def _now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+def _as_int(value: Any) -> int:
+    """A token or millisecond count from an event, or 0 for anything else."""
+    return int(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else 0
+
+
+def _detail_sum(details: Any, kind: str) -> int:
+    """Sum a usage detail across provider variants: OpenAI reports
+    ``cache_read`` / ``reasoning`` and, on a service tier, prefixed copies
+    such as ``flex_cache_read`` — the same tokens, never both at once."""
+    if not isinstance(details, dict):
+        return 0
+    return sum(_as_int(v) for k, v in details.items() if str(k) == kind or str(k).endswith(f"_{kind}"))
+
+
 def _effective_personalization(prefs_row: UserPreferencesTable | None) -> dict[str, Any]:
     """Reduce a preference row to the personalization payload a run should carry.
 
@@ -283,7 +297,14 @@ class InferenceRunRuntime:
         # message can surface both directly and wrapped in a SUBAGENT_EVENT.
         self.input_tokens = 0
         self.output_tokens = 0
+        self.cached_input_tokens = 0
+        self.reasoning_tokens = 0
+        self.model_latency_ms = 0
         self._counted_usage_ids: set[str] = set()
+        # The main agent's context on its most recent model call — prompt size,
+        # the model's window, where it compacts, which model (sub-agents run
+        # their own, separate contexts, so they never overwrite this).
+        self.context: dict[str, Any] = {}
         # The durable checkpoint head the agent committed this run (captured
         # from the terminal CHECKPOINT_COMMITTED event). Persisted on the AI
         # message by _finish_run so the next turn resumes / forks from it.
@@ -295,7 +316,8 @@ class InferenceRunRuntime:
         # persists them as generated attachments on the assistant message.
         self.presented_artifacts: list[dict[str, Any]] = []
 
-    def _accumulate_usage(self, value: Any) -> None:
+    def _accumulate_usage(self, value: Any, *, main_agent: bool) -> None:
+        """Fold one TOKEN_USAGE event into the run's totals (deduped by message)."""
         if not isinstance(value, dict):
             return
         mid = value.get("message_id")
@@ -303,8 +325,19 @@ class InferenceRunRuntime:
         if token in self._counted_usage_ids:
             return
         self._counted_usage_ids.add(token)
-        self.input_tokens += int(value.get("input_tokens") or 0)
-        self.output_tokens += int(value.get("output_tokens") or 0)
+        self.input_tokens += _as_int(value.get("input_tokens"))
+        self.output_tokens += _as_int(value.get("output_tokens"))
+        self.cached_input_tokens += _detail_sum(value.get("input_token_details"), "cache_read")
+        self.reasoning_tokens += _detail_sum(value.get("output_token_details"), "reasoning")
+        self.model_latency_ms += _as_int(value.get("latency_ms"))
+        if main_agent and isinstance(value.get("context_tokens"), int):
+            self.context = {
+                "context_tokens": value.get("context_tokens"),
+                "context_window": value.get("context_window") if isinstance(value.get("context_window"), int) else None,
+                "compaction_percent": value.get("compaction_percent")
+                if isinstance(value.get("compaction_percent"), (int, float)) else None,
+                "model_name": str(value["model"])[:200] if value.get("model") else None,
+            }
 
     @property
     def pending_interrupts(self) -> int:
@@ -429,11 +462,11 @@ class InferenceRunRuntime:
                         if inner_name == "HITL_INTERRUPT":
                             self.register_interrupt(inner.get("value"))
                         elif inner_name == "TOKEN_USAGE":
-                            self._accumulate_usage(inner.get("value"))
+                            self._accumulate_usage(inner.get("value"), main_agent=False)
             elif name == "HITL_INTERRUPT":
                 self.register_interrupt(value)
             elif name == "TOKEN_USAGE":
-                self._accumulate_usage(value)
+                self._accumulate_usage(value, main_agent=True)
             elif name == "PRESENT_ARTIFACT":
                 # Capture the deliverable for the finalize fetch, but let the
                 # event flow into raw_events unchanged — the UI renders it as a
@@ -1185,6 +1218,13 @@ async def _finish_run(run_id: str, runtime: InferenceRunRuntime, status_value: s
         run.raw_events = payload["raw_events"]
         run.input_tokens = runtime.input_tokens or None
         run.output_tokens = runtime.output_tokens or None
+        run.cached_input_tokens = runtime.cached_input_tokens or None
+        run.reasoning_tokens = runtime.reasoning_tokens or None
+        run.model_latency_ms = runtime.model_latency_ms or None
+        run.context_tokens = runtime.context.get("context_tokens")
+        run.context_window = runtime.context.get("context_window")
+        run.compaction_percent = runtime.context.get("compaction_percent")
+        run.model_name = runtime.context.get("model_name")
         run.is_error = is_error
         run.error_message = error_message
         # Advance the branch head so the next turn resumes / forks from the
@@ -1253,6 +1293,13 @@ def build_run_out_from_message(message: MessageTable, *, user_id: str) -> Infere
         rawEvents=message.raw_events or [],
         inputTokens=message.input_tokens,
         outputTokens=message.output_tokens,
+        cachedInputTokens=message.cached_input_tokens,
+        reasoningTokens=message.reasoning_tokens,
+        modelLatencyMs=message.model_latency_ms,
+        contextTokens=message.context_tokens,
+        contextWindow=message.context_window,
+        compactionPercent=message.compaction_percent,
+        modelName=message.model_name,
         errorMessage=message.error_message,
         startedAt=started,
         completedAt=message.streaming_completed_at,
@@ -1466,6 +1513,8 @@ async def create_inference_run_record(
         agent_name=agent.name,
         streaming_status="queued",
         streaming_started_at=now,
+        # After the user message it answers, never tied with it (see init_message).
+        created_at=now,
         checkpoint_thread_id=checkpoint_thread_id,
         scheduled_task_id=scheduled_task_id,
     )

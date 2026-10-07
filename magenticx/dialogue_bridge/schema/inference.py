@@ -43,6 +43,13 @@ class InferenceRunOut(BaseModel):
     rawEvents: list[dict] = Field(default_factory=list)
     inputTokens: Optional[int] = None
     outputTokens: Optional[int] = None
+    cachedInputTokens: Optional[int] = None
+    reasoningTokens: Optional[int] = None
+    modelLatencyMs: Optional[int] = None
+    contextTokens: Optional[int] = None
+    contextWindow: Optional[int] = None
+    compactionPercent: Optional[float] = None
+    modelName: Optional[str] = None
     errorMessage: Optional[str] = None
     startedAt: UTCDateTime
     completedAt: Optional[UTCDateTime] = None

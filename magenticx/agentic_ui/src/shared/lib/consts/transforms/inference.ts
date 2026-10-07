@@ -1,5 +1,5 @@
 import type { InferenceRun } from "../../types/inference";
-import { toDate } from "./base";
+import { toDate, toOptionalNumber, toOptionalString } from "./base";
 
 export const transformInferenceRun = (run: Record<string, any>): InferenceRun => ({
   id: run.id,
@@ -19,6 +19,13 @@ export const transformInferenceRun = (run: Record<string, any>): InferenceRun =>
     : [],
   inputTokens: run.inputTokens ?? run.input_tokens ?? null,
   outputTokens: run.outputTokens ?? run.output_tokens ?? null,
+  cachedInputTokens: toOptionalNumber(run.cachedInputTokens ?? run.cached_input_tokens),
+  reasoningTokens: toOptionalNumber(run.reasoningTokens ?? run.reasoning_tokens),
+  modelLatencyMs: toOptionalNumber(run.modelLatencyMs ?? run.model_latency_ms),
+  contextTokens: toOptionalNumber(run.contextTokens ?? run.context_tokens),
+  contextWindow: toOptionalNumber(run.contextWindow ?? run.context_window),
+  compactionPercent: toOptionalNumber(run.compactionPercent ?? run.compaction_percent),
+  modelName: toOptionalString(run.modelName ?? run.model_name),
   pendingInterrupts: typeof run.pendingInterrupts === "number" ? run.pendingInterrupts : undefined,
   errorMessage: run.errorMessage ?? run.error_message ?? null,
   startedAt: toDate(run.startedAt ?? run.started_at),

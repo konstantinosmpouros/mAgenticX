@@ -10,8 +10,6 @@ import {
   Pencil,
   MoreHorizontal,
 } from "lucide-react";
-import { TbGauge } from "react-icons/tb";
-import { formatCompactTokens } from "@/shared/lib/utils";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { motion, useAnimationControls } from "framer-motion";
 import type { TargetAndTransition, Transition } from "framer-motion";
@@ -30,6 +28,7 @@ import { BsStopCircleFill } from "react-icons/bs";
 import type { LucideIcon } from "lucide-react";
 import type { MessageOut } from "@/shared/lib/types";
 import { BranchControls } from "./BranchControls";
+import { MessageUsage } from "./MessageUsage";
 import { INTERACTIVE_SURFACE_QUIET } from "@/shared/lib/consts";
 
 type BranchControlsConfig = {
@@ -200,27 +199,7 @@ export const AIActionBar = ({
               <span>{agentName}</span>
             </span>
           ) : null}
-          {usageVisible ? (
-            <Tooltip delayDuration={0}>
-              <TooltipTrigger asChild>
-                <span
-                  className="flex cursor-help items-center gap-1"
-                  aria-label="Token usage for this message"
-                >
-                  <TbGauge className="h-4 w-4" aria-hidden="true" />
-                  <span className="tabular-nums">
-                    {formatCompactTokens((message.inputTokens ?? 0) + (message.outputTokens ?? 0))}
-                  </span>
-                </span>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" align="center">
-                <div className="text-xs leading-relaxed">
-                  <p>Input: {(message.inputTokens ?? 0).toLocaleString()} tokens</p>
-                  <p>Output: {(message.outputTokens ?? 0).toLocaleString()} tokens</p>
-                </div>
-              </TooltipContent>
-            </Tooltip>
-          ) : null}
+          {usageVisible ? <MessageUsage message={message} /> : null}
         </div>
       )}
       <div className="flex items-center gap-0.5">

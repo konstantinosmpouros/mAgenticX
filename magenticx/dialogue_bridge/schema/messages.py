@@ -24,6 +24,13 @@ class MessageOut(BaseModel):
     thinkingTime: Optional[int] = Field(None, validation_alias="reasoning_time_seconds")
     inputTokens: Optional[int] = Field(None, validation_alias="input_tokens")
     outputTokens: Optional[int] = Field(None, validation_alias="output_tokens")
+    cachedInputTokens: Optional[int] = Field(None, validation_alias="cached_input_tokens")
+    reasoningTokens: Optional[int] = Field(None, validation_alias="reasoning_tokens")
+    modelLatencyMs: Optional[int] = Field(None, validation_alias="model_latency_ms")
+    contextTokens: Optional[int] = Field(None, validation_alias="context_tokens")
+    contextWindow: Optional[int] = Field(None, validation_alias="context_window")
+    compactionPercent: Optional[float] = Field(None, validation_alias="compaction_percent")
+    modelName: Optional[str] = Field(None, validation_alias="model_name")
     error: Optional[bool] = Field(None, validation_alias="is_error")
     errorMessage: Optional[str] = Field(None, validation_alias="error_message")
     # Final run lifecycle status of an assistant message (completed/cancelled/

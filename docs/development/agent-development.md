@@ -453,13 +453,14 @@ All three are created automatically if they do not exist. `FilesystemBackend(roo
 | `load_memory()` | Returns `None` | Using a persistent memory backend |
 | `load_agent_md()` | `["/memories/AGENTS.md"]` (per-(user,agent) memory index), or `[]` when `self.use_memory` is false | Rarely — memory is convention-driven |
 | `register_subagents()` | Returns `None` | Agent has specialist sub-agents |
-| `default_middleware(model, backend)` | `ToolErrorMiddleware` + configurable summarization | Add, drop, or reconfigure the agent's middleware stack |
+| `default_middleware(model, backend)` | `ToolErrorMiddleware` + configurable summarization (+ `UsageMetricsMiddleware`, always guaranteed) | Add, drop, or reconfigure the agent's middleware stack |
 
 #### 7b. Customize the middleware stack
 
 Deep-agent middleware lives in [`magenticx/agents/harness/middlewares/`](../../magenticx/agents/harness/middlewares/) — **one module per middleware**:
 
 - `tool_error.py` — `ToolErrorMiddleware`: a tool exception becomes an error `ToolMessage` instead of aborting the run (also injected into every sub-agent via `_inject_tool_error_middleware`).
+- `usage_metrics.py` — `UsageMetricsMiddleware`: wraps every model call and stamps the model, latency and context occupancy (provider-reported prompt tokens over the model's `max_input_tokens`; a dated snapshot falls back to its base model's profile) on the reply, for the `TOKEN_USAGE` event. Guaranteed on the main agent and every sub-agent by `_ensure_usage_metrics_middleware`; its compaction marker is set only when our summarizer is in the stack. LangGraph agents do not use LangChain middleware and do not report usage.
 - `summarization.py` — `ConfigurableSummarizationMiddleware` + `build_summarization_middleware()` + `exclude_stock_summarization()`.
 
 The stack is **per implementation**. The base `build_deep_agent()` uses `self.default_middleware(model, backend)` unless you pass an explicit `middleware=[...]`, so a concrete agent customizes the stack by overriding `default_middleware` or by passing a list:

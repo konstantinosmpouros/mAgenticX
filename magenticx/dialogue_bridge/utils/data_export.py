@@ -123,7 +123,9 @@ _MESSAGES = (
     MessageTable.id, MessageTable.conversation_id, MessageTable.parent_message_id,
     MessageTable.sender, MessageTable.content, MessageTable.agent_name, MessageTable.liked,
     MessageTable.reasoning_steps, MessageTable.reasoning_time_seconds,
-    MessageTable.input_tokens, MessageTable.output_tokens, MessageTable.is_error,
+    MessageTable.input_tokens, MessageTable.output_tokens, MessageTable.cached_input_tokens,
+    MessageTable.reasoning_tokens, MessageTable.model_latency_ms, MessageTable.context_tokens,
+    MessageTable.context_window, MessageTable.model_name, MessageTable.is_error,
     MessageTable.error_message, MessageTable.scheduled_task_id, MessageTable.created_at,
 )
 _ATTACHMENTS = (

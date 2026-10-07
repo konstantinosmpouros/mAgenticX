@@ -80,7 +80,8 @@ export const BeforeAgentPayloadSchema = z.object({
 });
 
 // ------------------------------------------------------
-// Token Usage (collect-only — per-AI-message token counts)
+// Token Usage — per-AI-message token counts, plus the call's model, latency
+// and context occupancy (stamped by the agents' UsageMetricsMiddleware)
 // ------------------------------------------------------
 export const TokenUsagePayloadSchema = z.object({
   input_tokens: z.number().nullish(),
@@ -89,6 +90,12 @@ export const TokenUsagePayloadSchema = z.object({
   input_token_details: MetadataSchema.nullish(),
   output_token_details: MetadataSchema.nullish(),
   message_id: z.string().nullish(),
+  model: z.string().nullish(),
+  latency_ms: z.number().nullish(),
+  context_window: z.number().nullish(),
+  context_tokens: z.number().nullish(),
+  context_percent: z.number().nullish(),
+  compaction_percent: z.number().nullish(),
 });
 
 // ------------------------------------------------------

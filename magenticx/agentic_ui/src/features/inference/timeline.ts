@@ -13,6 +13,7 @@ import {
   TASK_SUBAGENT_EVENT_TYPE,
   TaskSubAgentPayloadSchema,
   TOKEN_USAGE_EVENT_TYPE,
+  TokenUsagePayloadSchema,
 } from "./agui";
 import { parseHitlInterrupt } from "./hitl";
 import type {
@@ -888,9 +889,20 @@ function applyEvent(session: Session, event: RawEvent): void {
     }
 
     if (name === TOKEN_USAGE_EVENT_TYPE) {
-      // Collect-only: per-message token usage is persisted on the message DTO
-      // (MessageOut.inputTokens/outputTokens). The live timeline neither folds
-      // nor renders it yet — explicit no-op so it isn't an unhandled event.
+      // Totals are persisted on the message DTO; the live timeline keeps only
+      // the main agent's context on its latest call, for the context gauge.
+      // (Sub-agent usage arrives wrapped and never reaches this branch.)
+      const parsed = TokenUsagePayloadSchema.safeParse(event.value);
+      const usage = parsed.success ? parsed.data : null;
+      if (usage && typeof usage.context_tokens === "number") {
+        session.state.context = {
+          model: usage.model ?? undefined,
+          tokens: usage.context_tokens,
+          window: usage.context_window ?? undefined,
+          percent: usage.context_percent ?? undefined,
+          compactionPercent: usage.compaction_percent ?? undefined,
+        };
+      }
       return;
     }
 
@@ -1181,6 +1193,53 @@ export function foldTimeline(
     state = finalizeTimeline(state, terminalStatus);
   }
   return state;
+}
+
+/**
+ * How much work a finished run did: model calls and tool calls, the main agent
+ * and its sub-agents together — the composer's "6 model calls · 3 tool calls".
+ *
+ * Read straight off the persisted event log rather than a fold: one
+ * `TOKEN_USAGE` per settled model call (deduplicated by the call's
+ * `message_id`, exactly as the bridge does when it sums tokens) and one
+ * `TOOL_CALL_START` per tool call (deduplicated by `toolCallId`), whether
+ * top-level, wrapped in `SUBAGENT_EVENT`, or still a legacy `RAW_SSE_EVENT`.
+ */
+export function countRunActivity(events: RawEvent[] | null | undefined): {
+  modelCalls: number;
+  toolCalls: number;
+} {
+  const usageIds = new Set<string>();
+  const toolIds = new Set<string>();
+  let anonymousCalls = 0;
+  let anonymousTools = 0;
+
+  const visit = (event: RawEvent | null | undefined): void => {
+    if (!event || typeof event.type !== "string") return;
+    if (event.type === "RAW_SSE_EVENT") {
+      visit(parseRawSseEvent(String(event.raw_sse ?? "")));
+      return;
+    }
+    if (event.type === "TOOL_CALL_START") {
+      const id = event.toolCallId ?? event.tool_call_id;
+      if (typeof id === "string" && id) toolIds.add(id);
+      else anonymousTools += 1;
+      return;
+    }
+    if (event.type !== "CUSTOM") return;
+    if (event.name === SUBAGENT_EVENT_TYPE) {
+      visit(event.value?.event);
+      return;
+    }
+    if (event.name === TOKEN_USAGE_EVENT_TYPE) {
+      const id = event.value?.message_id;
+      if (typeof id === "string" && id) usageIds.add(id);
+      else anonymousCalls += 1;
+    }
+  };
+
+  for (const event of Array.isArray(events) ? events : []) visit(event);
+  return { modelCalls: usageIds.size + anonymousCalls, toolCalls: toolIds.size + anonymousTools };
 }
 
 export function pendingTimelineInterrupts(

@@ -1,7 +1,6 @@
 # Change Plan — Context-window & cost indicator in the composer (superseded)
 
-> **Superseded 2026-09-08:** Plan 16 was rescoped to an estimated-cost-only UI. No context-window indicator, occupancy signal, or percentage ring will be implemented. See `plans/16-context-usage-ui.md` (local working notes, not tracked).
-> **Status:** draft / not started. WIP note, not authoritative.
+> **Superseded 2026-10-07 — not the design that shipped.** The context gauge was built from per-call metrics instead of a manifest registry: `UsageMetricsMiddleware` reads each model's own window from its LangChain profile and the provider-reported prompt size, the bridge keeps the main agent's last call (migration `0032`), and the composer renders `ContextMeter`. Authoritative: `docs/development/agui-protocol.md` (`TOKEN_USAGE`), `docs/architecture/database-schema.md` (`messages`). Cost estimation remains `plans/16-context-usage-ui.md` (local, not tracked).
 > **Owner:** —  **Target branch:** `feat/context-usage` (this is a cross-service
 > feature with a DB migration, not a UI bug — it doesn't belong on
 > `fix/ui-ux-bugs`).

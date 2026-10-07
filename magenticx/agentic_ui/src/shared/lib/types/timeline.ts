@@ -203,8 +203,46 @@ export type SubagentFoldIndexes = {
   pendingRetool: PendingToolRetool | null;
 };
 
+/**
+ * The main agent's context on its latest model call — what the composer's
+ * context gauge shows while a run is live. Sub-agents run separate contexts and
+ * never set it.
+ */
+export type RunContextUsage = {
+  model?: string;
+  tokens: number;
+  window?: number;
+  percent?: number;
+  compactionPercent?: number;
+};
+
+/**
+ * The whole conversation's spend, for the composer's context card: every
+ * finished answer in the conversation — including ones a retry or an edit has
+ * since replaced — summed, and how many of them are off the visible branch.
+ */
+export type ConversationStats = {
+  answers: number;
+  replaced: number;
+  modelCalls: number;
+  toolCalls: number;
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
+  /**
+   * Model time summed over the answers that recorded it, and the model calls
+   * of those same answers — their ratio is the average latency per call.
+   * Answers from before usage metrics have no time, so their calls are left
+   * out of the divisor rather than dragging the average down.
+   */
+  modelMs: number;
+  timedCalls: number;
+};
+
 export type RunTimeline = {
   blocks: TimelineBlock[];
+  /** Latest main-agent context occupancy; absent until a call reports one. */
+  context?: RunContextUsage | null;
   plan: PlanSnapshot | null;
   interrupts: TimelineHitlApproval[];
   subagentCount: number;

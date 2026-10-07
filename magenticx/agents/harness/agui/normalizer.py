@@ -2,6 +2,7 @@ import json
 import mimetypes
 from typing import Any, List, Optional, Tuple, Dict
 from harness.agui.emitter import AGUIEmitter
+from harness.middlewares.usage_metrics import METRICS_KEY as USAGE_METRICS_KEY
 from harness.tools.charts import normalize_chart_payload
 
 
@@ -334,11 +335,16 @@ class AGUIStreamNormalizer:
                 # downstream by _wrap_subagent_events_if_needed.
                 usage_metadata = getattr(msg, "usage_metadata", None)
                 if isinstance(usage_metadata, dict) and usage_metadata:
+                    # Model / latency / context occupancy, stamped on the reply
+                    # by UsageMetricsMiddleware (the custom channel is not
+                    # streamed for deep agents, so this rides the message).
+                    metrics = (getattr(msg, "response_metadata", None) or {}).get(USAGE_METRICS_KEY)
                     self._push(
                         out,
                         self.emitter.token_usage(
                             usage_metadata,
                             message_id=getattr(msg, "id", None),
+                            metrics=metrics if isinstance(metrics, dict) else None,
                             namespace=ns_label,
                         ),
                     )
