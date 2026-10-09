@@ -11,9 +11,8 @@ import {
   ContextReasoningUsage,
   ContextTrigger,
 } from "@/shared/ui/ai-elements/context";
-import { formatCompactTokens } from "@/shared/lib/utils";
+import { formatCompactTokens, formatModelTime } from "@/shared/lib/utils";
 import type { MessageOut } from "@/shared/lib/types";
-import { formatModelTime } from "@/features/chat/lib/messageUsage";
 
 // A reply's token usage: the compact total in the action bar, the breakdown in
 // the AI Elements Context card — body rows plus a footer with the model and

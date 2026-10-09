@@ -51,7 +51,13 @@ from utils.voice import (
     preferred_voice_mode_language,
     recent_history_for_voice_instructions,
 )
-from utils.usage import compute_usage_summary
+from utils.usage import (
+    compute_usage_summary,
+    get_usage_agent,
+    get_usage_conversation,
+    list_usage_agents,
+    list_usage_conversations,
+)
 from utils.validators import (
     validate_convId,
     validate_convId_full,
@@ -68,6 +74,10 @@ __all__ = [
     "build_voice_instructions",
     "clone_branch_to_conversation",
     "compute_usage_summary",
+    "get_usage_agent",
+    "get_usage_conversation",
+    "list_usage_agents",
+    "list_usage_conversations",
     "conversation_summaries_query",
     "create_realtime_session_with_agents",
     "fetch_agent_tools",

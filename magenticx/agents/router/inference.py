@@ -13,15 +13,20 @@ from harness.checkpointer.fork import seed_thread_from_checkpoint
 from harness.filesystem import delete_conversation_files, read_output_files, seed_input_files
 from schema import (
     AgentResumeRequest,
+    CompactRequest,
+    CompactResponse,
     OutputFileOut,
     ReadOutputFilesResponse,
     ReapConversationRequest,
     Request,
     SeedInputFilesRequest,
     SeedInputFilesResponse,
+    UndoCompactionRequest,
+    UndoCompactionResponse,
 )
 from utils import emit_checkpoint_committed, mcp_session_context, release_checkpoint_unless_paused
 from utils.agents import resolve_agent_definition
+from utils.compaction import compact_agent_thread, undo_agent_compaction
 
 logger = get_logger(__name__)
 
@@ -339,6 +344,33 @@ async def resume_agent(agent_slug: str, req: AgentResumeRequest):
                 agent_logger.warning("checkpoint_release_failed", "Failed to release namespace cache after resume", context=request_context, exc_info=True)
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+# ------------------------------------------------------------------
+# Manual compaction of a branch thread (plan 34)
+# ------------------------------------------------------------------
+@router.post(
+    "/agents/{agent_slug}/compact",
+    response_model=CompactResponse,
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_internal_caller)],
+)
+async def compact_thread_endpoint(agent_slug: str, req: CompactRequest) -> CompactResponse:
+    """Summarize the branch's older messages now, between turns. Called by the
+    bridge when the user clicks the composer's context ring; the bridge books
+    the summary call's spend and records the compaction on the answer."""
+    return await compact_agent_thread(agent_slug, req)
+
+
+@router.post(
+    "/agents/{agent_slug}/compact/undo",
+    response_model=UndoCompactionResponse,
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_internal_caller)],
+)
+async def undo_compaction_endpoint(agent_slug: str, req: UndoCompactionRequest) -> UndoCompactionResponse:
+    """Restore the state from before a manual compaction that is still the head."""
+    return await undo_agent_compaction(agent_slug, req)
 
 
 # ------------------------------------------------------------------

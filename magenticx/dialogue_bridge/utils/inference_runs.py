@@ -20,6 +20,7 @@ from core.database import (
     BlobTable,
     ConversationTable,
     MessageTable,
+    MessageUsageTable,
     SessionLocal,
     UserPreferencesTable,
 )
@@ -36,8 +37,11 @@ from utils.agents import (
     build_agent_stream_url,
     get_agent_by_id,
 )
+from utils.compaction_lock import compaction_locks
 from utils.conversations import _preview
 from utils.event_log import event_log
+from utils.run_activity import RunActivity, count_run_activity
+from utils.usage_rollups import add_answer_to_rollups
 from utils.inference import (
     nearest_committed_ai,
     prepare_inference_history,
@@ -300,7 +304,16 @@ class InferenceRunRuntime:
         self.cached_input_tokens = 0
         self.reasoning_tokens = 0
         self.model_latency_ms = 0
-        self._counted_usage_ids: set[str] = set()
+        # The same usage split by who spent it — (scope, agent, model) → sums —
+        # for the message_usage rows (plan 33). Scope is "main" or "subagent";
+        # the main agent's label is filled in at finish (the runtime does not
+        # know it). Each counted call remembers its group, so a call first seen
+        # bare and then wrapped in SUBAGENT_EVENT moves to its sub-agent.
+        self.usage_groups: dict[tuple[str, str, str | None], dict[str, int]] = {}
+        self._usage_by_call: dict[str, tuple[tuple[str, str, str | None], dict[str, int]]] = {}
+        # task_id → sub-agent type, from TASK_SUBAGENT, so a wrapped call is
+        # booked to "researcher" rather than to an anonymous sub-agent.
+        self._subagent_types: dict[str, str] = {}
         # The main agent's context on its most recent model call — prompt size,
         # the model's window, where it compacts, which model (sub-agents run
         # their own, separate contexts, so they never overwrite this).
@@ -316,20 +329,59 @@ class InferenceRunRuntime:
         # persists them as generated attachments on the assistant message.
         self.presented_artifacts: list[dict[str, Any]] = []
 
-    def _accumulate_usage(self, value: Any, *, main_agent: bool) -> None:
+    def _usage_group(self, value: dict[str, Any], *, main_agent: bool, task_id: Any) -> tuple[str, str, str | None]:
+        """Who spent a call: ("main" | "subagent" | "compaction", name, model).
+
+        The summary call of the main agent's automatic compaction (plan 34) is
+        its own group, so Usage can say what compaction costs.
+        """
+        model = str(value["model"])[:200] if value.get("model") else None
+        if main_agent and value.get("purpose") == "compaction":
+            return ("compaction", "Compaction", model)
+        if main_agent:
+            return ("main", "", model)
+        subagent_type = self._subagent_types.get(str(task_id)) if task_id is not None else None
+        return ("subagent", subagent_type or "sub-agent", model)
+
+    def _add_to_group(self, key: tuple[str, str, str | None], contribution: dict[str, int], sign: int) -> None:
+        group = self.usage_groups.setdefault(key, dict.fromkeys(contribution, 0))
+        for field, amount in contribution.items():
+            group[field] += sign * amount
+        if not any(group.values()):
+            del self.usage_groups[key]
+
+    def _accumulate_usage(self, value: Any, *, main_agent: bool, task_id: Any = None) -> None:
         """Fold one TOKEN_USAGE event into the run's totals (deduped by message)."""
         if not isinstance(value, dict):
             return
         mid = value.get("message_id")
         token = str(mid) if mid is not None else f"usage-{self.next_seq}"
-        if token in self._counted_usage_ids:
+        key = self._usage_group(value, main_agent=main_agent, task_id=task_id)
+        counted = self._usage_by_call.get(token)
+        if counted is not None:
+            # Already in the totals. If it was booked to the main agent and now
+            # turns out to be a sub-agent's, move it — never count it twice.
+            previous_key, contribution = counted
+            if previous_key[0] == "main" and key[0] == "subagent":
+                self._add_to_group(previous_key, contribution, -1)
+                self._add_to_group(key, contribution, 1)
+                self._usage_by_call[token] = (key, contribution)
             return
-        self._counted_usage_ids.add(token)
-        self.input_tokens += _as_int(value.get("input_tokens"))
-        self.output_tokens += _as_int(value.get("output_tokens"))
-        self.cached_input_tokens += _detail_sum(value.get("input_token_details"), "cache_read")
-        self.reasoning_tokens += _detail_sum(value.get("output_token_details"), "reasoning")
-        self.model_latency_ms += _as_int(value.get("latency_ms"))
+        contribution = {
+            "calls": 1,
+            "input_tokens": _as_int(value.get("input_tokens")),
+            "cached_input_tokens": _detail_sum(value.get("input_token_details"), "cache_read"),
+            "output_tokens": _as_int(value.get("output_tokens")),
+            "reasoning_tokens": _detail_sum(value.get("output_token_details"), "reasoning"),
+            "model_latency_ms": _as_int(value.get("latency_ms")),
+        }
+        self._usage_by_call[token] = (key, contribution)
+        self._add_to_group(key, contribution, 1)
+        self.input_tokens += contribution["input_tokens"]
+        self.output_tokens += contribution["output_tokens"]
+        self.cached_input_tokens += contribution["cached_input_tokens"]
+        self.reasoning_tokens += contribution["reasoning_tokens"]
+        self.model_latency_ms += contribution["model_latency_ms"]
         if main_agent and isinstance(value.get("context_tokens"), int):
             self.context = {
                 "context_tokens": value.get("context_tokens"),
@@ -462,11 +514,16 @@ class InferenceRunRuntime:
                         if inner_name == "HITL_INTERRUPT":
                             self.register_interrupt(inner.get("value"))
                         elif inner_name == "TOKEN_USAGE":
-                            self._accumulate_usage(inner.get("value"), main_agent=False)
+                            self._accumulate_usage(
+                                inner.get("value"), main_agent=False, task_id=value.get("task_id")
+                            )
             elif name == "HITL_INTERRUPT":
                 self.register_interrupt(value)
             elif name == "TOKEN_USAGE":
                 self._accumulate_usage(value, main_agent=True)
+            elif name == "TASK_SUBAGENT":
+                if isinstance(value, dict) and value.get("task_id") and value.get("subagent_type"):
+                    self._subagent_types[str(value["task_id"])] = str(value["subagent_type"])[:200]
             elif name == "PRESENT_ARTIFACT":
                 # Capture the deliverable for the finalize fetch, but let the
                 # event flow into raw_events unchanged — the UI renders it as a
@@ -1189,6 +1246,90 @@ async def _capture_generated_artifacts(
         )
 
 
+async def _record_usage_breakdown(
+    db: AsyncSession,
+    run: MessageTable,
+    conversation: ConversationTable,
+    runtime: InferenceRunRuntime,
+    activity: RunActivity,
+) -> None:
+    """Book a finished answer's usage for the Usage tab (plan 33).
+
+    Writes one ``message_usage`` row per (scope, agent, model) group, adds the
+    answer to its conversation's running totals, and adds it to the user's
+    daily rollups — all in the caller's transaction, so the answer and every
+    figure derived from it land together or not at all. Totals are SQL
+    expressions (``col = col + n``), so runs finishing concurrently can never
+    lose each other's update.
+    """
+    created_at = run.created_at or _now()
+    main_label = run.agent_name or "Agent"
+    for (scope, agent_name, model_name), group in runtime.usage_groups.items():
+        db.add(
+            MessageUsageTable(
+                message_id=run.id,
+                conversation_id=run.conversation_id,
+                user_id=conversation.user_id,
+                agent_id=run.agent_id,
+                main_agent_name=run.agent_name,
+                scope=scope,
+                agent_name=main_label if scope == "main" else agent_name,
+                model_name=model_name,
+                created_at=created_at,
+                **group,
+            )
+        )
+
+    table = ConversationTable
+    conversation.usage_answers = table.usage_answers + 1
+    conversation.usage_input_tokens = table.usage_input_tokens + runtime.input_tokens
+    conversation.usage_cached_tokens = table.usage_cached_tokens + runtime.cached_input_tokens
+    conversation.usage_output_tokens = table.usage_output_tokens + runtime.output_tokens
+    conversation.usage_total_tokens = table.usage_total_tokens + runtime.input_tokens + runtime.output_tokens
+    conversation.usage_model_calls = table.usage_model_calls + activity.model_calls
+    conversation.usage_tool_calls = table.usage_tool_calls + activity.tool_calls
+    conversation.usage_model_ms = table.usage_model_ms + runtime.model_latency_ms
+    if runtime.context.get("context_tokens") is not None:
+        conversation.last_context_tokens = runtime.context["context_tokens"]
+        conversation.last_context_window = runtime.context.get("context_window")
+    conversation.usage_updated_at = _now()
+
+    await add_answer_to_rollups(
+        db,
+        user_id=conversation.user_id,
+        day=created_at.date(),
+        agent_id=run.agent_id,
+        agent_name=run.agent_name,
+        answer={
+            "answers": 1,
+            "input_tokens": runtime.input_tokens,
+            "cached_input_tokens": runtime.cached_input_tokens,
+            "output_tokens": runtime.output_tokens,
+            "reasoning_tokens": runtime.reasoning_tokens,
+            "model_ms": runtime.model_latency_ms,
+            "model_calls": activity.model_calls,
+            "tool_calls": activity.tool_calls,
+            # Every answer finished from here on records calls and model time.
+            "detailed_answers": 1,
+            "detailed_input_tokens": runtime.input_tokens,
+        },
+        groups=[
+            {
+                "scope": scope,
+                "group_name": main_label if scope == "main" else agent_name,
+                "model_name": model_name or "",
+                "calls": group["calls"],
+                "input_tokens": group["input_tokens"],
+                "cached_input_tokens": group["cached_input_tokens"],
+                "output_tokens": group["output_tokens"],
+                "reasoning_tokens": group["reasoning_tokens"],
+                "model_ms": group["model_latency_ms"],
+            }
+            for (scope, agent_name, model_name), group in runtime.usage_groups.items()
+        ],
+    )
+
+
 async def _finish_run(run_id: str, runtime: InferenceRunRuntime, status_value: str, error_message: str | None = None) -> None:
     async with SessionLocal() as db:
         run = await _load_run(db, run_id)
@@ -1225,6 +1366,12 @@ async def _finish_run(run_id: str, runtime: InferenceRunRuntime, status_value: s
         run.context_window = runtime.context.get("context_window")
         run.compaction_percent = runtime.context.get("compaction_percent")
         run.model_name = runtime.context.get("model_name")
+        # Only an answer that spent tokens has work to count; one that failed
+        # before its first model call stays NULL, like its token columns.
+        has_usage = bool(runtime.input_tokens or runtime.output_tokens)
+        activity = count_run_activity(payload["raw_events"])
+        run.model_calls = activity.model_calls if has_usage else None
+        run.tool_calls = activity.tool_calls if has_usage else None
         run.is_error = is_error
         run.error_message = error_message
         # Advance the branch head so the next turn resumes / forks from the
@@ -1243,6 +1390,8 @@ async def _finish_run(run_id: str, runtime: InferenceRunRuntime, status_value: s
                 conversation.last_message_preview = preview
             conversation.last_message_at = _now()
             conversation.updated_at = _now()
+            if has_usage:
+                await _record_usage_breakdown(db, run, conversation, runtime, activity)
 
         # Capture any deliverables the agent presented this run as generated
         # attachments (completed runs only — a failed/cancelled run's partial
@@ -1482,6 +1631,13 @@ async def create_inference_run_record(
     )
     if existing.scalar_one_or_none() is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Conversation already has an active inference run.")
+    # A manual compaction rewrites the branch's state; a run must not build on
+    # the state it is about to replace (plan 34).
+    if await compaction_locks.held(conversation.id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This conversation is being compacted. Try again in a moment.",
+        )
 
     parent = next((message for message in conversation.messages if message.id == parent_message_id), None)
     if not parent:

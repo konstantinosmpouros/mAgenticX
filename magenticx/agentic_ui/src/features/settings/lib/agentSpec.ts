@@ -22,6 +22,7 @@ import type {
  * rather than a broken agent.
  */
 export const MODEL_CHOICES = [
+  { id: "openai:gpt-6-luna", label: "GPT-6 Luna", hint: "Newest, efficient" },
   { id: "openai:gpt-5", label: "GPT-5", hint: "Most capable" },
   { id: "openai:gpt-4o", label: "GPT-4o", hint: "Balanced" },
   { id: "openai:gpt-4o-mini", label: "GPT-4o mini", hint: "Fastest" },

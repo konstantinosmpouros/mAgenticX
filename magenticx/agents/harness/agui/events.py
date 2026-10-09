@@ -13,6 +13,7 @@ TOKEN_USAGE_EVENT_TYPE = "TOKEN_USAGE"
 CHECKPOINT_COMMITTED_EVENT_TYPE = "CHECKPOINT_COMMITTED"
 PRESENT_ARTIFACT_EVENT_TYPE = "PRESENT_ARTIFACT"
 RENDER_CHART_EVENT_TYPE = "RENDER_CHART"
+CONTEXT_COMPACTION_EVENT_TYPE = "CONTEXT_COMPACTION"
 
 
 # ------------------------------------------------------------------
@@ -101,6 +102,31 @@ class TokenUsageEvent(BaseModel):
     context_tokens: Optional[int] = None
     context_percent: Optional[float] = None
     compaction_percent: Optional[float] = None
+    # "compaction" for the summary call of an automatic compaction — booked
+    # under its own usage scope, never the conversation's context reading.
+    purpose: Optional[Literal["compaction"]] = None
+
+
+# ------------------------------------------------------------------
+# Context compaction event
+# ------------------------------------------------------------------
+class ContextCompactionEvent(BaseModel):
+    """The main agent compacted its context in the middle of a run (plan 34).
+
+    ``started`` arrives with the summary call's first tokens, ``done`` with the
+    reply of the model call the compaction ran in front of: ``tokens_after`` is
+    that call's provider-reported prompt, ``freed`` the summarizer's estimate of
+    what it took out, ``tokens_before`` their sum. A manual compaction never
+    streams — it is recorded on the answer it follows.
+    """
+    phase: Literal["started", "done"]
+    trigger: Literal["auto"] = "auto"
+    tokens_before: Optional[int] = None
+    tokens_after: Optional[int] = None
+    freed: Optional[int] = None
+    window: Optional[int] = None
+    summarized_messages: Optional[int] = None
+    kept_messages: Optional[int] = None
 
 
 # ------------------------------------------------------------------

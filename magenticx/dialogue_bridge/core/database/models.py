@@ -10,6 +10,7 @@ from sqlalchemy import DDL, case, event, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import (
     Column,
+    Date,
     Float,
     String,
     DateTime,
@@ -21,6 +22,7 @@ from sqlalchemy import (
     Enum,
     LargeBinary,
     Index,
+    PrimaryKeyConstraint,
     text,
     UniqueConstraint,
 )
@@ -189,6 +191,13 @@ class UserPreferencesTable(Base):
 
 class ConversationTable(Base):
     __tablename__ = "conversations"
+    __table_args__ = (
+        # The Usage tab's conversation list (plan 33) sorts one user's
+        # conversations by spend or by recency of spend, a page at a time —
+        # each sort is a range scan on its own index, never a sum over messages.
+        Index("ix_conversations_user_usage_total", "user_id", "usage_total_tokens"),
+        Index("ix_conversations_user_usage_updated", "user_id", "usage_updated_at"),
+    )
 
     id = Column(String, primary_key=True, default=gen_uuid)
     user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -211,6 +220,24 @@ class ConversationTable(Base):
     # for fast conversation list rendering
     last_message_preview = Column(String, server_default="", nullable=True)
     last_message_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    # Running usage totals (migration 0033), added to by _finish_run in the same
+    # transaction that writes the answer, so the Usage tab can rank and page
+    # conversations without summing their messages. Every finished answer that
+    # recorded tokens counts, replaced ones included (they were spent). A fork
+    # starts at zero: its copied messages carry no token counts.
+    usage_answers = Column(Integer, nullable=False, server_default="0")
+    usage_input_tokens = Column(Integer, nullable=False, server_default="0")
+    usage_cached_tokens = Column(Integer, nullable=False, server_default="0")
+    usage_output_tokens = Column(Integer, nullable=False, server_default="0")
+    usage_total_tokens = Column(Integer, nullable=False, server_default="0")
+    usage_model_calls = Column(Integer, nullable=False, server_default="0")
+    usage_tool_calls = Column(Integer, nullable=False, server_default="0")
+    usage_model_ms = Column(Integer, nullable=False, server_default="0")
+    # The most recent answer's main-agent context, for the list's fill bar.
+    last_context_tokens = Column(Integer, nullable=True)
+    last_context_window = Column(Integer, nullable=True)
+    usage_updated_at = Column(DateTime, nullable=True)
 
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
@@ -319,6 +346,16 @@ class MessageTable(Base):
     context_window = Column(Integer, nullable=True)
     compaction_percent = Column(Float, nullable=True)
     model_name = Column(String, nullable=True)
+    # How much work the answer took (migration 0033): settled model calls and
+    # tool calls, main agent and sub-agents together, counted from its event
+    # log exactly as the UI counts them. NULL on answers from before 0033.
+    model_calls = Column(Integer, nullable=True)
+    tool_calls = Column(Integer, nullable=True)
+    # A manual compaction recorded on the answer it follows (plan 34): what it
+    # freed, its summary and the summary call's spend; `undone_at` once taken
+    # back. NULL on every answer that was not compacted after. Checkpoint ids
+    # stay in checkpoint_id — this never carries them.
+    compaction = Column(JSON, nullable=True)
 
     # error info
     is_error = Column(Boolean, nullable=False, server_default="false")
@@ -730,6 +767,124 @@ class MessageEmbeddingTable(Base):
     # selectively rather than wiping the whole table.
     model = Column(String, nullable=False)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
+
+
+class MessageUsageTable(Base):
+    """Where one answer's tokens went: one row per (agent scope, agent, model).
+
+    The message's own columns say how much the whole answer cost; these rows
+    split it between the main agent and each sub-agent, and between models, so
+    the Usage tab can say "the researcher sub-agent on gpt-4.1 spent 96K of
+    this conversation's 412K" (plan 33). Written once, by ``_finish_run``, in
+    the transaction that finalises the answer; never updated.
+
+    ``user_id`` and ``conversation_id`` are denormalised from the answer so the
+    per-user and per-conversation reads are single index range scans. Every
+    foreign key cascades, so deleting a message, a conversation or an account
+    takes the rows with it. ``agent_id`` is the answer's MAIN agent — on
+    sub-agent rows too — so one agent's profile reads all of its sub-agents'
+    spend through one index; it becomes NULL if that agent is deleted, and
+    ``main_agent_name`` keeps the label.
+    """
+    __tablename__ = "message_usage"
+    __table_args__ = (
+        Index("ix_message_usage_user_created", "user_id", "created_at"),
+        Index("ix_message_usage_agent_created", "agent_id", "created_at"),
+    )
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    message_id = Column(String, ForeignKey("messages.id", ondelete="CASCADE"), nullable=False, index=True)
+    conversation_id = Column(
+        String, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    agent_id = Column(String, ForeignKey("agents.id", ondelete="SET NULL"), nullable=True)
+    main_agent_name = Column(String, nullable=True)
+    # "main" for the answer's own agent, "subagent" for anything it delegated to.
+    scope = Column(String, nullable=False)
+    # The main agent's name, or the sub-agent's type ("researcher").
+    agent_name = Column(String, nullable=False)
+    model_name = Column(String, nullable=True)
+    calls = Column(Integer, nullable=False, server_default="0")
+    input_tokens = Column(Integer, nullable=False, server_default="0")
+    cached_input_tokens = Column(Integer, nullable=False, server_default="0")
+    output_tokens = Column(Integer, nullable=False, server_default="0")
+    reasoning_tokens = Column(Integer, nullable=False, server_default="0")
+    model_latency_ms = Column(Integer, nullable=False, server_default="0")
+    # The answer's creation time, so windowed queries never join messages.
+    created_at = Column(DateTime, nullable=False)
+
+
+class UsageDailyTable(Base):
+    """One user's answers on one UTC day for one agent, summed (plan 33).
+
+    The Usage tab's Overview and Agents pages read these instead of summing the
+    user's messages: a year of daily rows per agent is a few thousand rows,
+    where the messages behind them can be hundreds of thousands — and messages
+    carry no user_id, so summing them means a join over everyone's. Kept by
+    ``_finish_run`` in the transaction that finalises the answer (an upsert
+    that adds to the day), backfilled once by migration 0034.
+
+    ``agent_key`` is the answer's agent id (or ``name:<label>`` if the answer
+    had none). When an agent is deleted its key stays but ``agent_id`` goes
+    NULL, so readers identify an agent by ``agent_id`` — or, once deleted, by
+    ``agent_name`` — never by the key alone; history survives under its name. The
+    ``detailed_*`` columns count only answers with call counts and model time
+    (plan 33 onward) — the denominators for every per-answer ratio.
+
+    Spend stays when a conversation is deleted (it happened); the account
+    purge deletes these rows explicitly.
+    """
+    __tablename__ = "usage_daily"
+    __table_args__ = (PrimaryKeyConstraint("user_id", "day", "agent_key"),)
+
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    day = Column(Date, nullable=False)
+    agent_key = Column(String, nullable=False)
+    agent_id = Column(String, ForeignKey("agents.id", ondelete="SET NULL"), nullable=True)
+    agent_name = Column(String, nullable=True)
+    answers = Column(Integer, nullable=False, server_default="0")
+    input_tokens = Column(Integer, nullable=False, server_default="0")
+    cached_input_tokens = Column(Integer, nullable=False, server_default="0")
+    output_tokens = Column(Integer, nullable=False, server_default="0")
+    reasoning_tokens = Column(Integer, nullable=False, server_default="0")
+    model_ms = Column(Integer, nullable=False, server_default="0")
+    model_calls = Column(Integer, nullable=False, server_default="0")
+    tool_calls = Column(Integer, nullable=False, server_default="0")
+    detailed_answers = Column(Integer, nullable=False, server_default="0")
+    detailed_input_tokens = Column(Integer, nullable=False, server_default="0")
+
+
+class UsageDailyGroupTable(Base):
+    """The same day's spend split by who did it: scope × sub-agent × model.
+
+    The rollup twin of ``message_usage`` (whose rows it sums), so "which
+    models", "which sub-agents" and "where this agent's tokens go" are read
+    from a handful of rows per day. ``model_name`` is ``''`` when unknown — it
+    is part of the key, and a key column cannot be NULL.
+    """
+    __tablename__ = "usage_daily_groups"
+    __table_args__ = (
+        PrimaryKeyConstraint("user_id", "day", "agent_key", "scope", "group_name", "model_name"),
+    )
+
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    day = Column(Date, nullable=False)
+    agent_key = Column(String, nullable=False)
+    # The main agent, as on usage_daily: NULL once it is deleted, when the
+    # rows are found by its last name instead of a key that points nowhere.
+    agent_id = Column(String, ForeignKey("agents.id", ondelete="SET NULL"), nullable=True)
+    agent_name = Column(String, nullable=True)
+    scope = Column(String, nullable=False)
+    # The main agent's name on "main" rows, the sub-agent's type otherwise.
+    group_name = Column(String, nullable=False)
+    model_name = Column(String, nullable=False, server_default="")
+    calls = Column(Integer, nullable=False, server_default="0")
+    input_tokens = Column(Integer, nullable=False, server_default="0")
+    cached_input_tokens = Column(Integer, nullable=False, server_default="0")
+    output_tokens = Column(Integer, nullable=False, server_default="0")
+    reasoning_tokens = Column(Integer, nullable=False, server_default="0")
+    model_ms = Column(Integer, nullable=False, server_default="0")
 
 
 # -------------------------------------------------------------------------------

@@ -1,6 +1,31 @@
 import type { AttachmentOut } from "../../types/attachments";
-import type { MessageOut } from "../../types/messages";
+import type { MessageCompaction, MessageOut } from "../../types/messages";
 import { toDate, toOptionalNumber, toOptionalString } from "./base";
+
+// A manual compaction on an answer (plan 34), or null for anything that is not
+// one. Field-whitelisted like the rest of this module.
+export const transformCompaction = (value: unknown): MessageCompaction | null => {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  if (record.trigger !== "manual") return null;
+  return {
+    trigger: "manual",
+    tokensBefore: toOptionalNumber(record.tokensBefore) ?? 0,
+    tokensAfter: toOptionalNumber(record.tokensAfter) ?? 0,
+    freed: toOptionalNumber(record.freed) ?? 0,
+    window: toOptionalNumber(record.window),
+    summarizedMessages: toOptionalNumber(record.summarizedMessages) ?? 0,
+    keptMessages: toOptionalNumber(record.keptMessages) ?? 0,
+    summary: typeof record.summary === "string" ? record.summary : "",
+    model: toOptionalString(record.model),
+    inputTokens: toOptionalNumber(record.inputTokens) ?? 0,
+    cachedInputTokens: toOptionalNumber(record.cachedInputTokens) ?? 0,
+    outputTokens: toOptionalNumber(record.outputTokens) ?? 0,
+    latencyMs: toOptionalNumber(record.latencyMs) ?? 0,
+    compactedAt: toDate(record.compactedAt),
+    undoneAt: record.undoneAt ? toDate(record.undoneAt) : null,
+  };
+};
 
 // Transform attachment object from backend to frontend type.
 // The explicit return type is load-bearing, not decoration: this mapper is
@@ -50,4 +75,5 @@ export const transformMessage = (message: Record<string, any>): MessageOut => ({
   errorMessage: message.errorMessage ?? undefined,
   streamingStatus: message.streamingStatus ?? message.streaming_status ?? null,
   rawEvents: message.rawEvents ?? message.raw_events ?? [],
+  compaction: transformCompaction(message.compaction),
 });

@@ -18,7 +18,7 @@ import { useVoiceVisualizer, VoiceVisualizer } from "react-voice-visualizer";
 import { Loader } from "@/shared/ui/shadcn-io/loader";
 import { Suggestion, Suggestions } from "@/shared/ui/ai-elements/suggestion";
 
-import type { ConversationStats, DictationStatus, RunContextUsage } from "@/shared/lib/types";
+import type { ContextCompactionControl, ConversationStats, DictationStatus, RunContextUsage } from "@/shared/lib/types";
 import { ContextMeter } from "@/features/chat/components/ContextMeter";
 import { INTERACTIVE_SURFACE } from "@/shared/lib/consts";
 export type { DictationStatus };
@@ -51,6 +51,8 @@ type ChatInputBarProps = {
   contextUsage?: RunContextUsage | null;
   /** The open conversation's totals, shown in the context gauge's card. */
   conversationStats?: ConversationStats | null;
+  // Click-to-compact on the context ring (plan 34); null when unavailable.
+  compaction?: ContextCompactionControl | null;
   currentMessage: string;
   setCurrentMessage: (v: string) => void;
   handlePaste: React.ClipboardEventHandler<HTMLTextAreaElement>;
@@ -125,6 +127,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
     isStreaming = false,
     contextUsage = null,
     conversationStats = null,
+    compaction = null,
     currentMessage,
     setCurrentMessage,
     handlePaste,
@@ -905,7 +908,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
                               <p>Attach files & photos</p>
                             </TooltipContent>
                           </Tooltip>
-                          <ContextMeter context={contextUsage ?? null} stats={conversationStats} />
+                          <ContextMeter context={contextUsage ?? null} stats={conversationStats} compaction={compaction} />
                         </div>
 
                         {dictationStatus === "idle" ? (

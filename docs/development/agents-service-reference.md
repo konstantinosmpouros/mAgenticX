@@ -203,9 +203,10 @@ Settings groups (env alias → default):
 - **RealtimeSettings** — `OPENAI_REALTIME_API_URL`, connect/read/write/pool timeouts (15/60/60/15), `REALTIME_ERROR_BODY_MAX_CHARS`→1000; `.timeout` → `httpx.Timeout`.
 - **GenerationSettings** — title candidate count/min/max-len/temp/tokens (4/3/120/1.0/128), suggestion count/max-len/temp/tokens (10/160/0.8/320).
 - **Workflow settings** — `HRWorkflowSettings` (`HR_COLLECTION_NAME`→`hr_policies_v4`, `HR_RETRIEVE_TOP_K`→2, 8 per-node models), `OrthodoxWorkflowSettings` (`athanasios-muthlinaios`, k=10, 7 models, no doc-ranking), `RetailWorkflowSettings` (`RETAIL_TABLE_NAME`→`Financial Sample` → normalized `financial_sample`, SQL timeouts, 5 models).
-- **DeepAgentsSettings** — `OmniDeepAgentSettings`: `OMNI_MAIN_MODEL`→`openai:gpt-5`, `OMNI_RESEARCHER_MODEL`/`OMNI_WRITER_MODEL`→`openai:gpt-4o`.
+- **DeepAgentsSettings** — `OmniDeepAgentSettings`: `OMNI_MAIN_MODEL`, `OMNI_RESEARCHER_MODEL`, `OMNI_WRITER_MODEL`→`openai:gpt-6-luna`.
+- **ModelProfileSettings** — `MODEL_CONTEXT_WINDOWS`→`{"openai:gpt-6-luna": 1050000}`: windows for models the pinned `langchain-openai` has no profile for, registered as deepagents `ProviderProfile`s by `register_model_windows()` at the start of `build_deep_agent`.
 - **FilesystemSettings** — `AGENTS_FILESYSTEM_ROOT`→`/var/agents/filesystem`, `SKILLS_REGISTRY_GLOBAL_ROOT`, `SKILLS_REGISTRY_USERS_ROOT`, `INPUT_MAX_FILE_BYTES`→25MB, `INPUT_MAX_FILES`→10, `MEMORY_MAX_ENTRIES`→60.
-- **SummarizationSettings** — `SUMMARIZATION_TRIGGER_FRACTION`→0.92, `SUMMARIZATION_KEEP_FRACTION`→0.30, `SUMMARIZATION_TRIGGER_TOKENS`→200000, `SUMMARIZATION_KEEP_MESSAGES`→20.
+- **SummarizationSettings** — `SUMMARIZATION_TRIGGER_FRACTION`→0.95, `SUMMARIZATION_KEEP_FRACTION`→0.30, `SUMMARIZATION_TRIGGER_TOKENS`→200000, `SUMMARIZATION_KEEP_MESSAGES`→20, `SUMMARIZATION_MANUAL_MIN_FRACTION`→0.05 (plan 34; every compaction cuts at the latest question and the summary reads all it folds).
 - **BridgeSettings** — `DIALOGUE_BRIDGE_URL`→`https://dialogue_bridge:8002`, `BRIDGE_MEMORY_SEARCH_PATH`→`/v1/internal/memory/search`, timeouts; `.memory_search_url`.
 
 **Two boot validators** on the top-level `Settings`:
@@ -347,7 +348,7 @@ Two halves: the **emitter** (event object → SSE bytes) and the **normalizer** 
 
 **Custom events** (`EventType.CUSTOM`, `name` + `value`): `PLAN_SNAPSHOT` (from `write_todos`), `TASK_SUBAGENT` (from `task`), `SUBAGENT_EVENT` (wraps a nested normalized event), `BEFORE_AGENT_EVENT`, `TOKEN_USAGE` (from `usage_metadata`), `HITL_INTERRUPT` (from `__interrupt__`), `CHECKPOINT_COMMITTED` (terminal, namespace forced `None`, emitted by the router not the normalizer).
 
-**`AGUIStreamNormalizer`** (`harness/agui/normalizer.py`) — contract: `messages` mode → assistant text + tool-result messages only; `updates` mode → tool intent, plans, sub-agents, interrupts. Policies: `__interrupt__`→HITL only; `write_todos`→plan snapshot only; `task`→sub-agent event only; other tools→full `start/args/result/end` (result matched later from the `ToolMessage`). Module-global `_THREAD_NAMESPACE_BINDINGS` (keyed by `run_id`) persists sub-agent namespace↔task bindings across a run's legs so a HITL resume keeps the same UI block; released at run end unless paused. Drops summarization-internal LLM tokens so compaction never renders as a reply.
+**`AGUIStreamNormalizer`** (`harness/agui/normalizer.py`) — contract: `messages` mode → assistant text + tool-result messages only; `updates` mode → tool intent, plans, sub-agents, interrupts. Policies: `__interrupt__`→HITL only; `write_todos`→plan snapshot only; `task`→sub-agent event only; other tools→full `start/args/result/end` (result matched later from the `ToolMessage`). Module-global `_THREAD_NAMESPACE_BINDINGS` (keyed by `run_id`) persists sub-agent namespace↔task bindings across a run's legs so a HITL resume keeps the same UI block; released at run end unless paused. Drops summarization-internal LLM text so compaction never renders as a reply, but reports it: `CONTEXT_COMPACTION` started/done and the summary call's `TOKEN_USAGE {purpose: compaction}` (plan 34).
 
 ---
 
@@ -490,7 +491,7 @@ agent_runtime (rows)                → mount
 ## 15. Middlewares
 
 - **`ToolErrorMiddleware`** — wraps every tool call (sync + async); on exception returns a `ToolMessage(status="error", content="Tool '<name>' failed: ...")` instead of aborting, so the model can recover and the normalizer surfaces `TOOL_CALL_RESULT` with `error:true`. **Force-guaranteed on the main agent AND every sub-agent** (parent middleware doesn't reach subagents).
-- **`ConfigurableSummarizationMiddleware`** — thin subclass of deepagents' `SummarizationMiddleware` with a distinct type so `exclude_stock_summarization` (a `HarnessProfile` with `excluded_middleware={"SummarizationMiddleware"}`) drops the stock one and only the env-tuned one runs. `build_summarization_middleware(model, backend)` uses fraction thresholds for models with a token-window profile, else token/message fallbacks; offloads history to `/conversation_history/`. Fires **later** than deepagents' stock defaults.
+- **`ConfigurableSummarizationMiddleware`** — thin subclass of deepagents' `SummarizationMiddleware` with a distinct type so `exclude_stock_summarization` (a `HarnessProfile` with `excluded_middleware={"SummarizationMiddleware"}`) drops the stock one and only the env-tuned one runs. `build_summarization_middleware(model, backend)` uses fraction thresholds for models with a token-window profile, else token/message fallbacks; offloads history to `/conversation_history/`. Compacts on its own at 95% of the window. Serves `POST /agents/{slug}/compact` (cut at the latest exchange) (and `/compact/undo`), which compact or restore a branch thread between turns through `harness/checkpointer/compaction.py` — see [context-compaction](../flows/context-compaction.md).
 
 ---
 

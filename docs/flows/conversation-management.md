@@ -149,6 +149,10 @@ Each branch is backed by its own durable LangGraph checkpoint thread in the agen
 
 A branch with no committed checkpoint yet (new conversation, pre-migration branch, `shared_continue`, or a never-committed fork target) takes the full-history cold-seed path on its next turn, then becomes checkpoint-backed once the run commits its `checkpoint_id`. See [inference-streaming.md](inference-streaming.md) for the delta-vs-seed payload decision and the `CHECKPOINT_COMMITTED` capture-back.
 
+### Compaction on an Answer
+
+Clicking the composer's context ring compacts the conversation after the visible branch's latest answer (plan 34). Nothing is added to the tree: the compaction is recorded on that answer (`messages.compaction`) and its `checkpoint_id` moves to the compacted head, so a `send` after it resumes from the compacted state, an edit of a later message forks from it, and a retry of the compacted answer forks from the answer before it (without the compaction). Edit/retry forks of a branch an automatic compaction already compacted keep it too. Undo restores the previous head while nothing was sent after it. See [context-compaction.md](context-compaction.md).
+
 ### Branch Selection vs Active Runs
 
 A run lives on a specific path through the message tree — `MessageTable.streaming_message_path` records the root-to-running-AI-message lineage, exposed to the frontend as `InferenceRun.messagePath`. When the user re-enters a conversation that has an active run, the run's branch may not be the default branch (e.g., they retried an AI message, putting the streaming reply on a sibling), so the default `branchSelections` (index 0 at every fork) would hide the running message.

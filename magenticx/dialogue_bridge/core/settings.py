@@ -750,6 +750,10 @@ class HttpTimeoutSettings(BaseSettings):
     inference_read_seconds: float = Field(180.0, validation_alias="HTTP_INFERENCE_READ_SECONDS")
     inference_write_seconds: float = Field(180.0, validation_alias="HTTP_INFERENCE_WRITE_SECONDS")
     inference_pool_seconds: float = Field(30.0, validation_alias="HTTP_INFERENCE_POOL_SECONDS")
+    # A manual compaction (plan 34) is one summary call over most of the
+    # conversation, made while the user waits — bounded below nginx's 300 s on
+    # /api/ so the browser always gets the bridge's own answer.
+    compaction_read_seconds: float = Field(240.0, validation_alias="HTTP_COMPACTION_READ_SECONDS")
 
     embeddings_connect_seconds: float = Field(10.0, validation_alias="HTTP_EMBEDDINGS_CONNECT_SECONDS")
     embeddings_read_seconds: float = Field(60.0, validation_alias="HTTP_EMBEDDINGS_READ_SECONDS")
@@ -806,6 +810,15 @@ class HttpTimeoutSettings(BaseSettings):
         return httpx.Timeout(
             connect=self.inference_connect_seconds,
             read=self.inference_read_seconds,
+            write=self.inference_write_seconds,
+            pool=self.inference_pool_seconds,
+        )
+
+    @property
+    def compaction_timeout(self) -> httpx.Timeout:
+        return httpx.Timeout(
+            connect=self.inference_connect_seconds,
+            read=self.compaction_read_seconds,
             write=self.inference_write_seconds,
             pool=self.inference_pool_seconds,
         )
@@ -1000,6 +1013,15 @@ class RateLimitSettings(BaseSettings):
     # caps blob-storage growth independent of the aggregate budget.
     message_post_max_attempts: int = Field(30, validation_alias="MESSAGE_RATE_LIMIT_MAX_ATTEMPTS")
     message_post_window_seconds: int = Field(60, validation_alias="MESSAGE_RATE_LIMIT_WINDOW_SECONDS")
+    # Usage analytics (Settings → Usage, plan 33): read-only aggregates, but a
+    # conversation page can count older answers from their event logs, so each
+    # page load is real database work — a per-user ceiling, generous for browsing.
+    usage_analytics_max_attempts: int = Field(60, validation_alias="USAGE_ANALYTICS_RATE_LIMIT_MAX_ATTEMPTS")
+    usage_analytics_window_seconds: int = Field(60, validation_alias="USAGE_ANALYTICS_RATE_LIMIT_WINDOW_SECONDS")
+    # Compacting a conversation (plan 34) costs a summary call over most of it;
+    # undo shares the budget. Per user — a person compacts a few times a day.
+    compaction_max_attempts: int = Field(10, validation_alias="COMPACTION_RATE_LIMIT_MAX_ATTEMPTS")
+    compaction_window_seconds: int = Field(600, validation_alias="COMPACTION_RATE_LIMIT_WINDOW_SECONDS")
     # Starter suggestions proxy an LLM generation call on the agents service.
     suggestions_max_attempts: int = Field(10, validation_alias="SUGGESTIONS_RATE_LIMIT_MAX_ATTEMPTS")
     suggestions_window_seconds: int = Field(60, validation_alias="SUGGESTIONS_RATE_LIMIT_WINDOW_SECONDS")

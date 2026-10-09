@@ -12,8 +12,8 @@ import type {
   SharedConversationDetail,
 } from "@/shared/lib/types";
 import { usePreferencesHandlers } from "@/features/settings/handlers/preferences";
-import { computeConversationUsage } from "@/shared/lib/utils";
 import { selectConversationContext, selectConversationStats } from "@/features/chat/lib/contextUsage";
+import { useConversationCompaction } from "@/features/chat/hooks/useConversationCompaction";
 import { useProfilePanel } from "@/features/settings/hooks/useProfilePanel";
 import { useSettingsPanels } from "@/features/settings/hooks/useSettingsPanels";
 import { useAttachmentPreview } from "@/features/attachments/hooks/useAttachmentPreview";
@@ -571,13 +571,6 @@ export function useChatWorkspace({
     setMyRegistrySkills(mySkills);
   }, [mySkills]);
 
-  // Per-conversation token usage (AI messages only) for the Settings → Usage
-  // tab's "This conversation" card.
-  const conversationUsage = useMemo(
-    () => computeConversationUsage(activeMessages),
-    [activeMessages],
-  );
-
   // The composer's context gauge: the live run's latest main-agent call while
   // one runs, else the latest AI message on the visible branch that recorded one.
   const conversationContext = useMemo(
@@ -611,6 +604,18 @@ export function useChatWorkspace({
       }),
     [agents, selectedAgent, isPrivateMode, setCurrentConversation],
   );
+
+  // Click the composer's context ring to compact now (plan 34). Sending waits
+  // while it runs — the bridge would refuse the run anyway.
+  const conversationCompaction = useConversationCompaction({
+    userId,
+    conversationId: currentConversation?.id ?? null,
+    activeMessages,
+    context: conversationContext,
+    busy: isCurrentConversationBusy,
+    setConversationMessages,
+  });
+  const isCompacting = conversationCompaction?.status === "compacting";
 
   const reduceMotion = useReducedMotion();
   const { voiceSession, handleVoiceMode } = useChatVoiceMode({
@@ -952,7 +957,7 @@ export function useChatWorkspace({
     agents,
     currentConversation,
     currentMessage,
-    isSendingMessage: isCurrentConversationBusy,
+    isSendingMessage: isCurrentConversationBusy || isCompacting,
     setMessages: setConversationMessages,
     setCurrentMessage,
     setAttachments,
@@ -1334,6 +1339,7 @@ export function useChatWorkspace({
         liveTimeline={activeConversationRun?.timeline ?? null}
         activeRunAssistantMessageId={activeConversationRun?.assistantMessageId ?? null}
         scrollResetKey={currentConversation?.id ?? null}
+        compactingMessageId={conversationCompaction?.compactingMessageId ?? null}
       />
     );
   };
@@ -1397,9 +1403,9 @@ export function useChatWorkspace({
     searchError,
     setSearchQuery,
     closeSearchPanel,
-    conversationUsage,
     conversationContext,
     conversationStats,
+    conversationCompaction,
     activeConversationRun,
     pendingRunInterrupts,
     activeHitlInterrupt,

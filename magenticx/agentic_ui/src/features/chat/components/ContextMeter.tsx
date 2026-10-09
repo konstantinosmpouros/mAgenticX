@@ -1,12 +1,24 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
-import { ArrowDownToLine, ArrowUpFromLine, CircleDashed, Shrink, Sigma, Timer, Wrench } from "lucide-react";
+import {
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  CircleDashed,
+  Info,
+  Loader2,
+  MousePointerClick,
+  Shrink,
+  Sigma,
+  Timer,
+  Wrench,
+} from "lucide-react";
 
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
-import { cn, formatCompactTokens } from "@/shared/lib/utils";
-import type { ConversationStats, RunContextUsage } from "@/shared/lib/types";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/shared/ui/hover-card";
+import { Button } from "@/shared/ui/button";
+import { cn, formatCompactTokens, formatModelTime } from "@/shared/lib/utils";
+import type { ContextCompactionControl, ConversationStats, RunContextUsage } from "@/shared/lib/types";
 import { contextLevel } from "@/features/chat/lib/contextUsage";
-import { formatModelTime } from "@/features/chat/lib/messageUsage";
+import { useCanHover } from "@/features/chat/hooks/useCanHover";
 
 // The composer's context gauge. The ring shows how full the model's window is
 // on the conversation's latest call; the card on hover reads top to bottom:
@@ -16,12 +28,16 @@ import { formatModelTime } from "@/features/chat/lib/messageUsage";
 //   Free · Compacting in                     ← room left, and left before compaction
 //   THIS CONVERSATION                        ← every finished answer, replaced
 //   Input · Output · Total · Tool calls        ones included (what was spent)
+//   Click the ring to compact now            ← or why it cannot (plan 34)
 //   gpt-5                Avg latency 2.3 s   ← the model, time per model call
 //
+// Hover (or keyboard focus) opens the card; a click compacts the conversation
+// now. On a touch screen there is no hover, so a tap opens the card and its
+// "Compact now" button compacts — a blind tap never fires a summary call.
 // Occupancy moves after every model call; the conversation block when an
-// answer finishes. Built on the plain Tooltip rather than the vendored AI
+// answer finishes. Built on the shadcn HoverCard rather than the vendored AI
 // Elements Context: this card's sections (free room, the compaction point, the
-// conversation block) are not that component's shape.
+// conversation block) are not that component's shape, and it carries a control.
 
 const RADIUS = 9;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
@@ -63,13 +79,50 @@ function StatRow({
   );
 }
 
+function CompactRow({ compaction, canHover }: { compaction: ContextCompactionControl; canHover: boolean }) {
+  if (compaction.status === "compacting") {
+    return (
+      <p className="flex items-center gap-2 text-muted-foreground" aria-live="polite">
+        <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden />
+        Compacting the conversation…
+      </p>
+    );
+  }
+  if (compaction.disabledReason) {
+    return (
+      <p className="flex items-center gap-2 text-muted-foreground">
+        <Info className="h-3.5 w-3.5 shrink-0" aria-hidden />
+        {compaction.disabledReason}
+      </p>
+    );
+  }
+  if (!canHover) {
+    return (
+      <Button type="button" size="sm" variant="secondary" className="h-11 w-full" onClick={compaction.compact}>
+        <Shrink className="h-3.5 w-3.5" aria-hidden />
+        Compact now
+      </Button>
+    );
+  }
+  return (
+    <p className="flex items-center gap-2 text-muted-foreground">
+      <MousePointerClick className="h-3.5 w-3.5 shrink-0" aria-hidden />
+      Click the ring to compact now
+    </p>
+  );
+}
+
 export function ContextMeter({
   context,
   stats = null,
+  compaction = null,
 }: {
   context: RunContextUsage | null;
   stats?: ConversationStats | null;
+  compaction?: ContextCompactionControl | null;
 }) {
+  const canHover = useCanHover();
+  const [open, setOpen] = useState(false);
   if (!context) return null;
   const percent = context.percent;
   const known = typeof percent === "number";
@@ -78,19 +131,44 @@ export function ContextMeter({
   const window = context.window;
   const compactAt = window && context.compactionPercent ? (window * context.compactionPercent) / 100 : null;
   const avgLatencyMs = stats && stats.timedCalls > 0 ? stats.modelMs / stats.timedCalls : null;
-  const label = known
+  const usage = known
     ? `Context window: ${percent}% used`
     : `Context: ${context.tokens.toLocaleString()} tokens used`;
+  const compacting = compaction?.status === "compacting";
+  const canCompact = Boolean(compaction && !compaction.disabledReason);
+  const label = compacting
+    ? `${usage}. Compacting the conversation`
+    : canCompact && canHover
+      ? `${usage}. Click to compact the conversation`
+      : usage;
+
+  const handleClick = () => {
+    // No hover on touch: the tap opens the card, whose button compacts.
+    if (!canHover) {
+      setOpen((current) => !current);
+      return;
+    }
+    if (canCompact) compaction?.compact();
+  };
 
   return (
-    <Tooltip delayDuration={0}>
-      <TooltipTrigger asChild>
+    <HoverCard open={open} onOpenChange={setOpen} openDelay={120} closeDelay={80}>
+      <HoverCardTrigger asChild>
         <button
           type="button"
           aria-label={label}
-          className="flex h-10 min-w-10 items-center justify-center gap-1.5 rounded-full px-2 text-xs font-medium tabular-nums text-muted-foreground transition-colors hover:bg-[hsl(var(--hover-surface))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70"
+          aria-busy={compacting || undefined}
+          onClick={handleClick}
+          className={cn(
+            "flex h-10 min-w-10 items-center justify-center gap-1.5 rounded-full px-2 text-xs font-medium tabular-nums text-muted-foreground transition-[background-color,transform] duration-150 hover:bg-[hsl(var(--hover-surface))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70",
+            canCompact && "active:scale-[0.94] motion-reduce:active:scale-100",
+          )}
         >
-          <svg viewBox="0 0 24 24" className="h-5 w-5 -rotate-90" aria-hidden>
+          <svg
+            viewBox="0 0 24 24"
+            className={cn("h-5 w-5 -rotate-90", compacting && "animate-pulse motion-reduce:animate-none")}
+            aria-hidden
+          >
             <circle cx="12" cy="12" r={RADIUS} fill="none" strokeWidth="3" className="stroke-muted" />
             <circle
               cx="12"
@@ -109,8 +187,8 @@ export function ContextMeter({
           </svg>
           {known ? <span>{Math.round(percent)}%</span> : null}
         </button>
-      </TooltipTrigger>
-      <TooltipContent
+      </HoverCardTrigger>
+      <HoverCardContent
         side="top"
         align="center"
         className="w-72 divide-y divide-border/50 overflow-hidden rounded-xl p-0 shadow-lg"
@@ -170,7 +248,7 @@ export function ContextMeter({
         {stats ? (
           <div className="space-y-2.5 px-3.5 py-3">
             <div className="space-y-0.5">
-              <p className="text-[0.66rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              <p className="text-[0.66rem] font-semibold uppercase tracking-[0.16em] text-foreground">
                 This conversation
               </p>
               <p className="text-xs text-muted-foreground/80 tabular-nums">
@@ -206,6 +284,12 @@ export function ContextMeter({
           </div>
         ) : null}
 
+        {compaction ? (
+          <div className="px-3.5 py-2.5 text-xs">
+            <CompactRow compaction={compaction} canHover={canHover} />
+          </div>
+        ) : null}
+
         {context.model || avgLatencyMs !== null ? (
           <div className="flex items-center justify-between gap-3 bg-muted/40 px-3.5 py-2.5 text-xs">
             <span className="truncate font-mono text-[0.7rem] text-muted-foreground">{context.model ?? ""}</span>
@@ -218,7 +302,7 @@ export function ContextMeter({
             ) : null}
           </div>
         ) : null}
-      </TooltipContent>
-    </Tooltip>
+      </HoverCardContent>
+    </HoverCard>
   );
 }

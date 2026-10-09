@@ -2,10 +2,16 @@
  * Conversation CRUD — list (active/archived), detail, fork, and the
  * lifecycle mutations (delete, archive, unarchive, report, rename).
  */
-import type { ConversationDetail, ConversationReportPayload, ConversationSummary } from "../types";
+import type {
+  CompactionOutcome,
+  ConversationDetail,
+  ConversationReportPayload,
+  ConversationSummary,
+  MessageOut,
+} from "../types";
 import { requestJson, requestVoid } from "../http";
-import { WireObjectSchema, WirePageItemsSchema } from "../schemas";
-import { transformConversationDetail, transformConversationSummary } from "../consts";
+import { CompactConversationResponseSchema, WireObjectSchema, WirePageItemsSchema } from "../schemas";
+import { transformConversationDetail, transformConversationSummary, transformMessage } from "../consts";
 import { CONVERSATIONS_BASE_PATH } from "./paths";
 
 // Fetch conversations for a user. The bridge returns either a bare array or a
@@ -136,4 +142,40 @@ export async function forkConversation(
     fallbackMessage: "Failed to fork conversation",
   });
   return transformConversationSummary(data);
+}
+
+// Compact the conversation's context now, after the given answer (plan 34).
+// The summary call can take a while; the bridge bounds it below the proxy's
+// timeout, so this always resolves with the bridge's own answer.
+export async function compactConversation(
+  userId: string,
+  conversationId: string,
+  messageId: string,
+): Promise<CompactionOutcome> {
+  const data = await requestJson(`${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}/compact`, {
+    method: "POST",
+    csrf: true,
+    body: { messageId },
+    schema: CompactConversationResponseSchema,
+    fallbackMessage: "Failed to compact the conversation",
+  });
+  return data.status === "compacted" && data.message
+    ? { status: "compacted", message: transformMessage(data.message) }
+    : { status: "nothing_to_compact", message: null };
+}
+
+// Take back the compaction recorded on the given answer, while nothing was sent after it.
+export async function undoCompaction(
+  userId: string,
+  conversationId: string,
+  messageId: string,
+): Promise<MessageOut> {
+  const data = await requestJson(`${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}/compact/undo`, {
+    method: "POST",
+    csrf: true,
+    body: { messageId },
+    schema: WireObjectSchema,
+    fallbackMessage: "Failed to undo the compaction",
+  });
+  return transformMessage(data);
 }

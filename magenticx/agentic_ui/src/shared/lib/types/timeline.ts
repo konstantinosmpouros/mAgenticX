@@ -172,8 +172,24 @@ export type ChartBlock = {
   showValues?: boolean;
 };
 
+// The main agent compacted its context mid-answer (plan 34): "running" from the
+// summary call's first tokens, "done" once the call it ran in front of replied.
+// Token figures are the provider's prompt after, plus the summarizer's
+// estimate of what it took out.
+export type CompactionBlock = {
+  kind: "compaction";
+  id: string;
+  status: "running" | "done";
+  tokensBefore?: number;
+  tokensAfter?: number;
+  freed?: number;
+  window?: number;
+  summarizedMessages?: number;
+  keptMessages?: number;
+};
+
 export type TimelineBlock =
-  ThinkingBlock | ContentBlock | SubagentBlock | ArtifactBlock | ChartBlock;
+  ThinkingBlock | ContentBlock | SubagentBlock | ArtifactBlock | ChartBlock | CompactionBlock;
 
 export type TimelineTerminalStatus = "completed" | "cancelled" | "failed";
 
@@ -237,6 +253,19 @@ export type ConversationStats = {
    */
   modelMs: number;
   timedCalls: number;
+};
+
+/**
+ * What the composer's context ring can do about compaction (plan 34): compact
+ * now on click, or why not. `compactingMessageId` is the answer a compaction is
+ * running after, so the chat can show its "Compacting…" divider there.
+ */
+export type ContextCompactionControl = {
+  status: "idle" | "compacting";
+  /** Why a click would do nothing right now; null when it can compact. */
+  disabledReason: string | null;
+  compactingMessageId: string | null;
+  compact: () => void;
 };
 
 export type RunTimeline = {

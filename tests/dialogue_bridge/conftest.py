@@ -76,6 +76,8 @@ os.environ.setdefault("SHARE_CREATE_RATE_LIMIT_MAX_ATTEMPTS", "1000000")
 os.environ.setdefault("SKILL_UPLOAD_RATE_LIMIT_MAX_ATTEMPTS", "1000000")
 os.environ.setdefault("MESSAGE_RATE_LIMIT_MAX_ATTEMPTS", "1000000")
 os.environ.setdefault("SUGGESTIONS_RATE_LIMIT_MAX_ATTEMPTS", "1000000")
+os.environ.setdefault("USAGE_ANALYTICS_RATE_LIMIT_MAX_ATTEMPTS", "1000000")
+os.environ.setdefault("COMPACTION_RATE_LIMIT_MAX_ATTEMPTS", "1000000")
 os.environ.setdefault("REFRESH_RATE_LIMIT_MAX_ATTEMPTS", "1000000")
 os.environ.setdefault("WS_CONNECT_RATE_LIMIT_MAX_ATTEMPTS", "1000000")
 
@@ -94,6 +96,11 @@ _sdk_pool_state = _PoolState()
 _sdk_pool_state.async_pool = _sdk_fake_redis.connection_pool
 _sdk_pool_state._async_client = _sdk_fake_redis
 bridge_app.state._redis = _sdk_pool_state
+# The per-conversation compaction lock (plan 34) is probed by every run
+# creation; point it at its own in-process fakeredis, never a real server.
+from utils.compaction_lock import compaction_locks
+
+compaction_locks._client = _fake_aioredis.FakeRedis(decode_responses=True)
 import router.auth as auth_router_module
 from core.auth.providers import AuthIdentity
 from core.auth.session import require_csrf_protection

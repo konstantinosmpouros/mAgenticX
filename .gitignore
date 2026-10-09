@@ -8,6 +8,8 @@ CLAUDE.md
 
 **/__pycache__/
 **/agent_venv/
+# Per-service test environments, as CI builds them (.venv/<service>)
+.venv/
 **/.ipynb_checkpoints/
 
 notebooks/.ipynb_checkpoints/

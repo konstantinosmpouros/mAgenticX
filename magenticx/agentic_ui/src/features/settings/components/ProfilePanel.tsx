@@ -15,7 +15,6 @@ import {
   Agent,
   ConversationShareListItem,
   ConversationSummary,
-  ConversationUsage,
   CustomAgentDetail,
   CustomAgentValidation,
   CustomAgentWritePayload,
@@ -40,6 +39,7 @@ import AgentsTab from "./profile_parts/AgentsTab";
 import SkillsTab from "./profile_parts/SkillsTab";
 import MemoriesTab from "./profile_parts/MemoriesTab";
 import UsageTab from "./profile_parts/UsageTab";
+import { PanelHeaderAction } from "./PanelHeaderAction";
 import ComingSoon from "./profile_parts/ComingSoon";
 import CustomInstructionsDialog from "./profile_parts/CustomInstructionsDialog";
 import type { MemoriesHandlers } from "@/features/settings/hooks/useMemories";
@@ -216,9 +216,9 @@ type ProfilePanelProps = {
   onSelectVoiceModeVoice?: (voice: RealtimeVoice) => void;
   onSelectVoiceModeLanguage?: (language: VoiceModeLanguage) => void;
   preferencesSaving?: boolean;
-  // Usage tab — per-conversation stats computed client-side by the shell
-  // (null when no conversation is open); workspace rollup is fetched here.
-  conversationUsage?: ConversationUsage | null;
+  // Usage tab — the conversation open in the chat (null when none), for the
+  // Overview's shortcut straight to its analysis; the data is fetched there.
+  conversationId?: string | null;
   conversationTitle?: string | null;
 };
 
@@ -276,7 +276,7 @@ export default function ProfilePanel({
   onSelectVoiceModeVoice,
   onSelectVoiceModeLanguage,
   preferencesSaving = false,
-  conversationUsage = null,
+  conversationId = null,
   conversationTitle = null,
 }: ProfilePanelProps) {
   const reduceMotion = useReducedMotion();
@@ -383,22 +383,7 @@ export default function ProfilePanel({
                   </motion.div>
                 </AnimatePresence>
 
-                {panelHeader?.action ? (
-                  <button
-                    type="button"
-                    onClick={panelHeader.action.onClick}
-                    disabled={panelHeader.action.busy}
-                    aria-label={panelHeader.action.label}
-                    title={panelHeader.action.label}
-                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/[0.12] bg-white/[0.06] text-white/60 transition-all hover:bg-white/[0.12] hover:text-white active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 disabled:opacity-60 sm:self-end"
-                  >
-                    <panelHeader.action.icon
-                      size={15}
-                      aria-hidden
-                      className={panelHeader.action.busy ? "animate-spin" : undefined}
-                    />
-                  </button>
-                ) : null}
+                {panelHeader?.action ? <PanelHeaderAction action={panelHeader.action} /> : null}
               </div>
             </div>
 
@@ -526,12 +511,15 @@ export default function ProfilePanel({
 
                     {normalizedActiveTab === "usage" ? (
                       <UsageTab
+                        userId={user?.id ?? null}
                         summary={usage.summary}
                         loading={usage.loading}
                         error={usage.error}
                         onRefresh={usage.refresh}
-                        conversationUsage={conversationUsage}
-                        conversationTitle={conversationTitle}
+                        openConversation={conversationId ? { id: conversationId, title: conversationTitle } : null}
+                        agents={agents ?? []}
+                        onClosePanel={onClose}
+                        onManageAgents={() => setActiveTab("agents")}
                       />
                     ) : null}
 

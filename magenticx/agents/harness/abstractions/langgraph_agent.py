@@ -6,6 +6,7 @@ from langgraph.graph import StateGraph
 from langgraph.checkpoint.memory import InMemorySaver
 
 from harness.agui import AGUIEmitter, AGUIStreamNormalizer
+from harness.agui.usage_callback import UsageMetricsCallback
 from harness.abstractions.base_agent import BaseAgent
 from core.logging import get_logger
 
@@ -52,6 +53,9 @@ class LangGraphAgent(BaseAgent, ABC):
             thread_id=self.context.get("run_id")
             or self.run_config.get("configurable", {}).get("thread_id", "")
         )
+        # This run's model calls, turned into TOKEN_USAGE events: the chains
+        # behind a LangGraph agent's nodes report usage no other way.
+        self.usage_callback = UsageMetricsCallback()
 
 
 
@@ -146,3 +150,31 @@ class LangGraphAgent(BaseAgent, ABC):
     def compiled(self) -> Any:
         """The compiled runnable produced by ``build()``. ``None`` until built."""
         return self.graph
+
+
+    # ---------------------------------------------------------------------
+    # Usage reporting
+    # ---------------------------------------------------------------------
+    def _stream_config(self) -> Mapping[str, Any]:
+        """``run_config`` plus this run's usage callback, which LangChain then
+        carries into every chain a node invokes."""
+        config = dict(self.run_config)
+        existing = config.get("callbacks")
+        if existing is None:
+            config["callbacks"] = [self.usage_callback]
+        elif isinstance(existing, (list, tuple)):
+            config["callbacks"] = [*existing, self.usage_callback]
+        else:
+            # A callback manager someone configured on purpose: leave it, and
+            # say so — this run's usage will not be reported.
+            logger.warning("usage_callback_not_attached", "Run has a callback manager; usage not reported",
+                           agent_slug=self.name)
+        return config
+
+
+    def _pending_frames(self) -> list[bytes]:
+        """One ``TOKEN_USAGE`` frame per model call settled since the last drain."""
+        return [
+            self.agui_emitter.token_usage(usage, message_id=call_id, metrics=metrics)
+            for usage, call_id, metrics in self.usage_callback.drain()
+        ]

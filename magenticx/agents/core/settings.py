@@ -270,7 +270,7 @@ class AgentRegistrySettings(BaseSettings):
     # fails at run time, and an unbounded choice is a cost surface. Built-in
     # agents are reviewed code and are not constrained by this.
     allowed_agent_models: tuple[str, ...] = Field(
-        default=("openai:gpt-5", "openai:gpt-4o", "openai:gpt-4o-mini"),
+        default=("openai:gpt-6-luna", "openai:gpt-5", "openai:gpt-4o", "openai:gpt-4o-mini"),
         validation_alias="ALLOWED_AGENT_MODELS",
     )
 
@@ -440,9 +440,21 @@ class WorkflowsSettings(BaseModel):
 class OmniDeepAgentSettings(BaseSettings):
     model_config = _BASE_MODEL_CONFIG
 
-    main_model: str = Field("openai:gpt-5", validation_alias="OMNI_MAIN_MODEL")
-    researcher_model: str = Field("openai:gpt-4o", validation_alias="OMNI_RESEARCHER_MODEL")
-    writer_model: str = Field("openai:gpt-4o", validation_alias="OMNI_WRITER_MODEL")
+    main_model: str = Field("openai:gpt-6-luna", validation_alias="OMNI_MAIN_MODEL")
+    researcher_model: str = Field("openai:gpt-6-luna", validation_alias="OMNI_RESEARCHER_MODEL")
+    writer_model: str = Field("openai:gpt-6-luna", validation_alias="OMNI_WRITER_MODEL")
+
+
+class ModelProfileSettings(BaseSettings):
+    model_config = _BASE_MODEL_CONFIG
+
+    # Context windows (max input tokens) for models the pinned langchain-openai
+    # has no profile for — see DeepAgent.register_model_windows. Keyed by
+    # the exact `provider:model` spec an agent uses. JSON in the env.
+    context_windows: dict[str, int] = Field(
+        default_factory=lambda: {"openai:gpt-6-luna": 1_050_000},
+        validation_alias="MODEL_CONTEXT_WINDOWS",
+    )
 
 
 class DeepAgentsSettings(BaseModel):
@@ -582,19 +594,25 @@ class RemoteSkillsSettings(BaseSettings):
 class SummarizationSettings(BaseSettings):
     model_config = _BASE_MODEL_CONFIG
 
-    # Deep-agent context compaction thresholds. These fire LATER than
-    # deepagents' stock defaults (0.85 of the window / 170k tokens) and keep a
-    # larger recent window, so summarization stays rare in normal use. The
-    # fraction knobs apply to models that expose a token-window profile (e.g.
-    # openai:gpt-5 → 272k max_input_tokens → trigger at 0.92·272k ≈ 250k); the
+    # Deep-agent context compaction: compact on its own at 95% of the window
+    # (plan 34). Automatic and manual compaction cut at the same place — the
+    # latest question — so the keep knobs only bound deepagents' overflow
+    # clipping. The fraction knobs apply to models that expose a token-window
+    # profile (e.g. openai:gpt-6-luna → 1.05M max_input_tokens → 0.95·1.05M); the
     # token/message knobs are the fallback for profile-less models, where a
     # fraction trigger is invalid. The middleware's ContextOverflowError path
     # still force-compacts if a provider rejects an over-budget request, so a
     # high trigger cannot cause a hard failure — only a (cheap) late retry.
-    trigger_fraction: float = Field(0.92, validation_alias="SUMMARIZATION_TRIGGER_FRACTION")
+    trigger_fraction: float = Field(0.95, validation_alias="SUMMARIZATION_TRIGGER_FRACTION")
     keep_fraction: float = Field(0.30, validation_alias="SUMMARIZATION_KEEP_FRACTION")
     trigger_tokens: int = Field(200000, validation_alias="SUMMARIZATION_TRIGGER_TOKENS")
     keep_messages: int = Field(20, validation_alias="SUMMARIZATION_KEEP_MESSAGES")
+    # A MANUAL compaction (the composer's context ring, plan 34): allowed once
+    # the context passes `manual_min_fraction` of the window; it summarizes
+    # everything before the latest exchange and keeps that exchange whole (the
+    # question, its tool calls and the answer). The UI's ring applies the same
+    # 5% floor (MANUAL_COMPACTION_MIN_PERCENT).
+    manual_min_fraction: float = Field(0.05, ge=0, lt=1, validation_alias="SUMMARIZATION_MANUAL_MIN_FRACTION")
 
 
 class AguiSettings(BaseSettings):
@@ -653,6 +671,7 @@ class Settings(BaseSettings):
     generation: GenerationSettings = Field(default_factory=GenerationSettings)
     workflows: WorkflowsSettings = Field(default_factory=WorkflowsSettings)
     deep_agents: DeepAgentsSettings = Field(default_factory=DeepAgentsSettings)
+    model_profiles: ModelProfileSettings = Field(default_factory=ModelProfileSettings)
     filesystem: FilesystemSettings = Field(default_factory=FilesystemSettings)
     remote_skills: RemoteSkillsSettings = Field(default_factory=RemoteSkillsSettings)
     summarization: SummarizationSettings = Field(default_factory=SummarizationSettings)

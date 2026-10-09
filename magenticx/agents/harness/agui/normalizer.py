@@ -2,6 +2,7 @@ import json
 import mimetypes
 from typing import Any, List, Optional, Tuple, Dict
 from harness.agui.emitter import AGUIEmitter
+from harness.middlewares.summarization import COMPACTION_KEY
 from harness.middlewares.usage_metrics import METRICS_KEY as USAGE_METRICS_KEY
 from harness.tools.charts import normalize_chart_payload
 
@@ -54,6 +55,14 @@ class AGUIStreamNormalizer:
         # --- custom event dedupe ---
         self._emitted_subagent_task_ids: set[str] = set()
         self._last_plan_fingerprint: Optional[str] = None
+
+        # --- automatic compaction (plan 34) ---
+        # Open between the summary call's first tokens and the reply of the
+        # model call it ran in front of; counted so a summary call without a
+        # message id still gets a distinct usage id.
+        self._compaction_open = False
+        self._compactions = 0
+        self._compaction_usage_ids: set[str] = set()
 
         # --- sub-agent namespace mapping ---
         self._pending_tasks: Dict[str, Dict[str, str]] = {}
@@ -169,12 +178,13 @@ class AGUIStreamNormalizer:
         # LLM call. LangGraph streams that call's tokens on the messages channel
         # (it carries no `nostream` tag) stamped metadata.lc_source=="summarization"
         # — both the streamed chunks and the final aggregated message. It is
-        # internal context bookkeeping, never the assistant's reply, so drop it
-        # before it renders as a "SESSION INTENT/SUMMARY/..." response. Runs
-        # before sub-agent wrapping in handle_chunk, so it covers the
-        # orchestrator, sub-agents, and the manual compact_conversation tool.
+        # internal context bookkeeping, never the assistant's reply, so its text
+        # is dropped before it renders as a "SESSION INTENT/SUMMARY/..." response;
+        # only the fact that it started and what it cost are kept. Runs before
+        # sub-agent wrapping in handle_chunk, so it covers the orchestrator and
+        # sub-agents alike.
         if isinstance(metadata, dict) and metadata.get("lc_source") == "summarization":
-            return out
+            return self._summarization_events(payload, namespace)
 
         ns_label = self._resolve_namespace_label(namespace)
 
@@ -334,11 +344,15 @@ class AGUIStreamNormalizer:
                 # the bridge dedupe. Sub-agent usage is namespace-wrapped
                 # downstream by _wrap_subagent_events_if_needed.
                 usage_metadata = getattr(msg, "usage_metadata", None)
+                response_metadata = getattr(msg, "response_metadata", None) or {}
+                compaction = response_metadata.get(COMPACTION_KEY)
+                if isinstance(compaction, dict) and self._is_main(namespace):
+                    self._push(out, self._compaction_done(compaction, usage_metadata, response_metadata))
                 if isinstance(usage_metadata, dict) and usage_metadata:
                     # Model / latency / context occupancy, stamped on the reply
                     # by UsageMetricsMiddleware (the custom channel is not
                     # streamed for deep agents, so this rides the message).
-                    metrics = (getattr(msg, "response_metadata", None) or {}).get(USAGE_METRICS_KEY)
+                    metrics = response_metadata.get(USAGE_METRICS_KEY)
                     self._push(
                         out,
                         self.emitter.token_usage(
@@ -650,6 +664,66 @@ class AGUIStreamNormalizer:
             self._bind_namespace_to_next_task(namespace)
 
         return self._namespace_task_labels.get(namespace) or self._namespace_task_id(namespace)
+
+
+    def _is_main(self, namespace: Optional[tuple]) -> bool:
+        """Whether a chunk comes from the orchestrator rather than a sub-agent."""
+        return namespace is None or self._namespace_task_id(namespace) is None
+
+
+    def _summarization_events(self, payload: Any, namespace: Optional[tuple]) -> List[bytes]:
+        """A compaction's summary call: that it started, and what it cost.
+
+        ``started`` is the orchestrator's only (a sub-agent's short-lived
+        context is not the conversation's); the usage is emitted for whoever
+        compacted, once per call — the streamed chunks and the aggregated
+        message share an id.
+        """
+        out: List[bytes] = []
+        if self._is_main(namespace) and not self._compaction_open:
+            self._compaction_open = True
+            self._compactions += 1
+            self._push(out, self.emitter.context_compaction("started"))
+        usage = getattr(payload, "usage_metadata", None)
+        if isinstance(usage, dict) and usage:
+            call_id = getattr(payload, "id", None) or f"compaction-{self.thread_id}-{self._compactions}"
+            if call_id not in self._compaction_usage_ids:
+                self._compaction_usage_ids.add(call_id)
+                self._push(
+                    out,
+                    self.emitter.token_usage(
+                        usage,
+                        message_id=call_id,
+                        purpose="compaction",
+                        namespace=self._resolve_namespace_label(namespace),
+                    ),
+                )
+        return out
+
+
+    def _compaction_done(
+        self, stamp: Dict[str, Any], usage_metadata: Any, response_metadata: Dict[str, Any]
+    ) -> Optional[bytes]:
+        """The result of an automatic compaction, from the reply that followed it.
+
+        The reply's own prompt is the context after compacting, exactly as the
+        provider counted it; the summarizer's estimate of what it took out gives
+        the context before.
+        """
+        self._compaction_open = False
+        after = usage_metadata.get("input_tokens") if isinstance(usage_metadata, dict) else None
+        freed = stamp.get("freed") if isinstance(stamp.get("freed"), int) else None
+        metrics = response_metadata.get(USAGE_METRICS_KEY)
+        window = metrics.get("context_window") if isinstance(metrics, dict) else None
+        details: Dict[str, Any] = {
+            "tokens_after": after if isinstance(after, int) else None,
+            "freed": freed,
+            "tokens_before": after + freed if isinstance(after, int) and freed is not None else None,
+            "window": window if isinstance(window, int) else None,
+            "summarized_messages": stamp.get("summarized_messages"),
+            "kept_messages": stamp.get("kept_messages"),
+        }
+        return self.emitter.context_compaction("done", details=details)
 
 
     def _wrap_subagent_events_if_needed(self, events: List[bytes], namespace: Optional[tuple]) -> List[bytes]:

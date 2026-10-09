@@ -58,6 +58,7 @@ export default function ChatView() {
     handleStarterSuggestionSelect,
     conversationContext,
     conversationStats,
+    conversationCompaction,
   } = useChatWorkspaceContext();
 
   // Read straight from the store rather than through the workspace bundle.
@@ -147,6 +148,7 @@ export default function ChatView() {
           isStreaming={isCurrentConversationBusy}
           contextUsage={conversationContext}
           conversationStats={conversationStats}
+          compaction={conversationCompaction}
           currentMessage={composer.currentMessage}
           setCurrentMessage={composer.setCurrentMessage}
           handlePaste={composer.handlePaste}

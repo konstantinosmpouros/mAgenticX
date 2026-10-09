@@ -23,6 +23,7 @@ export const BEFORE_AGENT_EVENT_TYPE = "BEFORE_AGENT_EVENT" as const;
 export const TOKEN_USAGE_EVENT_TYPE = "TOKEN_USAGE" as const;
 export const PRESENT_ARTIFACT_EVENT_TYPE = "PRESENT_ARTIFACT" as const;
 export const RENDER_CHART_EVENT_TYPE = "RENDER_CHART" as const;
+export const CONTEXT_COMPACTION_EVENT_TYPE = "CONTEXT_COMPACTION" as const;
 
 export const PLAN_SNAPSHOT_EVENT_NAMES = [PLAN_SNAPSHOT_EVENT_TYPE, "plan_snapshot"] as const;
 
@@ -96,6 +97,23 @@ export const TokenUsagePayloadSchema = z.object({
   context_tokens: z.number().nullish(),
   context_percent: z.number().nullish(),
   compaction_percent: z.number().nullish(),
+  // "compaction" on the summary call of an automatic compaction (plan 34).
+  purpose: z.string().nullish(),
+});
+
+// ------------------------------------------------------
+// Context compaction — the main agent compacted its context mid-answer
+// (plan 34). `started` with the summary call, `done` with the reply after it.
+// ------------------------------------------------------
+export const ContextCompactionPayloadSchema = z.object({
+  phase: z.enum(["started", "done"]),
+  trigger: z.string().nullish(),
+  tokens_before: z.number().nullish(),
+  tokens_after: z.number().nullish(),
+  freed: z.number().nullish(),
+  window: z.number().nullish(),
+  summarized_messages: z.number().nullish(),
+  kept_messages: z.number().nullish(),
 });
 
 // ------------------------------------------------------

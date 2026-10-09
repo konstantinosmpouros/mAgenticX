@@ -122,6 +122,16 @@ def build_agent_output_files_url(agent: AgentTable, user_id: str, conversation_i
     return f"{base}/agents/{slug}/users/{user_id}/conversations/{conversation_id}/output-files"
 
 
+def build_agent_compact_url(agent: AgentTable) -> str:
+    """POST endpoint that compacts a branch thread on request (plan 34)."""
+    return f"{AGENTS_SERVICE_URL.rstrip('/')}/agents/{_require_agent_slug(agent)}/compact"
+
+
+def build_agent_compact_undo_url(agent: AgentTable) -> str:
+    """POST endpoint that undoes a manual compaction still at the branch's head."""
+    return f"{AGENTS_SERVICE_URL.rstrip('/')}/agents/{_require_agent_slug(agent)}/compact/undo"
+
+
 def build_agent_reap_url(agent_slug: str, user_id: str, conversation_id: str) -> str:
     """POST endpoint that reaps a conversation's checkpoint threads + filesystem dir."""
     base = AGENTS_SERVICE_URL.rstrip("/")

@@ -15,7 +15,7 @@ Run against the real schema on SQLite, with the agents service played by an
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import httpx
 import pytest
@@ -34,7 +34,10 @@ from core.database import (
     ConversationTable,
     MessageEmbeddingTable,
     MessageTable,
+    MessageUsageTable,
     ScheduledTaskTable,
+    UsageDailyGroupTable,
+    UsageDailyTable,
     UserAgentToolPrefTable,
     UserPreferencesTable,
     UserTable,
@@ -119,6 +122,9 @@ async def _seed_user_data(session_factory, user, agent, *, conversations=3, mess
                 if m % 2:
                     ids["threads"].add(thread)
                     s.add(MessageEmbeddingTable(message_id=msg.id, embedding=[0.0] * 1536, model="m"))
+                    s.add(MessageUsageTable(message_id=msg.id, conversation_id=conv.id, user_id=user.id,
+                                            agent_id=agent.id, scope="main", agent_name="A",
+                                            created_at=datetime(2026, 10, 8)))
                 if m == 0:
                     blob = BlobTable(data=b"x" * 1000)
                     s.add(blob)
@@ -129,6 +135,10 @@ async def _seed_user_data(session_factory, user, agent, *, conversations=3, mess
             s.add(ConversationShareTable(token=f"tok-{c}", conversation_id=conv.id, owner_user_id=user.id,
                                          snapshot_json={}))
             s.add(ConversationReportTable(conversation_id=conv.id, user_id=user.id, reason="spam"))
+        # Usage rollups (plan 33) outlive conversations, so only the user step removes them.
+        s.add(UsageDailyTable(user_id=user.id, day=date(2026, 10, 8), agent_key=agent.id, agent_id=agent.id, answers=2))
+        s.add(UsageDailyGroupTable(user_id=user.id, day=date(2026, 10, 8), agent_key=agent.id, scope="main",
+                                   group_name="A", model_name="gpt-5", calls=2))
         await s.commit()
     return ids
 
@@ -194,6 +204,9 @@ async def test_a_purge_removes_everything_of_the_user_and_nothing_else(session_f
                           (ScheduledTaskTable, ScheduledTaskTable.user_id),
                           (ConversationReportTable, ConversationReportTable.user_id),
                           (ConversationShareTable, ConversationShareTable.owner_user_id),
+                          (MessageUsageTable, MessageUsageTable.user_id),
+                          (UsageDailyTable, UsageDailyTable.user_id),
+                          (UsageDailyGroupTable, UsageDailyGroupTable.user_id),
                           (AgentTable, AgentTable.owner_user_id)):
         assert await _count(session_factory, model, column == uid) == 0, model.__tablename__
 

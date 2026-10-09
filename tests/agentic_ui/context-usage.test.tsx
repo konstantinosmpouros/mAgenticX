@@ -16,7 +16,7 @@ import { describe, expect, it } from "vitest";
 import { ContextMeter } from "@/features/chat/components/ContextMeter";
 import { MessageUsage } from "@/features/chat/components/message_parts/MessageUsage";
 import { contextLevel, selectConversationContext, selectConversationStats } from "@/features/chat/lib/contextUsage";
-import { formatModelTime } from "@/features/chat/lib/messageUsage";
+import { formatModelTime } from "@/shared/lib/utils";
 import { countRunActivity, createTimeline, reduceTimelineEvents } from "@/features/inference/timeline";
 import { transformMessage } from "@/shared/lib/consts";
 import type { InferenceRun, MessageOut } from "@/shared/lib/types";

@@ -309,6 +309,21 @@ class BaseAgent:
         return {}
 
 
+    def _stream_config(self) -> Mapping[str, Any]:
+        """The ``RunnableConfig`` one stream runs with — ``run_config`` by default.
+
+        A LangGraph agent adds its usage callback here (it has no other way to
+        observe its chains' model calls); a deep agent needs nothing extra.
+        """
+        return self.run_config
+
+
+    def _pending_frames(self) -> list[bytes]:
+        """AG-UI frames produced beside the graph's own stream, drained between
+        chunks — none by default (a LangGraph agent's ``TOKEN_USAGE`` events)."""
+        return []
+
+
     def _durable_checkpointer(self) -> Any:
         """The process-wide durable saver, or ``None`` for a thread-less run.
 
@@ -344,7 +359,7 @@ class BaseAgent:
             stream_input: Any = command if command is not None else payload
             async for chunk in self.compiled.astream(
                 stream_input,
-                config=self.run_config,
+                config=self._stream_config(),
                 stream_mode=self.stream_mode,
                 **self._stream_kwargs(),
             ):
@@ -353,6 +368,11 @@ class BaseAgent:
                 else:
                     for agui_event in self.agui_normalizer.handle_chunk(chunk):
                         yield agui_event
+                for frame in self._pending_frames():
+                    yield frame
+            # Calls that settled after the last chunk (the final answer's usage).
+            for frame in self._pending_frames():
+                yield frame
             logger.info(
                 f"{self._log_domain}_execution_completed",
                 "Agent execution completed",

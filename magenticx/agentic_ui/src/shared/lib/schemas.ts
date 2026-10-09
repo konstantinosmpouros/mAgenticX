@@ -40,6 +40,13 @@ import { z } from "zod";
 export const WireObjectSchema = z.record(z.unknown());
 export const WireObjectArraySchema = z.array(z.record(z.unknown())).catch([]);
 
+// A compaction request's reply (plan 34): the status, and the answer it was
+// recorded on — a raw message object, mapped by transformMessage.
+export const CompactConversationResponseSchema = z.object({
+  status: z.enum(["compacted", "nothing_to_compact"]),
+  message: z.record(z.unknown()).nullable().catch(null),
+});
+
 // A fastapi-pagination `Page` envelope — `{ items, total, page, size, pages }` —
 // unwrapped to just the rows. A bare array is accepted too: not every list
 // endpoint is paginated, and these callers have always tolerated both shapes.
@@ -392,25 +399,56 @@ export const WorkspaceSearchResultListSchema = z
   .transform((rows) => rows.map((row) => toWorkspaceSearchResult(row as Record<string, unknown>)));
 
 // ---------------------------------------------------------------------------
-// Usage summary (Settings → Usage tab) — camelCase wire, defaulted per field
+// Usage (Settings → Usage tab, plan 33) — camelCase wire, defaulted per field
 // ---------------------------------------------------------------------------
+// Every page of the tab: the Overview, the conversation list and one
+// conversation, the agent list and one agent. Transform-style like the rest of
+// this file: a missing or malformed field becomes a safe default (0, null, [])
+// rather than failing the page, and enums fall back to their neutral value.
 export type UsageWindow = {
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
   aiMessages: number;
+  cachedInputTokens: number;
+  reasoningTokens: number;
+  modelMs: number;
+  modelCalls: number;
+  toolCalls: number;
+  /** Answers that recorded call counts and model time — the ratio denominators. */
+  detailedAnswers: number;
+  detailedInputTokens: number;
 };
 
 const toCount = (value: unknown): number =>
   Number.isFinite(value) ? Math.max(0, Math.round(Number(value))) : 0;
 
+const toOptionalCount = (value: unknown): number | null =>
+  Number.isFinite(value) ? Math.max(0, Math.round(Number(value))) : null;
+
+const toText = (value: unknown): string | null =>
+  typeof value === "string" && value ? value : null;
+
+const toUsageRecord = (raw: unknown): Record<string, unknown> =>
+  raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+
+const toUsageList = (raw: unknown): Record<string, unknown>[] =>
+  Array.isArray(raw) ? raw.map(toUsageRecord) : [];
+
 const toUsageWindow = (raw: unknown): UsageWindow => {
-  const record = (raw ?? {}) as Record<string, unknown>;
+  const record = toUsageRecord(raw);
   return {
     inputTokens: toCount(record.inputTokens),
     outputTokens: toCount(record.outputTokens),
     totalTokens: toCount(record.totalTokens),
     aiMessages: toCount(record.aiMessages),
+    cachedInputTokens: toCount(record.cachedInputTokens),
+    reasoningTokens: toCount(record.reasoningTokens),
+    modelMs: toCount(record.modelMs),
+    modelCalls: toCount(record.modelCalls),
+    toolCalls: toCount(record.toolCalls),
+    detailedAnswers: toCount(record.detailedAnswers),
+    detailedInputTokens: toCount(record.detailedInputTokens),
   };
 };
 
@@ -419,30 +457,184 @@ const toUsageSummary = (raw: Record<string, unknown>) => ({
   conversations: toCount(raw.conversations),
   today: toUsageWindow(raw.today),
   last7Days: toUsageWindow(raw.last7Days),
+  previous7Days: toUsageWindow(raw.previous7Days),
   last30Days: toUsageWindow(raw.last30Days),
-  perAgent: (Array.isArray(raw.perAgent) ? raw.perAgent : []).map((row) => {
-    const record = (row ?? {}) as Record<string, unknown>;
-    return {
-      ...toUsageWindow(record),
-      agentName:
-        typeof record.agentName === "string" && record.agentName
-          ? record.agentName
-          : "Unknown agent",
-    };
-  }),
-  daily: (Array.isArray(raw.daily) ? raw.daily : []).map((row) => {
-    const record = (row ?? {}) as Record<string, unknown>;
-    return {
-      ...toUsageWindow(record),
-      date: typeof record.date === "string" ? record.date : "",
-    };
-  }),
+  perAgent: toUsageList(raw.perAgent).map((record) => ({
+    ...toUsageWindow(record),
+    agentName: toText(record.agentName) ?? "Unknown agent",
+  })),
+  perModel: toUsageList(raw.perModel).map((record) => ({
+    model: toText(record.model) ?? "Unknown model",
+    calls: toCount(record.calls),
+    inputTokens: toCount(record.inputTokens),
+    cachedInputTokens: toCount(record.cachedInputTokens),
+    outputTokens: toCount(record.outputTokens),
+    modelMs: toCount(record.modelMs),
+  })),
+  daily: toUsageList(raw.daily).map((record) => ({
+    ...toUsageWindow(record),
+    date: typeof record.date === "string" ? record.date : "",
+  })),
+  agentCount: toCount(raw.agentCount),
+  nearCompactionCount: toCount(raw.nearCompactionCount),
 });
 
 export const UsageSummarySchema = z.record(z.unknown()).transform(toUsageSummary);
 export type UsageSummary = z.infer<typeof UsageSummarySchema>;
 export type UsageAgentBreakdown = UsageSummary["perAgent"][number];
+export type UsageModelBreakdown = UsageSummary["perModel"][number];
 export type UsageDailyPoint = UsageSummary["daily"][number];
+
+const toUsageConversationRow = (record: Record<string, unknown>) => ({
+  id: toText(record.id) ?? "",
+  title: toText(record.title),
+  agentId: toText(record.agentId),
+  agentName: toText(record.agentName),
+  agentIcon: toText(record.agentIcon),
+  isArchived: record.isArchived === true,
+  answers: toCount(record.answers),
+  inputTokens: toCount(record.inputTokens),
+  cachedInputTokens: toCount(record.cachedInputTokens),
+  outputTokens: toCount(record.outputTokens),
+  totalTokens: toCount(record.totalTokens),
+  modelCalls: toCount(record.modelCalls),
+  toolCalls: toCount(record.toolCalls),
+  modelMs: toCount(record.modelMs),
+  contextTokens: toOptionalCount(record.contextTokens),
+  contextWindow: toOptionalCount(record.contextWindow),
+  updatedAt: toText(record.updatedAt),
+});
+
+export const UsageConversationPageSchema = z.record(z.unknown()).transform((raw) => {
+  const priv = raw.private ? toUsageRecord(raw.private) : null;
+  return {
+    items: toUsageList(raw.items).map(toUsageConversationRow).filter((row) => row.id),
+    nextCursor: toText(raw.nextCursor),
+    private: priv
+      ? {
+          conversations: toCount(priv.conversations),
+          answers: toCount(priv.answers),
+          totalTokens: toCount(priv.totalTokens),
+        }
+      : null,
+  };
+});
+export type UsageConversationPage = z.infer<typeof UsageConversationPageSchema>;
+export type UsageConversationRow = UsageConversationPage["items"][number];
+
+const toUsageAgentGroup = (record: Record<string, unknown>) => ({
+  // "compaction": the summary calls that compacted a conversation (plan 34).
+  scope:
+    record.scope === "subagent" || record.scope === "compaction"
+      ? (record.scope as "subagent" | "compaction")
+      : ("main" as const),
+  agentId: toText(record.agentId),
+  agentName: toText(record.agentName) ?? "Agent",
+  model: toText(record.model),
+  calls: toCount(record.calls),
+  inputTokens: toCount(record.inputTokens),
+  cachedInputTokens: toCount(record.cachedInputTokens),
+  outputTokens: toCount(record.outputTokens),
+  reasoningTokens: toCount(record.reasoningTokens),
+  modelMs: toCount(record.modelMs),
+});
+export type UsageAgentGroup = ReturnType<typeof toUsageAgentGroup>;
+
+export const UsageConversationDetailSchema = z.record(z.unknown()).transform((raw) => ({
+  id: toText(raw.id) ?? "",
+  title: toText(raw.title),
+  isArchived: raw.isArchived === true,
+  answers: toCount(raw.answers),
+  replaced: toCount(raw.replaced),
+  inputTokens: toCount(raw.inputTokens),
+  cachedInputTokens: toCount(raw.cachedInputTokens),
+  outputTokens: toCount(raw.outputTokens),
+  totalTokens: toCount(raw.totalTokens),
+  modelCalls: toCount(raw.modelCalls),
+  toolCalls: toCount(raw.toolCalls),
+  modelMs: toCount(raw.modelMs),
+  detailedAnswers: toCount(raw.detailedAnswers),
+  detailedInputTokens: toCount(raw.detailedInputTokens),
+  callsComplete: raw.callsComplete !== false,
+  groups: toUsageList(raw.groups).map(toUsageAgentGroup),
+  branch: toUsageList(raw.branch).map((record) => ({
+    id: toText(record.id) ?? "",
+    createdAt: toText(record.createdAt),
+    agentName: toText(record.agentName),
+    model: toText(record.model),
+    inputTokens: toCount(record.inputTokens),
+    outputTokens: toCount(record.outputTokens),
+    cachedInputTokens: toCount(record.cachedInputTokens),
+    modelCalls: toOptionalCount(record.modelCalls),
+    toolCalls: toOptionalCount(record.toolCalls),
+    modelMs: toOptionalCount(record.modelMs),
+    contextTokens: toOptionalCount(record.contextTokens),
+    contextWindow: toOptionalCount(record.contextWindow),
+    compactionPercent: Number.isFinite(record.compactionPercent) ? Number(record.compactionPercent) : null,
+  })),
+  branchTruncated: raw.branchTruncated === true,
+}));
+export type UsageConversationDetail = z.infer<typeof UsageConversationDetailSchema>;
+export type UsageAnswerPoint = UsageConversationDetail["branch"][number];
+
+const USAGE_AGENT_KINDS = ["platform", "custom", "deleted"] as const;
+export type UsageAgentKind = (typeof USAGE_AGENT_KINDS)[number];
+
+const toUsageAgentEntity = (record: Record<string, unknown>) => ({
+  key: toText(record.key) ?? "",
+  agentId: toText(record.agentId),
+  name: toText(record.name) ?? "Unknown agent",
+  icon: toText(record.icon),
+  kind: (USAGE_AGENT_KINDS as readonly string[]).includes(String(record.kind))
+    ? (record.kind as UsageAgentKind)
+    : ("deleted" as UsageAgentKind),
+  engine: toText(record.engine),
+  version: toText(record.version),
+  isActive: record.isActive !== false,
+  createdAt: toText(record.createdAt),
+  answers: toCount(record.answers),
+  conversations: toCount(record.conversations),
+  inputTokens: toCount(record.inputTokens),
+  cachedInputTokens: toCount(record.cachedInputTokens),
+  outputTokens: toCount(record.outputTokens),
+  totalTokens: toCount(record.totalTokens),
+  modelMs: toCount(record.modelMs),
+  modelCalls: toCount(record.modelCalls),
+  toolCalls: toCount(record.toolCalls),
+  detailedAnswers: toCount(record.detailedAnswers),
+  detailedInputTokens: toCount(record.detailedInputTokens),
+  lastUsedAt: toText(record.lastUsedAt),
+  subagents: (Array.isArray(record.subagents) ? record.subagents : []).filter(
+    (name): name is string => typeof name === "string",
+  ),
+  models: (Array.isArray(record.models) ? record.models : []).filter(
+    (name): name is string => typeof name === "string",
+  ),
+});
+export type UsageAgentEntity = ReturnType<typeof toUsageAgentEntity>;
+
+export const UsageAgentListSchema = z.record(z.unknown()).transform((raw) => ({
+  items: toUsageList(raw.items).map(toUsageAgentEntity).filter((agent) => agent.key),
+}));
+export type UsageAgentList = z.infer<typeof UsageAgentListSchema>;
+
+export const UsageAgentDetailSchema = z.record(z.unknown()).transform((raw) => ({
+  agent: toUsageAgentEntity(toUsageRecord(raw.agent)),
+  groups: toUsageList(raw.groups).map(toUsageAgentGroup),
+  daily: toUsageList(raw.daily).map((record) => ({
+    ...toUsageWindow(record),
+    date: typeof record.date === "string" ? record.date : "",
+  })),
+  topConversations: toUsageList(raw.topConversations)
+    .map((record) => ({
+      id: toText(record.id) ?? "",
+      title: toText(record.title),
+      totalTokens: toCount(record.totalTokens),
+      answers: toCount(record.answers),
+    }))
+    .filter((conversation) => conversation.id),
+}));
+export type UsageAgentDetail = z.infer<typeof UsageAgentDetailSchema>;
 
 // One account this browser is signed in to. The backend never sends a token —
 // the parked credential stays server-side — so there is nothing sensitive here.

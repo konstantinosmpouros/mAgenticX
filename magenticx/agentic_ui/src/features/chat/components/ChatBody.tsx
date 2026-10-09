@@ -8,6 +8,7 @@ import type { Agent, MessageOut, RunTimeline, ThinkingState } from "@/shared/lib
 import { cn } from "@/shared/lib/utils";
 import type { AttachmentLike } from "./message_parts/MessageAttachments";
 import { ChatMessage } from "./ChatMessage";
+import { CompactionDivider } from "./message_parts/CompactionDivider";
 import { ConversationRail } from "./message_parts/ConversationRail";
 
 // Distance (px) of the newest REAL content below the fold before the
@@ -108,6 +109,9 @@ type ChatBody = {
   // only to the streaming target message.
   liveTimeline?: RunTimeline | null;
   scrollResetKey?: string | null;
+  // The answer a manual compaction is running after (plan 34): its divider
+  // shows "Compacting…" until the compaction is recorded on the answer.
+  compactingMessageId?: string | null;
 };
 
 export default function ChatBody({
@@ -157,6 +161,7 @@ export default function ChatBody({
   isStreaming,
   liveTimeline = null,
   scrollResetKey,
+  compactingMessageId = null,
 }: ChatBody) {
   const viewportRef = React.useRef<HTMLDivElement | null>(null);
   const columnRef = React.useRef<HTMLDivElement | null>(null);
@@ -726,6 +731,20 @@ export default function ChatBody({
                       onSelectBranch: handleSelectBranch,
                     }}
                   />
+                  {compactingMessageId === message.id ? (
+                    <CompactionDivider trigger="manual" status="running" />
+                  ) : message.compaction && !message.compaction.undoneAt ? (
+                    <CompactionDivider
+                      trigger="manual"
+                      status="done"
+                      freed={message.compaction.freed}
+                      tokensBefore={message.compaction.tokensBefore}
+                      tokensAfter={message.compaction.tokensAfter}
+                      summarizedMessages={message.compaction.summarizedMessages}
+                      keptMessages={message.compaction.keptMessages}
+                      summary={message.compaction.summary}
+                    />
+                  ) : null}
                 </div>
               );
             })}

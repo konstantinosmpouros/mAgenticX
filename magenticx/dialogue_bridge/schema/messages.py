@@ -1,9 +1,36 @@
 """Message DTOs: output shape, create input, streaming-placeholder update."""
-from typing import List, Optional
+from typing import List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from core.settings import settings
 from schema.attachments import AttachmentIn, AttachmentOut
 from schema.base import Senders, UTCDateTime
+
+
+class MessageCompactionOut(BaseModel):
+    """A manual compaction recorded on the answer it follows (plan 34).
+
+    Read from the ``messages.compaction`` JSON, whose keys are snake_case. Only
+    these fields leave the bridge: the stored record also keeps the compaction
+    it replaced (for undo), which is internal, and never any checkpoint id.
+    Token figures are estimates until the next model call reports the truth.
+    """
+    model_config = ConfigDict(populate_by_name=True)
+
+    trigger: Literal["manual"] = "manual"
+    tokensBefore: int = Field(0, validation_alias="tokens_before")
+    tokensAfter: int = Field(0, validation_alias="tokens_after")
+    freed: int = 0
+    window: Optional[int] = None
+    summarizedMessages: int = Field(0, validation_alias="summarized_messages")
+    keptMessages: int = Field(0, validation_alias="kept_messages")
+    summary: str = ""
+    model: Optional[str] = None
+    inputTokens: int = Field(0, validation_alias="input_tokens")
+    cachedInputTokens: int = Field(0, validation_alias="cached_input_tokens")
+    outputTokens: int = Field(0, validation_alias="output_tokens")
+    latencyMs: int = Field(0, validation_alias="latency_ms")
+    compactedAt: UTCDateTime = Field(..., validation_alias="compacted_at")
+    undoneAt: Optional[UTCDateTime] = Field(None, validation_alias="undone_at")
 
 
 class MessageOut(BaseModel):
@@ -37,6 +64,7 @@ class MessageOut(BaseModel):
     # failed) — the client's Done sentinel renders its flavor from this.
     streamingStatus: Optional[str] = Field(None, validation_alias="streaming_status")
     rawEvents: List[dict] = Field(default_factory=list, validation_alias="raw_events")
+    compaction: Optional[MessageCompactionOut] = None
 
     @field_validator("rawEvents", mode="before")
     @classmethod

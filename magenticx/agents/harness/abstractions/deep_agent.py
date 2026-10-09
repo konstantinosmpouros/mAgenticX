@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any, Callable, List, Mapping, Optional, Literal, Sequence
 from abc import abstractmethod, ABC
 
-from deepagents import create_deep_agent
+from deepagents import ProviderProfile, create_deep_agent, register_provider_profile
 from deepagents.backends import CompositeBackend
 from langgraph.checkpoint.memory import MemorySaver
 
@@ -19,6 +19,7 @@ from harness.middlewares import (
     UsageMetricsMiddleware,
     build_summarization_middleware,
     exclude_stock_summarization,
+    find_summarizer,
 )
 from harness.filesystem import (
     build_workspace_backend,
@@ -77,6 +78,10 @@ class DeepAgent(BaseAgent, ABC):
         per request) and is garbage-collected automatically at request end.
     """
 
+    # `provider:model` specs whose context window this process has declared
+    # (see register_model_windows); registration merges, so once is enough.
+    _windows_registered: set[str] = set()
+
     # Default streaming mode
     stream_mode: List[STREAMING_MODES] = ["messages", "updates"]
 
@@ -96,6 +101,10 @@ class DeepAgent(BaseAgent, ABC):
     summarization_middleware = ConfigurableSummarizationMiddleware
     build_summarization_middleware = staticmethod(build_summarization_middleware)
     usage_metrics_middleware = UsageMetricsMiddleware
+
+    # The main agent's own summarizer once built (None when its stack carries
+    # none) — what a manual compaction of this agent's thread runs (plan 34).
+    summarizer: Optional[ConfigurableSummarizationMiddleware] = None
 
 
     def __init__(self, *, config: Optional[Mapping[str, Any]] = None) -> None:
@@ -352,6 +361,26 @@ class DeepAgent(BaseAgent, ABC):
         )
 
 
+    @classmethod
+    def register_model_windows(cls) -> None:
+        """Declare the context window of models newer than the pinned LangChain.
+
+        Compaction (the 95% trigger, the 5% floor) and the composer's context
+        ring read a model's window from its LangChain profile. A model released
+        after the pinned ``langchain-openai`` (``gpt-6-luna``) has no profile
+        entry, so it would run with no window. Upgrading for one data row drags
+        langchain-core and deepagents along, so the window comes from
+        ``MODEL_CONTEXT_WINDOWS`` instead, handed to the model through
+        deepagents' ``ProviderProfile`` when it resolves the string spec — which
+        is why this runs before anything in the build resolves a model.
+        """
+        for spec, window in settings.model_profiles.context_windows.items():
+            if spec in cls._windows_registered:
+                continue
+            register_provider_profile(spec, ProviderProfile(init_kwargs={"profile": {"max_input_tokens": window}}))
+            cls._windows_registered.add(spec)
+            logger.info("model_window_registered", "Declared a model's context window", model=spec, window=window)
+
     def build_deep_agent(
         self,
         *,
@@ -378,10 +407,14 @@ class DeepAgent(BaseAgent, ABC):
         (and if the stack carries none, the agent simply runs without
         auto-compaction).
         """
+        # Before anything resolves the model (the summarizer below, the
+        # sub-agents inside create_deep_agent): the window rides the profile.
+        self.register_model_windows()
         backend = self._build_composite_backend()
         stack = middleware if middleware is not None else self.default_middleware(model, backend)
         stack = self._ensure_tool_error_middleware(stack)  # guarantee on the main agent
         stack = self._ensure_usage_metrics_middleware(stack)
+        self.summarizer = find_summarizer(stack)
         exclude_stock_summarization(model if isinstance(model, str) else "")
 
         # The agent's own instructions lead; the platform sections are appended

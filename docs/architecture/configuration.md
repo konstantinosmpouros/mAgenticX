@@ -139,6 +139,8 @@ Who signs session JWTs and which public keys verify them. Production signs with 
 | `SKILL_REMOTE_ADD_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Remote-skill Adds per user — each can make the agents service download a skill, so the Add route cannot be used as a fetch amplifier. |
 | `MESSAGE_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `30` / `60` | Message creation (attachment/blob growth) per user. |
 | `SUGGESTIONS_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Starter-suggestion generation (LLM-backed) per user. |
+| `COMPACTION_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `600` | Compacting a conversation from the context ring, or undoing it (plan 34), per user, after auth — each compaction is a summary call over most of the conversation. |
+| `USAGE_ANALYTICS_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `60` / `60` | Every Settings → Usage read (plan 33), per user, after auth. Generous for browsing; one conversation's page can count older answers from their event logs. |
 | `REFRESH_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Session refresh (OCI KMS mint) per client IP. |
 | `WS_CONNECT_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `20` / `60` | Run-stream WebSocket handshakes per user (enforced in-route; close code `4429`). |
 | `USER_RATE_LIMIT_MAX_CALLS` | `300` | App-wide aggregate budget per verified user (per-IP fallback) per window. |
@@ -235,6 +237,8 @@ Per-destination `httpx` timeouts, in seconds. Each destination has four knobs: `
 | `HTTP_SKILLS_` | 10 / 15 / 10 / 10 |
 | `HTTP_VOICE_` | 15 / 75 / 75 / 15 |
 | `HTTP_INFERENCE_` | 30 / 180 / 180 / 30 |
+
+`HTTP_COMPACTION_READ_SECONDS` (default `240`) is the read timeout of a manual compaction (plan 34): one summary call over most of the conversation while the user waits, bounded below nginx's 300 s on `/api/` so the browser always gets the bridge's own answer. Connect/write/pool follow `HTTP_INFERENCE_`.
 
 `HTTP_SKILLS_REMOTE_ADD_READ_SECONDS` (default `75`) overrides only the read timeout for adding a remote skill: the agents service may download and verify up to 128 files before answering and caps that at 60 s, so the bridge waits just past it. That call is never retried.
 
@@ -357,7 +361,9 @@ Each built-in workflow agent picks its models per node. All accept `openai:<mode
 
 **Retail** (`RETAIL_*`): `RETAIL_TABLE_NAME="Financial Sample"` (the DuckDB source table; the runtime table name is normalized from it), `RETAIL_SCHEMA_TIMEOUT_SECONDS=30`, `RETAIL_QUERY_CONNECT_TIMEOUT_SECONDS=10`, `RETAIL_QUERY_TIMEOUT_SECONDS=30`, plus `RETAIL_ANALYSIS_MODEL`, `RETAIL_SIMPLE_GENERATION_MODEL`, `RETAIL_SQL_GENERATION_MODEL`, `RETAIL_SQL_ERROR_GENERATION_MODEL`, `RETAIL_ANSWER_GENERATION_MODEL`.
 
-**Omni deep agent** (`OMNI_*`): `OMNI_MAIN_MODEL=openai:gpt-5`, `OMNI_RESEARCHER_MODEL=openai:gpt-4o`, `OMNI_WRITER_MODEL=openai:gpt-4o`.
+**Omni deep agent** (`OMNI_*`): `OMNI_MAIN_MODEL`, `OMNI_RESEARCHER_MODEL` and `OMNI_WRITER_MODEL` all default to `openai:gpt-6-luna`.
+
+**Model windows** (`MODEL_CONTEXT_WINDOWS`, JSON, default `{"openai:gpt-6-luna": 1050000}`): the context window of a model the pinned `langchain-openai` has no profile for. Compaction and the composer's context ring need it; without it a model runs with no window. Registered through deepagents' `ProviderProfile` before an agent builds its model (`DeepAgent.register_model_windows` in `harness/abstractions/deep_agent.py`).
 
 ### Deep-agent filesystem & summarization
 
@@ -371,10 +377,11 @@ Each built-in workflow agent picks its models per node. All accept `openai:<mode
 | `WORKSPACE_INPUT_TTL_HOURS` | `72` | TTL for conversation `input/` cache files (bridge-seeded copies of DB attachment blobs). `0` disables the input sweep. |
 | `WORKSPACE_OUTPUT_TTL_HOURS` | `168` | TTL for conversation `output/` cache files (presented artifacts are blob-persisted at run finalize). `0` disables the output sweep. |
 | `WORKSPACE_SWEEP_INTERVAL_MINUTES` | `60` | Retention sweeper cadence (jittered ±10%; bounded 5–1440). |
-| `SUMMARIZATION_TRIGGER_FRACTION` | `0.92` | Compact when context reaches this fraction of a model's window (profile-aware models). |
-| `SUMMARIZATION_KEEP_FRACTION` | `0.30` | Fraction of the window to retain after compaction. |
+| `SUMMARIZATION_TRIGGER_FRACTION` | `0.95` | Compact automatically when the context reaches this fraction of a model's window (models with a known window — see `MODEL_CONTEXT_WINDOWS`). |
+| `SUMMARIZATION_KEEP_FRACTION` | `0.30` | Only bounds deepagents' overflow clipping: every compaction, automatic or manual, folds everything before the latest question. |
 | `SUMMARIZATION_TRIGGER_TOKENS` | `200000` | Fallback token trigger for profile-less models. |
 | `SUMMARIZATION_KEEP_MESSAGES` | `20` | Fallback recent-message retention. |
+| `SUMMARIZATION_MANUAL_MIN_FRACTION` | `0.05` | A **manual** compaction (the composer's context ring, plan 34) is allowed once the context passes this fraction of the window. The UI applies the same 5% (`MANUAL_COMPACTION_MIN_PERCENT`). |
 
 ### Remote skill sources (`RemoteSkillsSettings`)
 

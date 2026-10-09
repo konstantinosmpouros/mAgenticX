@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type {
   ArtifactBlock,
   ChartBlock,
+  CompactionBlock,
   AttachmentOut,
   ContentBlock,
   MessageOut,
@@ -13,6 +14,7 @@ import type {
 import { subagentBlockToItem } from "@/features/inference";
 import { ArtifactCard } from "./ArtifactCard";
 import { ChartCard } from "./ChartCard";
+import { CompactionDivider } from "./CompactionDivider";
 import { ContentBlockView } from "./Content";
 import { CoTBlock } from "./CoTBlock";
 import { SubagentCard } from "./SubagentContainer";
@@ -45,6 +47,23 @@ export const BLOCK_REGISTRY: Record<
 > = {
   content: (block) => <ContentBlockView block={block as ContentBlock} />,
   chart: (block) => <ChartCard block={block as ChartBlock} />,
+  compaction: (block, ctx) => {
+    const compaction = block as CompactionBlock;
+    // A compaction still "running" when the run is no longer live never
+    // finished — the agent's state was not changed, so there is nothing to mark.
+    if (compaction.status === "running" && !ctx.isLiveActive) return null;
+    return (
+      <CompactionDivider
+        trigger="auto"
+        status={compaction.status}
+        freed={compaction.freed}
+        tokensBefore={compaction.tokensBefore}
+        tokensAfter={compaction.tokensAfter}
+        summarizedMessages={compaction.summarizedMessages}
+        keptMessages={compaction.keptMessages}
+      />
+    );
+  },
   artifact: (block, ctx) => (
     <ArtifactCard
       block={block as ArtifactBlock}

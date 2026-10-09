@@ -1,5 +1,7 @@
 import {
   BEFORE_AGENT_EVENT_TYPE,
+  CONTEXT_COMPACTION_EVENT_TYPE,
+  ContextCompactionPayloadSchema,
   HITL_INTERRUPT_EVENT_TYPE,
   HITLInterruptPayloadSchema,
   PLAN_SNAPSHOT_EVENT_NAMES,
@@ -19,6 +21,7 @@ import { parseHitlInterrupt } from "./hitl";
 import type {
   ArtifactBlock,
   ChartBlock,
+  CompactionBlock,
   ContentBlock,
   PendingToolRetool,
   RunTimeline,
@@ -172,6 +175,63 @@ function eventTimestamp(event: RawEvent): number | undefined {
 function eventEndTimestamp(event: RawEvent): number | undefined {
   if (typeof event.timestampEnd === "number") return event.timestampEnd;
   return eventTimestamp(event);
+}
+
+// ------------------------------------------------------
+// Automatic compaction (plan 34)
+// ------------------------------------------------------
+/**
+ * `started` opens a divider at the log position — closing the open blocks, as a
+ * chart does, so the thinking before it and the answer after it sit on either
+ * side; `done` fills in the running one (or adds a finished one, when the
+ * summary call streamed nothing to announce it).
+ */
+function foldCompaction(
+  session: Session,
+  data: {
+    phase: "started" | "done";
+    tokens_before?: number | null;
+    tokens_after?: number | null;
+    freed?: number | null;
+    window?: number | null;
+    summarized_messages?: number | null;
+    kept_messages?: number | null;
+  },
+  ts?: number,
+): void {
+  const blocks = session.state.blocks;
+  let index = -1;
+  for (let i = blocks.length - 1; i >= 0; i -= 1) {
+    const block = blocks[i];
+    if (block.kind === "compaction" && block.status === "running") {
+      index = i;
+      break;
+    }
+  }
+  if (data.phase === "started" && index >= 0) return;
+
+  const details: Partial<CompactionBlock> = {
+    tokensBefore: data.tokens_before ?? undefined,
+    tokensAfter: data.tokens_after ?? undefined,
+    freed: data.freed ?? undefined,
+    window: data.window ?? undefined,
+    summarizedMessages: data.summarized_messages ?? undefined,
+    keptMessages: data.kept_messages ?? undefined,
+  };
+  if (data.phase === "done" && index >= 0) {
+    Object.assign(blockForWrite<CompactionBlock>(session, index), details, { status: "done" });
+    return;
+  }
+  closeThinking(session, ts);
+  session.state.fold.openContentIndex = null;
+  const block: CompactionBlock = {
+    kind: "compaction",
+    id: nextBlockId(session),
+    status: data.phase === "started" ? "running" : "done",
+    ...(data.phase === "done" ? details : {}),
+  };
+  blocks.push(block);
+  session.clonedBlocks.add(blocks.length - 1);
 }
 
 // ------------------------------------------------------
@@ -917,6 +977,13 @@ function applyEvent(session: Session, event: RawEvent): void {
       const parsed = RenderChartPayloadSchema.safeParse(event.value);
       if (!parsed.success) return;
       pushChartBlock(session, parsed.data, eventTimestamp(event));
+      return;
+    }
+
+    if (name === CONTEXT_COMPACTION_EVENT_TYPE) {
+      const parsed = ContextCompactionPayloadSchema.safeParse(event.value);
+      if (!parsed.success) return;
+      foldCompaction(session, parsed.data, eventTimestamp(event));
       return;
     }
 

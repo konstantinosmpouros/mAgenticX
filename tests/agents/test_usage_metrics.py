@@ -8,18 +8,28 @@ Pinned:
 * the "compacts at" marker appears only when a summarizer is really there;
 * a reply in an unexpected shape is passed through, never failed;
 * the metrics reach the ``TOKEN_USAGE`` event;
-* every deep agent and every sub-agent gets the middleware exactly once.
+* every deep agent and every sub-agent gets the middleware exactly once;
+* a LangGraph agent (plan 33), whose chains never reach the normalizer, reports
+  every chat-model call as a ``TOKEN_USAGE`` frame through its run callback —
+  including calls a node makes without passing its config on.
 """
 from __future__ import annotations
 
 import asyncio
 import json
 from types import SimpleNamespace
+from typing import TypedDict
+from uuid import uuid4
 
 import pytest
+from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage
+from langchain_core.outputs import ChatGeneration, LLMResult
+from langgraph.graph import END, START
 
 from harness.abstractions.deep_agent import DeepAgent
+from harness.abstractions.langgraph_agent import LangGraphAgent
+from harness.agui.usage_callback import UsageMetricsCallback, usage_from_result
 from harness.agui.emitter import AGUIEmitter
 from harness.middlewares import ConfigurableSummarizationMiddleware, UsageMetricsMiddleware
 from harness.middlewares.usage_metrics import METRICS_KEY, context_window, model_name
@@ -105,3 +115,93 @@ def test_every_stack_gets_the_middleware_exactly_once(with_summarizer):
     added = [m for m in twice if isinstance(m, UsageMetricsMiddleware)]
     assert len(added) == 1
     assert (added[0].compaction_fraction is not None) is with_summarizer
+
+
+def _frames(chunks: list[bytes]) -> list[dict]:
+    """The JSON payloads of a list of SSE frames."""
+    return [json.loads(c.decode().split("data:", 1)[1].strip()) for c in chunks]
+
+
+def test_usage_is_read_from_the_message_or_from_llm_output():
+    message = AIMessage(content="ok", usage_metadata={"input_tokens": 12, "output_tokens": 3, "total_tokens": 15})
+    assert usage_from_result(LLMResult(generations=[[ChatGeneration(message=message)]]))["input_tokens"] == 12
+
+    bare = LLMResult(generations=[[ChatGeneration(message=AIMessage(content="ok"))]], llm_output={"token_usage": {
+        "prompt_tokens": 100, "completion_tokens": 20, "total_tokens": 120,
+        "prompt_tokens_details": {"cached_tokens": 64}, "completion_tokens_details": {"reasoning_tokens": 8},
+    }})
+    usage = usage_from_result(bare)
+    assert usage["input_token_details"] == {"cache_read": 64} and usage["output_token_details"] == {"reasoning": 8}
+    assert usage_from_result(LLMResult(generations=[[ChatGeneration(message=AIMessage(content="ok"))]])) is None
+
+
+def test_the_callback_times_each_call_and_forgets_failed_ones():
+    callback = UsageMetricsCallback()
+    call, failed = uuid4(), uuid4()
+
+    async def scenario():
+        await callback.on_chat_model_start({}, [[]], run_id=call, metadata={"ls_model_name": "gpt-4.1"})
+        await callback.on_chat_model_start({}, [[]], run_id=failed, invocation_params={"model": "gpt-5"})
+        await callback.on_llm_error(RuntimeError("boom"), run_id=failed)
+        message = AIMessage(content="ok", usage_metadata={"input_tokens": 5, "output_tokens": 1, "total_tokens": 6})
+        await callback.on_llm_end(LLMResult(generations=[[ChatGeneration(message=message)]]), run_id=call)
+
+    asyncio.run(scenario())
+    [(usage, call_id, metrics)] = callback.drain()
+    assert usage["input_tokens"] == 5 and call_id == f"lg-{call}"
+    assert metrics["model"] == "gpt-4.1" and metrics["latency_ms"] >= 0
+    assert callback.drain() == []
+
+
+class _State(TypedDict, total=False):
+    done: bool
+
+
+class _PipelineAgent(LangGraphAgent):
+    """Two model calls in one node — one passes its config, one does not."""
+
+    name = "usage-test-pipeline"
+
+    def __init__(self, model):
+        super().__init__(config={"run_config": {"configurable": {"thread_id": "usage-test"}}})
+        self.state = _State
+        self._model = model
+
+    def _durable_checkpointer(self):
+        return None
+
+    def register_agents(self):
+        return self._model
+
+    def register_nodes(self):
+        async def answer(state, config):
+            await self.agents.ainvoke("first", config)
+            await self.agents.ainvoke("second")
+            return {"done": True}
+        return answer
+
+    def register_graph_nodes(self, graph):
+        graph.add_node("answer", self.nodes)
+        return graph
+
+    def register_graph_edges(self, graph):
+        graph.add_edge(START, "answer")
+        graph.add_edge("answer", END)
+        return graph
+
+
+def test_a_langgraph_agent_reports_every_model_call():
+    def reply(tokens: int) -> AIMessage:
+        return AIMessage(content="ok", usage_metadata={"input_tokens": tokens, "output_tokens": 2,
+                                                         "total_tokens": tokens + 2})
+
+    agent = _PipelineAgent(GenericFakeChatModel(messages=iter([reply(300), reply(40)])))
+
+    async def run() -> list[bytes]:
+        return [chunk async for chunk in agent.astream({})]
+
+    frames = [f for f in _frames(asyncio.run(run())) if f.get("name") == "TOKEN_USAGE"]
+    assert [f["value"]["input_tokens"] for f in frames] == [300, 40]
+    assert all(f["value"]["message_id"].startswith("lg-") for f in frames)
+    assert len({f["value"]["message_id"] for f in frames}) == 2
+

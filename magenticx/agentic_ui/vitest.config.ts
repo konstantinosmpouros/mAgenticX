@@ -48,6 +48,8 @@ export default defineConfig({
         __dirname,
         "node_modules/@testing-library/user-event",
       ),
+      // Components that navigate need a router around them in a test.
+      "react-router-dom": path.resolve(__dirname, "node_modules/react-router-dom"),
     },
   },
   test: {

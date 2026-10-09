@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 
 from core.database import ConversationReportTable, ConversationShareTable, ConversationTable, get_db
 from schema import (
+    CompactConversationIn,
+    CompactConversationOut,
     ConversationDetail,
     ConversationForkIn,
     ConversationIn,
@@ -20,9 +22,10 @@ from schema import (
     ConversationSummary,
     CreateConversationResponse,
     ConversationTitleUpdate,
+    MessageOut,
 )
 from core.auth.session import AuthUser, require_csrf_protection
-from core.security.rate_limit import export_pdf_rate_limit, share_create_rate_limit
+from core.security.rate_limit import compaction_rate_limit, export_pdf_rate_limit, share_create_rate_limit
 from utils.attachments import encode_disposition
 from utils.share_export import conversation_pdf_filename, render_conversation_pdf, select_scoped_messages
 from utils import (
@@ -44,6 +47,7 @@ from utils import (
     validate_convId_full,
     validate_userId,
 )
+from utils.compaction import compact_conversation, undo_conversation_compaction
 from utils.shared_conv import build_share_list_item, resolve_share_expires_at
 
 
@@ -557,3 +561,58 @@ async def reportConversation(
         reason=payload.reason,
     )
     return ConversationSummary.model_validate(current_conv)
+
+
+@router.post(
+    "/{user_id}/{conversation_id}/compact",
+    response_model=CompactConversationOut,
+    status_code=status.HTTP_200_OK,
+    summary="Compact the conversation's context now, after the given answer",
+)
+async def compactConversation(
+    user_id: str,
+    conversation_id: str,
+    payload: CompactConversationIn,
+    current_user: AuthUser = Depends(validate_userId),
+    current_conv: ConversationTable = Depends(validate_convId),
+    _: None = Depends(require_csrf_protection),
+    _limit: None = Depends(compaction_rate_limit),
+    db: AsyncSession = Depends(get_db),
+):
+    """Summarize the branch's older messages so the agent works from a smaller
+    context (plan 34). The rate limit sits after auth and CSRF: it keys on
+    the path's user id, which is only trustworthy once validated."""
+    set_context(user_id=user_id, conversation_id=conversation_id, message_id=payload.messageId)
+    message = await compact_conversation(
+        db, user_id=current_user.id, conversation=current_conv, message_id=payload.messageId
+    )
+    if message is None:
+        return CompactConversationOut(status="nothing_to_compact")
+    fresh = await get_owned_message(db, conversation_id, message.id)
+    return CompactConversationOut(status="compacted", message=MessageOut.model_validate(fresh))
+
+
+@router.post(
+    "/{user_id}/{conversation_id}/compact/undo",
+    response_model=MessageOut,
+    status_code=status.HTTP_200_OK,
+    summary="Undo the compaction recorded on the given answer",
+)
+async def undoConversationCompaction(
+    user_id: str,
+    conversation_id: str,
+    payload: CompactConversationIn,
+    current_user: AuthUser = Depends(validate_userId),
+    current_conv: ConversationTable = Depends(validate_convId),
+    _: None = Depends(require_csrf_protection),
+    _limit: None = Depends(compaction_rate_limit),
+    db: AsyncSession = Depends(get_db),
+):
+    """Restore the agent's state from before a manual compaction, while nothing
+    was sent after it."""
+    set_context(user_id=user_id, conversation_id=conversation_id, message_id=payload.messageId)
+    message = await undo_conversation_compaction(
+        db, user_id=current_user.id, conversation=current_conv, message_id=payload.messageId
+    )
+    fresh = await get_owned_message(db, conversation_id, message.id)
+    return MessageOut.model_validate(fresh)

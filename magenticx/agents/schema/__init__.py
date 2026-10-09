@@ -17,6 +17,9 @@ from schema.generation import (
 )
 from schema.inference import (
     AgentResumeRequest,
+    CompactionUsageOut,
+    CompactRequest,
+    CompactResponse,
     InputFileIn,
     OutputFileOut,
     ReadOutputFilesResponse,
@@ -25,6 +28,8 @@ from schema.inference import (
     ResumeActionDecision,
     SeedInputFilesRequest,
     SeedInputFilesResponse,
+    UndoCompactionRequest,
+    UndoCompactionResponse,
 )
 from schema.memories import MemoryDetail, MemoryEntry
 from schema.skills import (
@@ -63,6 +68,9 @@ __all__ = [
     "AgentToolsResponse",
     "CatalogueSearchPage",
     "CatalogueSkill",
+    "CompactionUsageOut",
+    "CompactRequest",
+    "CompactResponse",
     "ConversationSuggestions",
     "ConversationTitle",
     "CustomAgentValidation",
@@ -91,6 +99,8 @@ __all__ = [
     "TitleRequest",
     "ToolManifest",
     "TranscriptionResponse",
+    "UndoCompactionRequest",
+    "UndoCompactionResponse",
     "UserAgentDetail",
     "UserAgentSummary",
     "UserSkillDetail",

@@ -1,16 +1,15 @@
 /**
- * User preferences API, plus the workspace usage rollup that the Settings →
- * Usage tab renders alongside them.
+ * User preferences API. (The Usage tab's calls live in `./usage`.)
  */
 import { requestJson } from "../http";
-import { UsageSummarySchema, WireObjectSchema } from "../schemas";
+import { WireObjectSchema } from "../schemas";
 import {
   normalizeCustomInstructions,
   normalizePersonality,
   normalizeRealtimeVoice,
   normalizeVoiceModeLanguage,
 } from "../utils";
-import { PREFERENCES_BASE_PATH, USAGE_BASE_PATH } from "./paths";
+import { PREFERENCES_BASE_PATH } from "./paths";
 
 // Map the raw preferences payload (mixed camelCase) into the app shape, applying
 // the same per-field defaults on both read and write so the two paths cannot
@@ -42,14 +41,6 @@ function mapUserPreferences(data: unknown) {
     voiceModeVoice,
     voiceModeLanguage,
   };
-}
-
-// Fetch the workspace-wide usage rollup for the Settings → Usage tab.
-export async function getUsageSummary(userId: string) {
-  return requestJson(`${USAGE_BASE_PATH}/${encodeURIComponent(userId)}/summary`, {
-    schema: UsageSummarySchema,
-    fallbackMessage: "Failed to fetch usage summary",
-  });
 }
 
 // Fetch user preferences

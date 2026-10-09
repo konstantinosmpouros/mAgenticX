@@ -194,12 +194,17 @@ def test_messages_other_kind_ignored(agents_service):
 # leak). The normalizer drops any messages-mode chunk carrying that marker.
 # ----------------------------------------------------------------------------
 def test_summarization_ai_chunk_suppressed(agents_service):
+    # The summary's text never surfaces; only the fact that a compaction
+    # started does (plan 34), once.
     norm = _norm(agents_service)
     chunk = (
         "messages",
         AIMessageChunk(content="## SESSION INTENT\nSummarize the PDF."),
         {"langgraph_node": "model", "lc_source": "summarization"},
     )
+    first = norm.handle_chunk(chunk)
+    assert _names(first) == ["CONTEXT_COMPACTION"]
+    assert _custom_value(first[0])[1] == {"phase": "started", "trigger": "auto"}
     assert norm.handle_chunk(chunk) == []
 
 

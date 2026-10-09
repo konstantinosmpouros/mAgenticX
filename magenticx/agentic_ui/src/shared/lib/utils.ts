@@ -3,9 +3,7 @@ import { twMerge } from "tailwind-merge";
 import type {
   AttachmentIn,
   AuthResponse,
-  ConversationUsage,
   CustomInstructions,
-  MessageOut,
   SkillTreeNode,
 } from "./types";
 import {
@@ -312,36 +310,30 @@ export const skillMatchesTokens = (
   return tokens.every((tok) => haystack.includes(tok));
 };
 
-// Compact token count for dense UI chips: 1234 → "1.2K", 2_500_000 → "2.5M".
-export const formatCompactTokens = (value: number): string =>
-  new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(
-    Math.max(0, Math.round(value)),
-  );
-
-// Aggregate token usage across a conversation's active branch. Only AI messages
-// carry token counts, so user messages are ignored and averages divide by the
-// AI-message count (guarded against zero).
-export const computeConversationUsage = (messages: MessageOut[]): ConversationUsage => {
-  let totalInput = 0;
-  let totalOutput = 0;
-  let aiMessageCount = 0;
-  for (const message of messages) {
-    if (message.sender !== "ai") continue;
-    if (typeof message.inputTokens !== "number" && typeof message.outputTokens !== "number")
-      continue;
-    totalInput += message.inputTokens ?? 0;
-    totalOutput += message.outputTokens ?? 0;
-    aiMessageCount += 1;
-  }
-  return {
-    totalInput,
-    totalOutput,
-    totalTokens: totalInput + totalOutput,
-    aiMessageCount,
-    avgInput: aiMessageCount ? Math.round(totalInput / aiMessageCount) : 0,
-    avgOutput: aiMessageCount ? Math.round(totalOutput / aiMessageCount) : 0,
-  };
+// Compact token count for dense UI chips: 1234 → "1.2K", 1_050_000 → "1.05M".
+// Millions keep two decimals: at one, a 1,050,000-token window read "1.1M".
+export const formatCompactTokens = (value: number): string => {
+  const tokens = Math.max(0, Math.round(value));
+  return new Intl.NumberFormat(undefined, {
+    notation: "compact",
+    maximumFractionDigits: tokens >= 1_000_000 ? 2 : 1,
+  }).format(tokens);
 };
+
+/**
+ * How long a model worked: model-call time, not wall-clock (tools and queueing
+ * are excluded). Sub-second reads in milliseconds, over a minute in minutes, so
+ * the number stays short enough for a tooltip row or a table cell.
+ */
+export function formatModelTime(ms: number): string {
+  if (ms < 1000) return `${Math.round(ms)} ms`;
+  const seconds = ms / 1000;
+  if (seconds < 60) return `${seconds.toFixed(1)} s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ${Math.round(seconds - minutes * 60)}s`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ${minutes - hours * 60}m`;
+}
 
 // The agents occasionally emit "•" bullets, which Streamdown doesn't treat as
 // list markers — normalize them to "-" so every text surface renders the same.

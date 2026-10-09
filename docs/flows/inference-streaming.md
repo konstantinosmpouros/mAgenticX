@@ -259,6 +259,7 @@ flowchart TD
 - one active stream per conversation, backed by `uq_messages_one_active_stream_per_conversation` (partial unique index on `streaming_status IN ('queued','running','cancelling')`)
 - per-user active-run limits (`SELECT COUNT(*) FROM messages WHERE user_id = ? AND streaming_status IN active`)
 - stale queued-message cleanup before creating a new placeholder
+- no compaction in progress on the conversation: the Redis lock `compaction:{conversation_id}` that a manual compaction holds turns a run start into a 409 (plan 34, [context-compaction](context-compaction.md))
 - message lineage validation before storing `streaming_message_path`
 
 If `launch()` raises after the DB commit, the router marks the run as failed with `mark_run_launch_failed()` and returns a 500. That prevents a queued run from being left active forever.

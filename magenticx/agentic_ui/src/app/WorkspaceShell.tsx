@@ -119,7 +119,6 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
     isAgentSkillLoading,
     isSkillToggling,
     memoryInspector,
-    conversationUsage,
     resolvedPreferences,
     archivedConversations,
     archivedConvIsLoading,
@@ -339,7 +338,7 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
                   onSelectVoiceModeVoice={handleSelectVoiceModeVoice}
                   onSelectVoiceModeLanguage={handleSelectVoiceModeLanguage}
                   preferencesSaving={isSavingPreferences}
-                  conversationUsage={currentConversation ? conversationUsage : null}
+                  conversationId={currentConversation?.id ?? null}
                   conversationTitle={currentConversation?.title ?? null}
                 />
 

@@ -92,7 +92,8 @@ account/profile.json                 profile (allowlisted columns)
 account/preferences.json             settings
 account/tool_preferences.ndjson
 conversations/conversations.ndjson
-conversations/messages.ndjson        one message per line, with conversation_id
+conversations/messages.ndjson        one message per line, with conversation_id (and any manual compaction)
+conversations/message_usage.ndjson   where each answer's tokens went: main agent and each sub-agent, by model
 conversations/attachments.ndjson     archive_path = where its file is (null in text-only)
 conversations/reports.ndjson
 conversations/shares.ndjson          which conversations were shared — never the link token

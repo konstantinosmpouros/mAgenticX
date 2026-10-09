@@ -23,8 +23,38 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from core.logging import get_logger
+from harness.middlewares import EVENT_KEY
 
 logger = get_logger(__name__)
+
+#: The node a private-state write is attributed to. A write through the input
+#: (as the seed above is) drops private channels — deepagents' compaction among
+#: them — and on a fresh thread LangGraph cannot pick the writer itself. The
+#: agent's own "model" node writes ``_summarization_event`` in a real run, so
+#: attributing the copy to it is exactly what a run would have produced.
+STATE_WRITER_NODE = "model"
+
+
+async def carry_compaction(
+    graph: Any, source_cfg: dict[str, Any], source_values: dict[str, Any], target_cfg: dict[str, Any]
+) -> bool:
+    """Copy the source's compaction onto the freshly seeded target.
+
+    The seed writes the fork-point values through the graph's input, which
+    omits private channels, so a fork of a compacted branch used to start from
+    the full raw history again (plan 34). The compaction comes from the source
+    snapshot, or from its saved checkpoint when the snapshot does not surface
+    it. Returns True when a compaction was carried.
+    """
+    event = source_values.get(EVENT_KEY)
+    checkpointer = getattr(graph, "checkpointer", None)
+    if not event and checkpointer is not None:
+        source = await checkpointer.aget_tuple(source_cfg)
+        event = (source.checkpoint.get("channel_values") or {}).get(EVENT_KEY) if source is not None else None
+    if not event:
+        return False
+    await graph.aupdate_state(target_cfg, {EVENT_KEY: event}, as_node=STATE_WRITER_NODE)
+    return True
 
 
 async def seed_thread_from_checkpoint(
@@ -67,12 +97,26 @@ async def seed_thread_from_checkpoint(
         # DeltaChannel, todos) merge the snapshot into nothing → an exact copy
         # of the fork-point values as a single seed checkpoint.
         await graph.aupdate_state(target_cfg, src_values)
+        try:
+            compacted = await carry_compaction(graph, src_cfg, src_values, target_cfg)
+        except Exception:
+            # The branch is seeded either way; without the compaction it only
+            # starts from the full history again (and re-compacts when full).
+            compacted = False
+            logger.warning(
+                "checkpoint_fork_compaction_not_carried",
+                "Seeded a branch thread but could not carry the source's compaction",
+                exc_info=True,
+                source_thread_id=source_thread_id,
+                target_thread_id=target_thread_id,
+            )
         logger.info(
             "checkpoint_fork_seeded",
             "Seeded branch thread from fork-point checkpoint",
             source_thread_id=source_thread_id,
             source_checkpoint_id=source_checkpoint_id,
             target_thread_id=target_thread_id,
+            carried_compaction=compacted,
         )
         return True
     except Exception:

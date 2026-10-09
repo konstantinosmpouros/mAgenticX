@@ -1,8 +1,8 @@
-"""Inference-run DTOs: the /stream and /resume payloads plus the per-conversation
-filesystem lifecycle calls the bridge makes around a run (input seeding, output
-read-back, delete-time reap)."""
+"""Inference-run DTOs: the /stream and /resume payloads, manual compaction and
+its undo, plus the per-conversation filesystem lifecycle calls the bridge makes
+around a run (input seeding, output read-back, delete-time reap)."""
 from typing import Any, Dict, List, Literal, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Request(BaseModel):
@@ -46,6 +46,63 @@ class AgentResumeRequest(BaseModel):
     value: Optional[Any] = None
     interrupt_id: Optional[str] = None
     decisions: Optional[List[ResumeActionDecision]] = None
+
+
+class CompactRequest(BaseModel):
+    """Bridge → agents: compact this branch thread now (plan 34).
+
+    ``config`` carries the same ``context`` block a run does (user,
+    conversation, the agent's owner) so the agent is built for the right
+    workspace. ``expected_checkpoint_id`` is the head the bridge recorded on the
+    answer being compacted: a different head means the branch moved on and the
+    request is refused rather than compacting someone else's state.
+    """
+    config: Dict[str, Any]
+    thread_id: str = Field(min_length=1, max_length=128)
+    expected_checkpoint_id: str = Field(min_length=1, max_length=128)
+
+
+class CompactionUsageOut(BaseModel):
+    """The summary call's spend — booked by the bridge like any model call."""
+    calls: int = 0
+    input_tokens: int = 0
+    cached_input_tokens: int = 0
+    output_tokens: int = 0
+    reasoning_tokens: int = 0
+    latency_ms: int = 0
+
+
+class CompactResponse(BaseModel):
+    """What a manual compaction did.
+
+    ``status`` is ``compacted``, ``nothing_to_compact`` (everything fits in the
+    part that is kept) or ``unsupported`` (this agent runs without a
+    summarizer). Token figures are estimates except ``tokens_before``, which is
+    the last reply's provider count when it has one.
+    """
+    status: Literal["compacted", "nothing_to_compact", "unsupported"]
+    checkpoint_id: Optional[str] = None
+    tokens_before: int = 0
+    tokens_after: int = 0
+    freed: int = 0
+    window: Optional[int] = None
+    summarized_messages: int = 0
+    kept_messages: int = 0
+    summary: str = ""
+    model: Optional[str] = None
+    usage: CompactionUsageOut = CompactionUsageOut()
+
+
+class UndoCompactionRequest(BaseModel):
+    """Bridge → agents: take back the compaction that is this branch's head."""
+    config: Dict[str, Any]
+    thread_id: str = Field(min_length=1, max_length=128)
+    expected_checkpoint_id: str = Field(min_length=1, max_length=128)
+
+
+class UndoCompactionResponse(BaseModel):
+    """The new head, with the compaction state from before it restored."""
+    checkpoint_id: str
 
 
 class InputFileIn(BaseModel):

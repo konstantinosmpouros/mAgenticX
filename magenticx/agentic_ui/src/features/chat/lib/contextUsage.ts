@@ -10,6 +10,10 @@ import { countRunActivity } from "@/features/inference";
  * `context` (it updates after every call); otherwise it is the most recent AI
  * message on the visible branch that recorded one. Older messages, other
  * branches and sub-agents never feed it.
+ *
+ * When that answer was compacted afterwards (plan 34), the gauge reads the
+ * compaction's estimate of the context after it — until the next answer
+ * reports the real figure.
  */
 export function selectConversationContext(
   messages: MessageOut[],
@@ -22,16 +26,25 @@ export function selectConversationContext(
     const message = messages[i];
     if (message.sender !== "ai" || typeof message.contextTokens !== "number") continue;
     const window = message.contextWindow;
+    const compaction = message.compaction && !message.compaction.undoneAt ? message.compaction : null;
+    const tokens = compaction ? compaction.tokensAfter : message.contextTokens;
     return {
       model: message.modelName,
-      tokens: message.contextTokens,
+      tokens,
       window,
-      percent: window ? Math.round((1000 * message.contextTokens) / window) / 10 : undefined,
+      percent: window ? Math.round((1000 * tokens) / window) / 10 : undefined,
       compactionPercent: message.compactionPercent,
     };
   }
   return null;
 }
+
+/**
+ * Clicking the context ring compacts only past this share of the window
+ * (plan 34) — below it there is too little to summarize to be worth a call.
+ * The agents service enforces the same floor (SUMMARIZATION_MANUAL_MIN_FRACTION).
+ */
+export const MANUAL_COMPACTION_MIN_PERCENT = 5;
 
 /** How full the window is, for colour: plenty of room, getting close, or about to compact. */
 export function contextLevel(context: RunContextUsage): "ok" | "high" | "critical" {
@@ -48,7 +61,9 @@ export function contextLevel(context: RunContextUsage): "ok" | "high" | "critica
  * Sums every FINISHED answer in the conversation tree (one that recorded token
  * usage), not just the visible branch: a retried or edited-away answer was
  * still paid for, so it counts, and `replaced` says how many those are. The
- * in-flight answer joins once it finishes. Null until there is one answer.
+ * in-flight answer joins once it finishes. A manual compaction's summary call
+ * (plan 34) is spend too — its tokens and its one model call count, undone or
+ * not, but it is never an answer. Null until there is one answer.
  */
 export function selectConversationStats(
   allMessages: MessageOut[],
@@ -80,6 +95,17 @@ export function selectConversationStats(
     if (typeof message.modelLatencyMs === "number" && activity.modelCalls > 0) {
       stats.modelMs += message.modelLatencyMs;
       stats.timedCalls += activity.modelCalls;
+    }
+    const compaction = message.compaction;
+    if (compaction && (compaction.inputTokens || compaction.outputTokens)) {
+      stats.modelCalls += 1;
+      stats.inputTokens += compaction.inputTokens;
+      stats.cachedInputTokens += compaction.cachedInputTokens;
+      stats.outputTokens += compaction.outputTokens;
+      if (compaction.latencyMs > 0) {
+        stats.modelMs += compaction.latencyMs;
+        stats.timedCalls += 1;
+      }
     }
   }
   return stats.answers > 0 ? stats : null;

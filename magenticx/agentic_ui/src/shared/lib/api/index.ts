@@ -54,7 +54,16 @@ export { listAgentMemories, getAgentMemory, deleteAgentMemory } from "./memories
 
 export { searchWorkspace } from "./search";
 
-export { getUserPreferences, updateUserPreferences, getUsageSummary } from "./preferences";
+export { getUserPreferences, updateUserPreferences } from "./preferences";
+
+export {
+  getUsageSummary,
+  getUsageConversations,
+  getUsageConversation,
+  getUsageAgents,
+  getUsageAgent,
+} from "./usage";
+export type { UsageRange, UsageConversationSort, UsageAgentKindFilter } from "./usage";
 
 export {
   getConversations,
@@ -66,6 +75,8 @@ export {
   reportConversation,
   renameConversation,
   forkConversation,
+  compactConversation,
+  undoCompaction,
 } from "./conversations";
 
 export {

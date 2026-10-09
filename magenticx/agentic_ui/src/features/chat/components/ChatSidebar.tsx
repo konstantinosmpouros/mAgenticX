@@ -157,14 +157,16 @@ export default function ChatSidebar({
   const rawProfileName =
     userProfile?.displayName ?? userProfile?.fullName ?? userProfile?.username ?? "";
   const profileName = rawProfileName.trim() || "Profile";
-  // Two-letter avatar initials (e.g. "kostas mpouros" -> "km"): first letters of
+  // Two-letter avatar initials (e.g. "kostas mpouros" -> "KM"): first letters of
   // the first two name parts, or the first two characters of a single-token
-  // name. Case is preserved from the name as entered, matching the design.
+  // name. Always upper-cased so the avatar reads the same however the name was
+  // entered, matching the account switcher's avatars.
   const nameParts = profileName.split(/\s+/).filter(Boolean);
-  const profileInitials =
+  const profileInitials = (
     (nameParts.length >= 2
       ? nameParts[0].charAt(0) + nameParts[1].charAt(0)
-      : profileName.slice(0, 2)) || "P";
+      : profileName.slice(0, 2)) || "P"
+  ).toUpperCase();
   const profileEmail = (userProfile?.email ?? "Open profile").trim();
   const avatarUrl = userProfile?.avatarUrl || null;
   // Only worth a submenu when there is somewhere to switch to, or room to add

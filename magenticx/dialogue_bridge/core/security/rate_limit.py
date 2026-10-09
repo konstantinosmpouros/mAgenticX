@@ -181,6 +181,22 @@ message_post_rate_limit = rate_limit(
     emit_headers=True,
 )
 
+# Every Usage-tab read (plan 33) — per user, after auth.
+usage_analytics_rate_limit = rate_limit(
+    (settings.rate_limit.usage_analytics_max_attempts, settings.rate_limit.usage_analytics_window_seconds),
+    scope="usage-analytics",
+    identifier=user_path_identity,
+    emit_headers=True,
+)
+
+# Compacting a conversation, or undoing it (plan 34) — per user, after auth.
+compaction_rate_limit = rate_limit(
+    (settings.rate_limit.compaction_max_attempts, settings.rate_limit.compaction_window_seconds),
+    scope="compaction",
+    identifier=user_path_identity,
+    emit_headers=True,
+)
+
 suggestions_rate_limit = rate_limit(
     (settings.rate_limit.suggestions_max_attempts, settings.rate_limit.suggestions_window_seconds),
     scope="suggestions",

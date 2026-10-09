@@ -243,3 +243,17 @@
 .chat-markdown ol ol {
   margin-top: 0.25rem;
 }
+
+/* The compaction divider's summary panel: the summarizer writes full-size
+   headings ("# Session intent"), which dwarf a 12px panel. Kept at body size,
+   set apart by weight only. Last in the file so it wins over .chat-markdown. */
+.compaction-summary :is(h1, h2, h3, h4, h5, h6) {
+  margin: 0.75rem 0 0.25rem;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  font-weight: 600;
+}
+
+.compaction-summary > :first-child {
+  margin-top: 0;
+}

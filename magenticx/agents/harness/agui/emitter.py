@@ -38,6 +38,10 @@ from harness.agui.events import (
     # Agent-rendered inline chart
     RENDER_CHART_EVENT_TYPE,
     RenderChartEvent,
+
+    # Automatic context compaction
+    CONTEXT_COMPACTION_EVENT_TYPE,
+    ContextCompactionEvent,
 )
 from ag_ui.core import (
     EventType,
@@ -326,11 +330,13 @@ class AGUIEmitter:
         *,
         message_id: Optional[str] = None,
         metrics: Optional[Dict[str, Any]] = None,
+        purpose: Optional[str] = None,
         writer: Any = None,
         namespace: Optional[str] = None,
     ) -> CustomEvent:
         """Emit per-AI-message token usage from ``AIMessage.usage_metadata``,
-        plus the call's model / latency / context metrics when present."""
+        plus the call's model / latency / context metrics when present.
+        ``purpose="compaction"`` marks a compaction's summary call."""
         metrics = metrics or {}
         payload = TokenUsageEvent(
             input_tokens=usage_metadata.get("input_tokens"),
@@ -345,10 +351,30 @@ class AGUIEmitter:
             context_tokens=metrics.get("context_tokens"),
             context_percent=metrics.get("context_percent"),
             compaction_percent=metrics.get("compaction_percent"),
+            purpose="compaction" if purpose == "compaction" else None,
         )
         custom_event = CustomEvent(
             type=EventType.CUSTOM,
             name=TOKEN_USAGE_EVENT_TYPE,
+            value=payload.model_dump(exclude_none=True),
+        )
+        return self._emit(custom_event, writer, namespace)
+
+
+    # ---------- Context compaction (custom event) ----------
+    def context_compaction(
+        self,
+        phase: str,
+        *,
+        details: Optional[Dict[str, Any]] = None,
+        writer: Any = None,
+        namespace: Optional[str] = None,
+    ) -> CustomEvent:
+        """Emit an automatic compaction's start, or its result (``details``)."""
+        payload = ContextCompactionEvent(phase=phase, **(details or {}))
+        custom_event = CustomEvent(
+            type=EventType.CUSTOM,
+            name=CONTEXT_COMPACTION_EVENT_TYPE,
             value=payload.model_dump(exclude_none=True),
         )
         return self._emit(custom_event, writer, namespace)
