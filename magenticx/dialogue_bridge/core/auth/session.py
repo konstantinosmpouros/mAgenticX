@@ -56,7 +56,7 @@ class LogoutDenylist:
             return
         try:
             client = await self._get_client()
-            await client.setex(f"{_LOGOUT_KEY_PREFIX}{sid}", ttl_seconds, "1")
+            await client.set(f"{_LOGOUT_KEY_PREFIX}{sid}", "1", ex=ttl_seconds)
         except Exception:
             logger.warning(
                 "logout_denylist_write_failed",
@@ -127,9 +127,7 @@ class SessionRevocation:
         ttl = settings.jwt.refresh_absolute_ttl_seconds
         try:
             client = await self._get_client()
-            await client.setex(
-                f"{_REVOKE_ALL_KEY_PREFIX}{user_id}", ttl, str(int(at.timestamp()))
-            )
+            await client.set(f"{_REVOKE_ALL_KEY_PREFIX}{user_id}", str(int(at.timestamp())), ex=ttl)
         except Exception:
             logger.warning(
                 "revoke_all_cache_write_failed",
@@ -226,7 +224,7 @@ class RefreshTokenGuard:
             return
         try:
             client = await self._get_client()
-            await client.setex(f"{_REFRESH_CUR_PREFIX}{sid}", ttl_seconds, jti)
+            await client.set(f"{_REFRESH_CUR_PREFIX}{sid}", jti, ex=ttl_seconds)
         except Exception:
             logger.warning("refresh_guard_register_failed", "Could not record refresh jti (fail-open)")
 
@@ -261,8 +259,8 @@ class RefreshTokenGuard:
         try:
             client = await self._get_client()
             if old_jti and grace_seconds > 0:
-                await client.setex(f"{_REFRESH_USED_PREFIX}{sid}:{old_jti}", grace_seconds, "1")
-            await client.setex(f"{_REFRESH_CUR_PREFIX}{sid}", ttl_seconds, new_jti)
+                await client.set(f"{_REFRESH_USED_PREFIX}{sid}:{old_jti}", "1", ex=grace_seconds)
+            await client.set(f"{_REFRESH_CUR_PREFIX}{sid}", new_jti, ex=ttl_seconds)
         except Exception:
             logger.warning("refresh_guard_rotate_failed", "Could not rotate refresh jti (fail-open)")
 

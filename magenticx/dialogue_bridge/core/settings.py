@@ -596,6 +596,22 @@ class ExportSettings(BaseSettings):
         return v
 
 
+class ProfileSettings(BaseSettings):
+    """Edit profile: the photo a user can upload.
+
+    The upload is read in chunks and refused past ``avatar_max_upload_bytes``
+    before it is decoded; the decoder refuses images over
+    ``avatar_max_pixels`` (a decompression bomb is a few KB that expands to GBs).
+    What is stored is always a fresh ``avatar_size_px`` square WebP.
+    """
+    model_config = _BASE_MODEL_CONFIG
+
+    avatar_max_upload_bytes: int = Field(5 * 1024 * 1024, ge=1024, validation_alias="AVATAR_MAX_UPLOAD_BYTES")
+    avatar_read_chunk_bytes: int = Field(64 * 1024, ge=1024, validation_alias="AVATAR_READ_CHUNK_BYTES")
+    avatar_max_pixels: int = Field(40_000_000, ge=65_536, validation_alias="AVATAR_MAX_PIXELS")
+    avatar_size_px: int = Field(256, ge=64, le=1024, validation_alias="AVATAR_SIZE_PX")
+
+
 class AccountDeletionSettings(BaseSettings):
     """"Delete account" (plan 32): a request, a grace period, then a resumable purge.
 
@@ -1009,6 +1025,8 @@ class RateLimitSettings(BaseSettings):
     # Requesting or cancelling an account deletion (plan 32): rare by nature.
     account_deletion_max_attempts: int = Field(10, validation_alias="ACCOUNT_DELETION_RATE_LIMIT_MAX_ATTEMPTS")
     account_deletion_window_seconds: int = Field(3600, validation_alias="ACCOUNT_DELETION_RATE_LIMIT_WINDOW_SECONDS")
+    profile_update_max_attempts: int = Field(20, validation_alias="PROFILE_UPDATE_RATE_LIMIT_MAX_ATTEMPTS")
+    profile_update_window_seconds: int = Field(3600, validation_alias="PROFILE_UPDATE_RATE_LIMIT_WINDOW_SECONDS")
     # Message creation can carry up to the full attachment budget per call —
     # caps blob-storage growth independent of the aggregate budget.
     message_post_max_attempts: int = Field(30, validation_alias="MESSAGE_RATE_LIMIT_MAX_ATTEMPTS")
@@ -1149,6 +1167,7 @@ class Settings(BaseSettings):
     share: ShareSettings = Field(default_factory=ShareSettings)
     export: ExportSettings = Field(default_factory=ExportSettings)
     account_deletion: AccountDeletionSettings = Field(default_factory=AccountDeletionSettings)
+    profile: ProfileSettings = Field(default_factory=ProfileSettings)
     generation: GenerationSettings = Field(default_factory=GenerationSettings)
     embeddings: EmbeddingsSettings = Field(default_factory=EmbeddingsSettings)
     http: HttpTimeoutSettings = Field(default_factory=HttpTimeoutSettings)

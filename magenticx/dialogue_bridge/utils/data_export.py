@@ -65,6 +65,7 @@ from core.database import (
     ScheduledTaskTable,
     SessionLocal,
     UserAgentToolPrefTable,
+    UserAvatarTable,
     UserPreferencesTable,
     UserTable,
 )
@@ -97,9 +98,9 @@ class ExportAborted(RuntimeError):
 # exported until someone adds it here — so a future secret can never ship in an
 # export by accident.
 _PROFILE = (
-    UserTable.id, UserTable.username, UserTable.email, UserTable.display_name,
+    UserTable.id, UserTable.username, UserTable.email, UserTable.display_name, UserTable.preferred_name,
     UserTable.full_name, UserTable.department, UserTable.role_title,
-    UserTable.avatar_url, UserTable.created_at, UserTable.last_login_at,
+    UserTable.avatar_url, UserTable.avatar_updated_at, UserTable.created_at, UserTable.last_login_at,
 )
 _PREFERENCES = (
     UserPreferencesTable.suggestions_enabled, UserPreferencesTable.show_message_token_usage,
@@ -568,6 +569,7 @@ moment it was created. All times are UTC.
 | Path | What it is |
 | --- | --- |
 | `account/profile.json` | Your profile |
+| `account/avatar.webp` | Your profile photo, if you set one |
 | `account/preferences.json` | Your settings |
 | `account/tool_preferences.ndjson` | Per-agent tool switches and approvals |
 | `conversations/conversations.ndjson` | One conversation per line |
@@ -617,6 +619,16 @@ async def _ndjson(zs: ZipStream, em: _Emitter, path: str, rows: AsyncIterator[di
         yield await zs.write(bytes(buffer))
     yield await zs.close()
     em.records[path] = count
+
+
+async def _avatar_file(zs: ZipStream, user_id: str) -> AsyncIterator[bytes]:
+    """The user's photo, when they set one — at most a few tens of KB, so read whole."""
+    async with SessionLocal() as session:
+        data = await session.scalar(select(UserAvatarTable.data).where(UserAvatarTable.user_id == user_id))
+    if data:
+        yield await zs.open("account/avatar.webp", compress=False)
+        yield await zs.write(data)
+        yield await zs.close()
 
 
 async def _json_file(zs: ZipStream, path: str, document: Any) -> AsyncIterator[bytes]:
@@ -721,6 +733,8 @@ async def stream_export(user_id: str, *, include_attachments: bool, claim: Expor
         async def account() -> AsyncIterator[bytes]:
             async for out in _json_file(zs, "account/profile.json",
                                         await _single_row(_PROFILE, UserTable.id == user_id) or {}):
+                yield out
+            async for out in _avatar_file(zs, user_id):
                 yield out
             async for out in _json_file(zs, "account/preferences.json",
                                         await _single_row(_PREFERENCES, UserPreferencesTable.user_id == user_id) or {}):

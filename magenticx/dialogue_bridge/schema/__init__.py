@@ -92,7 +92,7 @@ from schema.scheduled_tasks import (
 from schema.search import (
     WorkspaceSearchResult,
 )
-from schema.account import AccountDeletionRequest, AccountDeletionStatus
+from schema.account import AccountDeletionRequest, AccountDeletionStatus, ProfileUpdate
 from schema.export import (
     ExportStatus,
     ExportTokenRequest,
@@ -150,6 +150,7 @@ from schema.voice import (
 __all__ = [
     "AccountDeletionRequest",
     "AccountDeletionStatus",
+    "ProfileUpdate",
     "ExportStatus",
     "ExportTokenRequest",
     "ExportTokenResponse",

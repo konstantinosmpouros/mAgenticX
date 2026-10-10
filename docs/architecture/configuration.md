@@ -136,6 +136,11 @@ Who signs session JWTs and which public keys verify them. Production signs with 
 | `SKILL_CATALOGUE_SEARCH_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `60` / `60` | Skill catalogue searches per verified session (the search runs as the user types, debounced). |
 | `EXPORT_TOKEN_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Data-export download tokens per user (the export itself is bounded by the cooldown column). |
 | `ACCOUNT_DELETION_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `3600` | Requesting or cancelling an account deletion, per user. |
+| `PROFILE_UPDATE_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `20` / `3600` | Changing the display name or photo in Edit profile, per user. |
+| `AVATAR_MAX_UPLOAD_BYTES` | `5242880` | Largest photo upload accepted; refused while reading, before decoding. |
+| `AVATAR_READ_CHUNK_BYTES` | `65536` | Chunk size the upload is read in. |
+| `AVATAR_MAX_PIXELS` | `40000000` | Largest image (width × height, from its header) the decoder will touch. |
+| `AVATAR_SIZE_PX` | `256` | Side of the square WebP that is stored. |
 | `SKILL_REMOTE_ADD_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Remote-skill Adds per user — each can make the agents service download a skill, so the Add route cannot be used as a fetch amplifier. |
 | `MESSAGE_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `30` / `60` | Message creation (attachment/blob growth) per user. |
 | `SUGGESTIONS_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Starter-suggestion generation (LLM-backed) per user. |

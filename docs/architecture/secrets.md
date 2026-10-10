@@ -96,7 +96,7 @@ The Entra client secret expires on a date nobody will remember, and its lapsing 
 | GHCR pull token (Portainer registry `ghcr`) | *record the date chosen when generating it* | generate a new classic token with only `read:packages`, update Portainer → Registries → `ghcr`, then delete the old token. A lapsed token stops every image update (running tasks keep running) |
 | Repository read token (Portainer stack Git auth) | *record the date chosen when generating it* | generate a new fine-grained token (only `mAgenticX`, Contents: Read-only), update the stack's Git credential in Portainer, then delete the old token. A lapsed token makes every redeploy fail (running tasks keep running) |
 
-**Retired with plan 29.** HashiCorp Vault — its unseal keys, root token, userpass users, AppRole identity (`magenticx_vault_role_id` / `magenticx_vault_secret_id`) and Transit key — is no longer used. The Transit key's *public* half survives for 20 days after the cutover as the verify-only `kid 1` public key file, so pre-cutover sessions stayed valid; then it is deleted. The Swarm secrets and the Vault Portainer stack are deleted during the plan 29 decommission.
+**Retired with plan 29.** HashiCorp Vault — its unseal keys, root token, userpass users, AppRole identity (`magenticx_vault_role_id` / `magenticx_vault_secret_id`) and Transit key — is no longer used. The Transit key's *public* half was kept as the verify-only `kid 1` public key file, so pre-cutover sessions stayed valid until they refreshed onto `kid 100` or aged out; it was removed on 2026-10-10. The Swarm secrets and the Vault Portainer stack are deleted during the plan 29 decommission.
 
 ---
 

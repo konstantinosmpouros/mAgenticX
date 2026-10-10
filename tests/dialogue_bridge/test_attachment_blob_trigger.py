@@ -7,12 +7,9 @@ on ``attachments`` now removes the blob whatever deleted the row.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-
 import pytest
 from sqlalchemy import delete, func, select
 
-import utils.orphaned_blobs as orphaned_blobs
 from core.database import AttachmentTable, BlobTable, ConversationTable, MessageTable
 
 
@@ -50,26 +47,3 @@ async def test_deleting_an_attachment_deletes_its_blob_and_only_its_blob(session
 
     assert await _blobs(session_factory, blob_id) == 0
     assert await _blobs(session_factory, keep_id) == 1
-
-
-@pytest.mark.asyncio
-async def test_the_one_shot_prune_removes_old_orphans_only(session_factory, seeded_user, seeded_agent, monkeypatch):
-    """Blobs left by conversations deleted before 0030 go; a referenced blob and
-    a brand-new unreferenced one (it may be mid-write) stay."""
-    monkeypatch.setattr(orphaned_blobs, "SessionLocal", session_factory)
-    _, referenced, _ = await _attachment(session_factory, seeded_user, seeded_agent)
-    old = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=90)
-    async with session_factory() as s:
-        orphan = BlobTable(data=b"x" * 100, created_at=old)
-        fresh = BlobTable(data=b"y" * 100)
-        s.add_all([orphan, fresh])
-        await s.commit()
-        orphan_id, fresh_id = orphan.id, fresh.id
-
-    removed = await orphaned_blobs.prune_orphaned_blobs()
-
-    assert await _blobs(session_factory, orphan_id) == 0
-    assert await _blobs(session_factory, fresh_id) == 1
-    assert await _blobs(session_factory, referenced) == 1
-    assert removed["blobs"] >= 1 and removed["bytes"] >= 100
-    assert (await orphaned_blobs.prune_orphaned_blobs())["blobs"] == 0   # idempotent

@@ -174,6 +174,14 @@ account_deletion_rate_limit = rate_limit(
     emit_headers=True,
 )
 
+# Edit profile — per user, after auth + CSRF.
+profile_update_rate_limit = rate_limit(
+    (settings.rate_limit.profile_update_max_attempts, settings.rate_limit.profile_update_window_seconds),
+    scope="profile-update",
+    identifier=user_path_identity,
+    emit_headers=True,
+)
+
 message_post_rate_limit = rate_limit(
     (settings.rate_limit.message_post_max_attempts, settings.rate_limit.message_post_window_seconds),
     scope="message-post",

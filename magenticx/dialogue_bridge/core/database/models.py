@@ -111,7 +111,14 @@ class UserTable(Base):
     auth_providers = Column(String, nullable=True)
 
     email = Column(String, unique=True, index=True, nullable=True)
+    # The name Microsoft sends — refreshed on every sign-in, so never edited.
     display_name = Column(String, nullable=True)
+    # The name the user chose in Edit profile. Kept apart from display_name
+    # because a sign-in overwrites that one; NULL means "use Microsoft's".
+    preferred_name = Column(String(64), nullable=True)
+    # When the user last set a photo of their own (user_avatars); NULL = none.
+    # The UI versions the avatar URL with it, so a new photo is never stale.
+    avatar_updated_at = Column(DateTime, nullable=True)
     avatar_url = Column(String, nullable=True)
     full_name = Column(String, nullable=True)
     department = Column(String, nullable=True)
@@ -127,6 +134,11 @@ class UserTable(Base):
     # used the feature. Moved ONLY by an explicit revoke: if a login wrote it,
     # every sign-in would log the user out everywhere else.
     sessions_revoked_at = Column(DateTime, nullable=True)
+
+    @property
+    def shown_name(self) -> str | None:
+        """The name the app shows: the user's own choice, else Microsoft's."""
+        return self.preferred_name or self.display_name
 
     # When this user last *started* a data export (plan 27). The cooldown is
     # enforced against this durable column rather than Redis, because rate
@@ -489,6 +501,22 @@ class AttachmentTable(Base):
 
     message = relationship("MessageTable", back_populates="attachments")
     blob = relationship("BlobTable", back_populates="attachment", cascade="all, delete-orphan", uselist=False, single_parent=True)
+
+
+class UserAvatarTable(Base):
+    """The photo a user set in Edit profile: a 256 px WebP the bridge re-encoded.
+
+    Its own table, not a column on ``users``: the users row is read on every
+    request, and the image must never ride along. ``ON DELETE CASCADE`` takes
+    it with the account.
+    """
+
+    __tablename__ = "user_avatars"
+
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    data = Column(LargeBinary, nullable=False)
+    mime = Column(String(32), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), nullable=False)
 
 
 class BlobTable(Base):

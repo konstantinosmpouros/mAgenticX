@@ -25,3 +25,16 @@ export const SCHEDULED_TASKS_BASE_PATH = `${API_BASE_PATH}/scheduled-tasks`;
 export const USAGE_BASE_PATH = `${API_BASE_PATH}/usage`;
 export const EXPORT_BASE_PATH = `${API_BASE_PATH}/export`;
 export const ACCOUNT_BASE_PATH = `${API_BASE_PATH}/account`;
+
+/**
+ * Where a user's own photo is served, or `undefined` without one. Versioned by
+ * when it was set, so the browser may cache it forever and a new photo is a
+ * new URL. Built here — at the edge — so every avatar on screen just reads
+ * `avatarUrl`.
+ */
+export function avatarPathFor(userId: string, avatarUpdatedAt: unknown): string | undefined {
+  if (!userId || typeof avatarUpdatedAt !== "string" || !avatarUpdatedAt) return undefined;
+  const version = Date.parse(avatarUpdatedAt);
+  if (!Number.isFinite(version)) return undefined;
+  return `${ACCOUNT_BASE_PATH}/${encodeURIComponent(userId)}/avatar?v=${version}`;
+}

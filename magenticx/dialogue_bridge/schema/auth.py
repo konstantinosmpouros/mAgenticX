@@ -11,9 +11,15 @@ class UserProfile(BaseModel):
     id: str
     username: str
     email: Optional[str] = None
-    displayName: Optional[str] = Field(None, validation_alias="display_name")
+    # What the app shows: the user's chosen name, else Microsoft's.
+    displayName: Optional[str] = Field(None, validation_alias="shown_name")
+    # The user's own choice alone (null = Microsoft's name), for Edit profile.
+    preferredName: Optional[str] = Field(None, validation_alias="preferred_name")
     fullName: Optional[str] = Field(None, validation_alias="full_name")
     avatarUrl: Optional[str] = Field(None, validation_alias="avatar_url")
+    # Set when the user uploaded a photo of their own; the UI builds its URL
+    # (versioned by this timestamp) and prefers it over avatarUrl.
+    avatarUpdatedAt: Optional[UTCDateTime] = Field(None, validation_alias="avatar_updated_at")
     department: Optional[str] = None
     roleTitle: Optional[str] = Field(None, validation_alias="role_title")
     lastLoginAt: Optional[UTCDateTime] = Field(None, validation_alias="last_login_at")
@@ -54,6 +60,7 @@ class AccountSummary(BaseModel):
     email: Optional[str] = None
     displayName: Optional[str] = Field(None, validation_alias="display_name")
     avatarUrl: Optional[str] = Field(None, validation_alias="avatar_url")
+    avatarUpdatedAt: Optional[UTCDateTime] = Field(None, validation_alias="avatar_updated_at")
     isActive: bool = Field(True, validation_alias="is_active")
     current: bool = False
     expired: bool = False

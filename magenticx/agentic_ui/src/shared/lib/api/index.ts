@@ -121,6 +121,9 @@ export {
 
 export { getExportStatus, requestExportToken, exportDownloadUrl } from "./export";
 export {
+  updateProfileName,
+  uploadAvatar,
+  removeAvatar,
   getAccountDeletionStatus,
   requestAccountDeletion,
   cancelAccountDeletion,

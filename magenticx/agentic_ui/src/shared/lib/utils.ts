@@ -5,6 +5,7 @@ import type {
   AuthResponse,
   CustomInstructions,
   SkillTreeNode,
+  UserProfile,
 } from "./types";
 import {
   CUSTOM_INSTRUCTIONS_LIMITS,
@@ -21,6 +22,7 @@ import {
   type VoiceModeLanguage,
 } from "./consts";
 import { PendingDeletionSchema } from "./schemas";
+import { avatarPathFor } from "./api/paths";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -158,16 +160,26 @@ function isAuthResponseRecord(value: unknown): value is AuthResponseRecord {
   return typeof value === "object" && value !== null;
 }
 
+/** A user profile off the wire: its timestamps become Dates, a null name absent. */
+export function normalizeUserProfile(raw: AuthResponseUserRecord): UserProfile {
+  return {
+    ...raw,
+    preferredName: typeof raw.preferredName === "string" ? raw.preferredName : undefined,
+    // The user's own photo wins over a provider URL.
+    avatarUrl:
+      avatarPathFor(typeof raw.id === "string" ? raw.id : "", raw.avatarUpdatedAt) ??
+      (typeof raw.avatarUrl === "string" ? raw.avatarUrl : undefined),
+    hasOwnAvatar: typeof raw.avatarUpdatedAt === "string" && raw.avatarUpdatedAt.length > 0,
+    createdAt: raw.createdAt ? new Date(raw.createdAt) : new Date(),
+    updatedAt: raw.updatedAt ? new Date(raw.updatedAt) : new Date(),
+    lastLoginAt: raw.lastLoginAt ? new Date(raw.lastLoginAt) : undefined,
+  } as UserProfile;
+}
+
 export function normalizeAuthResponse(data: unknown): AuthResponse {
   const normalized = isAuthResponseRecord(data) ? ({ ...data } as AuthResponseRecord) : data;
   if (isAuthResponseRecord(normalized) && normalized.user) {
-    const rest = normalized.user;
-    normalized.user = {
-      ...rest,
-      createdAt: rest.createdAt ? new Date(rest.createdAt) : new Date(),
-      updatedAt: rest.updatedAt ? new Date(rest.updatedAt) : new Date(),
-      lastLoginAt: rest.lastLoginAt ? new Date(rest.lastLoginAt) : undefined,
-    };
+    normalized.user = normalizeUserProfile(normalized.user);
   }
   if (isAuthResponseRecord(normalized)) {
     // Through its contract: a malformed value reads as "not pending" (null)

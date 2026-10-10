@@ -133,11 +133,11 @@ async def begin_login(redirect_uri: str, *, park: bool = False, reauth_user_id: 
     if not state or not auth_uri:
         raise EntraOIDCError("MSAL did not return a usable authorization request.")
     client = await _get_redis()
-    await client.setex(f"{_FLOW_KEY_PREFIX}{state}", _FLOW_TTL_SECONDS, json.dumps(flow))
+    await client.set(f"{_FLOW_KEY_PREFIX}{state}", json.dumps(flow), ex=_FLOW_TTL_SECONDS)
     if reauth_user_id:
-        await client.setex(f"{_REAUTH_KEY_PREFIX}{state}", _FLOW_TTL_SECONDS, reauth_user_id)
+        await client.set(f"{_REAUTH_KEY_PREFIX}{state}", reauth_user_id, ex=_FLOW_TTL_SECONDS)
     elif park:
-        await client.setex(f"{_PARK_KEY_PREFIX}{state}", _FLOW_TTL_SECONDS, "1")
+        await client.set(f"{_PARK_KEY_PREFIX}{state}", "1", ex=_FLOW_TTL_SECONDS)
     return auth_uri
 
 

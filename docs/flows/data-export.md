@@ -89,6 +89,7 @@ If the agents service cannot be reached **before** anything was written, the exp
 ```text
 README.md                            what each file is
 account/profile.json                 profile (allowlisted columns)
+account/avatar.webp                  the profile photo, if set
 account/preferences.json             settings
 account/tool_preferences.ndjson
 conversations/conversations.ndjson

@@ -96,11 +96,18 @@ _sdk_pool_state = _PoolState()
 _sdk_pool_state.async_pool = _sdk_fake_redis.connection_pool
 _sdk_pool_state._async_client = _sdk_fake_redis
 bridge_app.state._redis = _sdk_pool_state
-# The per-conversation compaction lock (plan 34) is probed by every run
-# creation; point it at its own in-process fakeredis, never a real server.
+import core.auth.oidc as oidc_module
+from core.auth.parked import parked_sessions
+from core.auth.session import logout_denylist, refresh_guard, session_revocation
 from utils.compaction_lock import compaction_locks
+from utils.event_log import event_log as run_event_log
 
-compaction_locks._client = _fake_aioredis.FakeRedis(decode_responses=True)
+# Every raw-Redis singleton the app holds. Left alone, each would dial the real
+# (absent) server on first use: the logout denylist and revocation checks run
+# on every authenticated request, and on Windows each refused connection takes
+# ~2 s — most of the suite's wall-clock time. Tests that need a specific client
+# still swap their own in (test_event_log, test_multi_account).
+_REDIS_HOLDERS = (logout_denylist, session_revocation, refresh_guard, parked_sessions, compaction_locks, run_event_log)
 import router.auth as auth_router_module
 from core.auth.providers import AuthIdentity
 from core.auth.session import require_csrf_protection
@@ -114,6 +121,27 @@ from core.database import (
     get_db,
 )
 from utils.validators import validate_userId, validate_userId_even_if_pending
+
+
+_app_redis = _fake_aioredis.FakeRedis(decode_responses=True)
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _in_process_redis():
+    """Point every Redis singleton at the in-process server, emptied first.
+
+    Emptied before each test, so a logout or revocation written by one test can
+    never reject another test's session. One client for the run: fakeredis
+    builds it with arguments redis-py has deprecated, one warning per instance.
+    """
+    await _app_redis.flushall()
+    for holder in _REDIS_HOLDERS:
+        holder._client = _app_redis
+    oidc_module._redis = _app_redis
+    yield
+    for holder in _REDIS_HOLDERS:
+        holder._client = None
+    oidc_module._redis = None
 
 
 def utcnow() -> datetime:

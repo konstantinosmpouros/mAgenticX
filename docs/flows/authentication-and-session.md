@@ -139,6 +139,10 @@ A missing email on an existing row is backfilled from Entra only if no other row
 
 `vault_user_id` still exists on `users` but nothing reads it: it is the record of which row belonged to which pre-plan-29 Vault account (Phase 9).
 
+**The name the app shows is the user's to change.** Every sign-in rewrites `display_name` from the token's `name` claim, so a name chosen in **Edit profile** is kept in its own column, `preferred_name` (migration `0036`), which a sign-in never touches. The profile's `displayName` is `preferred_name` when set, else `display_name` (`UserTable.shown_name`); it also feeds the account switcher. `PATCH /v1/account/{user_id}/profile` with `{displayName}` saves it — auth, CSRF, then `profile_update_rate_limit` (20 per hour per user); `null` or blank goes back to Microsoft's name. The name is normalized (whitespace runs collapse), capped at 64 characters, and refused outright if it holds control, zero-width or direction-changing characters, which could make it render as something else next to other names. The value is never logged.
+
+**The photo is the user's upload** — Microsoft's token carries none. `PUT /v1/account/{user_id}/avatar` (multipart `photo`; auth → CSRF → the same rate limit) reads the body in 64 KB chunks and refuses it past `AVATAR_MAX_UPLOAD_BYTES` (5 MB) before decoding; Pillow then accepts only PNG, JPEG or WebP **by content**, refuses a header claiming more than `AVATAR_MAX_PIXELS` (a decompression bomb), applies the EXIF orientation, crops a square and re-encodes a 256 px WebP into `user_avatars` (off the event loop). Nothing the user did not see survives: no EXIF, ICC or XMP, no polyglot payload. `DELETE` removes it. `GET` serves it only to its owner and to the accounts parked on the same browser (the switcher shows them) — anyone else gets 404, so the endpoint never reveals whether a photo exists — with `nosniff`, `Content-Security-Policy: default-src 'none'; sandbox` and `Cache-Control: private, immutable`. The profile carries `avatarUpdatedAt`; the UI builds `avatarUrl` from it at the edge (`avatarPathFor`, versioned `?v=`), so every avatar on screen picks up a new photo at once. Username, email, department and role stay read-only: they come from Microsoft.
+
 ---
 
 ## Phase 3 — Token Minting (KMS-signed JWTs)
@@ -183,7 +187,7 @@ Every `kid` the bridge accepts — each listed KMS version, plus any **verify-on
 
 **Rotation:** create a new KMS key version, export its public key as `101.pem`, add `101:<version ocid>` to `SESSION_SIGNING_KEYS`, set `SESSION_SIGNING_ACTIVE_KID=101`, deploy. Tokens with `kid 100` keep verifying; after **20 days** (`JWT_REFRESH_ABSOLUTE_TTL_SECONDS`) none can still be valid, and `100` is removed.
 
-**The move off Vault Transit was a rotation.** The Transit public key was exported once, while Vault was still unsealed, and loaded as verify-only `kid 1` (`SESSION_SIGNING_LEGACY_KIDS=1`). Sessions minted by Vault before the cutover kept verifying — and refreshing, into KMS-signed `kid 100` tokens — so **nobody was logged out**. `1.pem` and the legacy setting are removed 20 days after the cutover.
+**The move off Vault Transit was a rotation.** The Transit public key was exported once, while Vault was still unsealed, and loaded as verify-only `kid 1` (`SESSION_SIGNING_LEGACY_KIDS=1`). Sessions minted by Vault before the cutover kept verifying — and refreshing, into KMS-signed `kid 100` tokens — so **nobody was logged out**. `1.pem` and the legacy setting were removed on 2026-10-10: every refresh re-signs with the active kid, so a `kid 1` token had to go unrefreshed since the cutover, and the 12-day idle limit had expired the last one by 2026-10-09.
 
 ### Token model
 
@@ -455,9 +459,9 @@ Until plan 29, username/password login ran alongside Entra: the bridge checked t
 
 **Accounts were linked before the password path was removed.** The release that still had both doors resolved a login by provider subject *or* by normalized email, so a Vault-era row picked up its `oidc_subject` the first time its owner signed in with Microsoft (`auth_providers` then reads `entra,vault`). Plan 29 Phase A0 checked every active row's email against Entra, and Phase A1 had every user sign in with Microsoft once, until no active row lacked an `oidc_subject`. Only then did the release that resolves by `oid` alone ship — which is why its lack of an email match strands no one.
 
-**Sessions survived the signer change.** The Vault Transit public key was exported while Vault was still unsealed and loaded verify-only as `kid 1` (Phase 3), so tokens Vault had signed kept verifying — and refreshing into KMS-signed `kid 100` tokens — until they aged out after 20 days.
+**Sessions survived the signer change.** The Vault Transit public key was exported while Vault was still unsealed and loaded verify-only as `kid 1` (Phase 3), so tokens Vault had signed kept verifying — and refreshing into KMS-signed `kid 100` tokens — until they aged out; `kid 1` was removed on 2026-10-10.
 
-What remains of the old model: the `users.vault_user_id` column (unread, kept for diagnosis — dropping it is a destructive migration for no gain) and the legacy `kid 1` public key for 20 days after the cutover.
+What remains of the old model: the `users.vault_user_id` column (unread, kept for diagnosis — dropping it is a destructive migration for no gain) Nothing else — the legacy `kid 1` key was removed on 2026-10-10.
 
 ---
 

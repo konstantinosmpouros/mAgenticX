@@ -33,6 +33,8 @@
  */
 import { z } from "zod";
 
+import { avatarPathFor } from "./api/paths";
+
 // ---------------------------------------------------------------------------
 // Loose gates — assert the container shape only. The camel-mapping for these
 // domain objects stays in consts/transforms/ (transformMessage, transformConversation…).
@@ -645,7 +647,10 @@ export const AccountSummarySchema = z.record(z.unknown()).transform((raw) => ({
   username: typeof raw.username === "string" ? raw.username : "",
   email: typeof raw.email === "string" ? raw.email : undefined,
   displayName: typeof raw.displayName === "string" ? raw.displayName : undefined,
-  avatarUrl: typeof raw.avatarUrl === "string" ? raw.avatarUrl : undefined,
+  // The user's own photo wins over a provider URL.
+  avatarUrl:
+    avatarPathFor(typeof raw.id === "string" ? raw.id : "", raw.avatarUpdatedAt) ??
+    (typeof raw.avatarUrl === "string" ? raw.avatarUrl : undefined),
   isActive: typeof raw.isActive === "boolean" ? raw.isActive : true,
   current: raw.current === true,
   expired: raw.expired === true,
