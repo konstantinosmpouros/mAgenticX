@@ -1,6 +1,6 @@
 # Conversation Management
 
-A conversation is the top-level container for every chat session — it owns a message tree, belongs to one user and one agent, and carries metadata for sidebar display, privacy, archiving, sharing, and reporting. The message tree is a self-referencing structure (each message has a `parent_message_id`) that supports branching: editing a user message or retrying an AI response creates a sibling rather than overwriting the existing row. All CRUD, branching, sharing, and export operations are served by the dialogue bridge; the UI aggregates state across three paginated lists (active, archived, shared).
+A conversation is the top-level container for every chat session — it owns a message tree, belongs to one user and one agent, and carries metadata for sidebar display, privacy, pinning, archiving, sharing, and reporting. The message tree is a self-referencing structure (each message has a `parent_message_id`) that supports branching: editing a user message or retrying an AI response creates a sibling rather than overwriting the existing row. All CRUD, branching, sharing, and export operations are served by the dialogue bridge; the UI aggregates state across the sidebar's Pinned and Chats sections and the archived and shared lists.
 
 ---
 
@@ -172,6 +172,16 @@ After the initial snap there is no further branch override, so a brand-new run (
 
 Archiving is a soft-delete — the conversation is hidden from the default list but not deleted. The bridge sets `is_archived=True` and `archived_at=now()` (unarchive reverses this). Archived conversations are served by a separate `GET /archived` endpoint and rendered in a distinct section of the sidebar.
 
+### Pin and Unpin
+
+`PATCH /{user_id}/{conversation_id}/pin` and `/unpin` move a conversation between the sidebar's **Pinned** section and **Chats**. The bridge sets `is_pinned` and `pinned_at` (unpin clears both); both endpoints return the refreshed `ConversationSummary` and require the CSRF token.
+
+- **Pinning is not activity.** The flag is written with a Core `UPDATE` that sets `updated_at` to itself, so the ORM's `onupdate=now()` never fires: an unpinned conversation goes back to its place by recency instead of jumping to the top of Chats.
+- **Idempotent.** Pinning a pinned conversation changes nothing, so a repeated pin keeps its place.
+- **Only sidebar conversations can be pinned.** A private or archived conversation gets `409`.
+- **Capped per user** at `MAX_PINNED_CONVERSATIONS` (default 30, at most 100) — `409` with "You can pin up to N conversations". The check takes a row lock on the user's `users` row, so two concurrent pins cannot both slip under the cap. The cap is what lets the UI load every pin in one request.
+- **Archiving clears the pin**, and unarchiving does not restore it. A fork starts unpinned.
+
 ### Rename
 
 `PATCH /{user_id}/{conversation_id}/title { title }` — updates the `title` column. The frontend mirrors the rename into the open conversation detail view without a full refetch and re-sorts the sidebar.
@@ -274,10 +284,12 @@ The response carries `Content-Disposition: attachment; filename="{sanitized_titl
 
 The sidebar manages three independent paginated lists: active, archived, and shared conversations. Each uses a page size of 10 and loads more on scroll.
 
+The active list shows as two sections, **Pinned** above **Chats**, each with a heading that folds it away (the open/closed state is remembered per browser in `shared/lib/sidebarStorage.ts`). The bridge serves them as disjoint lists — `GET /{user_id}/pinned` (newest pin first, one page at the pagination ceiling of 100, which the pin cap stays under) and `GET /{user_id}` (everything else) — and the first load fetches both in parallel (`getSidebarConversations`). The frontend keeps one `conversations` array and the sidebar derives the two sections from `isPinned`, so rename, delete, streaming and new-message updates reach a row in whichever section shows it. **The Pinned section is not rendered at all while nothing is pinned.** Only the lists scroll: the section headings stay put, the Pinned list is capped at 30% of the viewport height so it never pushes Chats off screen, and infinite scroll belongs to the Chats list alone (and pauses while Chats is folded).
+
 ```mermaid
 flowchart TD
-    A["Sidebar mounts"] --> B["getConversations(userId, page=1, size=10)\nGET /v1/conversations/{userId}"]
-    B --> C["Filter: is_archived=false, is_private=false\nSort: updated_at DESC"]
+    A["Sidebar mounts"] --> B["getSidebarConversations(userId, size=10)\nGET /v1/conversations/{userId}/pinned + GET /v1/conversations/{userId}"]
+    B --> C["Filter: is_archived=false, is_private=false\nPinned: is_pinned=true, pinned_at DESC\nChats: is_pinned=false, updated_at DESC"]
     C --> D["Render list"]
     D --> E{Scroll threshold reached?}
     E -->|Yes| F["getConversations(page=convPage+1)"]
@@ -344,5 +356,5 @@ When a conversation reaches its first AI response, the bridge calls the agents s
 | Conversation API calls (frontend) | [magenticx/agentic_ui/src/shared/lib/api/](../../magenticx/agentic_ui/src/shared/lib/api/) | `createConversation`, `getConversations`, `deleteConversation`, `forkConversation`, `shareConversation`, `addMessageToConversation` |
 | Conversation action handlers | [magenticx/agentic_ui/src/features/chat/handlers/conversations.ts](../../magenticx/agentic_ui/src/features/chat/handlers/conversations.ts) | `handleConversationSelect`, `handleForkConversation`, `handleDeleteConversation`, `clearChatAndStopThinking` |
 | Send message flow | [magenticx/agentic_ui/src/features/inference/inference.ts](../../magenticx/agentic_ui/src/features/inference/inference.ts) | `handleSendMessage()` — new, existing, edit, retry, shared continuation start modes |
-| Sidebar rendering | [magenticx/agentic_ui/src/features/chat/components/ChatSidebar.tsx](../../magenticx/agentic_ui/src/features/chat/components/ChatSidebar.tsx) | Scroll trigger, auto-load, rename inline edit, action menu |
+| Sidebar rendering | [magenticx/agentic_ui/src/features/chat/components/ChatSidebar.tsx](../../magenticx/agentic_ui/src/features/chat/components/ChatSidebar.tsx) | Pinned + Chats sections, scroll trigger, auto-load, rename inline edit, action menu (Pin/Unpin) |
 | Conversation state | [magenticx/agentic_ui/src/app/useChatWorkspace.tsx](../../magenticx/agentic_ui/src/app/useChatWorkspace.tsx) + [shared/stores/workspaceStore.ts](../../magenticx/agentic_ui/src/shared/stores/workspaceStore.ts) | `currentConversation`, `conversations`, `branchSelections`, pagination state |

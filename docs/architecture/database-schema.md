@@ -71,6 +71,8 @@ erDiagram
         boolean is_private
         boolean is_archived
         datetime archived_at
+        boolean is_pinned
+        datetime pinned_at
         boolean is_reported
         datetime reported_at
         string last_message_preview
@@ -288,6 +290,8 @@ The top-level container for a message thread. A conversation belongs to one user
 | `is_private` | `Boolean` | No | `false` | Private conversations are excluded from shared exports and search results |
 | `is_archived` | `Boolean` | No | `false` | Soft-delete; archived conversations are hidden from the default list |
 | `archived_at` | `DateTime` | Yes | `NULL` | Set when `is_archived` flips to `true` |
+| `is_pinned` | `Boolean` | No | `false` | Shown in the sidebar's Pinned section instead of Chats (migration `0038`). Archiving clears it; a fork starts unpinned |
+| `pinned_at` | `DateTime` | Yes | `NULL` | When it was pinned; orders the Pinned section, newest first |
 | `is_reported` | `Boolean` | No | `false` | Set when a report is filed |
 | `reported_at` | `DateTime` | Yes | `NULL` | Set when `is_reported` flips to `true` |
 | `last_message_preview` | `String` | Yes | `""` | Truncated last message content for sidebar display |
@@ -298,7 +302,7 @@ The top-level container for a message thread. A conversation belongs to one user
 | `created_at` | `DateTime` | No | `func.now()` | — |
 | `updated_at` | `DateTime` | No | `func.now()` | `onupdate=func.now()` |
 
-**Indexes (migration `0033`):** `ix_conversations_user_usage_total` (`user_id`, `usage_total_tokens`) and `ix_conversations_user_usage_updated` (`user_id`, `usage_updated_at`) — the Usage tab's conversation list pages on one or the other by keyset, never summing messages.
+**Indexes (migration `0033`):** `ix_conversations_user_usage_total` (`user_id`, `usage_total_tokens`) and `ix_conversations_user_usage_updated` (`user_id`, `usage_updated_at`) — the Usage tab's conversation list pages on one or the other by keyset, never summing messages. **Migration `0038`:** `ix_conversations_user_pinned` (`user_id`, `pinned_at`) `WHERE is_pinned` — partial, because pins are a handful of rows per user; it serves `GET /{user_id}/pinned`.
 
 **Relationships:** `user`, `agent`, `messages` (ordered by `created_at ASC`, then **user before ai**, then `id` — see the ordering note below; cascade delete), `report` (one-to-one, cascade delete), `active_assistant_message` (many-to-one, `post_update=True`).
 

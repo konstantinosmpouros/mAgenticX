@@ -3,6 +3,7 @@ from __future__ import annotations
 from sqlalchemy import select
 
 from core.database import ConversationReportTable, ConversationTable, MessageTable
+from core.settings import settings
 import utils.titles
 from router import catalog as catalog_router
 from router import conversations as conversation_router
@@ -205,6 +206,120 @@ async def test_unarchive_conversation_restores_it_to_default_list(
     assert unarchive_response.json()["isArchived"] is False
     assert default_list_response.json()["total"] == 1
     assert archived_list_response.json()["total"] == 0
+
+
+async def _pin(client, user_id, conversation_id, *, pinned: bool = True):
+    action = "pin" if pinned else "unpin"
+    return await client.patch(f"/v1/conversations/{user_id}/{conversation_id}/{action}")
+
+
+async def test_pin_moves_conversation_from_chats_to_pinned_without_touching_recency(
+    client,
+    seeded_user,
+    conversation_factory,
+    db_session_factory,
+):
+    conversation = await conversation_factory(title="Pin me")
+    await conversation_factory(title="Stay in chats")
+    async with db_session_factory() as session:
+        before = await session.get(ConversationTable, conversation["conversation_id"])
+        updated_before = before.updated_at
+
+    pin_response = await _pin(client, seeded_user.id, conversation["conversation_id"])
+    chats = (await client.get(f"/v1/conversations/{seeded_user.id}?page=1&size=10")).json()
+    pinned = (await client.get(f"/v1/conversations/{seeded_user.id}/pinned?page=1&size=10")).json()
+
+    assert pin_response.status_code == 200
+    assert pin_response.json()["isPinned"] is True
+    assert pin_response.json()["pinnedAt"] is not None
+    assert [item["id"] for item in pinned["items"]] == [conversation["conversation_id"]]
+    assert conversation["conversation_id"] not in [item["id"] for item in chats["items"]]
+    assert chats["total"] == 1
+    # Pinning is not activity: unpinning must put it back in its place by recency.
+    async with db_session_factory() as session:
+        after = await session.get(ConversationTable, conversation["conversation_id"])
+        assert after.updated_at == updated_before
+
+
+async def test_unpin_returns_conversation_to_chats(client, seeded_user, conversation_factory):
+    conversation = await conversation_factory(title="Unpin me")
+    await _pin(client, seeded_user.id, conversation["conversation_id"])
+
+    unpin_response = await _pin(client, seeded_user.id, conversation["conversation_id"], pinned=False)
+    chats = (await client.get(f"/v1/conversations/{seeded_user.id}?page=1&size=10")).json()
+    pinned = (await client.get(f"/v1/conversations/{seeded_user.id}/pinned?page=1&size=10")).json()
+
+    assert unpin_response.status_code == 200
+    assert unpin_response.json()["isPinned"] is False
+    assert unpin_response.json()["pinnedAt"] is None
+    assert [item["id"] for item in chats["items"]] == [conversation["conversation_id"]]
+    assert pinned["total"] == 0
+
+
+async def test_pinned_list_orders_newest_pin_first(client, seeded_user, conversation_factory):
+    first = await conversation_factory(title="Pinned first")
+    second = await conversation_factory(title="Pinned second")
+    await _pin(client, seeded_user.id, first["conversation_id"])
+    await _pin(client, seeded_user.id, second["conversation_id"])
+
+    pinned = (await client.get(f"/v1/conversations/{seeded_user.id}/pinned?page=1&size=10")).json()
+
+    assert [item["id"] for item in pinned["items"]] == [second["conversation_id"], first["conversation_id"]]
+
+
+async def test_repeated_pin_keeps_its_place(client, seeded_user, conversation_factory):
+    conversation = await conversation_factory(title="Pin twice")
+    first = await _pin(client, seeded_user.id, conversation["conversation_id"])
+    second = await _pin(client, seeded_user.id, conversation["conversation_id"])
+
+    assert second.status_code == 200
+    assert second.json()["pinnedAt"] == first.json()["pinnedAt"]
+
+
+async def test_pin_refuses_archived_and_private_conversations(
+    client,
+    seeded_user,
+    conversation_factory,
+    db_session_factory,
+):
+    archived = await conversation_factory(title="Archived", is_archived=True)
+    private = await conversation_factory(title="Private")
+    async with db_session_factory() as session:
+        row = await session.get(ConversationTable, private["conversation_id"])
+        row.is_private = True
+        await session.commit()
+
+    archived_response = await _pin(client, seeded_user.id, archived["conversation_id"])
+    private_response = await _pin(client, seeded_user.id, private["conversation_id"])
+
+    assert archived_response.status_code == 409
+    assert private_response.status_code == 409
+
+
+async def test_pin_refuses_past_the_cap(client, seeded_user, conversation_factory, monkeypatch):
+    monkeypatch.setattr(settings.conversations, "max_pinned", 1)
+    first = await conversation_factory(title="Fits")
+    second = await conversation_factory(title="Over the cap")
+    await _pin(client, seeded_user.id, first["conversation_id"])
+
+    response = await _pin(client, seeded_user.id, second["conversation_id"])
+
+    assert response.status_code == 409
+    assert "up to 1" in response.json()["detail"]
+
+
+async def test_archive_clears_the_pin(client, seeded_user, conversation_factory):
+    conversation = await conversation_factory(title="Pinned then archived")
+    await _pin(client, seeded_user.id, conversation["conversation_id"])
+
+    archive_response = await client.patch(
+        f"/v1/conversations/{seeded_user.id}/{conversation['conversation_id']}/archive"
+    )
+    pinned = (await client.get(f"/v1/conversations/{seeded_user.id}/pinned?page=1&size=10")).json()
+
+    assert archive_response.json()["isArchived"] is True
+    assert archive_response.json()["isPinned"] is False
+    assert pinned["total"] == 0
 
 
 async def test_report_conversation_marks_conversation_as_reported(

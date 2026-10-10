@@ -1,6 +1,6 @@
 /**
- * Conversation CRUD — list (active/archived), detail, fork, and the
- * lifecycle mutations (delete, archive, unarchive, report, rename).
+ * Conversation CRUD — list (active/pinned/archived), detail, fork, and the
+ * lifecycle mutations (delete, archive, unarchive, pin, unpin, report, rename).
  */
 import type {
   CompactionOutcome,
@@ -10,8 +10,16 @@ import type {
   MessageOut,
 } from "../types";
 import { requestJson, requestVoid } from "../http";
-import { CompactConversationResponseSchema, WireObjectSchema, WirePageItemsSchema } from "../schemas";
-import { transformConversationDetail, transformConversationSummary, transformMessage } from "../consts";
+import {
+  CompactConversationResponseSchema,
+  WireObjectSchema,
+  WirePageItemsSchema,
+} from "../schemas";
+import {
+  transformConversationDetail,
+  transformConversationSummary,
+  transformMessage,
+} from "../consts";
 import { CONVERSATIONS_BASE_PATH } from "./paths";
 
 // Fetch conversations for a user. The bridge returns either a bare array or a
@@ -26,6 +34,36 @@ export async function getConversations(
     fallbackMessage: "Failed to fetch conversations",
   });
   return data.map(transformConversationSummary);
+}
+
+// The pagination ceiling. The bridge caps pins at or below it, so one request
+// at this size always returns every pinned conversation.
+const PINNED_PAGE_SIZE = 100;
+
+// Fetch every pinned conversation for a user, newest pin first.
+export async function getPinnedConversations(userId: string): Promise<ConversationSummary[]> {
+  const data = await requestJson(
+    `${CONVERSATIONS_BASE_PATH}/${userId}/pinned?page=1&size=${PINNED_PAGE_SIZE}`,
+    {
+      schema: WirePageItemsSchema,
+      fallbackMessage: "Failed to fetch pinned conversations",
+    },
+  );
+  return data.map(transformConversationSummary);
+}
+
+// The sidebar's first load: every pin plus the first page of Chats, fetched in
+// parallel. The two lists are disjoint server-side, so they simply concatenate;
+// later pages come from getConversations and never contain a pinned row.
+export async function getSidebarConversations(
+  userId: string,
+  size: number,
+): Promise<ConversationSummary[]> {
+  const [pinned, recent] = await Promise.all([
+    getPinnedConversations(userId),
+    getConversations(userId, 1, size),
+  ]);
+  return [...pinned, ...recent];
 }
 
 // Fetch archived conversations for a user
@@ -91,6 +129,26 @@ export async function unarchiveConversation(
       csrf: true,
       schema: WireObjectSchema,
       fallbackMessage: "Failed to unarchive conversation",
+    },
+  );
+  return transformConversationSummary(data);
+}
+
+// Pin or unpin a conversation and return the updated summary. Pinning fails
+// with 409 past the pin cap, or for a private or archived conversation.
+export async function setConversationPinned(
+  userId: string,
+  conversationId: string,
+  pinned: boolean,
+): Promise<ConversationSummary> {
+  const action = pinned ? "pin" : "unpin";
+  const data = await requestJson(
+    `${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}/${action}`,
+    {
+      method: "PATCH",
+      csrf: true,
+      schema: WireObjectSchema,
+      fallbackMessage: pinned ? "Failed to pin conversation" : "Failed to unpin conversation",
     },
   );
   return transformConversationSummary(data);
@@ -170,12 +228,15 @@ export async function undoCompaction(
   conversationId: string,
   messageId: string,
 ): Promise<MessageOut> {
-  const data = await requestJson(`${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}/compact/undo`, {
-    method: "POST",
-    csrf: true,
-    body: { messageId },
-    schema: WireObjectSchema,
-    fallbackMessage: "Failed to undo the compaction",
-  });
+  const data = await requestJson(
+    `${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}/compact/undo`,
+    {
+      method: "POST",
+      csrf: true,
+      body: { messageId },
+      schema: WireObjectSchema,
+      fallbackMessage: "Failed to undo the compaction",
+    },
+  );
   return transformMessage(data);
 }

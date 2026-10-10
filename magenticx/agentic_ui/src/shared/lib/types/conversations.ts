@@ -14,6 +14,9 @@ export type ConversationSummary = {
   isPrivate: boolean;
   isArchived?: boolean;
   archivedAt?: Date | null;
+  /** Shown in the sidebar's Pinned section instead of Chats. */
+  isPinned?: boolean;
+  pinnedAt?: Date | null;
   isReported?: boolean;
   reportedAt?: Date | null;
   activeRunId?: string | null;
@@ -33,6 +36,9 @@ export type ConversationDetail = {
   isPrivate: boolean;
   isArchived?: boolean;
   archivedAt?: Date | null;
+  /** Shown in the sidebar's Pinned section instead of Chats. */
+  isPinned?: boolean;
+  pinnedAt?: Date | null;
   isReported?: boolean;
   reportedAt?: Date | null;
   activeRunId?: string | null;

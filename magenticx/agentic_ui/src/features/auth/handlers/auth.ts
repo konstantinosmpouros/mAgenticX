@@ -7,7 +7,7 @@ import type {
 import {
   getAccounts,
   getAgents,
-  getConversations,
+  getSidebarConversations,
   getMySkills,
   getTools,
   getUserPreferences,
@@ -100,7 +100,7 @@ export function createAuthHandlers(ctx: AuthCtx) {
       const toolsPromise = getTools();
       const mySkillsPromise = setMyRegistrySkills ? getMySkills(user.id) : null;
       const preferencesPromise = getUserPreferences(user.id);
-      const conversationsPromise = getConversations(user.id, 1, CONV_INITIAL_PAGE_SIZE);
+      const conversationsPromise = getSidebarConversations(user.id, CONV_INITIAL_PAGE_SIZE);
 
       try {
         const agentsList = await agentsPromise;

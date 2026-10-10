@@ -209,6 +209,16 @@ class ConversationTable(Base):
         # each sort is a range scan on its own index, never a sum over messages.
         Index("ix_conversations_user_usage_total", "user_id", "usage_total_tokens"),
         Index("ix_conversations_user_usage_updated", "user_id", "usage_updated_at"),
+        # The sidebar's Pinned section (migration 0038): one user's pins, newest
+        # pin first. Partial, because pins are a handful of rows per user while
+        # the table holds every conversation they ever had.
+        Index(
+            "ix_conversations_user_pinned",
+            "user_id",
+            "pinned_at",
+            postgresql_where=text("is_pinned"),
+            sqlite_where=text("is_pinned"),
+        ),
     )
 
     id = Column(String, primary_key=True, default=gen_uuid)
@@ -222,6 +232,13 @@ class ConversationTable(Base):
     is_private = Column(Boolean, nullable=False, server_default="false")
     is_archived = Column(Boolean, nullable=False, server_default="false")
     archived_at = Column(DateTime, nullable=True)
+    # Pinned to the top of the sidebar. Archiving clears it and a fork starts
+    # unpinned; pinned_at orders the Pinned section (newest pin first). The
+    # Python default makes every ORM insert write a real boolean: left to the
+    # server default, sqlite (the test schema) stores the string 'false',
+    # which reads back truthy.
+    is_pinned = Column(Boolean, nullable=False, default=False, server_default="false")
+    pinned_at = Column(DateTime, nullable=True)
     is_reported = Column(Boolean, nullable=False, server_default="false")
     reported_at = Column(DateTime, nullable=True)
     # The assistant message currently being streamed for this conversation.

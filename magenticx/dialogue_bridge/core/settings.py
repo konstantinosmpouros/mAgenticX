@@ -687,6 +687,19 @@ class AccountDeletionSettings(BaseSettings):
         return v
 
 
+class ConversationSettings(BaseSettings):
+    """Limits on how a user organises their conversation list.
+
+    ``max_pinned`` caps the sidebar's Pinned section. The UI loads every pin in
+    a single page (the pagination ceiling is 100), so the cap is what keeps
+    that request bounded — and a pinned list longer than a screen stops being
+    a shortcut anyway.
+    """
+    model_config = _BASE_MODEL_CONFIG
+
+    max_pinned: int = Field(30, ge=1, le=100, validation_alias="MAX_PINNED_CONVERSATIONS")
+
+
 class ShareSettings(BaseSettings):
     model_config = _BASE_MODEL_CONFIG
 
@@ -1164,6 +1177,7 @@ class Settings(BaseSettings):
     voice: VoiceSettings = Field(default_factory=VoiceSettings)
     speech: SpeechSettings = Field(default_factory=SpeechSettings)
     attachments: AttachmentSettings = Field(default_factory=AttachmentSettings)
+    conversations: ConversationSettings = Field(default_factory=ConversationSettings)
     share: ShareSettings = Field(default_factory=ShareSettings)
     export: ExportSettings = Field(default_factory=ExportSettings)
     account_deletion: AccountDeletionSettings = Field(default_factory=AccountDeletionSettings)

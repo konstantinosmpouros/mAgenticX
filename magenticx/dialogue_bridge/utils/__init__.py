@@ -22,6 +22,7 @@ from utils.conversations import (
     init_message,
     list_owned_shares,
     set_conversation_archive_state,
+    set_conversation_pin_state,
 )
 from utils.messages import (
     apply_ai_message_update,
@@ -110,6 +111,7 @@ __all__ = [
     "set_agent_tool_approval",
     "set_agent_tool_enabled",
     "set_conversation_archive_state",
+    "set_conversation_pin_state",
     "sync_agents_with_service",
     "toggle_message_reaction",
     "transcribe_dictation_audio",

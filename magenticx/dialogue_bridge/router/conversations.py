@@ -43,6 +43,7 @@ from utils import (
     reap_conversation_runtime,
     resolve_conversation_title,
     set_conversation_archive_state,
+    set_conversation_pin_state,
     validate_convId,
     validate_convId_full,
     validate_userId,
@@ -356,6 +357,27 @@ async def getArchivedConvsSummary(
 
 
 @router.get(
+    "/{user_id}/pinned",
+    response_model=Page[ConversationSummary],
+    status_code=status.HTTP_200_OK,
+    summary="Get paginated pinned conversation summaries for the user",
+)
+async def getPinnedConvsSummary(
+    user_id: str,
+    current_user: AuthUser = Depends(validate_userId),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Return the user's pinned conversations, newest pin first. The pin cap keeps
+    this to one page, so the sidebar loads it whole next to the first page of Chats.
+    """
+    set_context(user_id=user_id)
+    page = await apaginate(db, conversation_summaries_query(user_id, pinned=True))
+    logger.info("conversation_pinned_summary_list_fetched", "Pinned conversation summary list fetched", total=page.total, page=page.page, size=page.size)
+    return page
+
+
+@router.get(
     "/{user_id}/shares",
     response_model=list[ConversationShareListItem],
     status_code=status.HTTP_200_OK,
@@ -489,6 +511,48 @@ async def unarchiveConversation(
     set_context(user_id=user_id, conversation_id=conversation_id)
     await set_conversation_archive_state(db, current_conv, False)
     logger.info("conversation_unarchived", "Conversation unarchived", conversation_id=conversation_id, agent_id=current_conv.agent_id)
+    return ConversationSummary.model_validate(current_conv)
+
+
+@router.patch(
+    "/{user_id}/{conversation_id}/pin",
+    response_model=ConversationSummary,
+    status_code=status.HTTP_200_OK,
+    summary="Pin a conversation to the top of the sidebar",
+)
+async def pinConversation(
+    user_id: str,
+    conversation_id: str,
+    current_user: AuthUser = Depends(validate_userId),
+    current_conv: ConversationTable = Depends(validate_convId),
+    _: None = Depends(require_csrf_protection),
+    db: AsyncSession = Depends(get_db),
+):
+    """Pin a conversation and return the refreshed summary (409 past the pin cap)."""
+    set_context(user_id=user_id, conversation_id=conversation_id)
+    await set_conversation_pin_state(db, current_conv, True)
+    logger.info("conversation_pinned", "Conversation pinned", conversation_id=conversation_id, agent_id=current_conv.agent_id)
+    return ConversationSummary.model_validate(current_conv)
+
+
+@router.patch(
+    "/{user_id}/{conversation_id}/unpin",
+    response_model=ConversationSummary,
+    status_code=status.HTTP_200_OK,
+    summary="Unpin a conversation",
+)
+async def unpinConversation(
+    user_id: str,
+    conversation_id: str,
+    current_user: AuthUser = Depends(validate_userId),
+    current_conv: ConversationTable = Depends(validate_convId),
+    _: None = Depends(require_csrf_protection),
+    db: AsyncSession = Depends(get_db),
+):
+    """Unpin a conversation and return the refreshed summary."""
+    set_context(user_id=user_id, conversation_id=conversation_id)
+    await set_conversation_pin_state(db, current_conv, False)
+    logger.info("conversation_unpinned", "Conversation unpinned", conversation_id=conversation_id, agent_id=current_conv.agent_id)
     return ConversationSummary.model_validate(current_conv)
 
 

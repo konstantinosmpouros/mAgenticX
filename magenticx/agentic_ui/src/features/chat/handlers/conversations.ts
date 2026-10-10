@@ -6,6 +6,7 @@ import {
   renameConversation,
   archiveConversation,
   unarchiveConversation,
+  setConversationPinned,
   getArchivedConversations,
   forkConversation,
 } from "@/shared/lib/api";
@@ -448,6 +449,34 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     }
   };
 
+  // Pinning moves the row between the sidebar's Pinned and Chats sections at
+  // once; if the bridge refuses (the pin cap, a conversation archived in
+  // another tab) the row goes back exactly as it was.
+  const handleToggleConversationPin = async (conversation: ConversationSummary) => {
+    if (!userId) return;
+    const pinned = !conversation.isPinned;
+    const setPin = (isPinned: boolean, pinnedAt: Date | null) =>
+      setConversations((prev) =>
+        prev.map((c) => (c.id === conversation.id ? { ...c, isPinned, pinnedAt } : c)),
+      );
+    setPin(pinned, pinned ? new Date() : null);
+    try {
+      const summary = await setConversationPinned(userId, conversation.id, pinned);
+      setPin(Boolean(summary.isPinned), summary.pinnedAt ?? null);
+      persistUIState();
+    } catch (error) {
+      setPin(Boolean(conversation.isPinned), conversation.pinnedAt ?? null);
+      toastError(
+        toast,
+        pinned ? "Couldn't pin conversation" : "Couldn't unpin conversation",
+        error,
+        {
+          duration: 3500,
+        },
+      );
+    }
+  };
+
   const handleArchiveCurrentConversation = () => {
     // Keep current-thread actions as thin wrappers over the shared row-level handlers.
     void handleArchiveConversation(currentConversation?.id);
@@ -526,6 +555,7 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     handleRenameConversation,
     handleArchiveConversation,
     handleUnarchiveConversation,
+    handleToggleConversationPin,
     handleArchiveCurrentConversation,
     handleUnarchiveCurrentConversation,
     handleOpenSearch,

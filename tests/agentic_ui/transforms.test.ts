@@ -38,6 +38,20 @@ describe("transformConversationSummary / Detail", () => {
     expect(snake.archivedAt).toBeInstanceOf(Date);
   });
 
+  it("keeps the pin, which decides the sidebar section", () => {
+    // Dropping isPinned would silently move every pinned chat back into Chats.
+    const pinned = transformConversationSummary({
+      id: "c1",
+      isPinned: true,
+      pinnedAt: "2026-10-10T12:00:00Z",
+    });
+    expect(pinned.isPinned).toBe(true);
+    expect(pinned.pinnedAt).toBeInstanceOf(Date);
+    expect(transformConversationSummary({ id: "c1", is_pinned: true }).isPinned).toBe(true);
+    expect(transformConversationSummary({ id: "c1" }).isPinned).toBe(false);
+    expect(transformConversationDetail({ id: "c1", is_pinned: true }).isPinned).toBe(true);
+  });
+
   it("treats an active run as streaming", () => {
     expect(transformConversationSummary({ id: "c1", activeRunId: "r1" }).isStreaming).toBe(true);
     expect(transformConversationSummary({ id: "c1" }).isStreaming).toBe(false);

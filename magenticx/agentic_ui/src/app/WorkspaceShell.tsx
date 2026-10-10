@@ -68,6 +68,7 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
     handleDeleteConversation,
     handleRenameConversation,
     handleArchiveConversation,
+    handleToggleConversationPin,
     handleReportConversationFromSidebar,
     handleLoadMoreConversations,
     handleTitleClick,
@@ -173,7 +174,9 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
   // The account awaits deletion (plan 32): its session is frozen, so render only
   // the pending screen — no workspace is mounted, and nothing in it can call out.
   if (pendingDeletion) {
-    return <PendingDeletionScreen userId={userId} pending={pendingDeletion} onLogout={handleLogout} />;
+    return (
+      <PendingDeletionScreen userId={userId} pending={pendingDeletion} onLogout={handleLogout} />
+    );
   }
   // Swapping the active account: render ONLY the interstitial. Returning here
   // unmounts the entire workspace tree, which is the real safety mechanism —
@@ -228,6 +231,7 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
           onDeleteConversation={handleDeleteConversation}
           onRenameConversation={handleRenameConversation}
           onArchiveConversation={handleArchiveConversation}
+          onTogglePinConversation={(conversation) => void handleToggleConversationPin(conversation)}
           onReportConversation={handleReportConversationFromSidebar}
           onLoadMore={handleLoadMoreConversations}
           onTitleClick={handleTitleClick}

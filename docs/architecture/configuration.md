@@ -212,6 +212,7 @@ See [account-deletion](../flows/account-deletion.md). The batch and rate bounds 
 | `SPEECH_DICTATION_MAX_BYTES` | `26214400` (25 MB) | Max dictation upload. |
 | `SPEECH_DICTATION_READ_CHUNK_BYTES` | `1048576` (1 MB) | Read-chunk size for dictation. |
 | `SPEECH_READ_ALOUD_MAX_CHARS` | `2000` | Max characters per read-aloud request. |
+| `MAX_PINNED_CONVERSATIONS` | `30` | Pins per user (1–100). The UI loads every pin in one page, whose ceiling is 100. |
 | `SHARE_DEFAULT_TTL_DAYS` | `30` | Default share-link lifetime. |
 | `SHARE_MAX_TTL_DAYS` | `365` | Max share-link lifetime. |
 | `GENERATION_TITLE_MAX_LEN` | `120` | Max generated title length. |

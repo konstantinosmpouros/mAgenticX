@@ -17,7 +17,7 @@ import {
 } from "@/shared/lib/uiStateStorage";
 import {
   getAgents,
-  getConversations,
+  getSidebarConversations,
   getTools,
   getUserPreferences,
   restoreSessionWhenReachable,
@@ -234,7 +234,7 @@ export function useAuthRehydrateEffect(params: {
 
         if (needsConversations) {
           requests.push(
-            getConversations(restored.user.id, 1, CONV_INITIAL_PAGE_SIZE)
+            getSidebarConversations(restored.user.id, CONV_INITIAL_PAGE_SIZE)
               .then((conversationList) => setConversations(sortByUpdatedAtDesc(conversationList)))
               .catch((error) => {
                 console.error("Failed to fetch conversations on rehydrate", error);

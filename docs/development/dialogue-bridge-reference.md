@@ -253,7 +253,7 @@ nginx strips `/api/`, so the browser calls `/api/v1/...` and FastAPI sees `/v1/.
 
 **Inference** `/v1/inference` — see §10–§12: `POST /runs/{user_id}/start`, `GET /runs/{user_id}` (`?status=active`), `WS /runs/{user_id}/{run_id}/ws`, `POST …/cancel`, `POST …/resume`.
 
-**Conversations** `/v1/conversations`: `POST /{uid}` (create), `POST /{uid}/{cid}/fork`, `POST …/share`, `POST …/share/export-pdf`, `DELETE …/share/{share_id}`, `GET /{uid}` + `/archived` + `/shares`, `GET /{uid}/{cid}` (detail), `DELETE /{uid}/{cid}`, `PATCH …/title` · `…/archive` · `…/unarchive`, `POST …/report`.
+**Conversations** `/v1/conversations`: `POST /{uid}` (create), `POST /{uid}/{cid}/fork`, `POST …/share`, `POST …/share/export-pdf`, `DELETE …/share/{share_id}`, `GET /{uid}` + `/pinned` + `/archived` + `/shares`, `GET /{uid}/{cid}` (detail), `DELETE /{uid}/{cid}`, `PATCH …/title` · `…/archive` · `…/unarchive` · `…/pin` · `…/unpin`, `POST …/report`.
 
 **Messages** `/v1/messages`: `POST /{uid}/{cid}` (append), `PATCH …/{mid}` (finalize AI placeholder), `POST …/{mid}/like` · `…/dislike`.
 

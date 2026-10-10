@@ -6,6 +6,7 @@ import { transformMessage } from "./message";
 // Transform conversation summary object from backend to frontend type
 export const transformConversationSummary = (summary: Record<string, any>): ConversationSummary => {
   const archivedAt = summary.archivedAt ?? summary.archived_at;
+  const pinnedAt = summary.pinnedAt ?? summary.pinned_at;
   const reportedAt = summary.reportedAt ?? summary.reported_at;
   return {
     id: summary.id,
@@ -28,6 +29,8 @@ export const transformConversationSummary = (summary: Record<string, any>): Conv
     isPrivate: Boolean(summary.isPrivate ?? summary.is_private),
     isArchived: Boolean(summary.isArchived ?? summary.is_archived),
     archivedAt: archivedAt ? toDate(archivedAt) : null,
+    isPinned: Boolean(summary.isPinned ?? summary.is_pinned),
+    pinnedAt: pinnedAt ? toDate(pinnedAt) : null,
     isReported: Boolean(summary.isReported ?? summary.is_reported),
     reportedAt: reportedAt ? toDate(reportedAt) : null,
     activeRunId: summary.activeRunId ?? null,
@@ -41,6 +44,7 @@ export const transformConversationSummary = (summary: Record<string, any>): Conv
 // Transform conversation detail object from backend to frontend type
 export const transformConversationDetail = (detail: Record<string, any>): ConversationDetail => {
   const archivedAt = detail.archivedAt ?? detail.archived_at;
+  const pinnedAt = detail.pinnedAt ?? detail.pinned_at;
   const reportedAt = detail.reportedAt ?? detail.reported_at;
   return {
     id: detail.id,
@@ -57,6 +61,8 @@ export const transformConversationDetail = (detail: Record<string, any>): Conver
     isPrivate: Boolean(detail.isPrivate ?? detail.is_private),
     isArchived: Boolean(detail.isArchived ?? detail.is_archived),
     archivedAt: archivedAt ? toDate(archivedAt) : null,
+    isPinned: Boolean(detail.isPinned ?? detail.is_pinned),
+    pinnedAt: pinnedAt ? toDate(pinnedAt) : null,
     isReported: Boolean(detail.isReported ?? detail.is_reported),
     reportedAt: reportedAt ? toDate(reportedAt) : null,
     activeRunId: detail.activeRunId ?? null,

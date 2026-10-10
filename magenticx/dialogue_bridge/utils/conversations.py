@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import HTTPException, status
-from sqlalchemy import Select, select
+from sqlalchemy import Select, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -18,6 +18,7 @@ from core.database import (
     MessageTable,
     UserTable,
 )
+from core.settings import settings
 from schema import AttachmentIn, MessageIn
 
 
@@ -104,11 +105,82 @@ async def set_conversation_archive_state(
 ) -> None:
     conv.is_archived = archived
     conv.archived_at = datetime.now(timezone.utc).replace(tzinfo=None) if archived else None
+    if archived:
+        # An archived conversation leaves the sidebar, so it leaves Pinned too —
+        # and stops counting against the pin cap. Unarchiving does not restore it.
+        conv.is_pinned = False
+        conv.pinned_at = None
     await db.commit()
     await db.refresh(
         conv,
-        attribute_names=["title", "updated_at", "last_message_preview", "agent", "is_archived", "archived_at"],
+        attribute_names=[
+            "title",
+            "updated_at",
+            "last_message_preview",
+            "agent",
+            "is_archived",
+            "archived_at",
+            "is_pinned",
+            "pinned_at",
+        ],
     )
+
+
+async def set_conversation_pin_state(
+    db: AsyncSession,
+    conv: ConversationTable,
+    pinned: bool,
+) -> None:
+    """Pin a conversation to the sidebar's Pinned section, or unpin it.
+
+    Idempotent: asking for the state it is already in changes nothing, so a
+    repeated pin keeps its place instead of jumping to the top.
+
+    Only conversations that appear in the sidebar can be pinned — private ones
+    never do, archived ones have left it — and a user holds at most
+    ``settings.conversations.max_pinned`` pins, which is what lets the UI load
+    them all in one bounded request.
+
+    The flag is written with a Core UPDATE that sets ``updated_at`` to itself:
+    the ORM's ``onupdate=now()`` would otherwise mark the conversation as just
+    active, and unpinning would drop it at the top of Chats instead of back in
+    its place by recency.
+    """
+    if conv.is_pinned == pinned:
+        return
+    if pinned:
+        if conv.is_private or conv.is_archived:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Only conversations in your chat history can be pinned.",
+            )
+        # Serialise this user's pin requests on their users row, so two
+        # concurrent pins cannot both pass the cap check below.
+        await db.execute(select(UserTable.id).where(UserTable.id == conv.user_id).with_for_update())
+        pinned_count = await db.scalar(
+            select(func.count())
+            .select_from(ConversationTable)
+            .where(ConversationTable.user_id == conv.user_id, ConversationTable.is_pinned.is_(True))
+        )
+        limit = settings.conversations.max_pinned
+        if (pinned_count or 0) >= limit:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"You can pin up to {limit} conversations. Unpin one first.",
+            )
+
+    await db.execute(
+        update(ConversationTable)
+        .where(ConversationTable.id == conv.id)
+        .values(
+            is_pinned=pinned,
+            pinned_at=datetime.now(timezone.utc).replace(tzinfo=None) if pinned else None,
+            updated_at=ConversationTable.updated_at,
+        )
+        .execution_options(synchronize_session=False)
+    )
+    await db.commit()
+    await db.refresh(conv, attribute_names=["is_pinned", "pinned_at", "updated_at", "agent"])
 
 
 def _preview(text: Optional[str]) -> Optional[str]:
@@ -179,8 +251,10 @@ async def clone_branch_to_conversation(
         title=source_conv.title,
         is_private=source_conv.is_private,
         is_archived=False,
+        is_pinned=False,
         is_reported=False,
         archived_at=None,
+        pinned_at=None,
         reported_at=None,
         last_message_preview=_preview(target_message.content) or fallback_attachment_name,
         last_message_at=now,
@@ -280,8 +354,14 @@ def _attachment_to_share_snapshot(attachment: AttachmentTable) -> dict:
     }
 
 
-def conversation_summaries_query(user_id: str, *, archived: bool) -> Select:
-    """Build the paginated summary query for a user's active or archived conversations."""
+def conversation_summaries_query(user_id: str, *, archived: bool = False, pinned: bool = False) -> Select:
+    """Build the paginated summary query behind one of the user's conversation lists.
+
+    The sidebar shows two disjoint lists — Pinned (``pinned=True``, newest pin
+    first) and Chats (the rest, most recent first) — so a pinned conversation
+    never appears twice. ``archived=True`` is the archive, where nothing is
+    pinned (archiving clears the pin) and ``pinned`` is ignored.
+    """
     stmt = (
         select(ConversationTable)
         .options(selectinload(ConversationTable.agent))
@@ -295,6 +375,9 @@ def conversation_summaries_query(user_id: str, *, archived: bool) -> Select:
         return stmt.order_by(
             ConversationTable.archived_at.desc(), ConversationTable.updated_at.desc()
         )
+    stmt = stmt.where(ConversationTable.is_pinned == pinned)
+    if pinned:
+        return stmt.order_by(ConversationTable.pinned_at.desc(), ConversationTable.updated_at.desc())
     return stmt.order_by(ConversationTable.updated_at.desc())
 
 

@@ -9,6 +9,8 @@ import {
   Flag,
   Trash2,
   Pencil,
+  Pin,
+  PinOff,
   ArrowRight,
   ChevronRight,
   ChevronsUpDown,
@@ -25,6 +27,7 @@ import {
 import { PiWaveformBold } from "react-icons/pi";
 import { MdOutlineSchedule } from "react-icons/md";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useTheme } from "next-themes";
 import { Loader } from "@/shared/ui/shadcn-io/loader";
 
@@ -49,6 +52,7 @@ import {
 import { Skeleton } from "@/shared/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { INTERACTIVE_SURFACE } from "@/shared/lib/consts";
+import { loadSidebarSectionOpen, saveSidebarSectionOpen } from "@/shared/lib/sidebarStorage";
 
 type ChatSidebarProps = {
   conversations: ConversationSummary[];
@@ -57,6 +61,8 @@ type ChatSidebarProps = {
   onDeleteConversation: (id: string, e?: React.MouseEvent) => void;
   onRenameConversation?: (id: string, newTitle: string) => Promise<void> | void;
   onArchiveConversation?: (id: string) => void;
+  /** Pin an unpinned conversation, or unpin a pinned one. */
+  onTogglePinConversation?: (conversation: ConversationSummary) => void;
   onReportConversation?: (id: string) => void;
   onLoadMore: () => void;
   isLoadingMore: boolean;
@@ -114,6 +120,59 @@ const ConversationLoadingSkeleton = ({ count = 3 }: { count?: number }) => (
   </div>
 );
 
+const pinnedTime = (conversation: ConversationSummary) =>
+  conversation.pinnedAt ? new Date(conversation.pinnedAt).getTime() : 0;
+
+/** Fade-and-drop for a section's list: transform and opacity only, instant under reduced motion. */
+const sectionListMotion = (reduceMotion: boolean | null) => ({
+  initial: reduceMotion ? { opacity: 0 } : { opacity: 0, y: -6 },
+  animate: { opacity: 1, y: 0 },
+  exit: reduceMotion
+    ? { opacity: 0, transition: { duration: 0 } }
+    : { opacity: 0, y: -6, transition: { duration: 0.12, ease: "easeIn" as const } },
+  transition: reduceMotion ? { duration: 0 } : { duration: 0.18, ease: "easeOut" as const },
+});
+
+/**
+ * A sidebar section heading that folds its list ("Pinned", "Chats").
+ *
+ * A plain disclosure button rather than Radix Collapsible: its Content hides
+ * itself the instant `open` flips, which would cut the list's exit fade.
+ * aria-expanded/-controls carry the state for assistive tech.
+ */
+function SectionToggle({
+  label,
+  open,
+  controlsId,
+  onToggle,
+}: {
+  label: string;
+  open: boolean;
+  controlsId: string;
+  onToggle: () => void;
+}) {
+  return (
+    <SidebarGroupLabel asChild>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={controlsId}
+        onClick={onToggle}
+        className="group/section mr-5 h-11 gap-1 pr-0 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:text-foreground md:h-8"
+      >
+        <span>{label}</span>
+        <ChevronRight
+          aria-hidden="true"
+          className={cn(
+            "!size-3.5 opacity-60 transition-[transform,opacity] duration-200 ease-out group-hover/section:opacity-100 group-focus-visible/section:opacity-100 motion-reduce:transition-none",
+            open && "rotate-90",
+          )}
+        />
+      </button>
+    </SidebarGroupLabel>
+  );
+}
+
 export default function ChatSidebar({
   conversations,
   currentConversationId,
@@ -121,6 +180,7 @@ export default function ChatSidebar({
   onDeleteConversation,
   onRenameConversation,
   onArchiveConversation,
+  onTogglePinConversation,
   onReportConversation,
   onLoadMore,
   isLoadingMore,
@@ -154,6 +214,18 @@ export default function ChatSidebar({
   const { resolvedTheme, theme } = useTheme();
   const isCollapsed = !isMobile && state === "collapsed";
   const contentRef = React.useRef<HTMLDivElement | null>(null);
+  const reduceMotion = useReducedMotion();
+  // Each section heading folds its list away; remembered per browser.
+  const [pinnedOpen, setPinnedOpen] = React.useState(() => loadSidebarSectionOpen("pinned"));
+  const [chatsOpen, setChatsOpen] = React.useState(() => loadSidebarSectionOpen("chats"));
+  React.useEffect(() => {
+    saveSidebarSectionOpen("pinned", pinnedOpen);
+  }, [pinnedOpen]);
+  React.useEffect(() => {
+    saveSidebarSectionOpen("chats", chatsOpen);
+  }, [chatsOpen]);
+  const pinnedListId = React.useId();
+  const chatsListId = React.useId();
   const rawProfileName =
     userProfile?.displayName ?? userProfile?.fullName ?? userProfile?.username ?? "";
   const profileName = rawProfileName.trim() || "Profile";
@@ -254,18 +326,20 @@ export default function ChatSidebar({
 
   const handleScroll: React.UIEventHandler<HTMLDivElement> = React.useCallback(
     (event) => {
-      if (isLoadingMore || !hasMore) return;
+      if (!chatsOpen || isLoadingMore || !hasMore) return;
       const el = event.currentTarget;
       const threshold = 16;
       if (el.scrollTop + el.clientHeight >= el.scrollHeight - threshold) {
         onLoadMore();
       }
     },
-    [isLoadingMore, hasMore, onLoadMore],
+    [chatsOpen, isLoadingMore, hasMore, onLoadMore],
   );
 
+  // Fill a short list until it scrolls. Not while the section is folded: the
+  // empty area would always look "unfilled" and page through every chat.
   React.useEffect(() => {
-    if (isCollapsed || isLoadingMore || !hasMore) {
+    if (isCollapsed || !chatsOpen || isLoadingMore || !hasMore) {
       return;
     }
     const el = contentRef.current;
@@ -275,7 +349,7 @@ export default function ChatSidebar({
     if (el.scrollHeight <= el.clientHeight + 4) {
       onLoadMore();
     }
-  }, [conversations.length, hasMore, isCollapsed, isLoadingMore, onLoadMore]);
+  }, [chatsOpen, conversations.length, hasMore, isCollapsed, isLoadingMore, onLoadMore]);
 
   const {
     isLogoHovered,
@@ -371,8 +445,225 @@ export default function ChatSidebar({
 
   const canSubmitRename = renameDraft.trim().length > 0;
 
+  // Pinned and Chats are disjoint views over the one conversations list, so
+  // every existing update (rename, delete, streaming, new message) reaches a
+  // row in whichever section shows it. Pins sort newest-pinned first.
+  const pinnedConversations = React.useMemo(
+    () =>
+      conversations
+        .filter((conversation) => conversation.isPinned)
+        .sort((a, b) => pinnedTime(b) - pinnedTime(a)),
+    [conversations],
+  );
+  const chatConversations = React.useMemo(
+    () => conversations.filter((conversation) => !conversation.isPinned),
+    [conversations],
+  );
+
   const showEmptyState = !isInitialLoading && !isLoadingMore && conversations.length === 0;
   const showInitialSkeleton = isInitialLoading || (isLoadingMore && conversations.length === 0);
+  // Every loaded chat is pinned: say where the rest will go instead of "no conversations".
+  const showAllPinnedHint =
+    !showInitialSkeleton && !showEmptyState && !isLoadingMore && chatConversations.length === 0;
+
+  // One row renderer for both sections: Pinned and Chats are views over the
+  // same list, so rename, delete and the streaming spinner behave identically.
+  const renderConversationRow = (conversation: ConversationSummary) => {
+    const agent = conversation.agent;
+    const Icon = agent?.icon ?? Building2;
+    const rawTitle = typeof conversation.title === "string" ? conversation.title.trim() : "";
+    const lastMessage = (conversation.lastMessage ?? "").trim();
+    const fallbackTitle = lastMessage || agent?.name || "Untitled chat";
+    const resolvedTitle = rawTitle || fallbackTitle;
+    const isRenaming = renamingConversationId === conversation.id;
+
+    return (
+      <SidebarMenuItem key={conversation.id}>
+        <SidebarMenuButton
+          size="lg"
+          isActive={conversation.id === currentConversationId}
+          onClick={(event) => {
+            if (isRenaming) {
+              event.stopPropagation();
+              return;
+            }
+            handleConversationSelect(conversation);
+          }}
+          tooltip={{
+            children: (
+              <div className="flex max-w-xs flex-col gap-0.5">
+                <span className="text-sm font-medium">{resolvedTitle}</span>
+                {lastMessage && (
+                  <span
+                    className="text-xs text-muted-foreground leading-snug"
+                    style={{
+                      display: "-webkit-box",
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: "vertical",
+                      overflow: "hidden",
+                    }}
+                  >
+                    {lastMessage}
+                  </span>
+                )}
+              </div>
+            ),
+          }}
+          className="items-center gap-2.5 rounded-lg bg-transparent py-1.5 text-left shadow-none transition-all duration-200 supports-[hover:hover]:hover:scale-[1.01] supports-[hover:hover]:hover:shadow-[0_8px_24px_rgba(0,0,0,0.35)] supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] supports-[hover:hover]:hover:!text-primary/60 active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:!text-primary focus-visible:ring-2 focus-visible:scale-[1.01] data-[active=true]:bg-primary/10 data-[active=true]:text-primary data-[active=true]:supports-[hover:hover]:hover:!bg-primary/10 data-[active=true]:supports-[hover:hover]:hover:!text-primary data-[active=true]:focus-visible:!bg-primary/10 !h-auto min-h-[2.5rem]"
+        >
+          <div className="sidebar-icon-badge flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl text-primary">
+            <Icon size={14} />
+          </div>
+          {isRenaming ? (
+            <div
+              ref={renameContainerRef}
+              className="flex w-full items-center gap-2 rounded-xl border border-border/60 bg-background/80 px-2 py-1"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <textarea
+                ref={renameInputRef}
+                rows={1}
+                value={renameDraft}
+                onChange={(event) => setRenameDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    void handleSubmitRename();
+                  }
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    handleCancelRename();
+                  }
+                }}
+                className="h-5 min-h-[1.25rem] w-full resize-none overflow-hidden border-none bg-transparent px-1 py-0 text-sm font-medium leading-5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-0"
+                placeholder="Rename conversation"
+                spellCheck={false}
+              />
+              <button
+                type="button"
+                aria-label="Confirm rename"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  void handleSubmitRename();
+                }}
+                disabled={!canSubmitRename || isSubmittingRename}
+                className="grid size-7 flex-shrink-0 place-items-center rounded-full bg-[#f093f9] text-[#1b0f2a] shadow-md transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isSubmittingRename ? (
+                  <Loader size={14} className="text-[#1b0f2a]" />
+                ) : (
+                  <ArrowRight className="h-3.5 w-3.5" />
+                )}
+              </button>
+            </div>
+          ) : (
+            <span className="truncate text-sm font-medium text-foreground">{resolvedTitle}</span>
+          )}
+        </SidebarMenuButton>
+        {!isRenaming &&
+          (conversation.isStreaming ? (
+            <SidebarMenuAction
+              aria-label="Conversation is streaming"
+              onClick={(event) => event.stopPropagation()}
+              onMouseDown={(event) => event.stopPropagation()}
+              onPointerDown={(event) => event.stopPropagation()}
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:!bg-transparent hover:!text-muted-foreground active:!bg-transparent focus-visible:!bg-transparent focus-visible:text-foreground peer-data-[size=lg]/menu-button:!top-1/2 peer-data-[size=lg]/menu-button:-translate-y-1/2"
+            >
+              <Loader size={14} />
+            </SidebarMenuAction>
+          ) : (
+            <DropdownMenu.Root
+              open={openActionMenuId === conversation.id}
+              onOpenChange={(isOpen) => {
+                setOpenActionMenuId(isOpen ? conversation.id : null);
+              }}
+            >
+              <DropdownMenu.Trigger asChild>
+                <SidebarMenuAction
+                  aria-label="Conversation actions"
+                  onClick={(event) => event.stopPropagation()}
+                  onMouseDown={(event) => event.stopPropagation()}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  showOnHover
+                  className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:!bg-transparent hover:!text-muted-foreground active:!bg-transparent focus-visible:!bg-transparent focus-visible:text-foreground peer-data-[size=lg]/menu-button:!top-1/2 peer-data-[size=lg]/menu-button:-translate-y-1/2"
+                >
+                  <MoreHorizontal size={14} />
+                </SidebarMenuAction>
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content
+                  side="right"
+                  sideOffset={8}
+                  align="end"
+                  className="z-50 w-48 rounded-lg border border-border bg-background p-1.5 text-sm text-foreground shadow-lg focus:outline-none"
+                  onCloseAutoFocus={(event) => event.preventDefault()}
+                >
+                  <DropdownMenu.Item
+                    onSelect={() => {
+                      handleStartRename(conversation.id, resolvedTitle);
+                    }}
+                    className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 text-sm transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground focus-visible:outline-none data-[highlighted]:outline-none"
+                  >
+                    <div className="flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-muted-foreground">
+                      <Pencil size={15} />
+                    </div>
+                    <span>Rename</span>
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item
+                    onSelect={() => {
+                      onTogglePinConversation?.(conversation);
+                    }}
+                    className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 text-sm transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground focus-visible:outline-none data-[highlighted]:outline-none"
+                  >
+                    <div className="flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-muted-foreground">
+                      {conversation.isPinned ? <PinOff size={15} /> : <Pin size={15} />}
+                    </div>
+                    <span>{conversation.isPinned ? "Unpin" : "Pin"}</span>
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item
+                    onSelect={() => {
+                      onArchiveConversation?.(conversation.id);
+                    }}
+                    className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 text-sm transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground focus-visible:outline-none data-[highlighted]:outline-none"
+                  >
+                    <div className="flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-muted-foreground">
+                      <Archive size={15} />
+                    </div>
+                    <span>Archive</span>
+                  </DropdownMenu.Item>
+                  {!conversation.isReported && (
+                    <DropdownMenu.Item
+                      onSelect={() => {
+                        onReportConversation?.(conversation.id);
+                      }}
+                      className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 text-sm transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground focus-visible:outline-none data-[highlighted]:outline-none"
+                    >
+                      <div className="flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-muted-foreground">
+                        <Flag size={15} />
+                      </div>
+                      <span>Report</span>
+                    </DropdownMenu.Item>
+                  )}
+                  <DropdownMenu.Separator className="my-1 h-px bg-border/60" />
+                  <DropdownMenu.Item
+                    onSelect={() => {
+                      onDeleteConversation(conversation.id);
+                    }}
+                    className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 text-sm text-destructive transition-colors data-[highlighted]:bg-destructive/10 data-[highlighted]:text-destructive focus-visible:outline-none data-[highlighted]:outline-none"
+                  >
+                    <div className="flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-destructive">
+                      <Trash2 size={15} />
+                    </div>
+                    <span>Delete</span>
+                  </DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
+          ))}
+      </SidebarMenuItem>
+    );
+  };
 
   // Shared between the desktop Help flyout and the mobile flattened section. A
   // Radix SubContent can only open left/right of its trigger; on a phone the
@@ -385,9 +676,7 @@ export default function ChatSidebar({
       {accounts.map((account) => (
         <DropdownMenu.Item
           key={account.id}
-          onSelect={() =>
-            handleProfileMenuAction(() => onLogoutAccount?.(account))
-          }
+          onSelect={() => handleProfileMenuAction(() => onLogoutAccount?.(account))}
           className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors data-[highlighted]:bg-[hsl(var(--hover-surface))] focus-visible:outline-none data-[highlighted]:outline-none"
         >
           <span
@@ -618,220 +907,97 @@ export default function ChatSidebar({
         </SidebarMenu>
       </SidebarHeader>
 
+      {/* The body itself never scrolls: the "Chats" heading stays pinned and
+          only the conversation list below it scrolls (and pages in more). */}
       <SidebarContent
-        ref={contentRef}
-        className="flex-1 overflow-y-auto pl-2 pr-3 pb-4 pt-0"
-        onScroll={handleScroll}
+        className="flex-1 overflow-hidden pl-2 pr-0 pt-0"
         onClick={toggleCollapsedOnBlankArea}
       >
         {!isCollapsed && (
-          <SidebarGroup className="flex flex-1 flex-col space-y-2">
-            <SidebarGroupLabel className="pr-0 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Chats
-            </SidebarGroupLabel>
-            <SidebarGroupContent className="min-h-0 flex-1 space-y-2">
-              {showInitialSkeleton ? (
-                <ConversationLoadingSkeleton />
-              ) : showEmptyState ? (
-                <div className="flex flex-col items-center justify-center gap-1.5 rounded-lg bg-muted/10 py-10 text-center text-muted-foreground">
-                  <MessageSquare size={28} className="mb-3 text-muted-foreground/60" />
-                  <p className="text-sm">No conversations yet</p>
-                </div>
-              ) : (
-                <SidebarMenu className="!gap-0">
-                  {conversations.map((conversation) => {
-                    const agent = conversation.agent;
-                    const Icon = agent?.icon ?? Building2;
-                    const rawTitle =
-                      typeof conversation.title === "string" ? conversation.title.trim() : "";
-                    const lastMessage = (conversation.lastMessage ?? "").trim();
-                    const fallbackTitle = lastMessage || agent?.name || "Untitled chat";
-                    const resolvedTitle = rawTitle || fallbackTitle;
-                    const isRenaming = renamingConversationId === conversation.id;
-
-                    return (
-                      <SidebarMenuItem key={conversation.id}>
-                        <SidebarMenuButton
-                          size="lg"
-                          isActive={conversation.id === currentConversationId}
-                          onClick={(event) => {
-                            if (isRenaming) {
-                              event.stopPropagation();
-                              return;
-                            }
-                            handleConversationSelect(conversation);
-                          }}
-                          tooltip={{
-                            children: (
-                              <div className="flex max-w-xs flex-col gap-0.5">
-                                <span className="text-sm font-medium">{resolvedTitle}</span>
-                                {lastMessage && (
-                                  <span
-                                    className="text-xs text-muted-foreground leading-snug"
-                                    style={{
-                                      display: "-webkit-box",
-                                      WebkitLineClamp: 2,
-                                      WebkitBoxOrient: "vertical",
-                                      overflow: "hidden",
-                                    }}
-                                  >
-                                    {lastMessage}
-                                  </span>
-                                )}
-                              </div>
-                            ),
-                          }}
-                          className="items-center gap-2.5 rounded-lg bg-transparent py-1.5 text-left shadow-none transition-all duration-200 supports-[hover:hover]:hover:scale-[1.01] supports-[hover:hover]:hover:shadow-[0_8px_24px_rgba(0,0,0,0.35)] supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] supports-[hover:hover]:hover:!text-primary/60 active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:!text-primary focus-visible:ring-2 focus-visible:scale-[1.01] data-[active=true]:bg-primary/10 data-[active=true]:text-primary data-[active=true]:supports-[hover:hover]:hover:!bg-primary/10 data-[active=true]:supports-[hover:hover]:hover:!text-primary data-[active=true]:focus-visible:!bg-primary/10 !h-auto min-h-[2.5rem]"
+          <>
+            {/* No pins, no section: it appears with the first pin and leaves with the last. */}
+            <AnimatePresence initial={false}>
+              {pinnedConversations.length > 0 && (
+                <motion.div
+                  key="pinned-section"
+                  className="shrink-0"
+                  {...sectionListMotion(reduceMotion)}
+                >
+                  <SidebarGroup className="gap-2 pb-0 pr-0">
+                    <SectionToggle
+                      label="Pinned"
+                      open={pinnedOpen}
+                      controlsId={pinnedListId}
+                      onToggle={() => setPinnedOpen((open) => !open)}
+                    />
+                    <AnimatePresence initial={false}>
+                      {pinnedOpen && (
+                        <motion.div
+                          key="pinned-list"
+                          id={pinnedListId}
+                          data-sidebar="chats-list"
+                          // Capped so a long pin list scrolls on its own and
+                          // never pushes Chats off the screen.
+                          className="max-h-[30dvh] overflow-y-auto pr-5"
+                          {...sectionListMotion(reduceMotion)}
                         >
-                          <div className="sidebar-icon-badge flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl text-primary">
-                            <Icon size={14} />
-                          </div>
-                          {isRenaming ? (
-                            <div
-                              ref={renameContainerRef}
-                              className="flex w-full items-center gap-2 rounded-xl border border-border/60 bg-background/80 px-2 py-1"
-                              onClick={(event) => event.stopPropagation()}
-                            >
-                              <textarea
-                                ref={renameInputRef}
-                                rows={1}
-                                value={renameDraft}
-                                onChange={(event) => setRenameDraft(event.target.value)}
-                                onKeyDown={(event) => {
-                                  if (event.key === "Enter" && !event.shiftKey) {
-                                    event.preventDefault();
-                                    void handleSubmitRename();
-                                  }
-                                  if (event.key === "Escape") {
-                                    event.preventDefault();
-                                    handleCancelRename();
-                                  }
-                                }}
-                                className="h-5 min-h-[1.25rem] w-full resize-none overflow-hidden border-none bg-transparent px-1 py-0 text-sm font-medium leading-5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-0"
-                                placeholder="Rename conversation"
-                                spellCheck={false}
-                              />
-                              <button
-                                type="button"
-                                aria-label="Confirm rename"
-                                onClick={(event) => {
-                                  event.preventDefault();
-                                  event.stopPropagation();
-                                  void handleSubmitRename();
-                                }}
-                                disabled={!canSubmitRename || isSubmittingRename}
-                                className="grid size-7 flex-shrink-0 place-items-center rounded-full bg-[#f093f9] text-[#1b0f2a] shadow-md transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                {isSubmittingRename ? (
-                                  <Loader size={14} className="text-[#1b0f2a]" />
-                                ) : (
-                                  <ArrowRight className="h-3.5 w-3.5" />
-                                )}
-                              </button>
-                            </div>
-                          ) : (
-                            <span className="truncate text-sm font-medium text-foreground">
-                              {resolvedTitle}
-                            </span>
-                          )}
-                        </SidebarMenuButton>
-                        {!isRenaming &&
-                          (conversation.isStreaming ? (
-                            <SidebarMenuAction
-                              aria-label="Conversation is streaming"
-                              onClick={(event) => event.stopPropagation()}
-                              onMouseDown={(event) => event.stopPropagation()}
-                              onPointerDown={(event) => event.stopPropagation()}
-                              className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:!bg-transparent hover:!text-muted-foreground active:!bg-transparent focus-visible:!bg-transparent focus-visible:text-foreground peer-data-[size=lg]/menu-button:!top-1/2 peer-data-[size=lg]/menu-button:-translate-y-1/2"
-                            >
-                              <Loader size={14} />
-                            </SidebarMenuAction>
-                          ) : (
-                            <DropdownMenu.Root
-                              open={openActionMenuId === conversation.id}
-                              onOpenChange={(isOpen) => {
-                                setOpenActionMenuId(isOpen ? conversation.id : null);
-                              }}
-                            >
-                              <DropdownMenu.Trigger asChild>
-                                <SidebarMenuAction
-                                  aria-label="Conversation actions"
-                                  onClick={(event) => event.stopPropagation()}
-                                  onMouseDown={(event) => event.stopPropagation()}
-                                  onPointerDown={(event) => event.stopPropagation()}
-                                  showOnHover
-                                  className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:!bg-transparent hover:!text-muted-foreground active:!bg-transparent focus-visible:!bg-transparent focus-visible:text-foreground peer-data-[size=lg]/menu-button:!top-1/2 peer-data-[size=lg]/menu-button:-translate-y-1/2"
-                                >
-                                  <MoreHorizontal size={14} />
-                                </SidebarMenuAction>
-                              </DropdownMenu.Trigger>
-                              <DropdownMenu.Portal>
-                                <DropdownMenu.Content
-                                  side="right"
-                                  sideOffset={8}
-                                  align="end"
-                                  className="z-50 w-48 rounded-lg border border-border bg-background p-1.5 text-sm text-foreground shadow-lg focus:outline-none"
-                                  onCloseAutoFocus={(event) => event.preventDefault()}
-                                >
-                                  <DropdownMenu.Item
-                                    onSelect={() => {
-                                      handleStartRename(conversation.id, resolvedTitle);
-                                    }}
-                                    className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 text-sm transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground focus-visible:outline-none data-[highlighted]:outline-none"
-                                  >
-                                    <div className="flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-muted-foreground">
-                                      <Pencil size={15} />
-                                    </div>
-                                    <span>Rename</span>
-                                  </DropdownMenu.Item>
-                                  <DropdownMenu.Item
-                                    onSelect={() => {
-                                      onArchiveConversation?.(conversation.id);
-                                    }}
-                                    className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 text-sm transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground focus-visible:outline-none data-[highlighted]:outline-none"
-                                  >
-                                    <div className="flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-muted-foreground">
-                                      <Archive size={15} />
-                                    </div>
-                                    <span>Archive</span>
-                                  </DropdownMenu.Item>
-                                  {!conversation.isReported && (
-                                    <DropdownMenu.Item
-                                      onSelect={() => {
-                                        onReportConversation?.(conversation.id);
-                                      }}
-                                      className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 text-sm transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground focus-visible:outline-none data-[highlighted]:outline-none"
-                                    >
-                                      <div className="flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-muted-foreground">
-                                        <Flag size={15} />
-                                      </div>
-                                      <span>Report</span>
-                                    </DropdownMenu.Item>
-                                  )}
-                                  <DropdownMenu.Separator className="my-1 h-px bg-border/60" />
-                                  <DropdownMenu.Item
-                                    onSelect={() => {
-                                      onDeleteConversation(conversation.id);
-                                    }}
-                                    className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 text-sm text-destructive transition-colors data-[highlighted]:bg-destructive/10 data-[highlighted]:text-destructive focus-visible:outline-none data-[highlighted]:outline-none"
-                                  >
-                                    <div className="flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-destructive">
-                                      <Trash2 size={15} />
-                                    </div>
-                                    <span>Delete</span>
-                                  </DropdownMenu.Item>
-                                </DropdownMenu.Content>
-                              </DropdownMenu.Portal>
-                            </DropdownMenu.Root>
-                          ))}
-                      </SidebarMenuItem>
-                    );
-                  })}
-                </SidebarMenu>
+                          <SidebarGroupContent>
+                            <SidebarMenu className="!gap-0">
+                              {pinnedConversations.map(renderConversationRow)}
+                            </SidebarMenu>
+                          </SidebarGroupContent>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </SidebarGroup>
+                </motion.div>
               )}
-              {!showInitialSkeleton && isLoadingMore && <ConversationLoadingSkeleton />}
-            </SidebarGroupContent>
-          </SidebarGroup>
+            </AnimatePresence>
+            <SidebarGroup className="min-h-0 flex-1 gap-2 pb-0 pr-0">
+              <SectionToggle
+                label="Chats"
+                open={chatsOpen}
+                controlsId={chatsListId}
+                onToggle={() => setChatsOpen((open) => !open)}
+              />
+              <AnimatePresence initial={false}>
+                {chatsOpen && (
+                  <motion.div
+                    key="chats-list"
+                    id={chatsListId}
+                    ref={contentRef}
+                    onScroll={handleScroll}
+                    data-sidebar="chats-list"
+                    // Flush with the sidebar's right edge so the scrollbar sits
+                    // there; pr-5 keeps the rows where they were before.
+                    className="min-h-0 flex-1 overflow-y-auto pb-4 pr-5"
+                    {...sectionListMotion(reduceMotion)}
+                  >
+                    <SidebarGroupContent className="min-h-0 flex-1 space-y-2">
+                      {showInitialSkeleton ? (
+                        <ConversationLoadingSkeleton />
+                      ) : showEmptyState ? (
+                        <div className="flex flex-col items-center justify-center gap-1.5 rounded-lg bg-muted/10 py-10 text-center text-muted-foreground">
+                          <MessageSquare size={28} className="mb-3 text-muted-foreground/60" />
+                          <p className="text-sm">No conversations yet</p>
+                        </div>
+                      ) : (
+                        <SidebarMenu className="!gap-0">
+                          {chatConversations.map(renderConversationRow)}
+                        </SidebarMenu>
+                      )}
+                      {showAllPinnedHint && (
+                        <p className="px-2 py-2 text-xs text-muted-foreground">
+                          Chats you haven&apos;t pinned show up here.
+                        </p>
+                      )}
+                      {!showInitialSkeleton && isLoadingMore && <ConversationLoadingSkeleton />}
+                    </SidebarGroupContent>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </SidebarGroup>
+          </>
         )}
       </SidebarContent>
 
