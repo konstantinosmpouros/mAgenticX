@@ -29,6 +29,11 @@ export type DismissActiveUiCtx = {
   closeAgentPicker: () => void;
   closeHeaderActionMenu: () => void;
   /**
+   * Closes the topmost open modal shell (Settings, Edit profile, Shortcuts,
+   * Help, and dialogs stacked on them) and reports whether there was one.
+   */
+  dismissTopModal: () => boolean;
+  /**
    * The sidebar's menus are owned by Radix inside ChatSidebar, so this cascade
    * can only *request* a dismissal rather than perform one.
    */
@@ -62,6 +67,7 @@ export function runActiveUiDismissal(ctx: DismissActiveUiCtx): boolean {
     handleCancelEditMessage,
     closeAgentPicker,
     closeHeaderActionMenu,
+    dismissTopModal,
     dismissSidebarFloatingUi,
   } = ctx;
 
@@ -82,6 +88,12 @@ export function runActiveUiDismissal(ctx: DismissActiveUiCtx): boolean {
 
   if (dictationStatus !== "idle" && dictationStatus !== "submitting") {
     cancelDictation();
+    return true;
+  }
+
+  // Every panel built on the shared modal shell, topmost first — including
+  // the ones this cascade has no flag for (Edit profile, custom instructions).
+  if (dismissTopModal()) {
     return true;
   }
 

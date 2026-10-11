@@ -12,7 +12,10 @@ import type {
   SharedConversationDetail,
 } from "@/shared/lib/types";
 import { usePreferencesHandlers } from "@/features/settings/handlers/preferences";
-import { selectConversationContext, selectConversationStats } from "@/features/chat/lib/contextUsage";
+import {
+  selectConversationContext,
+  selectConversationStats,
+} from "@/features/chat/lib/contextUsage";
 import { useConversationCompaction } from "@/features/chat/hooks/useConversationCompaction";
 import { useProfilePanel } from "@/features/settings/hooks/useProfilePanel";
 import { useSettingsPanels } from "@/features/settings/hooks/useSettingsPanels";
@@ -87,6 +90,7 @@ import { useScheduledTasks } from "@/features/tasks/hooks/useScheduledTasks";
 import { useAccountDeletionReauthReturn } from "@/features/settings/hooks/useAccountDeletionReauthReturn";
 import { clearUISnapshot } from "@/shared/lib/uiStateStorage";
 import { CONV_PAGE_SIZE } from "@/shared/lib/consts";
+import { dismissTopModalShell } from "@/shared/lib/modalStack";
 
 const pickVisibleSuggestions = (suggestions: string[]) => {
   const unique = Array.from(new Set(suggestions.map((item) => item.trim()).filter(Boolean)));
@@ -676,6 +680,7 @@ export function useChatWorkspace({
     copyShareDialogUrl,
     openShareDialog,
     openFullConversationShareDialog,
+    exportConversationPdf,
     handleShareModeChange,
     handleShareExpiresAtChange,
     handleCreateShareLink,
@@ -882,6 +887,7 @@ export function useChatWorkspace({
       handleCancelEditMessage,
       closeAgentPicker: overlayMenus.closeAgentPicker,
       closeHeaderActionMenu: overlayMenus.closeHeaderActionMenu,
+      dismissTopModal: dismissTopModalShell,
       dismissSidebarFloatingUi,
     });
   }, [
@@ -957,9 +963,11 @@ export function useChatWorkspace({
     agents,
     currentConversation,
     currentMessage,
+    pendingCommand: composer.pendingCommand,
     isSendingMessage: isCurrentConversationBusy || isCompacting,
     setMessages: setConversationMessages,
     setCurrentMessage,
+    setPendingCommand: composer.setPendingCommand,
     setAttachments,
     setIsSendingMessage,
     setCurrentConversation,
@@ -1473,6 +1481,7 @@ export function useChatWorkspace({
     handleReportCurrentConversation,
     handleDeleteCurrentConversation,
     openFullConversationShareDialog,
+    exportConversationPdf,
     handleToggleShowMessageTokenUsage,
     handleSendMessage,
     handleStopStreaming,

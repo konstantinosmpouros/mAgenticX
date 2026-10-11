@@ -143,7 +143,7 @@ def built(
 
     monkeypatch.setattr(deep_agent_module, "create_deep_agent", fake_create)
     monkeypatch.setattr(deep_agent_module, "exclude_stock_summarization", lambda _m: None)
-    monkeypatch.setattr(deep_agent_module, "workspace_write_deny", lambda *a, **k: {})
+    monkeypatch.setattr(deep_agent_module, "workspace_write_deny", lambda *a, **k: [])
     # The baseline and the locked set are read by the gates module, which owns
     # the layer order; deep_agent only hands it the agent's own map.
     monkeypatch.setattr(gates_module, "builtin_hitl_defaults", lambda: {"write_file": True})
@@ -170,6 +170,8 @@ def built(
         # A real attribute of every agent; `build_deep_agent` logs the preset it
         # composed with, so a half-built stub still has to carry one.
         agent.personalization = personalization_module.parse_personalization({})
+        # Likewise: the build adds a slash command's restrictions (none here).
+        agent.command_spec = None
         monkeypatch.setattr(type(agent), "_build_composite_backend", lambda self: object())
         monkeypatch.setattr(type(agent), "default_middleware", lambda self, m, b: [])
         monkeypatch.setattr(type(agent), "_builtin_tools", lambda self: [])

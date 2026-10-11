@@ -26,6 +26,7 @@ export type * from "./voice";
 export type * from "./conversations";
 export type * from "./sharing";
 export type * from "./messages";
+export type * from "./commands";
 export type * from "./attachments";
 export type * from "./inference";
 export type * from "./timeline";

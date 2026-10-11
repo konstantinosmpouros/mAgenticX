@@ -294,35 +294,51 @@ sequenceDiagram
 - The serialiser `serialise_message_with_images_for_agent()` still **inlines images as base64** in the message content (vision on the upload turn). For deep agents it additionally references each **non-image** file by its `/conversation/input/<name>` path (flag `include_input_paths=True`) so the agent can open it with its filesystem tools.
 - **LangGraph agents have no filesystem** — they are not seeded; they receive message content only (inline images, no input-path references).
 
-### Generated deliverables (`present_artifact` → generated attachments)
+### Generated files — every file the agent writes is stored
 
-Writing a file to `/conversation/output/` does **not** surface it to the user — that dir is the agent's private workspace and fills up with drafts, scratch notes, and sub-agent helper files. A deep agent promotes a file into a user-facing deliverable by calling the built-in **`present_artifact(path, title, summary)`** tool. This is an explicit, intentional act — nothing in `output/` is captured unless presented — which is what keeps sub-agent noise out of the user's view.
+`/conversation/output/` lives on the agents volume, which a TTL sweep empties after a week, so it is not the record. **At the end of every run the bridge stores every file the agent wrote there** — presented or not, whatever the run's outcome — as `attachments(origin='generated')` on the **assistant** message (plan 35 phase 0, `utils/output_capture.py`). Postgres is the record of a conversation's files; the volume is scratch.
 
-The call is a **mid-reply move, not an end-of-turn hand-off**: the timeline interleaves the artifact card at the position of the call (`pushArtifactBlock` closes the open content block, so text the agent writes afterwards starts *below* the card), and an agent may present several distinct files in one turn — each gets its own card. The tool description and the agent prompts both steer towards that. Re-presenting the **same** path is safe but not free: `_register_presented_artifact` dedupes by path so the finalize fetch reads the latest bytes once, while the live timeline still renders a second card.
-
-The tool never emits an AG-UI event itself (deep agents don't stream the `custom` channel). It validates that `path` resolves under the output mount and the file exists, then returns a confirmation. The **normalizer** detects the `present_artifact` tool call by name and — **for the top-level orchestrator only** (a sub-agent's call is dropped; the orchestrator re-presents the final doc) — synthesizes a `PRESENT_ARTIFACT` custom event carrying display metadata (`title`, `summary`, `filename`, `mime`), but no bytes. See [agui-protocol.md](../development/agui-protocol.md).
-
-At run finalize the bridge reads the presented files back and persists them as `attachments(origin='generated')` on the **assistant** message — so they flow through the exact same download / preview / Office-viewer machinery as uploads:
+**Presenting** a file is a separate, display act: the built-in **`present_artifact(path, title, summary)`** tool gives it a card in the timeline. The call is a **mid-reply move, not an end-of-turn hand-off**: the timeline interleaves the artifact card at the position of the call (`pushArtifactBlock` closes the open content block, so text the agent writes afterwards starts *below* the card), and an agent may present several distinct files in one turn — each gets its own card. The tool never emits an AG-UI event itself. It validates that `path` resolves under the output mount and the file exists, then returns a confirmation. The **normalizer** detects the call by name and — **for the top-level orchestrator only** — synthesizes a `PRESENT_ARTIFACT` custom event carrying display metadata (`title`, `summary`, `filename`, `mime`), but no bytes. See [agui-protocol.md](../development/agui-protocol.md).
 
 ```mermaid
 sequenceDiagram
     participant AG as agents (normalizer)
     participant D as dialogue_bridge
-    participant A as agents service (output-files)
+    participant A as agents service
     participant PG as chat_postgres
 
-    AG->>D: CUSTOM PRESENT_ARTIFACT { artifact_id, path, title, summary }
-    Note over D: runtime.apply_event → runtime.presented_artifacts (deduped by path)
-    Note over D: stream ends → _finish_run (status = completed)
-    D->>A: GET /agents/{slug}/users/{userId}/conversations/{convId}/output-files?paths=…
-    A->>A: read_output_files() → base64 bytes + mime + size (path-guarded, size-capped)
-    A-->>D: { files: [...], missing: [...] }
-    D->>PG: INSERT BlobTable + AttachmentTable(origin='generated', title, summary) on the AI message
+    AG->>D: CUSTOM PRESENT_ARTIFACT { artifact_id, path, title, summary } (optional)
+    Note over D: run ends (completed / failed / cancelled) → _finish_run
+    rect rgb(240,240,240)
+    Note over D,PG: step 1 — in the finalize transaction
+    D->>A: GET …/output-files?paths=<presented paths>
+    D->>PG: presented files (presented=true, title, summary) + the answer, one commit
+    end
+    D-->>D: terminal frame → the UI (it never waits for step 2)
+    rect rgb(240,240,240)
+    Note over D,PG: step 2 — background task, one at a time per conversation
+    D->>A: GET …/output-files/manifest → [{path, size, sha256}], no bytes
+    Note over D: keep (name, sha256) not yet held — step 1's files are already held
+    loop batches ≤ 20 files and ≤ 32 MB
+        D->>A: GET …/output-files?paths=…
+    end
+    D->>PG: the other files (presented=false), own commit
+    end
 ```
 
-- **Capture is fail-open and completed-only.** `_capture_generated_artifacts()` runs inside `_finish_run` only for a `completed` run, in the same transaction as the finalize write. Any error (agent unreachable, file gone, bad base64) is logged and skipped — the assistant reply is already generated, so a capture failure never fails the run. `missing` paths (absent / oversized / off-mount) are skipped, not fatal.
-- **The `PRESENT_ARTIFACT` event stays in `raw_events`** (unlike `CHECKPOINT_COMMITTED`, which is suppressed) so the UI can render a live artifact card during streaming (Phase 2 of the feature); the persisted `attachments(origin='generated')` are the durable, downloadable copy on the settled message.
-- **Only deep agents produce generated artifacts** — the `present_artifact` tool is attached in `DeepAgent._builtin_tools()` (needs a `conversation_id`), and LangGraph agents have no filesystem.
+| Rule | Why |
+| --- | --- |
+| **Every file, every outcome** | A failed or cancelled run's files exist too, and the sweep would delete them |
+| **Two steps.** Presented files in the finalize transaction; the rest in a background task after the commit, chained per conversation | A card must find its file when the terminal frame arrives; nothing else may delay that frame. Chaining keeps two runs from both storing a file. A capture lost to a restart heals on the next run (the file is still on the volume) |
+| **Stored once.** A file is skipped when the conversation already holds the same `(file name, content_sha256)`; an edited file becomes a new version on the answer that changed it | No duplicate bytes for files a later turn leaves untouched |
+| **A presented file is always stored on its answer**, even unchanged | Its card is matched to an attachment on that message (presented one first, if two share a name) |
+| **Bounded.** `OUTPUT_CAPTURE_MAX_FILES_PER_RUN` (100) / `_MAX_BYTES_PER_RUN` (256 MB) for step 2; fetched in batches of `OUTPUT_CAPTURE_BATCH_FILES` (20) / `_BATCH_BYTES` (32 MB) | A run that wrote many large files never holds them all in memory |
+| **Fail-open**, in the finalize transaction | The answer is already persisted: an unreachable agents service, a vanished file or bad base64 is logged and skipped |
+| **`presented = false` files stay the owner's.** Share snapshots, imported shares and the PDF export carry uploads and presented files only (`is_shareable`); the data export carries everything | A scratch file was never shown — it must not reach a public link |
+| **Only deep agents** — LangGraph agents have no filesystem; the capture skips them without a call | |
+| **Forks copy every attachment field** (`origin`, `title`, `summary`, `content_sha256`, `presented`) | Before, a presented file came back as an "upload" in the copy, its card broken |
+
+Generated files without a card are not shown under the answer (the message's file stack is uploads only); they are listed by `/files` (plan 35).
 
 ### Cleanup
 
@@ -371,7 +387,8 @@ The conversation filesystem (`input/` + `output/`) is removed by `delete_convers
 | Input-files seed endpoint | [magenticx/agents/main.py](../../magenticx/agents/main.py) | `PUT /agents/{slug}/users/{user_id}/conversations/{conversation_id}/input-files` |
 | `present_artifact` tool | [magenticx/agents/harness/tools/present_artifact/tool.py](../../magenticx/agents/harness/tools/present_artifact/tool.py) | `build_present_artifact_tool()` — path-guarded, returns a confirmation (never emits); registered in `harness/tools/registry.py` as an auto-attach native |
 | Output-files read endpoint + util | [magenticx/agents/router/inference.py](../../magenticx/agents/router/inference.py) | `GET …/output-files` → `harness.filesystem.read_output_files()` / `resolve_output_file()` (path-guarded, size-capped) |
-| Generated-artifact capture (bridge) | [magenticx/dialogue_bridge/utils/inference_runs.py](../../magenticx/dialogue_bridge/utils/inference_runs.py) | `InferenceRunRuntime.presented_artifacts`, `_fetch_output_files()`, `_capture_generated_artifacts()` (called in `_finish_run`), `build_agent_output_files_url()` |
+| Generated-file capture (bridge) | [magenticx/dialogue_bridge/utils/output_capture.py](../../magenticx/dialogue_bridge/utils/output_capture.py) | `capture_presented_files()` (in `_finish_run`'s transaction) and `schedule_remaining_capture()` (after its commit, every terminal status), `select_files_to_capture()`; presented metadata from `InferenceRunRuntime.presented_artifacts` |
+| Output manifest (agents) | [magenticx/agents/harness/filesystem/provisioner.py](../../magenticx/agents/harness/filesystem/provisioner.py) | `list_output_manifest()` → `GET …/output-files/manifest` (internal) |
 | Generated-artifact rendering (frontend) | [magenticx/agentic_ui/src/features/chat/components/message_parts/MessageAttachments.tsx](../../magenticx/agentic_ui/src/features/chat/components/message_parts/MessageAttachments.tsx) | `origin === "generated"` branch — left-aligned card, Sparkles icon, agent title/summary |
 | Share snapshot builder | [magenticx/dialogue_bridge/utils/conversations.py](../../magenticx/dialogue_bridge/utils/conversations.py) | `_attachment_to_share_snapshot()`, `build_share_snapshot()` |
 | Pydantic schemas | [magenticx/dialogue_bridge/schema/attachments.py](../../magenticx/dialogue_bridge/schema/attachments.py) | `AttachmentIn`, `AttachmentOut`, `ImageOut`, `DocxPreviewTokenOut` |

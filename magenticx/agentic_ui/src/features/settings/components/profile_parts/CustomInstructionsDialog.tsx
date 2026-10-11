@@ -60,20 +60,6 @@ export default function CustomInstructionsDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // Esc closes only this dialog: a capture-phase listener stops the event
-  // before the app-wide shortcut handler (bubble phase) would also dismiss
-  // the settings panel underneath in the same keypress.
-  useEffect(() => {
-    if (!open) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.stopPropagation();
-      onClose();
-    };
-    window.addEventListener("keydown", onKeyDown, { capture: true });
-    return () => window.removeEventListener("keydown", onKeyDown, { capture: true });
-  }, [open, onClose]);
-
   const setField = (key: keyof CustomInstructions, fieldValue: string | boolean) =>
     setDraft((prev) => ({ ...prev, [key]: fieldValue }));
 

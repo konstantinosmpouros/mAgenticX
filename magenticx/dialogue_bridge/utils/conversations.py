@@ -69,6 +69,7 @@ async def init_message(
         is_error=bool(payload.error) if payload.error is not None else False,
         error_message=payload.errorMessage,
         raw_events=payload.rawEvents,
+        command=payload.command.model_dump() if payload.command else None,
     )
     db.add(msg)
     await db.flush()  # Assign msg.id for attachment inserts.
@@ -284,6 +285,7 @@ async def clone_branch_to_conversation(
             is_error=source_message.is_error,
             error_message=source_message.error_message,
             raw_events=deepcopy(source_message.raw_events),
+            command=deepcopy(source_message.command),
             created_at=source_message.created_at,
             updated_at=source_message.updated_at,
         )
@@ -299,6 +301,13 @@ async def clone_branch_to_conversation(
                 file_name=source_attachment.file_name,
                 mime_type=source_attachment.mime_type,
                 size_bytes=source_attachment.size_bytes,
+                # Carried over, or a generated file would turn into an
+                # "upload" in the copy and lose its card.
+                origin=source_attachment.origin,
+                title=source_attachment.title,
+                summary=source_attachment.summary,
+                content_sha256=source_attachment.content_sha256,
+                presented=source_attachment.presented,
                 blob=cloned_blob,
                 created_at=source_attachment.created_at,
                 updated_at=source_attachment.updated_at,
@@ -333,13 +342,26 @@ def _message_to_share_snapshot(message: MessageTable) -> dict:
         "liked": message.liked,
         "created_at": message.created_at.isoformat() if message.created_at else None,
         "updated_at": message.updated_at.isoformat() if message.updated_at else None,
-        "attachments": [_attachment_to_share_snapshot(attachment) for attachment in message.attachments],
+        "attachments": [
+            _attachment_to_share_snapshot(attachment) for attachment in message.attachments if is_shareable(attachment)
+        ],
         "thinking": deepcopy(message.reasoning_steps),
         "thinkingTime": message.reasoning_time_seconds,
         "error": message.is_error,
         "errorMessage": message.error_message,
         "rawEvents": deepcopy(message.raw_events) or [],
+        # Just the name — the chip on a shared user message (plan 35).
+        "command": deepcopy(message.command),
     }
+
+
+def is_shareable(attachment: AttachmentTable) -> bool:
+    """Whether a file may leave the owner's account (share links, PDF export).
+
+    Uploads and the files the agent presented, yes. A file the agent only wrote
+    — stored so the owner never loses it — is the owner's alone.
+    """
+    return attachment.origin != "generated" or bool(attachment.presented)
 
 
 def _attachment_to_share_snapshot(attachment: AttachmentTable) -> dict:
@@ -348,6 +370,10 @@ def _attachment_to_share_snapshot(attachment: AttachmentTable) -> dict:
         "id": attachment.id,
         "name": attachment.file_name,
         "mime": attachment.mime_type,
+        # So an imported share keeps an artifact an artifact (its card).
+        "origin": attachment.origin,
+        "title": attachment.title,
+        "summary": attachment.summary,
         "size": attachment.size_bytes,
         "timestamp": attachment.created_at.isoformat() if attachment.created_at else None,
         "data": b64_encode(blob_data) if blob_data else None,

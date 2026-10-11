@@ -136,6 +136,7 @@ Who signs session JWTs and which public keys verify them. Production signs with 
 | `SKILL_CATALOGUE_SEARCH_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `60` / `60` | Skill catalogue searches per verified session (the search runs as the user types, debounced). |
 | `EXPORT_TOKEN_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Data-export download tokens per user (the export itself is bounded by the cooldown column). |
 | `ACCOUNT_DELETION_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `3600` | Requesting or cancelling an account deletion, per user. |
+| `COMMANDS_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `120` / `60` | The composer's slash-command menu (`GET /v1/commands/{user}/{agent}`), per user. |
 | `PROFILE_UPDATE_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `20` / `3600` | Changing the display name or photo in Edit profile, per user. |
 | `AVATAR_MAX_UPLOAD_BYTES` | `5242880` | Largest photo upload accepted; refused while reading, before decoding. |
 | `AVATAR_READ_CHUNK_BYTES` | `65536` | Chunk size the upload is read in. |
@@ -209,6 +210,8 @@ See [account-deletion](../flows/account-deletion.md). The batch and rate bounds 
 | `ATTACHMENT_DOCX_PREVIEW_TOKEN_TTL_SECONDS` | `60` | Lifetime of a signed DOCX-preview token. |
 | `ATTACHMENT_INLINE_CACHE_MAX_AGE_SECONDS` | `300` | `Cache-Control max-age` on inline attachment responses. |
 | `ATTACHMENT_STREAM_CHUNK_BYTES` | `524288` (512 KB) | Chunk size when streaming a blob. |
+| `OUTPUT_CAPTURE_MAX_FILES_PER_RUN` / `OUTPUT_CAPTURE_MAX_BYTES_PER_RUN` | `100` / `268435456` (256 MB) | Most generated files stored from one run (presented first); the rest are left out and logged. |
+| `OUTPUT_CAPTURE_BATCH_FILES` / `OUTPUT_CAPTURE_BATCH_BYTES` | `20` / `33554432` (32 MB) | One fetch of output files from the agents service (≤ 20, its per-request cap). |
 | `SPEECH_DICTATION_MAX_BYTES` | `26214400` (25 MB) | Max dictation upload. |
 | `SPEECH_DICTATION_READ_CHUNK_BYTES` | `1048576` (1 MB) | Read-chunk size for dictation. |
 | `SPEECH_READ_ALOUD_MAX_CHARS` | `2000` | Max characters per read-aloud request. |
@@ -379,9 +382,11 @@ Each built-in workflow agent picks its models per node. All accept `openai:<mode
 | `INPUT_MAX_FILE_BYTES` | `26214400` (25 MB) | Server-side per-file cap on the conversation-input seeding endpoint (defence in depth; mirrors the bridge). |
 | `VIEW_IMAGE_MAX_BYTES` | `10485760` (10 MB) | Largest image `view_image` will hand to the model. Unlike the AG-UI preview bounds this caps the **model's** copy, so it guards context cost rather than display size. |
 | `INPUT_MAX_FILES` | `10` | Server-side per-turn file cap. |
+| `OUTPUT_MANIFEST_MAX_FILES` | `500` | Most files one run-end `output/` manifest lists (path, size, SHA-256). |
+| `OUTPUT_HASH_CHUNK_BYTES` | `1048576` | Chunk size when hashing an output file. |
 | `SANDBOX_EXECUTION_ENABLED` | `false` | Fail-closed kill switch for sandboxed command execution: while false, workspace assembly refuses to mint a sandbox-capable default backend, which is exactly what would make deepagents expose its `execute` tool. Reserved for the future gVisor-class sandbox rollout. |
 | `WORKSPACE_INPUT_TTL_HOURS` | `72` | TTL for conversation `input/` cache files (bridge-seeded copies of DB attachment blobs). `0` disables the input sweep. |
-| `WORKSPACE_OUTPUT_TTL_HOURS` | `168` | TTL for conversation `output/` cache files (presented artifacts are blob-persisted at run finalize). `0` disables the output sweep. |
+| `WORKSPACE_OUTPUT_TTL_HOURS` | `168` | TTL for conversation `output/` cache files (every file the agent wrote is stored in Postgres at run end, so the sweep loses nothing). `0` disables the output sweep. |
 | `WORKSPACE_SWEEP_INTERVAL_MINUTES` | `60` | Retention sweeper cadence (jittered ±10%; bounded 5–1440). |
 | `SUMMARIZATION_TRIGGER_FRACTION` | `0.95` | Compact automatically when the context reaches this fraction of a model's window (models with a known window — see `MODEL_CONTEXT_WINDOWS`). |
 | `SUMMARIZATION_KEEP_FRACTION` | `0.30` | Only bounds deepagents' overflow clipping: every compaction, automatic or manual, folds everything before the latest question. |

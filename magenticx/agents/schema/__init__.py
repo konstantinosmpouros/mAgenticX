@@ -1,13 +1,14 @@
 """Request/response schemas for the agents service.
 
 One module per concept/router — inference, embeddings, generation, voice,
-catalog, skills, user_agents, memories, agent_tools. Re-exported so callers
+catalog, commands, skills, user_agents, memories, agent_tools. Re-exported so callers
 keep the stable ``from schema import ...`` import surface regardless of which
 module a DTO lives in.
 """
 from schema.account import PurgeThreadsRequest, PurgeThreadsResponse, PurgeUserResponse
 from schema.agent_tools import AgentToolRow, AgentToolsResponse
 from schema.catalog import AgentDefinition, AgentManifest, ToolManifest
+from schema.commands import CommandListResponse, CommandOut
 from schema.embeddings import EmbedRequest, EmbedResponse
 from schema.generation import (
     ConversationSuggestions,
@@ -22,6 +23,8 @@ from schema.inference import (
     CompactResponse,
     InputFileIn,
     OutputFileOut,
+    OutputManifestEntry,
+    OutputManifestResponse,
     ReadOutputFilesResponse,
     ReapConversationRequest,
     Request,
@@ -57,6 +60,8 @@ from schema.voice import (
 )
 
 __all__ = [
+    "CommandListResponse",
+    "CommandOut",
     "PurgeThreadsRequest",
     "PurgeThreadsResponse",
     "PurgeUserResponse",
@@ -83,6 +88,8 @@ __all__ = [
     "MemoryEntry",
     "OutputFileOut",
     "ReadAloudRequest",
+    "OutputManifestEntry",
+    "OutputManifestResponse",
     "ReadOutputFilesResponse",
     "RealtimeSessionRequest",
     "RealtimeSessionResponse",

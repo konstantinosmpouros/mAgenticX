@@ -1,6 +1,6 @@
 # Conversation Sharing
 
-Conversation sharing lets an owner publish a frozen, read-only snapshot of a conversation (or a subset of it) via a token-bearing URL. The snapshot is self-contained — it embeds all message content and attachment data — so the share remains stable even if the original conversation is later edited or deleted. Recipients can view the share without authentication; authenticated users can fork the snapshot into their own workspace and continue the conversation. Owners can revoke shares at any time and set an expiration date up to one year in the future. A separate, lighter-weight report mechanism lets users flag conversations for moderation without creating a public link.
+Conversation sharing lets an owner publish a frozen, read-only snapshot of a conversation (or a subset of it) via a token-bearing URL. The snapshot is self-contained — it embeds all message content and the data of every upload and every file the agent *presented* (a file the agent only wrote, never presented, stays out: `is_shareable`) — so the share remains stable even if the original conversation is later edited or deleted. Recipients can view the share without authentication; authenticated users can fork the snapshot into their own workspace and continue the conversation. Owners can revoke shares at any time and set an expiration date up to one year in the future. A separate, lighter-weight report mechanism lets users flag conversations for moderation without creating a public link.
 
 ---
 

@@ -174,6 +174,14 @@ account_deletion_rate_limit = rate_limit(
     emit_headers=True,
 )
 
+# The composer's slash-command menu (plan 35) — per user, after auth.
+commands_rate_limit = rate_limit(
+    (settings.rate_limit.commands_max_attempts, settings.rate_limit.commands_window_seconds),
+    scope="commands",
+    identifier=user_path_identity,
+    emit_headers=True,
+)
+
 # Edit profile — per user, after auth + CSRF.
 profile_update_rate_limit = rate_limit(
     (settings.rate_limit.profile_update_max_attempts, settings.rate_limit.profile_update_window_seconds),

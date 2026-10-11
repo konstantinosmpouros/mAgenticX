@@ -764,3 +764,32 @@ export const AccountDeletionStatusSchema = z.record(z.unknown()).transform((raw)
   confirmWith: typeof raw.confirmWith === "string" ? raw.confirmWith : "",
 }));
 export type AccountDeletionStatus = z.infer<typeof AccountDeletionStatusSchema>;
+
+// One slash command in the composer's "/" menu (plan 35). Fails safe: a row
+// without a usable name or kind is dropped, and anything unclear reads as
+// unavailable — the server refuses an unavailable command anyway.
+const SlashCommandSchema = z.record(z.unknown()).transform((raw) => {
+  const name = typeof raw.name === "string" && /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(raw.name) ? raw.name : null;
+  const kind = raw.kind === "action" || raw.kind === "prompt" ? raw.kind : null;
+  if (!name || !kind) return null;
+  return {
+    name,
+    kind,
+    description: typeof raw.description === "string" ? raw.description : "",
+    argumentHint: typeof raw.argumentHint === "string" ? raw.argumentHint : "",
+    readOnly: raw.readOnly === true,
+    source: typeof raw.source === "string" ? raw.source : "builtin",
+    available: raw.available === true,
+    unavailableReason: typeof raw.unavailableReason === "string" ? raw.unavailableReason : null,
+  };
+});
+export type SlashCommand = NonNullable<z.infer<typeof SlashCommandSchema>>;
+
+export const SlashCommandListSchema = z
+  .record(z.unknown())
+  .transform((raw) =>
+    (Array.isArray(raw.commands) ? raw.commands : [])
+      .map((row) => SlashCommandSchema.safeParse(row))
+      .flatMap((parsed) => (parsed.success && parsed.data ? [parsed.data] : [])),
+  )
+  .catch([]);

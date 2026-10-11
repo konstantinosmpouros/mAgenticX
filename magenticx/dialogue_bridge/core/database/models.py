@@ -385,6 +385,10 @@ class MessageTable(Base):
     # back. NULL on every answer that was not compacted after. Checkpoint ids
     # stay in checkpoint_id — this never carries them.
     compaction = Column(JSON, nullable=True)
+    # The slash command a USER message ran (plan 35, migration 0040): {"name"}.
+    # Its argument is the message content; the instruction lives in the agents
+    # service. Retry re-runs it from here; the bubble shows it as a chip.
+    command = Column(JSON, nullable=True)
 
     # error info
     is_error = Column(Boolean, nullable=False, server_default="false")
@@ -509,6 +513,15 @@ class AttachmentTable(Base):
     # Agent-supplied display metadata — populated for generated artifacts only.
     title = Column(String, nullable=True)
     summary = Column(String, nullable=True)
+    # SHA-256 of a generated file's bytes (migration 0039). The run-end capture
+    # stores every file the agent wrote; this is how it knows a file is already
+    # held, so an unchanged one is never stored twice. NULL for uploads.
+    content_sha256 = Column(String(64), nullable=True)
+    # The agent showed this file to the user (present_artifact) — it has a card.
+    # A generated file that was only written, never presented, stays private to
+    # the owner: share links and the PDF export carry uploads and presented
+    # files only. Every generated row before migration 0039 was presented.
+    presented = Column(Boolean, nullable=False, server_default="false")
 
     # Blob file
     blob_id = Column(String, ForeignKey("blobs.id", ondelete="CASCADE"), nullable=True, index=True)

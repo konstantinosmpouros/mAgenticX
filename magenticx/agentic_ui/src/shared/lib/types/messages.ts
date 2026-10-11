@@ -2,6 +2,7 @@
 // Message Schemas
 // ------------------------------------------------------
 import type { AttachmentIn, AttachmentOut } from "./attachments";
+import type { CommandRef } from "./commands";
 
 // A manual compaction recorded on the answer it follows (plan 34). Token
 // figures are estimates until the next model call reports the real prompt;
@@ -61,6 +62,8 @@ export type MessageOut = {
   streamingStatus?: string | null;
   rawEvents?: Record<string, any>[]; // defaults to [] on the backend
   compaction?: MessageCompaction | null;
+  /** The slash command this user message ran (plan 35), shown as a chip. */
+  command?: CommandRef | null;
 };
 
 // Message input for API requests
@@ -74,6 +77,8 @@ export type MessageIn = {
   error?: boolean;
   errorMessage?: string;
   rawEvents?: Record<string, any>[]; // defaults to [] on the backend
+  /** A slash command (plan 35): its argument is `content`, which may be empty. */
+  command?: CommandRef;
 };
 
 // Message update payload (used to finalise AI placeholders)

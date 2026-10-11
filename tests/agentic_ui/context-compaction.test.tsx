@@ -121,6 +121,35 @@ describe("the context ring", () => {
     expect(compaction.compact).not.toHaveBeenCalled();
   });
 
+  it("opens the card on a tap from a finger, even where hover is reported", () => {
+    // Phones with a stylus and some Android browsers match (hover: hover):
+    // the tap itself, not the media query, must decide.
+    const compaction = control();
+    render(<ContextMeter context={context} compaction={compaction} />);
+    const ring = screen.getByRole("button", { name: /Context window: 40% used/ });
+    act(() => {
+      ring.dispatchEvent(new PointerEvent("click", { bubbles: true, pointerType: "touch" }));
+    });
+    expect(compaction.compact).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Compact now" }));
+    expect(compaction.compact).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens the card on the mobile layout instead of compacting", async () => {
+    const width = window.innerWidth;
+    window.innerWidth = 500;
+    try {
+      const compaction = control();
+      render(<ContextMeter context={context} compaction={compaction} />);
+      const ring = await screen.findByRole("button", { name: "Context window: 40% used" });
+      fireEvent.click(ring);
+      expect(compaction.compact).not.toHaveBeenCalled();
+      expect(screen.getByRole("button", { name: "Compact now" })).toBeTruthy();
+    } finally {
+      window.innerWidth = width;
+    }
+  });
+
   it("is busy while compacting", () => {
     render(<ContextMeter context={context} compaction={control({ status: "compacting", disabledReason: "Compacting…" })} />);
     expect(screen.getByRole("button", { name: /Compacting the conversation/ }).getAttribute("aria-busy")).toBe("true");

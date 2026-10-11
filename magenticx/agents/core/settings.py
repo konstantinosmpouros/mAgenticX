@@ -499,6 +499,11 @@ class FilesystemSettings(BaseSettings):
     # large. Over-cap files are skipped (logged), not fatal.
     output_max_file_bytes: int = Field(26214400, validation_alias="OUTPUT_MAX_FILE_BYTES")
     output_max_files: int = Field(20, validation_alias="OUTPUT_MAX_FILES")
+    # The run-end manifest of output/ (every file the agent wrote, so the bridge
+    # can store them all — not only presented ones). Bounds one listing; files
+    # past it are left out and logged. The hash is read in chunks.
+    output_manifest_max_files: int = Field(500, ge=1, validation_alias="OUTPUT_MANIFEST_MAX_FILES")
+    output_hash_chunk_bytes: int = Field(1048576, ge=4096, validation_alias="OUTPUT_HASH_CHUNK_BYTES")
 
     # Hard cap on saved memories per (user, agent) — the `remember` tool refuses
     # new entries beyond this (updates to existing ones always go through), so

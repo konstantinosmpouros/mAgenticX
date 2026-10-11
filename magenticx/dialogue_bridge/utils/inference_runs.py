@@ -17,7 +17,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import (
     AgentTable,
     AttachmentTable,
-    BlobTable,
     ConversationTable,
     MessageTable,
     MessageUsageTable,
@@ -32,14 +31,15 @@ from core.logging import get_context, get_logger
 from schema import ConversationSummary, InferenceRunOut, MessageOut
 from utils.agents import (
     build_agent_input_files_url,
-    build_agent_output_files_url,
     build_agent_resume_url,
     build_agent_stream_url,
     get_agent_by_id,
 )
+from utils.commands import command_context
 from utils.compaction_lock import compaction_locks
 from utils.conversations import _preview
 from utils.event_log import event_log
+from utils.output_capture import capture_presented_files, schedule_remaining_capture
 from utils.run_activity import RunActivity, count_run_activity
 from utils.usage_rollups import add_answer_to_rollups
 from utils.inference import (
@@ -172,27 +172,6 @@ async def _seed_input_files(url: str, files: list[dict[str, Any]]) -> None:
     async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()) as client:
         resp = await client.put(url, json={"files": files}, headers=internal_service_headers(get_context().get("request_id")))
         resp.raise_for_status()
-
-
-async def _fetch_output_files(url: str, paths: list[str]) -> list[dict[str, Any]]:
-    """GET agent-presented deliverables (base64) back from the agents service.
-
-    The mirror of ``_seed_input_files``: same authenticated internal call
-    (mTLS client cert + trusted-proxy header). Returns the ``files`` list from
-    the response (each ``{path, filename, mime, size, base64}``); paths the
-    agent couldn't return land in the response's ``missing`` and are simply
-    absent here."""
-    timeout = settings.http.inference_timeout
-    async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()) as client:
-        resp = await client.get(
-            url,
-            params=[("paths", p) for p in paths],
-            headers=internal_service_headers(get_context().get("request_id")),
-        )
-        resp.raise_for_status()
-        data = resp.json()
-    files = data.get("files") if isinstance(data, dict) else None
-    return files if isinstance(files, list) else []
 
 
 def _parse_sse_bytes(buffer: str, chunk: bytes) -> tuple[str, list[dict[str, Any]]]:
@@ -854,6 +833,10 @@ class InferenceRunManager:
                             else {}
                         ),
                         **({"personalization": personalization} if personalization else {}),
+                        # The slash command this turn runs (plan 35). It rides the
+                        # shared block, so the /resume legs of a paused run keep
+                        # it too — a paused /code-review must stay read-only.
+                        **command_context(parent_user_message),
                     },
                 }
                 if fork_from is not None:
@@ -1175,77 +1158,6 @@ async def _load_message(db: AsyncSession, message_id: str) -> MessageTable | Non
 
 
 
-async def _capture_generated_artifacts(
-    db: AsyncSession,
-    run: MessageTable,
-    conversation: ConversationTable | None,
-    runtime: InferenceRunRuntime,
-) -> None:
-    """Persist the run's presented deliverables as generated attachments.
-
-    Reads the files the agent designated via ``present_artifact`` back from the
-    agents service (by their exact output/ paths) and writes an
-    ``AttachmentTable(origin='generated')`` + ``BlobTable`` per file onto the
-    assistant message — reusing the entire attachment download/preview pipeline.
-
-    Fail-open by contract: the assistant text has already been generated and
-    persisted, so any capture error (agent unreachable, file gone, bad base64)
-    is logged and skipped rather than failing an otherwise-successful run. Rows
-    are added to the caller's session and committed with the finalize write."""
-    presented = runtime.presented_artifacts
-    if not presented or conversation is None:
-        return
-    try:
-        agent = await get_agent_by_id(run.agent_id or conversation.agent_id)
-        url = build_agent_output_files_url(agent, str(conversation.user_id), str(run.conversation_id))
-        fetched = await _fetch_output_files(url, [a["path"] for a in presented])
-    except Exception:
-        logger.error(
-            "generated_artifacts_fetch_failed",
-            "Failed to read presented deliverables back from the agents service",
-            exc_info=True,
-            run_id=run.id,
-            presented=len(presented),
-        )
-        return
-
-    meta_by_path = {a["path"]: a for a in presented}
-    captured = 0
-    for f in fetched:
-        try:
-            raw = base64.b64decode(f.get("base64", ""), validate=True)
-        except (ValueError, TypeError):
-            logger.warning(
-                "generated_artifact_bad_base64",
-                "Skipped a presented deliverable with invalid base64",
-                run_id=run.id,
-            )
-            continue
-        meta = meta_by_path.get(f.get("path"), {})
-        db.add(
-            AttachmentTable(
-                message_id=run.id,
-                file_name=f.get("filename") or (meta.get("path", "").rsplit("/", 1)[-1]) or "artifact",
-                mime_type=f.get("mime") or "application/octet-stream",
-                size_bytes=f.get("size") or len(raw),
-                origin="generated",
-                title=(meta.get("title") or None),
-                summary=(meta.get("summary") or None),
-                blob=BlobTable(data=raw),
-            )
-        )
-        captured += 1
-
-    if captured:
-        logger.info(
-            "generated_artifacts_captured",
-            "Persisted agent-presented deliverables as generated attachments",
-            run_id=run.id,
-            captured=captured,
-            presented=len(presented),
-        )
-
-
 async def _record_usage_breakdown(
     db: AsyncSession,
     run: MessageTable,
@@ -1393,14 +1305,15 @@ async def _finish_run(run_id: str, runtime: InferenceRunRuntime, status_value: s
             if has_usage:
                 await _record_usage_breakdown(db, run, conversation, runtime, activity)
 
-        # Capture any deliverables the agent presented this run as generated
-        # attachments (completed runs only — a failed/cancelled run's partial
-        # output/ files aren't finished work). Fail-open: never blocks the
-        # finalize commit. Rows join the same transaction below.
-        if status_value == "completed":
-            await _capture_generated_artifacts(db, run, conversation, runtime)
+        # The files the agent presented this run, in this transaction: their
+        # cards must find them when the terminal frame reaches the UI.
+        await capture_presented_files(db, run, conversation, runtime.presented_artifacts)
 
         await db.commit()
+
+    # Every other file the agent wrote, after the commit and in the background:
+    # the UI's terminal frame never waits for it (utils/output_capture.py).
+    schedule_remaining_capture(str(run.conversation_id), run_id, runtime.presented_artifacts)
 
 
 async def _mark_run_completed(run_id: str, runtime: InferenceRunRuntime) -> None:

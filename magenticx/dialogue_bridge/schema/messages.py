@@ -4,6 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from core.settings import settings
 from schema.attachments import AttachmentIn, AttachmentOut
 from schema.base import Senders, UTCDateTime
+from schema.commands import CommandInvocation
 
 
 class MessageCompactionOut(BaseModel):
@@ -65,6 +66,9 @@ class MessageOut(BaseModel):
     streamingStatus: Optional[str] = Field(None, validation_alias="streaming_status")
     rawEvents: List[dict] = Field(default_factory=list, validation_alias="raw_events")
     compaction: Optional[MessageCompactionOut] = None
+    # The slash command this user message ran (plan 35), e.g. {"name": "explain"};
+    # the bubble shows it as a chip in front of the content.
+    command: Optional[CommandInvocation] = None
 
     @field_validator("rawEvents", mode="before")
     @classmethod
@@ -75,12 +79,15 @@ class MessageOut(BaseModel):
 class MessageIn(BaseModel):
     """
     Create a message (user/agent) with optional attachments.
-    Either content or attachments must be provided.
+    Either content or attachments must be provided — or a slash command, which
+    may run with no text at all (``/summarize``).
     """
     parentMessageId: Optional[str] = None
     sender: Senders
     content: Optional[str] = None
     attachments: List[AttachmentIn] = Field(default_factory=list)
+    # A slash command (plan 35): its argument is ``content``. User messages only.
+    command: Optional[CommandInvocation] = None
 
     # Optional metadata (your schema already supports on MessageTable)
     thinking: Optional[List[str]] = None
@@ -92,9 +99,11 @@ class MessageIn(BaseModel):
     @model_validator(mode="after")
     def _require_content_or_attachment(self):
         # Allow empty AI placeholders so the UI can allocate an id before streaming.
+        if self.command is not None and self.sender != "user":
+            raise ValueError("Only a user message can run a command.")
         if self.sender == "ai" and not self.content and not self.attachments:
             return self
-        if not self.content and not self.attachments:
+        if not self.content and not self.attachments and self.command is None:
             raise ValueError("Either 'content' or at least one attachment is required.")
         if len(self.attachments) > settings.attachments.max_per_message:
             raise ValueError(f"No more than {settings.attachments.max_per_message} attachments are allowed per message.")

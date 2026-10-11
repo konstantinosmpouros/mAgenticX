@@ -2,6 +2,7 @@ from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -17,6 +18,7 @@ from core.database import (
     b64_decode,
 )
 from schema import (
+    CommandInvocation,
     ConversationShareListItem,
     MessageIn,
 )
@@ -105,6 +107,17 @@ async def load_active_share(token: str, db: AsyncSession) -> ConversationShareTa
     return share
 
 
+def _snapshot_command(item: dict) -> dict | None:
+    """A shared user message's slash command, revalidated, or ``None``."""
+    raw = item.get("command")
+    if item.get("sender") != "user" or not isinstance(raw, dict):
+        return None
+    try:
+        return CommandInvocation.model_validate({"name": raw.get("name")}).model_dump()
+    except ValidationError:
+        return None
+
+
 async def create_conversation_from_share_record(
     *,
     db: AsyncSession,
@@ -175,6 +188,9 @@ async def create_conversation_from_share_record(
             is_error=bool(item.get("error")),
             error_message=item.get("errorMessage"),
             raw_events=deepcopy(item.get("rawEvents")) or [],
+            # Only a well-formed {"name"} survives the import — the snapshot came
+            # from the owner's rows, but the import trusts nothing it carries.
+            command=_snapshot_command(item),
             created_at=created_at,
             updated_at=updated_at,
         )
@@ -193,6 +209,11 @@ async def create_conversation_from_share_record(
                 file_name=attachment.get("name") or "attachment",
                 mime_type=attachment.get("mime") or "application/octet-stream",
                 size_bytes=attachment.get("size"),
+                # Snapshots only ever hold uploads and presented files.
+                origin="generated" if attachment.get("origin") == "generated" else "upload",
+                title=attachment.get("title") if isinstance(attachment.get("title"), str) else None,
+                summary=attachment.get("summary") if isinstance(attachment.get("summary"), str) else None,
+                presented=attachment.get("origin") == "generated",
                 blob=blob,
                 created_at=parse_snapshot_datetime(attachment.get("timestamp")) or created_at,
                 updated_at=parse_snapshot_datetime(attachment.get("timestamp")) or updated_at,

@@ -128,7 +128,7 @@ _MESSAGES = (
     MessageTable.input_tokens, MessageTable.output_tokens, MessageTable.cached_input_tokens,
     MessageTable.reasoning_tokens, MessageTable.model_latency_ms, MessageTable.context_tokens,
     MessageTable.context_window, MessageTable.model_name, MessageTable.model_calls,
-    MessageTable.tool_calls, MessageTable.compaction, MessageTable.is_error,
+    MessageTable.tool_calls, MessageTable.compaction, MessageTable.command, MessageTable.is_error,
     MessageTable.error_message, MessageTable.scheduled_task_id, MessageTable.created_at,
 )
 # Where each answer's tokens went (plan 33): main agent vs each sub-agent, by model.

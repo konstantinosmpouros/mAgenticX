@@ -26,6 +26,7 @@ from harness.abstractions import seed_global_agents
 from utils.agents import refresh_registry
 from router.account import router as account_router
 from router.catalog import router as catalog_router
+from router.commands import router as commands_router
 from router.embeddings import router as embeddings_router
 from router.export import router as export_router
 from router.generation import router as generation_router
@@ -130,6 +131,7 @@ async def health():
 
 app.include_router(account_router)
 app.include_router(catalog_router)
+app.include_router(commands_router)
 app.include_router(embeddings_router)
 app.include_router(export_router)
 app.include_router(generation_router)

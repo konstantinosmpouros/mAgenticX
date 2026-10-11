@@ -13,7 +13,7 @@ from fontTools.subset import Options, Subsetter
 
 from core.database import ConversationTable, MessageTable
 from core.logging import get_logger
-from utils.conversations import build_message_lineage
+from utils.conversations import build_message_lineage, is_shareable
 
 logger = get_logger(__name__)
 
@@ -223,7 +223,7 @@ class _PdfDocument:
         created = message.created_at.strftime("%b %d, %Y · %H:%M") if message.created_at else ""
 
         blocks = _markdown_blocks(message.content or "")
-        attachments = list(message.attachments or [])
+        attachments = [item for item in (message.attachments or []) if is_shareable(item)]
         if attachments:
             attachment_names = ", ".join(_clean_text(item.file_name) for item in attachments)
             blocks.append(_MarkdownBlock("paragraph", f"Attachments: {attachment_names}"))

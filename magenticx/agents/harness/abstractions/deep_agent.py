@@ -9,6 +9,7 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from harness.agui import AGUIEmitter, AGUIStreamNormalizer
 from harness.abstractions.base_agent import AgentType, BaseAgent
+from harness.commands import command_permissions
 from harness.personalization import build_personalization_prompt
 from harness.prompt_engineering import PromptContext, compose_system_prompt, describe_sections
 from harness.tools.gates import resolve_interrupt_on, strip_reserved_names, trust_level
@@ -476,10 +477,11 @@ class DeepAgent(BaseAgent, ABC):
             backend=backend,
             # Derived from the same flag as the mount, so a rule can never point
             # at a route this run didn't mount.
+            # A slash command can only add rules here (read-only), never lift one.
             permissions=workspace_write_deny(
                 include_reference=self._has_reference,
                 include_default_skills=self._has_default_skills,
-            ),
+            ) + command_permissions(self.command_spec),
             context_schema=self.context,
             checkpointer=self.checkpointer,
             store=None,

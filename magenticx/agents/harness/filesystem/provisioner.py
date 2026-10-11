@@ -46,6 +46,7 @@ path components, defending against path-traversal injected through the
 from __future__ import annotations
 
 import base64
+import hashlib
 import mimetypes
 import shutil
 from pathlib import Path
@@ -182,10 +183,10 @@ def read_output_files(
     conversation_id: str,
     paths: List[str],
 ) -> Tuple[List[Dict[str, object]], List[str]]:
-    """Read agent-presented deliverables from ``/conversation/output/`` back out.
+    """Read files from ``/conversation/output/`` back out by their exact paths.
 
-    Called by the bridge at run finalize with the exact virtual paths the agent
-    designated via ``present_artifact``, so it can persist them as generated
+    Called by the bridge at run end with the new or changed paths from
+    :func:`list_output_manifest`, so it can persist them as generated
     attachments. Enforces a count cap (raises ``ValueError``) and a per-file size
     cap (over-cap files are treated as misses, not fatal). Returns
     ``(files, missing)`` where each file is
@@ -238,6 +239,58 @@ def read_output_files(
         missing=len(missing),
     )
     return files, missing
+
+
+def _sha256_of(path: Path) -> str:
+    """The file's SHA-256, read in chunks so a large file is never held whole."""
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while chunk := handle.read(settings.filesystem.output_hash_chunk_bytes):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def list_output_manifest(*, user_id: str, agent_slug: str, conversation_id: str) -> List[Dict[str, object]]:
+    """Every file under ``/conversation/output/``: virtual path, name, MIME, size, SHA-256.
+
+    The bridge stores every file the agent wrote, presented or not, so the
+    conversation's files survive the volume's TTL sweep. It compares hashes
+    with what it already holds and fetches only new or changed files, so this
+    listing never carries bytes. Symlinks are skipped (never followed out of
+    the mount); a listing past ``output_manifest_max_files`` is cut and logged.
+    """
+    root = layout.conversation_output_root(user_id, agent_slug, conversation_id)
+    if not root.is_dir():
+        return []
+    limit = settings.filesystem.output_manifest_max_files
+    entries: List[Dict[str, object]] = []
+    truncated = False
+    for path in sorted(root.rglob("*")):
+        if path.is_symlink() or not path.is_file():
+            continue
+        if len(entries) >= limit:
+            truncated = True
+            break
+        relative = path.relative_to(root).as_posix()
+        entries.append(
+            {
+                "path": f"{CONVERSATION_OUTPUT_PREFIX}{relative}",
+                "filename": path.name,
+                "mime": mimetypes.guess_type(path.name)[0] or "application/octet-stream",
+                "size": path.stat().st_size,
+                "sha256": _sha256_of(path),
+            }
+        )
+    if truncated:
+        logger.warning(
+            "output_manifest_truncated",
+            "The conversation's output/ holds more files than one listing returns",
+            user_id=user_id,
+            agent_slug=agent_slug,
+            conversation_id=conversation_id,
+            limit=limit,
+        )
+    return entries
 
 
 def ensure_user_workspace(user_id: str) -> Path:

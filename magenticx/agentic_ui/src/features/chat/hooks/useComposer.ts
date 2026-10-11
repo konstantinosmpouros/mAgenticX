@@ -4,7 +4,7 @@ import { createAttachmentHandlers } from "@/features/attachments/handlers/attach
 import { type DictationStatus } from "@/features/chat/components/ChatInputBar";
 import { useCenteredComposerLayout } from "@/features/chat/hooks/useChatEffects";
 import { createVoiceDictationHandlers } from "@/features/voice/handlers/voice";
-import type { ConversationDetail } from "@/shared/lib/types";
+import type { CommandRef, ConversationDetail } from "@/shared/lib/types";
 
 type ToastFn = (opts: {
   title: string;
@@ -45,6 +45,9 @@ export function useComposer({
   isConversationStreaming,
 }: UseComposerOptions) {
   const [currentMessage, setCurrentMessage] = useState("");
+  // The slash command picked for the next send (plan 35), shown as a chip in
+  // the composer. One send only: the send handler clears it.
+  const [pendingCommand, setPendingCommand] = useState<CommandRef | null>(null);
   const [attachments, setAttachments] = useState<File[]>([]);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
 
@@ -137,6 +140,8 @@ export function useComposer({
   return {
     currentMessage,
     setCurrentMessage,
+    pendingCommand,
+    setPendingCommand,
     attachments,
     setAttachments,
     isSendingMessage,

@@ -505,6 +505,22 @@ class AttachmentSettings(BaseSettings):
     stream_chunk_bytes: int = Field(512 * 1024, validation_alias="ATTACHMENT_STREAM_CHUNK_BYTES")
 
 
+class OutputCaptureSettings(BaseSettings):
+    """The run-end capture of every file an agent wrote (utils/output_capture.py).
+
+    Bounds one run: how many files and bytes are stored at most, and how much is
+    fetched from the agents service in one request — so a run that wrote many
+    large files is captured without holding them all in memory at once.
+    """
+    model_config = _BASE_MODEL_CONFIG
+
+    max_files_per_run: int = Field(100, ge=1, validation_alias="OUTPUT_CAPTURE_MAX_FILES_PER_RUN")
+    max_bytes_per_run: int = Field(256 * 1024 * 1024, ge=1024, validation_alias="OUTPUT_CAPTURE_MAX_BYTES_PER_RUN")
+    # The agents service reads at most OUTPUT_MAX_FILES (20) per request.
+    batch_files: int = Field(20, ge=1, le=20, validation_alias="OUTPUT_CAPTURE_BATCH_FILES")
+    batch_bytes: int = Field(32 * 1024 * 1024, ge=1024, validation_alias="OUTPUT_CAPTURE_BATCH_BYTES")
+
+
 class ExportSettings(BaseSettings):
     """"Export my data" (plan 27): one streamed zip of everything a user owns.
 
@@ -1038,6 +1054,9 @@ class RateLimitSettings(BaseSettings):
     # Requesting or cancelling an account deletion (plan 32): rare by nature.
     account_deletion_max_attempts: int = Field(10, validation_alias="ACCOUNT_DELETION_RATE_LIMIT_MAX_ATTEMPTS")
     account_deletion_window_seconds: int = Field(3600, validation_alias="ACCOUNT_DELETION_RATE_LIMIT_WINDOW_SECONDS")
+    # The composer's "/" menu (plan 35) — fetched when the agent changes.
+    commands_max_attempts: int = Field(120, validation_alias="COMMANDS_RATE_LIMIT_MAX_ATTEMPTS")
+    commands_window_seconds: int = Field(60, validation_alias="COMMANDS_RATE_LIMIT_WINDOW_SECONDS")
     profile_update_max_attempts: int = Field(20, validation_alias="PROFILE_UPDATE_RATE_LIMIT_MAX_ATTEMPTS")
     profile_update_window_seconds: int = Field(3600, validation_alias="PROFILE_UPDATE_RATE_LIMIT_WINDOW_SECONDS")
     # Message creation can carry up to the full attachment budget per call —
@@ -1177,6 +1196,7 @@ class Settings(BaseSettings):
     voice: VoiceSettings = Field(default_factory=VoiceSettings)
     speech: SpeechSettings = Field(default_factory=SpeechSettings)
     attachments: AttachmentSettings = Field(default_factory=AttachmentSettings)
+    output_capture: OutputCaptureSettings = Field(default_factory=OutputCaptureSettings)
     conversations: ConversationSettings = Field(default_factory=ConversationSettings)
     share: ShareSettings = Field(default_factory=ShareSettings)
     export: ExportSettings = Field(default_factory=ExportSettings)

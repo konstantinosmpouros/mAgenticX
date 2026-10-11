@@ -93,6 +93,7 @@ from schema.search import (
     WorkspaceSearchResult,
 )
 from schema.account import AccountDeletionRequest, AccountDeletionStatus, ProfileUpdate
+from schema.commands import CommandInvocation, CommandListResponse, CommandOut
 from schema.export import (
     ExportStatus,
     ExportTokenRequest,
@@ -148,6 +149,9 @@ from schema.voice import (
 )
 
 __all__ = [
+    "CommandInvocation",
+    "CommandListResponse",
+    "CommandOut",
     "AccountDeletionRequest",
     "AccountDeletionStatus",
     "ProfileUpdate",

@@ -107,6 +107,9 @@ export default function ChatHeader({
 
   return (
     <div
+      // Measured by popovers that open upwards (the "/" menu), so they stop
+      // below the header instead of running under it.
+      data-chat-header=""
       className={`sticky top-0 z-40 w-full bg-transparent px-3 py-2 md:px-6 md:py-3 border-b transition-colors duration-200 ${showBottomBorder ? "border-border/100 backdrop-blur-md" : "border-transparent"}`}
     >
       <div className="flex w-full items-center gap-1.5 md:gap-3">

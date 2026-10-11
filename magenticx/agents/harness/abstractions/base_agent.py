@@ -9,6 +9,7 @@ from langgraph.types import Command
 from core.error_handling import agent_stream_error_handler
 from core.logging import get_logger
 from harness.checkpointer import get_checkpointer
+from harness.commands import CommandSpec, lookup_command
 from harness.tools.gates import approval_map, key_set
 from harness.personalization import Personalization, parse_personalization
 from utils import (
@@ -128,6 +129,12 @@ class BaseAgent:
         # leaves the agent's prompt untouched. Deep agents append the composed
         # block to their system prompt; LangGraph agents may adopt it later.
         self.personalization: Personalization = parse_personalization(self.context)
+
+        # The slash command this turn runs (plan 35), if any. The stream route
+        # has already checked it and rewritten the turn's message; the build
+        # reads it only for what it takes away (e.g. read-only). One turn only:
+        # the next run's context carries no command.
+        self.command_spec: Optional[CommandSpec] = lookup_command(self.context.get("command"))
 
 
 

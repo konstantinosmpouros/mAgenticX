@@ -52,6 +52,7 @@ import {
 import { Skeleton } from "@/shared/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { INTERACTIVE_SURFACE } from "@/shared/lib/consts";
+import { useTouchMenuTrigger } from "@/features/chat/hooks/useTouchMenuTrigger";
 import { loadSidebarSectionOpen, saveSidebarSectionOpen } from "@/shared/lib/sidebarStorage";
 
 type ChatSidebarProps = {
@@ -306,13 +307,26 @@ export default function ChatSidebar({
 
   // Profile popover (the ChatGPT-style menu on the footer account button).
   const [profileMenuOpen, setProfileMenuOpen] = React.useState(false);
-  // Mobile only: whether the profile header has expanded the account list.
+  // A finger opens the sidebar's menus on the tap's click (see the hook).
+  const touchMenuTrigger = useTouchMenuTrigger();
+  // Mobile only: whether the profile header has expanded the account list,
+  // and whether "Log out" has expanded the per-account choices.
   const [mobileAccountsOpen, setMobileAccountsOpen] = React.useState(false);
-  // Collapse it whenever the menu closes, however it closed — several paths
+  const [mobileLogoutOpen, setMobileLogoutOpen] = React.useState(false);
+  const mobileLogoutListRef = React.useRef<HTMLDivElement | null>(null);
+  // Collapse both whenever the menu closes, however it closed — several paths
   // call setProfileMenuOpen(false) directly, which bypasses onOpenChange.
   React.useEffect(() => {
-    if (!profileMenuOpen) setMobileAccountsOpen(false);
+    if (!profileMenuOpen) {
+      setMobileAccountsOpen(false);
+      setMobileLogoutOpen(false);
+    }
   }, [profileMenuOpen]);
+  // "Log out" is the menu's last row, so its choices open below the fold of
+  // the scrolling menu on a short screen — bring them into view.
+  React.useEffect(() => {
+    if (mobileLogoutOpen) mobileLogoutListRef.current?.scrollIntoView({ block: "nearest" });
+  }, [mobileLogoutOpen]);
   const mobileSwitcher = isMobile && showAccountSwitcher;
   const handleProfileMenuAction = React.useCallback(
     (action: () => void) => {
@@ -579,7 +593,14 @@ export default function ChatSidebar({
                 setOpenActionMenuId(isOpen ? conversation.id : null);
               }}
             >
-              <DropdownMenu.Trigger asChild>
+              <DropdownMenu.Trigger
+                asChild
+                {...touchMenuTrigger(() =>
+                  setOpenActionMenuId((current) =>
+                    current === conversation.id ? null : conversation.id,
+                  ),
+                )}
+              >
                 <SidebarMenuAction
                   aria-label="Conversation actions"
                   onClick={(event) => event.stopPropagation()}
@@ -1012,7 +1033,10 @@ export default function ChatSidebar({
                   prop variant would wrap it in a Tooltip and break the asChild chain. */}
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <DropdownMenu.Trigger asChild>
+                  <DropdownMenu.Trigger
+                    asChild
+                    {...touchMenuTrigger(() => setProfileMenuOpen((open) => !open))}
+                  >
                     <SidebarMenuButton
                       size="lg"
                       className={cn(
@@ -1255,13 +1279,41 @@ export default function ChatSidebar({
                   <DropdownMenu.Separator className="my-1 h-px bg-border/60" />
 
                   {accounts.length > 1 && isMobile ? (
-                    /* Mobile: the same choices inline, for the same reason the
-                       switcher is inline — a flyout has no room on a phone. */
+                    /* Mobile: one "Log out" row that expands the choices in place,
+                       like the account header above — a flyout has no room beside
+                       the menu on a phone. */
                     <>
-                      <DropdownMenu.Label className="px-2.5 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-wide text-destructive/80">
-                        Log out
-                      </DropdownMenu.Label>
-                      {logoutAccountItems}
+                      <DropdownMenu.Item
+                        onSelect={(event) => {
+                          event.preventDefault(); // keep the menu open
+                          setMobileLogoutOpen((open) => !open);
+                        }}
+                        aria-expanded={mobileLogoutOpen}
+                        aria-controls="mobile-logout-list"
+                        className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 text-destructive transition-colors data-[highlighted]:bg-destructive/10 data-[highlighted]:text-destructive focus-visible:outline-none data-[highlighted]:outline-none"
+                      >
+                        <div className="flex h-7 w-7 items-center justify-center rounded-md text-destructive">
+                          <LogOut size={15} />
+                        </div>
+                        <span>Log out</span>
+                        <ChevronRight
+                          size={15}
+                          aria-hidden
+                          className={cn(
+                            "ml-auto flex-shrink-0 text-destructive/70 transition-transform duration-200 motion-reduce:transition-none",
+                            mobileLogoutOpen && "rotate-90",
+                          )}
+                        />
+                      </DropdownMenu.Item>
+                      {mobileLogoutOpen ? (
+                        <div
+                          id="mobile-logout-list"
+                          ref={mobileLogoutListRef}
+                          className="animate-in fade-in-0 slide-in-from-top-1 duration-150 motion-reduce:animate-none"
+                        >
+                          {logoutAccountItems}
+                        </div>
+                      ) : null}
                     </>
                   ) : accounts.length > 1 ? (
                     /* With several accounts signed in, "Log out" has to ask which

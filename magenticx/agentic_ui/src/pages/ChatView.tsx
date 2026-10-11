@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Textarea } from "@/shared/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 
@@ -5,6 +6,8 @@ import ChatHeader from "@/features/chat/components/ChatHeader";
 import { ChatInputBar } from "@/features/chat/components/ChatInputBar";
 import { PlanCard } from "@/features/chat/components/message_parts/PlanningContainer";
 import { HitlInputTakeover } from "@/features/chat/components/HitlInputTakeover";
+import { createCommandActions } from "@/features/chat/handlers/commandActions";
+import { useSlashCommands } from "@/features/chat/hooks/useSlashCommands";
 import { Loader } from "@/shared/ui/shadcn-io/loader";
 
 import { useChatWorkspaceContext } from "@/app/workspaceContext";
@@ -59,6 +62,10 @@ export default function ChatView() {
     conversationContext,
     conversationStats,
     conversationCompaction,
+    userId,
+    openProfilePanel,
+    handleRenameConversation,
+    exportConversationPdf,
   } = useChatWorkspaceContext();
 
   // Read straight from the store rather than through the workspace bundle.
@@ -72,6 +79,42 @@ export default function ChatView() {
   const loadingConversation = useWorkspaceStore((s) => s.loadingConversation);
   const selectedAgent = useWorkspaceStore((s) => s.selectedAgent);
   const starterSuggestions = useWorkspaceStore((s) => s.starterSuggestions);
+
+  // Slash commands (plan 35): the agent the next message goes to decides the
+  // menu; each action calls what its button calls.
+  const runCommandAction = useMemo(
+    () =>
+      createCommandActions({
+        conversationId: currentConversation?.id || null,
+        compaction: conversationCompaction,
+        handleNewChat,
+        openProfilePanel,
+        handleRenameConversation,
+        openFullConversationShareDialog,
+        exportConversationPdf,
+        notify: (title, description) => toast({ title, description, variant: "destructive" }),
+      }),
+    [
+      currentConversation?.id,
+      conversationCompaction,
+      handleNewChat,
+      openProfilePanel,
+      handleRenameConversation,
+      openFullConversationShareDialog,
+      exportConversationPdf,
+      toast,
+    ],
+  );
+  const slash = useSlashCommands({
+    userId,
+    agentId: selectedAgent || currentConversation?.agent?.id || null,
+    draft: composer.currentMessage,
+    setDraft: composer.setCurrentMessage,
+    setPendingCommand: composer.setPendingCommand,
+    runAction: runCommandAction,
+    notify: (title, description) => toast({ title, description }),
+    textareaRef: composer.textareaRef,
+  });
 
   return (
     <>
@@ -149,6 +192,7 @@ export default function ChatView() {
           contextUsage={conversationContext}
           conversationStats={conversationStats}
           compaction={conversationCompaction}
+          slash={voiceSession.isActive ? null : slash}
           currentMessage={composer.currentMessage}
           setCurrentMessage={composer.setCurrentMessage}
           handlePaste={composer.handlePaste}

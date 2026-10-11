@@ -22,11 +22,13 @@ class AttachmentOut(BaseModel):
     size: Optional[int] = Field(None, validation_alias="size_bytes")
     timestamp: UTCDateTime = Field(..., validation_alias="created_at")
     # Provenance + agent-supplied display metadata. "upload" (default) for
-    # user-attached files, "generated" for a present_artifact deliverable;
-    # title/summary are populated for generated artifacts only.
+    # user-attached files, "generated" for every file the agent wrote;
+    # `presented` marks the ones it showed (present_artifact — they have a
+    # card and title/summary).
     origin: str = Field("upload", validation_alias="origin")
     title: Optional[str] = Field(None, validation_alias="title")
     summary: Optional[str] = Field(None, validation_alias="summary")
+    presented: bool = Field(False, validation_alias="presented")
 
     # keep ORM relation for computation but don't serialize it
     blob: Optional[BlobOut] = Field(None, validation_alias="blob", exclude=True)

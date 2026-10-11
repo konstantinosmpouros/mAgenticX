@@ -75,12 +75,13 @@ const RailWrapper = ({ mobile, children }: { mobile: boolean; children: ReactNod
   mobile ? (
     <>{children}</>
   ) : (
-    // The overlay scrollbar renders at the ScrollArea's right edge — exactly
-    // where the nav pills end. -mr-2 shifts the slimmed 6px bar OUT into the
-    // aside's 10px padding gutter (px-2.5), centered, clear of the pills.
-    <ScrollArea className="min-h-0 flex-1" scrollBarClassName="w-1.5 border-l-0 p-0 -mr-2">
-      {children}
-    </ScrollArea>
+    // The standard scrollbar every ScrollArea wears. It overlays the viewport's
+    // right edge, so the area reaches into the aside's 10px gutter (-mr-2.5)
+    // and the rail's content pads back by the same amount (pr-2.5 below): the
+    // bar sits in the gutter beside the pills, and the pills — expanded or in
+    // the collapsed icon rail — stay exactly where they were. (A bar shifted
+    // outside the area instead is clipped by its overflow-hidden root.)
+    <ScrollArea className="-mr-2.5 min-h-0 flex-1">{children}</ScrollArea>
   );
 
 type ProfileSidebarProps = {
@@ -291,7 +292,7 @@ export default function ProfileSidebar({ normalizedActiveTab, setActiveTab }: Pr
       </div>
 
       <RailWrapper mobile={mobileProfileNav}>
-        <div className="flex h-full flex-col max-[639px]:h-auto max-[639px]:min-w-0 max-[639px]:flex-row max-[639px]:items-center max-[639px]:gap-1.5">
+        <div className="flex h-full flex-col pr-2.5 max-[639px]:h-auto max-[639px]:min-w-0 max-[639px]:flex-row max-[639px]:items-center max-[639px]:gap-1.5 max-[639px]:pr-0">
           <nav
             className={cn(
               // Mobile: one horizontal, scrollable strip (no wrapping) with a

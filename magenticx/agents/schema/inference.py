@@ -136,6 +136,21 @@ class OutputFileOut(BaseModel):
     base64: str
 
 
+class OutputManifestEntry(BaseModel):
+    """One file in the conversation's ``output/``, without its bytes."""
+    path: str
+    filename: str
+    mime: str = "application/octet-stream"
+    size: int = 0
+    sha256: str
+
+
+class OutputManifestResponse(BaseModel):
+    """Bridge ← agents: every file in ``output/``, so the bridge can store the
+    new or changed ones at run end (presented or not)."""
+    files: List[OutputManifestEntry]
+
+
 class ReadOutputFilesResponse(BaseModel):
     """Bridge ← agents: the requested deliverables plus any paths that could not
     be returned (absent, oversized, or off-mount) so the caller skips them."""

@@ -4,6 +4,7 @@ import { convertFileAttachments } from "@/shared/lib/utils";
 import { validateAttachmentsForUpload } from "@/shared/lib/uploadGuards";
 import type {
   Agent,
+  CommandRef,
   ConversationDetail,
   MessageIn,
   MessageOut,
@@ -15,6 +16,11 @@ import { updateSession } from "@/shared/lib/authStorage";
 
 // Inference handlers own every flow that starts an agent run:
 // send, edit-submit, retry, and stop-streaming.
+/** `text` without the first `/name` that stands as its own word (the name is
+ *  command-shaped — [a-z0-9-] — so it is safe inside the pattern). */
+const withoutCommandWord = (text: string, name: string): string =>
+  text.replace(new RegExp(`(^|\\s)/${name}(?=\\s|$)`), "$1").replace(/[ \t]{2,}/g, " ").trim();
+
 type SetConversationMessages = (updater: (prev: MessageOut[]) => MessageOut[]) => void;
 
 // Input-bar send flow dependencies.
@@ -27,6 +33,8 @@ type InferenceCtx = {
   agents: Agent[];
   currentConversation: ConversationDetail | null;
   currentMessage: string;
+  /** The slash command picked for this send (plan 35), if any. */
+  pendingCommand: CommandRef | null;
   isSendingMessage?: boolean;
   sharedConversationToken?: string;
 
@@ -35,6 +43,7 @@ type InferenceCtx = {
     updater: (prev: MessageOut[]) => MessageOut[],
   ) => void | ((v: MessageOut[]) => void);
   setCurrentMessage: Dispatch<SetStateAction<string>>;
+  setPendingCommand: (v: CommandRef | null) => void;
   setAttachments: (v: File[] | ((prev: File[]) => File[])) => void;
   setIsSendingMessage: (v: boolean) => void;
   setCurrentConversation: Dispatch<SetStateAction<ConversationDetail | null>>;
@@ -159,9 +168,15 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
 
   const handleSendMessage = async () => {
     const currentMessage = ctx.currentMessage;
+    // A slash command lasts this one send; it may run with no text (`/summarize`).
+    const command = ctx.pendingCommand ?? undefined;
+    // The `/name` in the draft is the composer's highlight, nothing more: the
+    // command travels as `message.command`, and the prompt is the text without
+    // it. The draft itself stays whole, so a failed send restores it as typed.
+    const promptText = command ? withoutCommandWord(currentMessage, command.name) : currentMessage;
 
     // Ignore empty sends and duplicate submissions while another send is still in flight.
-    if (!currentMessage && attachments.length === 0) return;
+    if (!currentMessage && attachments.length === 0 && !command) return;
     if (ctx.isSendingMessage) return;
 
     // Validate attachments upfront
@@ -193,6 +208,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
     const lastPersistedMessageId = resolveLastPersistedMessageId();
 
     setCurrentMessage("");
+    ctx.setPendingCommand(null);
     setAttachments([]);
 
     // Optimistic echo (ChatGPT-style): the user's bubble renders the instant
@@ -206,7 +222,8 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
       id: tempId,
       parentMessageId: lastPersistedMessageId,
       sender: "user",
-      content: currentMessage || undefined,
+      content: promptText || undefined,
+      command: command ?? null,
       created_at: now,
       updated_at: now,
       attachments: apiAttachments.map((att, index) => ({
@@ -235,9 +252,10 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
           isPrivate: isPrivateMode,
           message: {
             sender: "user",
-            content: currentMessage || undefined,
+            content: promptText || undefined,
             attachments: apiAttachments,
             parentMessageId: null,
+            command,
           },
         });
         persistUIState?.();
@@ -254,8 +272,9 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
           message: {
             parentMessageId: null,
             sender: "user",
-            content: currentMessage || undefined,
+            content: promptText || undefined,
             attachments: apiAttachments,
+            command,
           },
         });
         setCurrentConversation(response.detail);
@@ -275,8 +294,9 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         const messagePayload: MessageIn = {
           parentMessageId: lastPersistedMessageId,
           sender: "user",
-          content: currentMessage || undefined,
+          content: promptText || undefined,
           attachments: apiAttachments,
+          command,
         };
 
         await beginInferenceRun({
@@ -302,6 +322,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
       setCurrentConversation((prev) => (prev && !prev.id ? null : prev));
       setCurrentMessage(currentMessage);
+      ctx.setPendingCommand(command ?? null);
       setAttachments(attachments);
       if (setShowAiTransition) setShowAiTransition(false);
       const copy = getInferenceStartErrorCopy(error, {
@@ -403,6 +424,8 @@ export function createMessageEditHandlers(ctx: MessageEditHandlersCtx) {
         sender: "user",
         parentMessageId: parentId,
         content: trimmed,
+        // An edit keeps the command the message ran; only its text changes.
+        ...(target.command ? { command: target.command } : {}),
       };
 
       if (setShowAiTransition) setShowAiTransition(true);

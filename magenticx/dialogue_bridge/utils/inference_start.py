@@ -16,6 +16,7 @@ from schema import (
     MessageOut,
 )
 from utils.agents import get_agent_by_id
+from utils.commands import check_invocation
 from utils.conversations import _preview, init_conv, init_message
 from utils.inference import resolve_inference_message_path
 from utils.inference_runs import build_run_out_from_message, create_inference_run_record
@@ -84,6 +85,12 @@ async def start_inference_flow(
         conversation, parent_message_id, agent = await _create_shared_continue_start(db, user, payload)
     else:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported inference start mode.")
+
+    # A slash command (plan 35) is checked against the agent's catalog before
+    # anything commits; a retry re-runs the command its user message already
+    # holds, which was checked when it was sent. The agents service checks again.
+    if mode != "retry" and payload.message is not None and payload.message.command is not None:
+        await check_invocation(db, user_id, agent, payload.message.command)
 
     # For new/send/edit/shared_continue the backend creates the run parent inside this request,
     # so any client path necessarily ends before the real parent. Retry is the

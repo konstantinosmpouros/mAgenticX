@@ -11,8 +11,12 @@ Plan 34 makes compaction something the user can trigger and see:
 
 - **Manual.** Clicking the composer's context ring compacts the conversation
   now, between turns, after the visible branch's latest answer. Hovering the
-  ring opens its card. On touch screens a tap opens the card, and its
-  **Compact now** button compacts. The compaction is recorded on that answer
+  ring opens its card. Without hover a tap opens the card instead, and its
+  **Compact now** button compacts (disabled, with the reason under it, when
+  there is nothing to compact). "Without hover" is any of: `(hover: none)`,
+  the mobile layout (under 768 px), or a click delivered by a finger — the
+  media query alone misreports on stylus phones, some Android browsers and
+  narrow desktop windows. The compaction is recorded on that answer
   (`messages.compaction`). A toast offers **Undo** while nothing has been sent
   after it.
 - **Automatic.** When the summarizer fires on its own (95% of the window)

@@ -10,12 +10,15 @@ from core.security.internal_trust import require_internal_caller
 from core.logging import get_context, get_logger, set_context
 from harness.checkpointer import get_checkpointer, has_checkpointer_initialized
 from harness.checkpointer.fork import seed_thread_from_checkpoint
-from harness.filesystem import delete_conversation_files, read_output_files, seed_input_files
+from harness.commands import AgentFacts, CommandRefused, apply_command, resolve_invocation
+from harness.filesystem import delete_conversation_files, list_output_manifest, read_output_files, seed_input_files
 from schema import (
     AgentResumeRequest,
     CompactRequest,
     CompactResponse,
     OutputFileOut,
+    OutputManifestEntry,
+    OutputManifestResponse,
     ReadOutputFilesResponse,
     ReapConversationRequest,
     Request,
@@ -63,6 +66,16 @@ async def stream_agent(agent_slug: str, req: Request):
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Unknown agent.",
             )
+        # A slash command (plan 35): checked here even though the bridge checked
+        # it — this service never trusts that alone — and applied to this turn's
+        # message only.
+        try:
+            invocation = resolve_invocation(
+                context_data.get("command"), AgentFacts.for_run(definition.manifest.get("type"), context_data)
+            )
+        except CommandRefused as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+        messages = apply_command(req.messages, invocation) if invocation else req.messages
         # Initialise the agent
         agent_logger.info("agent_initialization_started", "Agent initialization started")
         agent = definition.build(config=req.config)
@@ -110,7 +123,7 @@ async def stream_agent(agent_slug: str, req: Request):
                         source_checkpoint_id=fork_from.get("checkpoint_id"),
                         target_thread_id=stream_thread_id,
                     )
-                async for chunk in agent.astream(payload={"messages": req.messages}):
+                async for chunk in agent.astream(payload={"messages": messages}):
                     yield chunk
             committed = await emit_checkpoint_committed(agent, stream_thread_id, agent_logger, request_context)
             if committed is not None:
@@ -405,6 +418,31 @@ async def seed_conversation_input_files(
 
 
 @router.get(
+    "/agents/{agent_slug}/users/{user_id}/conversations/{conversation_id}/output-files/manifest",
+    response_model=OutputManifestResponse,
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_internal_caller)],
+)
+async def list_conversation_output_manifest(
+    agent_slug: str,
+    user_id: str,
+    conversation_id: str,
+) -> OutputManifestResponse:
+    """Every file in the conversation's ``output/`` — path, size and SHA-256, no bytes.
+
+    Called by the bridge at run end so it can store every file the agent wrote,
+    presented or not. Internal-only. Hashing reads files from disk, so it runs
+    off the event loop."""
+    try:
+        files = await asyncio.to_thread(
+            list_output_manifest, user_id=user_id, agent_slug=agent_slug, conversation_id=conversation_id
+        )
+    except ValueError as exc:  # an id that is not a safe path segment
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    return OutputManifestResponse(files=[OutputManifestEntry(**f) for f in files])
+
+
+@router.get(
     "/agents/{agent_slug}/users/{user_id}/conversations/{conversation_id}/output-files",
     response_model=ReadOutputFilesResponse,
     status_code=status.HTTP_200_OK,
@@ -416,11 +454,10 @@ async def read_conversation_output_files(
     conversation_id: str,
     paths: list[str] = Query(default_factory=list),
 ) -> ReadOutputFilesResponse:
-    """Read agent-presented deliverables from the conversation's ``output/`` dir.
+    """Read files from the conversation's ``output/`` dir by their exact paths.
 
-    Called by the bridge at run finalize with the exact virtual paths the agent
-    designated via ``present_artifact``, so it can persist them as generated
-    attachments. Internal-only; every path is guarded to the output/ mount, and
+    Called by the bridge at run end with the new or changed paths from the
+    manifest, so it can persist them as generated attachments. Internal-only; every path is guarded to the output/ mount, and
     absent/oversized/off-mount paths come back in ``missing`` (not an error) so a
     partially-cleaned-up run still captures what it can. 422 only on a bad
     request shape (e.g. too many paths)."""

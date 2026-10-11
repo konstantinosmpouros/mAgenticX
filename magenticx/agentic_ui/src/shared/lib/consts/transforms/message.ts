@@ -1,4 +1,5 @@
 import type { AttachmentOut } from "../../types/attachments";
+import type { CommandRef } from "../../types/commands";
 import type { MessageCompaction, MessageOut } from "../../types/messages";
 import { toDate, toOptionalNumber, toOptionalString } from "./base";
 
@@ -46,7 +47,16 @@ export const transformAttachment = (attachment: Record<string, any>): Attachment
   origin: attachment?.origin ?? "upload",
   title: attachment?.title ?? undefined,
   summary: attachment?.summary ?? undefined,
+  presented: attachment?.presented === true,
 });
+
+// The slash command a user message ran (plan 35): only a well-formed name, or
+// nothing — this field becomes a chip, so junk must never render.
+const transformCommand = (raw: unknown): CommandRef | null => {
+  if (!raw || typeof raw !== "object") return null;
+  const name = (raw as Record<string, unknown>).name;
+  return typeof name === "string" && /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(name) ? { name } : null;
+};
 
 // Transform message object from backend to frontend type
 export const transformMessage = (message: Record<string, any>): MessageOut => ({
@@ -76,4 +86,5 @@ export const transformMessage = (message: Record<string, any>): MessageOut => ({
   streamingStatus: message.streamingStatus ?? message.streaming_status ?? null,
   rawEvents: message.rawEvents ?? message.raw_events ?? [],
   compaction: transformCompaction(message.compaction),
+  command: transformCommand(message.command),
 });

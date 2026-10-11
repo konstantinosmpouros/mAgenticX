@@ -29,6 +29,7 @@ from core.cache.integration import install_redis_sdk
 
 from router import (
     account_router,
+    commands_router,
     user_agents_router,
     agent_tools_router,
     auth_router,
@@ -276,6 +277,11 @@ app.include_router(
     account_router,
     prefix="/v1/account",
     tags=["Account"],
+)
+app.include_router(
+    commands_router,
+    prefix="/v1/commands",
+    tags=["Commands"],
 )
 app.include_router(
     skills_router,

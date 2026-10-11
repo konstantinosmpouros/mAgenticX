@@ -6,16 +6,12 @@ import { cn } from "@/shared/lib/utils";
 type ScrollAreaProps = React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.Root> & {
   onScroll?: React.UIEventHandler<HTMLDivElement>;
   viewportRef?: React.Ref<HTMLDivElement>;
-  // The scrollbar renders as an OVERLAY on the viewport's right edge; callers
-  // whose content runs close to that edge (e.g. the settings nav rail) pass a
-  // narrower bar so it sits inside their gutter instead of over the content.
-  scrollBarClassName?: string;
 };
 
 const ScrollArea = React.forwardRef<
   React.ElementRef<typeof ScrollAreaPrimitive.Root>,
   ScrollAreaProps
->(({ className, children, onScroll, viewportRef, scrollBarClassName, ...props }, ref) => (
+>(({ className, children, onScroll, viewportRef, ...props }, ref) => (
   <ScrollAreaPrimitive.Root
     ref={ref}
     className={cn("relative overflow-hidden", className)}
@@ -33,7 +29,9 @@ const ScrollArea = React.forwardRef<
     >
       {children}
     </ScrollAreaPrimitive.Viewport>
-    <ScrollBar className={scrollBarClassName} />
+    {/* An OVERLAY on the viewport's right edge: content that runs to that edge
+        needs a gutter of its own (see the settings nav rail). */}
+    <ScrollBar />
     <ScrollAreaPrimitive.Corner />
   </ScrollAreaPrimitive.Root>
 ));

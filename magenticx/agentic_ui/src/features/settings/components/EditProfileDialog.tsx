@@ -95,114 +95,121 @@ export default function EditProfileDialog({ open, onClose, user }: EditProfileDi
       closeLabel="Close edit profile"
       className="max-w-md"
     >
-      <form onSubmit={handleSubmit} className="px-6 pb-6 pt-6 md:px-7 md:pb-7">
-        <h3 className="pr-12 text-xl font-semibold leading-tight tracking-tight text-white">
+      {/* A column that shrinks to the card on a short window: the title and the
+          Close/Save row stay put and only the middle scrolls. Under 720px of
+          height the avatar and the gaps tighten so most windows need no scroll. */}
+      <form onSubmit={handleSubmit} className="flex min-h-0 flex-col">
+        <h3 className="shrink-0 px-6 pr-16 pt-6 text-xl font-semibold leading-tight tracking-tight text-white md:px-7 md:pr-16 [@media(max-height:720px)]:pt-5">
           Edit profile
         </h3>
 
-        <div className="mt-6 flex justify-center">
-          <motion.div
-            initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-            className="relative"
-          >
-            <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border border-white/15 bg-gradient-to-br from-primary/80 to-primary/40 text-3xl font-semibold text-white shadow-[0_18px_50px_-20px_rgba(255,0,123,0.55)]">
-              {user?.avatarUrl ? (
-                <img
-                  src={user.avatarUrl}
-                  alt={displayName}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <span aria-hidden>{initials}</span>
-              )}
-            </div>
-            {saving ? (
-              <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/45">
-                <Loader2 size={22} className="animate-spin text-white" aria-hidden />
+        <div className="min-h-0 overflow-y-auto overscroll-contain px-6 pb-1 md:px-7 [scrollbar-color:rgba(255,255,255,0.2)_transparent] [scrollbar-width:thin]">
+          <div className="mt-6 flex justify-center [@media(max-height:720px)]:mt-4">
+            <motion.div
+              initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+              className="relative"
+            >
+              <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full [@media(max-height:720px)]:h-20 [@media(max-height:720px)]:w-20 border border-white/15 bg-gradient-to-br from-primary/80 to-primary/40 text-3xl font-semibold text-white shadow-[0_18px_50px_-20px_rgba(255,0,123,0.55)]">
+                {user?.avatarUrl ? (
+                  <img
+                    src={user.avatarUrl}
+                    alt={displayName}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <span aria-hidden>{initials}</span>
+                )}
               </div>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => photoInputRef.current?.click()}
-              disabled={saving}
-              aria-label="Change photo"
-              title="Change photo"
-              className="absolute -bottom-0.5 -right-0.5 flex h-8 w-8 items-center justify-center rounded-full border border-white/[0.14] bg-[#252525] text-white/70 shadow-lg transition hover:scale-105 hover:text-white active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/35 disabled:opacity-60"
-            >
-              <Camera size={14} aria-hidden />
-            </button>
-            <input
-              ref={photoInputRef}
-              type="file"
-              accept={AVATAR_ACCEPT}
-              onChange={handlePhotoPicked}
-              className="sr-only"
-              tabIndex={-1}
-              aria-hidden
-            />
-          </motion.div>
-        </div>
-
-        {user?.hasOwnAvatar ? (
-          <div className="mt-2 flex justify-center">
-            <button
-              type="button"
-              onClick={() => void removePhoto()}
-              disabled={saving}
-              className="rounded text-xs font-medium text-white/55 underline-offset-2 transition hover:text-white hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/35 disabled:opacity-60"
-            >
-              Remove photo
-            </button>
-          </div>
-        ) : null}
-
-        <div className="mt-6 space-y-3">
-          <div className={`${fieldBoxClass} transition focus-within:border-white/30`}>
-            <label
-              htmlFor={nameInputId}
-              className="text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-white/40"
-            >
-              Display name
-            </label>
-            <input
-              id={nameInputId}
-              value={nameDraft}
-              onChange={(event) => setNameDraft(event.target.value)}
-              maxLength={MAX_PROFILE_NAME_LENGTH}
-              autoComplete="name"
-              disabled={saving}
-              className="mt-1 w-full bg-transparent text-sm font-medium text-white/90 placeholder:text-white/30 focus:outline-none disabled:opacity-60"
-              placeholder="Your name"
-            />
-          </div>
-          <Field label="Username" value={safeText(user?.username)} />
-          <Field label="Email" value={safeText(user?.email)} />
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Department" value={safeText(user?.department)} />
-            <Field label="Role" value={safeText(user?.roleTitle)} />
-          </div>
-        </div>
-
-        <p className="mt-4 text-center text-xs leading-5 text-white/45">
-          Your name and photo are yours to change. The other details come from your Microsoft account.
-          {user?.preferredName ? (
-            <>
-              {" "}
+              {saving ? (
+                <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/45">
+                  <Loader2 size={22} className="animate-spin text-white" aria-hidden />
+                </div>
+              ) : null}
               <button
                 type="button"
-                onClick={handleUseMicrosoftName}
+                onClick={() => photoInputRef.current?.click()}
                 disabled={saving}
-                className="rounded font-medium text-white/70 underline-offset-2 transition hover:text-white hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/35 disabled:opacity-60"
+                aria-label="Change photo"
+                title="Change photo"
+                className="absolute -bottom-0.5 -right-0.5 flex h-8 w-8 items-center justify-center rounded-full border border-white/[0.14] bg-[#252525] text-white/70 shadow-lg transition hover:scale-105 hover:text-white active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/35 disabled:opacity-60"
               >
-                Use my Microsoft name
+                <Camera size={14} aria-hidden />
               </button>
-            </>
-          ) : null}
-        </p>
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept={AVATAR_ACCEPT}
+                onChange={handlePhotoPicked}
+                className="sr-only"
+                tabIndex={-1}
+                aria-hidden
+              />
+            </motion.div>
+          </div>
 
-        <div className="mt-6 flex items-center justify-end gap-2">
+          {user?.hasOwnAvatar ? (
+            <div className="mt-2 flex justify-center">
+              <button
+                type="button"
+                onClick={() => void removePhoto()}
+                disabled={saving}
+                className="rounded text-xs font-medium text-white/55 underline-offset-2 transition hover:text-white hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/35 disabled:opacity-60"
+              >
+                Remove photo
+              </button>
+            </div>
+          ) : null}
+
+          <div className="mt-6 space-y-3 [@media(max-height:720px)]:mt-4 [@media(max-height:720px)]:space-y-2">
+            <div className={`${fieldBoxClass} transition focus-within:border-white/30`}>
+              <label
+                htmlFor={nameInputId}
+                className="text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-white/40"
+              >
+                Display name
+              </label>
+              <input
+                id={nameInputId}
+                value={nameDraft}
+                onChange={(event) => setNameDraft(event.target.value)}
+                maxLength={MAX_PROFILE_NAME_LENGTH}
+                autoComplete="name"
+                disabled={saving}
+                className="mt-1 w-full bg-transparent text-sm font-medium text-white/90 placeholder:text-white/30 focus:outline-none disabled:opacity-60"
+                placeholder="Your name"
+              />
+            </div>
+            <Field label="Username" value={safeText(user?.username)} />
+            <Field label="Email" value={safeText(user?.email)} />
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Department" value={safeText(user?.department)} />
+              <Field label="Role" value={safeText(user?.roleTitle)} />
+            </div>
+          </div>
+
+          <p className="mt-4 text-center text-xs leading-5 text-white/45 [@media(max-height:720px)]:mt-3">
+            Your name and photo are yours to change. The other details come from your Microsoft
+            account.
+            {user?.preferredName ? (
+              <>
+                {" "}
+                <button
+                  type="button"
+                  onClick={handleUseMicrosoftName}
+                  disabled={saving}
+                  className="rounded font-medium text-white/70 underline-offset-2 transition hover:text-white hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/35 disabled:opacity-60"
+                >
+                  Use my Microsoft name
+                </button>
+              </>
+            ) : null}
+          </p>
+        </div>
+
+        {/* A hairline only where the body can scroll under it (short windows). */}
+        <div className="flex shrink-0 items-center justify-end gap-2 px-6 pb-6 pt-5 md:px-7 md:pb-7 [@media(max-height:720px)]:border-t [@media(max-height:720px)]:border-white/[0.08] [@media(max-height:720px)]:pb-5 [@media(max-height:720px)]:pt-4">
           <button
             type="button"
             onClick={onClose}

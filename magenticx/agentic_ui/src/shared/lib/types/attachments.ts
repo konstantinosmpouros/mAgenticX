@@ -14,11 +14,13 @@ export type AttachmentOut = {
   blobId?: string;
   data?: string; // Base64 encoded data for images and public share downloads
   // Provenance + agent-supplied display metadata. "upload" (default) for
-  // user-attached files, "generated" for a deliverable the agent presented
-  // via present_artifact; title/summary are populated for generated only.
+  // user-attached files, "generated" for every file the agent wrote;
+  // `presented` marks the ones it showed via present_artifact (they have a
+  // card and title/summary).
   origin?: "upload" | "generated";
   title?: string;
   summary?: string;
+  presented?: boolean;
 };
 
 // Attachment input for API requests (base64 format)

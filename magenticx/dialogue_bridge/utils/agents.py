@@ -114,12 +114,24 @@ def build_agent_input_files_url(agent: AgentTable, user_id: str, conversation_id
 
 
 def build_agent_output_files_url(agent: AgentTable, user_id: str, conversation_id: str) -> str:
-    """GET endpoint that reads agent-presented deliverables back out of a
-    conversation's output/ dir (the present_artifact → generated-attachment
-    capture path at run finalize)."""
+    """GET endpoint that reads named files back out of a conversation's output/
+    dir (the run-end capture of generated attachments)."""
     slug = _require_agent_slug(agent)
     base = AGENTS_SERVICE_URL.rstrip("/")
     return f"{base}/agents/{slug}/users/{user_id}/conversations/{conversation_id}/output-files"
+
+
+def build_agent_output_manifest_url(agent: AgentTable, user_id: str, conversation_id: str) -> str:
+    """GET endpoint listing every file in a conversation's output/ dir (path,
+    size, SHA-256) — read at run end so every file the agent wrote is stored."""
+    return f"{build_agent_output_files_url(agent, user_id, conversation_id)}/manifest"
+
+
+def build_agent_commands_url(agent: AgentTable, user_id: str) -> str:
+    """GET endpoint listing the slash commands this agent offers this user (plan 35)."""
+    slug = _require_agent_slug(agent)
+    base = AGENTS_SERVICE_URL.rstrip("/")
+    return f"{base}/commands/{user_id}/{slug}"
 
 
 def build_agent_compact_url(agent: AgentTable) -> str:

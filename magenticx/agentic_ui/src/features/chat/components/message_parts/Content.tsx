@@ -22,6 +22,17 @@ type MessageContentProps = {
   onSubmitEdit?: () => void;
 };
 
+/**
+ * The slash command a user message ran (plan 35), shown highlighted in front of
+ * its text, as inline code (which the message renderer draws as a highlight).
+ * The command travels in `message.command`, never in the text, so this is the
+ * only place it appears in the bubble.
+ */
+function markCommand(content: string, name: string | null): string {
+  if (!name) return content;
+  return `\`/${name}\` ${content}`.trimEnd();
+}
+
 export function MessageContent({
   message,
   isEditing,
@@ -31,9 +42,10 @@ export function MessageContent({
   onCancelEdit,
   onSubmitEdit,
 }: MessageContentProps) {
+  const commandName = message.sender === "user" ? message.command?.name ?? null : null;
   const normalizedContent = useMemo(
-    () => normalizeBulletMarkdown(message.content ?? ""),
-    [message.content],
+    () => markCommand(normalizeBulletMarkdown(message.content ?? ""), commandName),
+    [message.content, commandName],
   );
 
   if (isEditing) {

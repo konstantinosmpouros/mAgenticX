@@ -249,12 +249,15 @@ Every endpoint below carries `dependencies=[Depends(require_internal_caller)]` (
 | 23 | POST | `/dictate/transcribe` | voice | multipart file | `TranscriptionResponse` | 200 |
 | 24 | POST | `/speech/read-aloud` | voice | `ReadAloudRequest` | audio stream | 200 |
 | 25 | POST | `/realtime/session` | voice | `RealtimeSessionRequest` | `RealtimeSessionResponse` | 200 |
+| 26 | GET | `/commands/{uid}/{slug}` | commands | query `agent_owner_id`, `use_memory`, `search_past_convs` | `CommandListResponse` — every slash command, each with `available` / `unavailableReason` (see [slash-commands](../flows/slash-commands.md)) | 200 (404 unknown agent) |
+| 27 | GET | `…/conversations/{cid}/output-files/manifest` | inference | — | `OutputManifestResponse` — every file in `output/` (path, size, SHA-256; no bytes), for the bridge's run-end capture | 200 |
 
 **Selected behaviors:**
 - **`GET /agents`** — reads `definition.manifest` for each `AGENT_REGISTRY` entry (built once at import), sorted by name.
 - **`GET /tools`** — returns the warm manifest cache, else fetches live from the gateway (502 on gateway failure).
 - **`POST /embed`** — the bridge has no OpenAI key, so it proxies embedding here (used by its pgvector conversation-embedding sweeper). Cached `OpenAIEmbeddings`; order preserved; 503 if no key; 502 on provider failure.
 - **`/titles/generate`, `/suggestions/generate`** — LCEL chain: `RunnableLambda(make_merge_with_template) | init_chat_model(...).with_structured_output(...)`; normalize/trim/dedupe/cap; 502 if too few usable candidates.
+- **`/agents/{slug}/stream` and slash commands** — `context.command = {name, args}` is checked by `harness.commands.resolve_invocation` (422 with the reason when refused) and the last user message is rewritten by `apply_command`; `BaseAgent.command_spec` feeds `command_permissions` (read-only) into the deep-agent build.
 - **Voice** — dictation (sync OpenAI STT), read-aloud (TTS via `asyncio.to_thread`, streams audio), realtime (POSTs SDP offer + session config to OpenAI Realtime, returns SDP answer; 503 if no key).
 
 ---

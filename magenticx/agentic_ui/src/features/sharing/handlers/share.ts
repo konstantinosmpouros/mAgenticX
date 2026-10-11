@@ -164,18 +164,22 @@ export function createShareConversationHandlers(ctx: ShareConversationHandlersCt
     setIsShareCopyPulse(false);
   };
 
-  const openFullConversationShareDialog = () => {
+  /**
+   * The newest finished answer on the branch on screen — what a full-conversation
+   * share or export is anchored to — or null after telling the user why not.
+   */
+  const latestShareableAnswer = (action: "share" | "export"): MessageOut | null => {
     if (!currentConversation?.id || currentConversation.id.startsWith("shared:")) {
       toast({
-        title: "Unable to share",
-        description: "Open one of your conversations before sharing.",
+        title: action === "share" ? "Unable to share" : "Unable to export",
+        description: `Open one of your conversations before ${action === "share" ? "sharing" : "exporting"}.`,
         variant: "destructive",
         duration: 2500,
       });
-      return;
+      return null;
     }
 
-    const shareTarget = [...activeMessages]
+    const answer = [...activeMessages]
       .reverse()
       .find(
         (message) =>
@@ -184,15 +188,21 @@ export function createShareConversationHandlers(ctx: ShareConversationHandlersCt
           (Boolean(message.content?.trim()) || (message.attachments?.length ?? 0) > 0),
       );
 
-    if (!shareTarget) {
+    if (!answer) {
       toast({
-        title: "Unable to share yet",
-        description: "Wait for an AI response before sharing the full conversation.",
+        title: action === "share" ? "Unable to share yet" : "Unable to export yet",
+        description: `Wait for an AI response before ${action === "share" ? "sharing" : "exporting"} the full conversation.`,
         variant: "destructive",
         duration: 2500,
       });
-      return;
+      return null;
     }
+    return answer;
+  };
+
+  const openFullConversationShareDialog = () => {
+    const shareTarget = latestShareableAnswer("share");
+    if (!shareTarget) return;
 
     setShareDialogUrl(null);
     setShareTargetMessage(shareTarget);
@@ -258,7 +268,23 @@ export function createShareConversationHandlers(ctx: ShareConversationHandlersCt
     }
   };
 
+  /** The whole branch on screen as a PDF, without opening the share dialog (`/export`). */
+  const exportConversationPdf = async () => {
+    const answer = latestShareableAnswer("export");
+    if (!answer || !userId || !currentConversation?.id || isExportingSharePdf) return;
+    setIsExportingSharePdf(true);
+    try {
+      await downloadConversationPdfExport(userId, currentConversation.id, answer.id, "full", activeBranchPath);
+      toast({ title: "PDF export ready", description: "The full conversation PDF has been downloaded.", duration: 2400 });
+    } catch (error) {
+      toastError(toast, "PDF export failed", error, { duration: 3000 });
+    } finally {
+      setIsExportingSharePdf(false);
+    }
+  };
+
   return {
+    exportConversationPdf,
     handleShareConversation,
     closeShareDialog,
     copyShareDialogUrl,

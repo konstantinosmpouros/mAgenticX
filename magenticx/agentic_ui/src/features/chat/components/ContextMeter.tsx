@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState, type MouseEvent, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowDownToLine,
@@ -16,9 +16,14 @@ import {
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/shared/ui/hover-card";
 import { Button } from "@/shared/ui/button";
 import { cn, formatCompactTokens, formatModelTime } from "@/shared/lib/utils";
-import type { ContextCompactionControl, ConversationStats, RunContextUsage } from "@/shared/lib/types";
+import type {
+  ContextCompactionControl,
+  ConversationStats,
+  RunContextUsage,
+} from "@/shared/lib/types";
 import { contextLevel } from "@/features/chat/lib/contextUsage";
 import { useCanHover } from "@/features/chat/hooks/useCanHover";
+import { useIsMobile } from "@/shared/hooks/use-mobile";
 
 // The composer's context gauge. The ring shows how full the model's window is
 // on the conversation's latest call; the card on hover reads top to bottom:
@@ -32,8 +37,11 @@ import { useCanHover } from "@/features/chat/hooks/useCanHover";
 //   gpt-5                Avg latency 2.3 s   ← the model, time per model call
 //
 // Hover (or keyboard focus) opens the card; a click compacts the conversation
-// now. On a touch screen there is no hover, so a tap opens the card and its
-// "Compact now" button compacts — a blind tap never fires a summary call.
+// now. Without hover — a touch screen, the mobile layout, or simply a tap
+// from a finger — a tap opens the card and its "Compact now" button compacts,
+// so a blind tap never fires a summary call. `(hover: hover)` alone is not
+// enough: phones with a stylus and some Android browsers report hover, and so
+// does a narrow desktop window, where the layout is still the mobile one.
 // Occupancy moves after every model call; the conversation block when an
 // answer finishes. Built on the shadcn HoverCard rather than the vendored AI
 // Elements Context: this card's sections (free room, the compaction point, the
@@ -79,7 +87,13 @@ function StatRow({
   );
 }
 
-function CompactRow({ compaction, canHover }: { compaction: ContextCompactionControl; canHover: boolean }) {
+function CompactRow({
+  compaction,
+  showButton,
+}: {
+  compaction: ContextCompactionControl;
+  showButton: boolean;
+}) {
   if (compaction.status === "compacting") {
     return (
       <p className="flex items-center gap-2 text-muted-foreground" aria-live="polite">
@@ -88,20 +102,37 @@ function CompactRow({ compaction, canHover }: { compaction: ContextCompactionCon
       </p>
     );
   }
+  // Touch: the card's own button is the only way to compact, so it is always
+  // there — disabled, with the reason under it, when there is nothing to compact.
+  if (showButton) {
+    return (
+      <div className="space-y-2">
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          className="h-11 w-full"
+          disabled={Boolean(compaction.disabledReason)}
+          onClick={compaction.compact}
+        >
+          <Shrink className="h-3.5 w-3.5" aria-hidden />
+          Compact now
+        </Button>
+        {compaction.disabledReason ? (
+          <p className="flex items-center gap-2 text-muted-foreground">
+            <Info className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            {compaction.disabledReason}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
   if (compaction.disabledReason) {
     return (
       <p className="flex items-center gap-2 text-muted-foreground">
         <Info className="h-3.5 w-3.5 shrink-0" aria-hidden />
         {compaction.disabledReason}
       </p>
-    );
-  }
-  if (!canHover) {
-    return (
-      <Button type="button" size="sm" variant="secondary" className="h-11 w-full" onClick={compaction.compact}>
-        <Shrink className="h-3.5 w-3.5" aria-hidden />
-        Compact now
-      </Button>
     );
   }
   return (
@@ -122,29 +153,39 @@ export function ContextMeter({
   compaction?: ContextCompactionControl | null;
 }) {
   const canHover = useCanHover();
+  const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
+  // Set by the first tap from a finger, for hybrid devices that report hover.
+  const [tapped, setTapped] = useState(false);
   if (!context) return null;
   const percent = context.percent;
   const known = typeof percent === "number";
   const level = contextLevel(context);
   const filled = known ? Math.min(Math.max(percent, 0), 100) : 0;
   const window = context.window;
-  const compactAt = window && context.compactionPercent ? (window * context.compactionPercent) / 100 : null;
+  const compactAt =
+    window && context.compactionPercent ? (window * context.compactionPercent) / 100 : null;
   const avgLatencyMs = stats && stats.timedCalls > 0 ? stats.modelMs / stats.timedCalls : null;
   const usage = known
     ? `Context window: ${percent}% used`
     : `Context: ${context.tokens.toLocaleString()} tokens used`;
   const compacting = compaction?.status === "compacting";
   const canCompact = Boolean(compaction && !compaction.disabledReason);
+  const tapMode = !canHover || isMobile || tapped;
   const label = compacting
     ? `${usage}. Compacting the conversation`
-    : canCompact && canHover
+    : canCompact && !tapMode
       ? `${usage}. Click to compact the conversation`
       : usage;
 
-  const handleClick = () => {
-    // No hover on touch: the tap opens the card, whose button compacts.
-    if (!canHover) {
+  const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
+    // Chrome and Firefox deliver click as a PointerEvent, so a finger is
+    // recognisable even where the media query claims hover.
+    const pointerType = (event.nativeEvent as Partial<PointerEvent>).pointerType;
+    const fromFinger = pointerType === "touch" || pointerType === "pen";
+    if (fromFinger) setTapped(true);
+    // Without hover the tap opens the card, whose button compacts.
+    if (tapMode || fromFinger) {
       setOpen((current) => !current);
       return;
     }
@@ -166,10 +207,20 @@ export function ContextMeter({
         >
           <svg
             viewBox="0 0 24 24"
-            className={cn("h-5 w-5 -rotate-90", compacting && "animate-pulse motion-reduce:animate-none")}
+            className={cn(
+              "h-5 w-5 -rotate-90",
+              compacting && "animate-pulse motion-reduce:animate-none",
+            )}
             aria-hidden
           >
-            <circle cx="12" cy="12" r={RADIUS} fill="none" strokeWidth="3" className="stroke-muted" />
+            <circle
+              cx="12"
+              cy="12"
+              r={RADIUS}
+              fill="none"
+              strokeWidth="3"
+              className="stroke-muted"
+            />
             <circle
               cx="12"
               cy="12"
@@ -198,12 +249,17 @@ export function ContextMeter({
             <p className="text-sm font-semibold tracking-tight text-foreground">
               {formatCompactTokens(context.tokens)}
               {window ? (
-                <span className="font-normal text-muted-foreground"> / {formatCompactTokens(window)}</span>
+                <span className="font-normal text-muted-foreground">
+                  {" "}
+                  / {formatCompactTokens(window)}
+                </span>
               ) : null}{" "}
               <span className="font-normal text-muted-foreground">tokens</span>
             </p>
             {known ? (
-              <span className={cn("rounded-md px-1.5 py-0.5 text-xs font-semibold", LEVEL_PILL[level])}>
+              <span
+                className={cn("rounded-md px-1.5 py-0.5 text-xs font-semibold", LEVEL_PILL[level])}
+              >
                 {percent}%
               </span>
             ) : null}
@@ -212,7 +268,10 @@ export function ContextMeter({
             <div className="relative py-1">
               <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
                 <div
-                  className={cn("h-full w-full origin-left rounded-full bg-current", LEVEL_TEXT[level])}
+                  className={cn(
+                    "h-full w-full origin-left rounded-full bg-current",
+                    LEVEL_TEXT[level],
+                  )}
                   style={{ transform: `scaleX(${filled / 100})` }}
                 />
               </div>
@@ -254,7 +313,9 @@ export function ContextMeter({
               <p className="text-xs text-muted-foreground/80 tabular-nums">
                 {plural(stats.answers, "answer", "answers")}
                 {stats.replaced ? ` (${stats.replaced.toLocaleString()} replaced)` : ""}
-                {stats.modelCalls ? ` · ${plural(stats.modelCalls, "model call", "model calls")}` : ""}
+                {stats.modelCalls
+                  ? ` · ${plural(stats.modelCalls, "model call", "model calls")}`
+                  : ""}
               </p>
             </div>
             <dl className="space-y-1.5 text-xs">
@@ -286,13 +347,15 @@ export function ContextMeter({
 
         {compaction ? (
           <div className="px-3.5 py-2.5 text-xs">
-            <CompactRow compaction={compaction} canHover={canHover} />
+            <CompactRow compaction={compaction} showButton={tapMode} />
           </div>
         ) : null}
 
         {context.model || avgLatencyMs !== null ? (
           <div className="flex items-center justify-between gap-3 bg-muted/40 px-3.5 py-2.5 text-xs">
-            <span className="truncate font-mono text-[0.7rem] text-muted-foreground">{context.model ?? ""}</span>
+            <span className="truncate font-mono text-[0.7rem] text-muted-foreground">
+              {context.model ?? ""}
+            </span>
             {avgLatencyMs !== null ? (
               <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground tabular-nums">
                 <Timer className="h-3.5 w-3.5" aria-hidden />

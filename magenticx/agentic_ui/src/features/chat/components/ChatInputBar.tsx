@@ -20,6 +20,9 @@ import { Suggestion, Suggestions } from "@/shared/ui/ai-elements/suggestion";
 
 import type { ContextCompactionControl, ConversationStats, DictationStatus, RunContextUsage } from "@/shared/lib/types";
 import { ContextMeter } from "@/features/chat/components/ContextMeter";
+import { DraftHighlight } from "@/features/chat/components/DraftHighlight";
+import { SlashCommandMenu } from "@/features/chat/components/SlashCommandMenu";
+import type { SlashComposer } from "@/features/chat/hooks/useSlashCommands";
 import { INTERACTIVE_SURFACE } from "@/shared/lib/consts";
 export type { DictationStatus };
 export type ChatInputMode = "chat" | "voice";
@@ -53,6 +56,8 @@ type ChatInputBarProps = {
   conversationStats?: ConversationStats | null;
   // Click-to-compact on the context ring (plan 34); null when unavailable.
   compaction?: ContextCompactionControl | null;
+  // Slash commands (plan 35): the menu, and the command highlighted in the draft.
+  slash?: SlashComposer | null;
   currentMessage: string;
   setCurrentMessage: (v: string) => void;
   handlePaste: React.ClipboardEventHandler<HTMLTextAreaElement>;
@@ -128,6 +133,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
     contextUsage = null,
     conversationStats = null,
     compaction = null,
+    slash = null,
     currentMessage,
     setCurrentMessage,
     handlePaste,
@@ -210,6 +216,27 @@ export function ChatInputBar(props: ChatInputBarProps) {
   const messagePlaceholder = agentDisplayName
     ? `Message ${agentDisplayName}...`
     : "Type a message...";
+  const hasDraft = Boolean(currentMessage.trim() || attachments.length > 0);
+  // A draft whose command is an action (`/rename …`) runs it instead of sending.
+  const submitDraft = () => {
+    if (slash?.submitAction()) return;
+    handleSendMessage();
+  };
+
+  // The highlighted-command mirror behind the textarea (DraftHighlight): kept
+  // scrolled with it, and wrapping at the same column as its scrollbar comes
+  // and goes. Cheap enough to sync on every render.
+  const draftMirrorRef = React.useRef<HTMLDivElement>(null);
+  const [draftScrollbarWidth, setDraftScrollbarWidth] = React.useState(0);
+  const syncDraftMirror = React.useCallback(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    if (draftMirrorRef.current) draftMirrorRef.current.scrollTop = textarea.scrollTop;
+    const width = textarea.offsetWidth - textarea.clientWidth;
+    setDraftScrollbarWidth((current) => (current === width ? current : width));
+  }, [textareaRef]);
+  React.useLayoutEffect(syncDraftMirror);
+  const draftCommand = slash?.found ?? null;
 
   const voiceClosePulse = useAnimationControls();
   const voiceMutePulse = useAnimationControls();
@@ -757,6 +784,9 @@ export function ChatInputBar(props: ChatInputBarProps) {
 
                 <div className="relative mx-auto max-w-3xl pointer-events-auto">
                   {topAccessory}
+                  <AnimatePresence>
+                    {slash?.open ? <SlashCommandMenu key="slash-menu" slash={slash} /> : null}
+                  </AnimatePresence>
                   {/* Floating Input Container */}
                   <div
                     className={`relative z-20 bg-background rounded-[2rem] shadow-lg px-3 pt-3 pb-1 ${
@@ -840,29 +870,53 @@ export function ChatInputBar(props: ChatInputBarProps) {
                       </div>
 
                       {/* Text Input Area */}
-                      <div className="w-full">
+                      <div className="relative w-full">
+                        {draftCommand && dictationStatus === "idle" ? (
+                          <DraftHighlight
+                            ref={draftMirrorRef}
+                            text={currentMessage}
+                            found={draftCommand}
+                            scrollbarWidth={draftScrollbarWidth}
+                            className="px-4 py-3 text-base text-foreground"
+                          />
+                        ) : null}
                         {dictationStatus === "idle" ? (
                           <Textarea
                             ref={(textarea: any) => {
                               (textareaRef as any).current = textarea;
                             }}
                             value={currentMessage}
-                            onChange={(e: any) => setCurrentMessage(e.target.value)}
+                            onChange={(e: any) =>
+                              slash
+                                ? slash.onDraftChange(e.target.value, e.target.selectionStart ?? e.target.value.length)
+                                : setCurrentMessage(e.target.value)
+                            }
+                            onSelect={(e: React.SyntheticEvent<HTMLTextAreaElement>) =>
+                              slash?.onCaretMove(e.currentTarget.selectionStart ?? 0)
+                            }
+                            onScroll={syncDraftMirror}
                             onPaste={handlePaste}
                             placeholder={messagePlaceholder}
+                            aria-expanded={slash?.open ?? undefined}
+                            aria-controls={slash?.open ? "slash-command-menu" : undefined}
                             onKeyDown={(e: any) => {
+                              if (slash?.onKeyDown(e)) return;
                               const shouldSubmit =
                                 e.key === "Enter" &&
                                 !e.shiftKey &&
                                 !thinkingActive &&
                                 !isStreaming &&
-                                (currentMessage.trim() || attachments.length > 0);
+                                hasDraft;
                               if (shouldSubmit) {
                                 e.preventDefault();
-                                handleSendMessage();
+                                submitDraft();
                               }
                             }}
-                            className="bg-transparent border-0 focus:ring-0 focus:outline-none min-h-[48px] text-base px-4 py-3 resize-none overflow-y-auto text-foreground placeholder:text-muted-foreground w-full"
+                            className={`relative bg-transparent border-0 focus:ring-0 focus:outline-none min-h-[48px] text-base px-4 py-3 resize-none overflow-y-auto placeholder:text-muted-foreground w-full ${
+                              // With a command present the mirror below draws the text;
+                              // the textarea keeps the caret and the selection.
+                              draftCommand ? "text-transparent caret-foreground" : "text-foreground"
+                            }`}
                             rows={1}
                             style={{ height: "auto", maxHeight: textareaMaxHeight }}
                           />
@@ -950,10 +1004,10 @@ export function ChatInputBar(props: ChatInputBarProps) {
                                   onClick={() => {
                                     if (isStreaming) {
                                       handleStopStreaming?.();
-                                    } else if (!currentMessage.trim() && attachments.length === 0) {
+                                    } else if (!hasDraft) {
                                       onVoiceMode?.();
                                     } else {
-                                      handleSendMessage();
+                                      submitDraft();
                                     }
                                   }}
                                   disabled={
@@ -964,7 +1018,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
                                 >
                                   {isStreaming ? (
                                     <FaStop size={18} />
-                                  ) : !currentMessage.trim() && attachments.length === 0 ? (
+                                  ) : !hasDraft ? (
                                     <PiWaveformBold size={22} />
                                   ) : (
                                     <HiArrowUp size={18} />

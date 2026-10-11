@@ -21,9 +21,12 @@ type ArtifactCardProps = {
 export function ArtifactCard({ block, message, onDownload, onPreview }: ArtifactCardProps) {
   const isMobile = useIsMobile();
 
-  const attachment = message?.attachments?.find(
+  // Every file the agent wrote is stored now, so two can share a name (a/x.md,
+  // b/x.md): prefer the one it presented.
+  const named = (message?.attachments ?? []).filter(
     (a) => a.origin === "generated" && a.name === block.filename,
-  ) as AttachmentOut | undefined;
+  ) as AttachmentOut[];
+  const attachment = named.find((a) => a.presented) ?? named[0];
 
   const ready = Boolean(attachment?.blobId);
   const primary = block.title || block.filename;

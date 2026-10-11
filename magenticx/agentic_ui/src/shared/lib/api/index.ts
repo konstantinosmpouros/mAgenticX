@@ -132,3 +132,4 @@ export {
   cancelAccountDeletion,
   beginReauthentication,
 } from "./account";
+export { getAgentCommands } from "./commands";
