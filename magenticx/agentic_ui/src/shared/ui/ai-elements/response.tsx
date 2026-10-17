@@ -1,8 +1,10 @@
 "use client";
 
 import { cn } from "@/shared/lib/utils";
-import { type ComponentProps, memo } from "react";
+import { type ComponentProps, memo, useState } from "react";
 import { Streamdown, type MermaidConfig } from "streamdown";
+
+import { MermaidExportLayer } from "./mermaid-export";
 
 type ResponseProps = ComponentProps<typeof Streamdown>;
 
@@ -33,59 +35,72 @@ const defaultMermaidConfig: MermaidConfig = {
   },
 };
 
+/**
+ * An answer rendered as Markdown. Mermaid diagrams get a "Download image (PNG)"
+ * button beside Streamdown's own source-download and copy buttons, from
+ * `MermaidExportLayer`.
+ */
 export const Response = memo(
-  ({ className, components, mermaidConfig, ...props }: ResponseProps) => (
-    <Streamdown
-      className={cn(
-        "chat-markdown size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
-        "leading-relaxed break-words text-inherit",
-        className,
-      )}
-      mermaidConfig={{
-        ...defaultMermaidConfig,
-        ...mermaidConfig,
-        themeVariables: {
-          ...defaultMermaidConfig.themeVariables,
-          ...mermaidConfig?.themeVariables,
-        },
-      }}
-      components={{
-        a: ({ children, href, node, ...anchorProps }) => {
-          const isFootnoteRef = "data-footnote-ref" in anchorProps;
-          const isFootnoteBackref = "data-footnote-backref" in anchorProps;
+  ({ className, components, mermaidConfig, ...props }: ResponseProps) => {
+    // `contents`: the wrapper only gives the diagram buttons a root to look in; it
+    // adds no box, so the answer's layout is unchanged.
+    const [root, setRoot] = useState<HTMLDivElement | null>(null);
+    return (
+      <div ref={setRoot} className="contents">
+        <Streamdown
+          className={cn(
+            "chat-markdown size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+            "leading-relaxed break-words text-inherit",
+            className,
+          )}
+          mermaidConfig={{
+            ...defaultMermaidConfig,
+            ...mermaidConfig,
+            themeVariables: {
+              ...defaultMermaidConfig.themeVariables,
+              ...mermaidConfig?.themeVariables,
+            },
+          }}
+          components={{
+            a: ({ children, href, node, ...anchorProps }) => {
+              const isFootnoteRef = "data-footnote-ref" in anchorProps;
+              const isFootnoteBackref = "data-footnote-backref" in anchorProps;
 
-          if (isFootnoteBackref) {
-            return null;
-          }
+              if (isFootnoteBackref) {
+                return null;
+              }
 
-          if (isFootnoteRef) {
-            return (
-              <span
-                className="chat-markdown-footnote-ref"
-                aria-label={`Footnote ${String(children)}`}
-              >
-                {children}
-              </span>
-            );
-          }
+              if (isFootnoteRef) {
+                return (
+                  <span
+                    className="chat-markdown-footnote-ref"
+                    aria-label={`Footnote ${String(children)}`}
+                  >
+                    {children}
+                  </span>
+                );
+              }
 
-          return (
-            <a
-              className="chat-markdown-link"
-              href={href}
-              rel="noreferrer"
-              target="_blank"
-              {...anchorProps}
-            >
-              {children}
-            </a>
-          );
-        },
-        ...components,
-      }}
-      {...props}
-    />
-  ),
+              return (
+                <a
+                  className="chat-markdown-link"
+                  href={href}
+                  rel="noreferrer"
+                  target="_blank"
+                  {...anchorProps}
+                >
+                  {children}
+                </a>
+              );
+            },
+            ...components,
+          }}
+          {...props}
+        />
+        <MermaidExportLayer root={root} />
+      </div>
+    );
+  },
   (prevProps, nextProps) => prevProps.children === nextProps.children,
 );
 
