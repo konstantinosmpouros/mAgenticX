@@ -4,7 +4,7 @@ import { TooltipProvider } from "@/shared/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
-import { THEME_IDS } from "@/styles/theme/themes";
+import { THEME_ATTRIBUTE_VALUES, THEME_IDS, migrateStoredTheme } from "@/styles/theme/themes";
 import { ThemeModeSync } from "@/shared/ui/theme-mode-sync";
 import { WorkspaceShell } from "./app/WorkspaceShell";
 import ChatView from "./pages/ChatView";
@@ -19,18 +19,25 @@ import { hasCookieConsent } from "@/shared/lib/cookieConsentStorage";
 
 const queryClient = new QueryClient();
 
+// The stored theme as an explicit choice (theme-init.js has normally done this
+// before paint): a missing or "system" value becomes Daylight or Midnight from
+// the device's preference, once. Also next-themes' default, for blocked storage.
+const initialTheme = migrateStoredTheme();
+
 const App = () => {
   const [consented, setConsented] = useState(() => hasCookieConsent());
 
   return (
     <QueryClientProvider client={queryClient}>
-      {/* Themes are defined in src/styles/theme: `data-theme` picks one, and
-          ThemeModeSync adds the `dark` class for the dark ones. */}
+      {/* Themes are defined in src/styles/theme: `data-theme` picks one (the
+          legacy "light"/"dark" map to Daylight and Midnight; there is no
+          System option), and ThemeModeSync adds the `dark` class for the dark ones. */}
       <ThemeProvider
         attribute="data-theme"
         themes={THEME_IDS}
-        defaultTheme="system"
-        enableSystem={true}
+        value={THEME_ATTRIBUTE_VALUES}
+        defaultTheme={initialTheme}
+        enableSystem={false}
         enableColorScheme={false}
         disableTransitionOnChange={true}
         storageKey="theme"

@@ -1,24 +1,24 @@
 ﻿import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
-import { Ghost, Archive, Flag, Trash2, MoreHorizontal, HelpCircle } from "lucide-react";
+import { Archive, BookmarkPlus, Flag, Trash2, MoreHorizontal, HelpCircle, Loader2, X } from "lucide-react";
 import type { Agent } from "@/shared/lib/types";
 import React from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { SidebarTrigger } from "@/shared/ui/sidebar";
 import { HiOutlineUpload } from "react-icons/hi";
-import { motion, useAnimationControls } from "framer-motion";
+import { AnimatePresence, motion, useAnimationControls, useReducedMotion } from "framer-motion";
 import type { TargetAndTransition, Transition } from "framer-motion";
 import { INTERACTIVE_SURFACE } from "@/shared/lib/consts";
 import { returnFocusOnlyForKeyboard } from "@/shared/lib/focus-return";
 import { NewChatIcon } from "@/shared/ui/new-chat-icon";
+import { IncognitoIcon } from "@/shared/ui/incognito-icon";
 
 const TAP_PULSE: TargetAndTransition = { scale: [1, 1.28, 1] };
 const TAP_PULSE_TRANSITION: Transition = { duration: 0.36, ease: [0.34, 1.56, 0.64, 1] };
-// Slightly bigger overshoot for the private-mode toggle: when entering private
-// mode the ghost icon also gets a small wiggle so the activation feels like a
-// proper "mode change", not just a tap.
-const PRIVATE_ENTER: TargetAndTransition = { scale: [1, 1.35, 1], rotate: [0, -10, 8, 0] };
-const PRIVATE_ENTER_TRANSITION: Transition = { duration: 0.5, ease: [0.34, 1.56, 0.64, 1] };
+// The private controls (the "Private" pill, the toggle, Save chat) come and go
+// with a short fade-and-scale; reduced motion keeps only the fade.
+const PRIVATE_SWAP: Transition = { duration: 0.24, ease: [0.22, 1, 0.36, 1] };
+const PRIVATE_HINT = "Hidden from your chat list, search and memory";
 
 type ChatHeaderProps = {
   agents: Agent[];
@@ -28,9 +28,13 @@ type ChatHeaderProps = {
   agentTriggerRef?: React.Ref<HTMLButtonElement>;
   agentPickerOpen?: boolean;
   onAgentPickerOpenChange?: (open: boolean) => void;
+  /** Private mode can be switched here (a new chat, before its first message). */
   showPrivateToggle: boolean;
   isPrivateMode: boolean;
   onTogglePrivate: () => void;
+  /** Saves the open private chat as a normal one. Given only for a stored
+      private conversation, where "Save chat" takes the toggle's place. */
+  onSaveConversation?: () => Promise<boolean>;
   showBottomBorder?: boolean;
   showConversationActions?: boolean;
   isConversationArchived?: boolean;
@@ -58,6 +62,7 @@ export default function ChatHeader({
   showPrivateToggle,
   isPrivateMode,
   onTogglePrivate,
+  onSaveConversation,
   showBottomBorder = false,
   showConversationActions = false,
   isConversationArchived = false,
@@ -74,8 +79,21 @@ export default function ChatHeader({
   isStreaming = false,
 }: ChatHeaderProps) {
 
-  const privatePulse = useAnimationControls();
   const moreMenuPulse = useAnimationControls();
+  const reduceMotion = useReducedMotion() ?? false;
+  const [saving, setSaving] = React.useState(false);
+  const swapIn = reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.9 };
+  const swapShown = reduceMotion ? { opacity: 1 } : { opacity: 1, scale: 1 };
+  const canSave = isPrivateMode && Boolean(onSaveConversation);
+  const handleSave = async () => {
+    if (!onSaveConversation || saving) return;
+    setSaving(true);
+    try {
+      await onSaveConversation();
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const displayAgents = React.useMemo(() => {
     if (inactiveAgent && !agents.some((agent) => agent.id === inactiveAgent.id)) {
@@ -198,37 +216,114 @@ export default function ChatHeader({
         </div>
 
         <div className="ml-auto flex items-center gap-0.5 md:gap-1">
-          {showPrivateToggle && (
-            <Tooltip delayDuration={0}>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => {
-                    onTogglePrivate();
-                    // If we're about to enter private mode, do the bigger
-                    // wiggle; if we're about to leave it, just a regular tap.
-                    if (isPrivateMode) {
-                      privatePulse.start(TAP_PULSE, TAP_PULSE_TRANSITION);
-                    } else {
-                      privatePulse.start(PRIVATE_ENTER, PRIVATE_ENTER_TRANSITION);
-                    }
-                  }}
-                  onMouseDown={(e) => e.preventDefault()}
-                  className={`inline-flex items-center justify-center leading-none p-3 rounded-full transition-smooth duration-300 ${
-                    isPrivateMode
-                      ? "text-fuchsia-600 bg-gradient-to-r from-fuchsia-500/20 via-fuchsia-400/25 to-fuchsia-500/20 shadow-[0_0_20px_rgba(217,70,239,0.4)] border border-fuchsia-500/40 hover:shadow-[0_0_25px_rgba(217,70,239,0.5)]"
-                      : `text-muted-foreground hover:text-foreground ${INTERACTIVE_SURFACE}`
-                  }`}
+          <AnimatePresence initial={false} mode="popLayout">
+            {isPrivateMode && (
+              <motion.div
+                key="private-pill"
+                layout
+                initial={swapIn}
+                animate={swapShown}
+                exit={swapIn}
+                transition={PRIVATE_SWAP}
+                className="mr-0.5 md:mr-1"
+              >
+                {/* No tooltip: the pill speaks for itself. Screen readers still
+                    get the meaning from aria-label. */}
+                {showPrivateToggle ? (
+                  <button
+                    type="button"
+                    onClick={onTogglePrivate}
+                    onMouseDown={(e) => e.preventDefault()}
+                    aria-pressed="true"
+                    aria-label={`Private chat is on. ${PRIVATE_HINT}. Turn it off`}
+                    data-testid="private-pill"
+                    className="group inline-flex h-9 items-center gap-1.5 rounded-full border border-primary/35 bg-primary/15 pl-2.5 pr-2 text-sm font-medium text-primary transition-colors hover:bg-primary/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                  >
+                    <PrivatePillIcon reduceMotion={reduceMotion} />
+                    <span className="hidden sm:inline">Private</span>
+                    <X
+                      className="h-3.5 w-3.5 opacity-60 transition-opacity group-hover:opacity-100"
+                      aria-hidden="true"
+                    />
+                  </button>
+                ) : (
+                  <span
+                    role="status"
+                    aria-label={`Private chat. ${PRIVATE_HINT}`}
+                    data-testid="private-pill"
+                    className="inline-flex h-9 items-center gap-1.5 rounded-full border border-primary/35 bg-primary/15 px-2.5 text-sm font-medium text-primary"
+                  >
+                    <PrivatePillIcon reduceMotion={reduceMotion} />
+                    <span className="hidden sm:inline">Private</span>
+                  </span>
+                )}
+              </motion.div>
+            )}
+            {canSave ? (
+              <motion.div
+                key="save-chat"
+                layout
+                initial={swapIn}
+                animate={swapShown}
+                exit={swapIn}
+                transition={PRIVATE_SWAP}
+              >
+                <Tooltip delayDuration={0}>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={() => void handleSave()}
+                      onMouseDown={(e) => e.preventDefault()}
+                      disabled={saving}
+                      aria-busy={saving || undefined}
+                      aria-label="Save chat"
+                      className="inline-flex h-10 w-10 items-center justify-center gap-2 rounded-xl bg-primary font-medium text-primary-foreground shadow-[0_0_22px_-6px_hsl(var(--primary)/0.75)] transition-[filter,box-shadow,opacity] hover:shadow-[0_0_28px_-4px_hsl(var(--primary)/0.85)] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 disabled:opacity-70 sm:w-auto sm:px-3.5"
+                    >
+                      {saving ? (
+                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                      ) : (
+                        <BookmarkPlus className="h-4 w-4" aria-hidden="true" />
+                      )}
+                      <span className="hidden sm:inline">Save chat</span>
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" align="center">
+                    <p>Keep it in your chat list, search and memory</p>
+                  </TooltipContent>
+                </Tooltip>
+              </motion.div>
+            ) : (
+              !isPrivateMode &&
+              showPrivateToggle && (
+                <motion.div
+                  key="private-toggle"
+                  layout
+                  initial={swapIn}
+                  animate={swapShown}
+                  exit={swapIn}
+                  transition={PRIVATE_SWAP}
                 >
-                  <motion.span animate={privatePulse} className="inline-flex">
-                    <Ghost size={20} />
-                  </motion.span>
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" align="center">
-                <p>Private Chat</p>
-              </TooltipContent>
-            </Tooltip>
-          )}
+                  <Tooltip delayDuration={0}>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={onTogglePrivate}
+                        onMouseDown={(e) => e.preventDefault()}
+                        aria-pressed="false"
+                        aria-label="Private chat"
+                        className={`inline-flex h-10 w-10 items-center justify-center rounded-xl text-muted-foreground hover:text-foreground transition-smooth ${INTERACTIVE_SURFACE} focus-visible:outline-none`}
+                      >
+                        <IncognitoIcon />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" align="center">
+                      <p>Private chat</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </motion.div>
+              )
+            )}
+          </AnimatePresence>
           {showConversationActions && (
             <>
               {onNewChat && (
@@ -349,5 +444,19 @@ export default function ChatHeader({
         </div>
       </div>
     </div>
+  );
+}
+
+/** The pill's incognito mark: settles in with a small tilt when private mode starts. */
+function PrivatePillIcon({ reduceMotion }: { reduceMotion: boolean }) {
+  return (
+    <motion.span
+      className="inline-flex"
+      initial={reduceMotion ? false : { rotate: -14, scale: 0.7 }}
+      animate={{ rotate: 0, scale: 1 }}
+      transition={{ type: "spring", stiffness: 420, damping: 16 }}
+    >
+      <IncognitoIcon className="h-[18px] w-[18px]" />
+    </motion.span>
   );
 }

@@ -72,9 +72,10 @@ def _pending_batch_query(limit: int):
 def _embeddable(row) -> bool:
     """Whether a looked-at message gets a vector: finalized (user messages have
     no streaming status; AI messages only once 'completed'), not an error, with
-    content, in a conversation that is not private. A conversation's privacy is
-    fixed at creation, so "not embeddable" is final — the message is marked
-    checked and never looked at again."""
+    content, in a conversation that is not private. "Not embeddable" is final —
+    the message is marked checked and never looked at again — except when a
+    private conversation is saved ("Save chat"): that clears the marks on its
+    messages (``save_private_conversation``), so they come back through here."""
     return (
         bool(row.content and row.content.strip())
         and not row.is_error

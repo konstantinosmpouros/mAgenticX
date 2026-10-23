@@ -75,6 +75,7 @@ export {
   getPinnedConversations,
   getSidebarConversations,
   setConversationPinned,
+  saveConversation,
   reportConversation,
   renameConversation,
   forkConversation,

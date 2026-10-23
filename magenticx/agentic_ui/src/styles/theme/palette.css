@@ -1,0 +1,52 @@
+/* The theme palettes: one per theme, four swatches each. They also feed the
+   theme cards in Settings → General (`hsl(var(--<id>-1..4))`).
+
+   Swatches are for decoration (logos, gradients, highlights). Text and buttons
+   use each theme's `--theme-primary`, a deeper shade chosen for contrast
+   (see the theme files). Components never use these directly: they use the
+   semantic tokens (`bg-primary`, `text-muted-foreground`, ...).
+
+   Values are HSL triplets ("H S% L%"), used as `hsl(var(--daylight-1))`. */
+
+@layer base {
+  :root {
+    /* Text ink shared by every light theme. */
+    --brand-ink: 227 70% 8%; /* #060c22 */
+
+    /* Daylight: clear, modern, open. */
+    --daylight-1: 205 98% 56%; /* #21a0fd azure */
+    --daylight-2: 255 46% 95%; /* #efecf8 mist */
+    --daylight-3: 338 95% 84%; /* #fdb0cc pink */
+    --daylight-4: 263 95% 78%; /* #ba91fc lilac */
+
+    /* Midnight: sophisticated, secure, powerful. */
+    --midnight-1: 225 96% 9%; /* #010c2e navy */
+    --midnight-2: 227 78% 44%; /* #1940c8 royal */
+    --midnight-3: 262 94% 60%; /* #7d37f9 violet */
+    --midnight-4: 305 98% 77%; /* #fe8af4 pink */
+
+    /* Aurora: bold, dynamic, inspiring. */
+    --aurora-1: 187 98% 48%; /* #02d6f2 cyan */
+    --aurora-2: 171 71% 51%; /* #29dbbf teal */
+    --aurora-3: 263 91% 62%; /* #8a45f6 violet */
+    --aurora-4: 314 98% 60%; /* #fd36cd magenta */
+
+    /* Sunset: warm, creative, optimistic. */
+    --sunset-1: 8 98% 68%; /* #fd735d coral */
+    --sunset-2: 28 97% 69%; /* #fdaa63 apricot */
+    --sunset-3: 329 97% 71%; /* #fd6cb8 pink */
+    --sunset-4: 268 87% 66%; /* #a45ef4 purple */
+
+    /* Sage: balanced, natural, sustainable. */
+    --sage-1: 188 96% 18%; /* #024d58 deep teal */
+    --sage-2: 157 36% 49%; /* #51ab89 green */
+    --sage-3: 107 60% 80%; /* #bcebaf mint */
+    --sage-4: 83 51% 89%; /* #e6f1d4 cream */
+
+    /* Citrus: vibrant, creative, positive. */
+    --citrus-1: 21 95% 49%; /* #f65c06 orange */
+    --citrus-2: 37 98% 60%; /* #fdb137 amber */
+    --citrus-3: 25 98% 69%; /* #fda361 peach */
+    --citrus-4: 40 97% 88%; /* #feebc4 cream */
+  }
+}

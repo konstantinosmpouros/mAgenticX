@@ -6,7 +6,8 @@
    M's primary in every theme.
 
    Markup: .composer-shell (focus, busy and private state) > .composer-glow (the
-   halo, behind) + .composer-surface (the card; its ::before is the hairline). */
+   halo, behind) + .composer-surface (the card; its ::before is the hairline).
+   The private state's look lives with the incognito card, in private.css. */
 
 /* The angle the light has travelled; registered so it can be animated. */
 @property --composer-angle {
@@ -55,15 +56,6 @@
   border-radius: 1.75rem;
   background: hsl(var(--card));
   box-shadow: 0 1px 2px hsl(var(--foreground) / 0.05);
-}
-
-/* Private mode keeps its primary ring. Here rather than as a `ring-*` utility:
-   this file loads after the utilities, so the card's own box-shadow above
-   would override the ring. */
-.composer-shell[data-private="true"] .composer-surface {
-  box-shadow:
-    0 0 0 2px hsl(var(--primary) / 0.5),
-    0 1px 2px hsl(var(--foreground) / 0.05);
 }
 
 /* The travelling hairline: a 1px ring cut out of the moving gradient with a

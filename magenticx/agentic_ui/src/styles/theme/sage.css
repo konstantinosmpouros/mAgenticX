@@ -1,0 +1,24 @@
+/* Sage: balanced, natural, sustainable. Deep teal with green and mint on
+   pale aqua. Shared light tokens: light.css. */
+
+@layer base {
+  :root[data-theme="sage"] {
+    --theme-primary: var(--sage-1); /* the deep teal swatch reads on white as is */
+    --theme-primary-fg: 0 0% 100%;
+    --theme-glow: var(--sage-3);
+    --theme-gradient: linear-gradient(
+      135deg,
+      hsl(var(--sage-1)) 0%,
+      hsl(var(--sage-2)) 40%,
+      hsl(var(--sage-3)) 75%,
+      hsl(var(--sage-4)) 100%
+    );
+    --tint: 180 40%;
+    --tint-line: 180 18%;
+    /* The orb's halo (styles/orb.css): green, teal lifted and mint deepened
+       so both glow on white. */
+    --orb-glow-1: var(--sage-2);
+    --orb-glow-2: 188 70% 36%;
+    --orb-glow-3: 107 55% 68%;
+  }
+}

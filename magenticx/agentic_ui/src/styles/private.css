@@ -1,0 +1,184 @@
+/* Private chats: the "incognito card".
+
+   While the open chat is private (or a new private chat is being written), the
+   chat card (WorkspaceShell's SidebarInset) carries `.private-scope` (and
+   `.dark`, so Tailwind's `dark:` variants apply inside it). The scope declares
+   every theme token again, on the card, with one fixed always-dark violet
+   palette: everything inside re-themes by itself and looks the same in every
+   theme, present or future, while the sidebar keeps the theme around it.
+   Declaring each token outright matters: the light themes derive theirs from
+   `--theme-primary` / `--tint` on :root, where they are already resolved, so
+   overriding only those would change nothing here.
+
+   Unlayered on purpose: it must beat the theme files (`@layer base`),
+   including `.dark` (Midnight's values) on the same element.
+
+   Hook: src/app/useIncognitoCard.ts. Values are HSL triplets ("H S% L%"). */
+
+.private-scope {
+  color-scheme: dark;
+  /* Text that sets no colour of its own inherits body's, which was resolved
+     against the theme's --foreground; restate it against the scope's. */
+  color: hsl(var(--foreground));
+
+  --background: 266 42% 8%;
+  --foreground: 268 60% 96%;
+
+  --card: 266 36% 12%;
+  --card-foreground: 268 60% 96%;
+
+  --popover: 266 36% 12%;
+  --popover-foreground: 268 60% 96%;
+
+  --primary: 265 92% 74%;
+  --primary-foreground: 266 50% 10%;
+  --primary-glow: 288 95% 80%;
+
+  --secondary: 266 30% 15%;
+  --secondary-foreground: 268 60% 96%;
+
+  --muted: 266 30% 15%;
+  --muted-foreground: 266 18% 70%;
+
+  --accent: 266 30% 18%;
+  --accent-foreground: 268 60% 96%;
+
+  --destructive: 0 84% 62%;
+  --destructive-foreground: 0 0% 100%;
+
+  --success: 142 65% 55%;
+  --success-foreground: 0 0% 100%;
+  --warning: 38 95% 58%;
+  --warning-foreground: 266 50% 10%;
+  --info: 211 100% 70%;
+  --info-foreground: 266 50% 10%;
+
+  --theme-primary: 265 92% 74%;
+  --theme-primary-fg: 266 50% 10%;
+  --theme-glow: 288 95% 80%;
+  --theme-gradient: var(--gradient-primary);
+  --tint: 266 30%;
+  --tint-line: 266 28%;
+
+  --subagent-active: 265 92% 74%;
+  --subagent-active-glow: 288 95% 80%;
+
+  --orb-glow-1: 248 85% 66%;
+  --orb-glow-2: 265 92% 66%;
+  --orb-glow-3: 292 90% 72%;
+
+  --border: 266 28% 21%;
+  --input: 266 28% 21%;
+  --ring: transparent;
+
+  --chart-1: 265 92% 74%;
+  --chart-2: 199 85% 64%;
+  --chart-3: 300 85% 76%;
+  --chart-4: 171 60% 55%;
+  --chart-5: 33 90% 62%;
+
+  --hover-surface: 266 30% 18%;
+  --hover-surface-strong: 266 30% 13%;
+
+  --chat-user: 266 32% 17%;
+  --chat-user-foreground: 268 60% 96%;
+  --chat-agent: 266 30% 14%;
+  --chat-agent-foreground: 268 60% 96%;
+
+  --gradient-card: linear-gradient(135deg, hsl(266 32% 12%) 0%, hsl(266 32% 15%) 100%);
+  --gradient-primary: linear-gradient(135deg, hsl(248 85% 66%) 0%, hsl(265 92% 70%) 55%, hsl(292 90% 74%) 100%);
+
+  --shadow-elegant: 0 10px 40px -10px hsl(265 92% 60% / 0.35);
+  --shadow-soft: 0 4px 20px -4px hsl(266 60% 3% / 0.45);
+  --shadow-card: 0 2px 8px -2px hsl(266 60% 3% / 0.35);
+
+  --sidebar-foreground: 268 40% 92%;
+  --sidebar-primary: 265 92% 74%;
+  --sidebar-primary-foreground: 266 50% 10%;
+  --sidebar-accent: 266 30% 18%;
+  --sidebar-accent-foreground: 268 60% 96%;
+  --sidebar-border: 266 28% 21%;
+  --sidebar-ring: 265 92% 74%;
+  --sidebar-background: var(--background);
+  --sidebar-icon-bg: color-mix(in srgb, hsl(var(--primary)) 18%, hsl(var(--background)));
+
+  /* The card's own violet light around its edge (desktop, where it floats). */
+  box-shadow:
+    0 0 0 1px hsl(265 92% 74% / 0.28),
+    0 0 36px -6px hsl(265 92% 62% / 0.5),
+    0 22px 60px -24px hsl(272 90% 40% / 0.65);
+}
+
+/* The slow, soft glow along the inside of the card's edge — also what marks
+   the mode on mobile, where the card is full-bleed. A layer of its own that
+   only animates opacity, so it never repaints the chat. */
+.private-card-glow {
+  position: absolute;
+  inset: 0;
+  z-index: 45;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  box-shadow:
+    inset 0 0 0 1px hsl(265 92% 74% / 0.3),
+    inset 0 0 38px -8px hsl(265 92% 66% / 0.55),
+    inset 0 0 110px -40px hsl(288 95% 72% / 0.4);
+  transition: opacity 0.7s ease;
+}
+
+.private-scope > .private-card-glow {
+  opacity: 0.55;
+  animation:
+    private-glow-in 0.7s ease-out,
+    private-breathe 7s ease-in-out 0.7s infinite;
+}
+
+@keyframes private-glow-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 0.55;
+  }
+}
+
+@keyframes private-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Entering or leaving: every colour inside the card crosses over to the new
+   tokens instead of cutting (the hook removes the class after 700ms). */
+.private-shift,
+.private-shift *:not(.private-card-glow),
+.private-shift *::before,
+.private-shift *::after {
+  transition-property: color, background-color, border-color, outline-color, text-decoration-color,
+    fill, stroke, box-shadow !important;
+  transition-duration: 700ms !important;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1) !important;
+  transition-delay: 0s !important;
+}
+
+/* The composer keeps its travelling hairline lit (now violet, from the
+   scope's --primary) and a stronger halo, so the mode reads at the input too. */
+.composer-shell[data-private="true"] .composer-surface::before {
+  opacity: 1;
+}
+
+.composer-shell[data-private="true"] .composer-glow {
+  opacity: 0.6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .private-card-glow,
+  .private-scope > .private-card-glow {
+    animation: none;
+    transition: none;
+  }
+}

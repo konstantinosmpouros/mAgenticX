@@ -21,6 +21,7 @@ from utils.conversations import (
     init_conv,
     init_message,
     list_owned_shares,
+    save_private_conversation,
     set_conversation_archive_state,
     set_conversation_pin_state,
 )
@@ -110,6 +111,7 @@ __all__ = [
     "resolve_conversation_title",
     "set_agent_tool_approval",
     "set_agent_tool_enabled",
+    "save_private_conversation",
     "set_conversation_archive_state",
     "set_conversation_pin_state",
     "sync_agents_with_service",

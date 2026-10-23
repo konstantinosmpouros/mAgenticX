@@ -182,6 +182,14 @@ Archiving is a soft-delete — the conversation is hidden from the default list 
 - **Capped per user** at `MAX_PINNED_CONVERSATIONS` (default 30, at most 100) — `409` with "You can pin up to N conversations". The check takes a row lock on the user's `users` row, so two concurrent pins cannot both slip under the cap. The cap is what lets the UI load every pin in one request.
 - **Archiving clears the pin**, and unarchiving does not restore it. A fork starts unpinned.
 
+### Save a private chat
+
+`PATCH /{user_id}/{conversation_id}/visibility { "isPrivate": false }` turns a private conversation into a normal one ("Save chat" in the header). Same auth, ownership (`404` for another user's conversation) and CSRF as the other lifecycle PATCHes; returns the refreshed `ConversationSummary`.
+
+- **One-way.** `isPrivate: true` is rejected (`422`); saving a conversation that is not private is `409` (the UI treats a `409` as already saved).
+- **It joins the lists.** `is_private` becomes false and `updated_at` moves to now, so it lands at the top of Chats with its title, and from then on is in search, suggestions and the Usage list (all filter `is_private`).
+- **Its messages are queued for memory.** While private, the embedding sweeper marked them checked without a vector. Saving clears `embedding_checked_at` on all of them (their own `updated_at` untouched), so the sweeper's next passes embed them like any other conversation's ([`save_private_conversation`](../../magenticx/dialogue_bridge/utils/conversations.py)).
+
 ### Rename
 
 `PATCH /{user_id}/{conversation_id}/title { title }` — updates the `title` column. The frontend mirrors the rename into the open conversation detail view without a full refetch and re-sorts the sidebar.
@@ -326,7 +334,9 @@ When a conversation reaches its first AI response, the bridge calls the agents s
 
 - **`isPrivate` conversations are excluded from all listing endpoints.** `GET /{userId}` and `GET /{userId}/archived` both filter `is_private=False`. There is no endpoint to list private conversations in the current implementation — they can only be accessed by direct ID if the client already knows the ID (e.g., navigating straight to its `/c/:conversationId` URL).
 
-- **The UI hides Share, Archive and Delete on a private conversation.** `ChatHeader` suppresses all three when private mode is on, and drops the `⋯` trigger entirely when that would leave the menu empty. This follows from the filter above: Archive manages a listing the conversation is not in, and offering Share on a private chat contradicts the mode. The consequence is that a private conversation has **no in-app delete path** — it is not in the sidebar either — so it persists until removed directly in the database.
+- **The UI hides Share, Archive and Delete on a private conversation.** `ChatHeader` suppresses all three when private mode is on, and drops the `⋯` trigger entirely when that would leave the menu empty. This follows from the filter above: Archive manages a listing the conversation is not in, and offering Share on a private chat contradicts the mode. Private chats are stored (never auto-deleted); the in-app way out is **Save chat** (above), which makes the conversation normal and brings the three actions back. Until then it has no in-app delete path.
+
+- **A private chat looks private: the incognito card.** While the open chat is private (or a new private chat is being written), the chat card carries `.private-scope` + `.dark` ([`styles/private.css`](../../magenticx/agentic_ui/src/styles/private.css), applied by `useIncognitoCard` in `WorkspaceShell`). The scope re-declares every theme token on the card with one fixed always-dark violet palette, so everything inside — messages, composer (its travelling outline turns violet), voice mode, the approval takeover — re-themes on its own and looks the same in every theme; the sidebar keeps the theme. A soft violet glow breathes along the card's edge, and the header shows a "Private" pill (tooltip: hidden from your chat list, search and memory). In a new chat the pill is also the off switch; in a stored private chat **Save chat** takes the toggle's place. Entering or leaving crossfades the colours (`.private-shift`, 700 ms); reduced motion drops the crossfade and the breathing.
 
 - **Share snapshots grow without bound.** `snapshot_json` is stored as a Postgres JSON column with no size cap. A conversation with 200 messages and large image attachments (base64-encoded inline) can produce a snapshot of tens of megabytes. There is no compression or external blob storage for snapshots.
 

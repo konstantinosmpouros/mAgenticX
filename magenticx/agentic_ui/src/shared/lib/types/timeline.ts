@@ -119,6 +119,12 @@ export type SubagentBlock = {
   prompt?: string;
   namespace?: string;
   /**
+   * The fold key of the sub-agent that delegated to this one, when a sub-agent
+   * spawned it (its `task` call arrived inside the parent's stream). Absent for
+   * the orchestrator's own sub-agents.
+   */
+  parentTaskId?: string;
+  /**
    * True once the sub-agent has actually been spawned — i.e. we have received at
    * least one SUBAGENT_EVENT for it.
    *
@@ -236,6 +242,11 @@ export type TimelineFoldIndexes = {
   blockCounter: number;
   itemCounter: number;
   subFolds: Record<string, SubagentFoldIndexes>;
+  /**
+   * `task` calls a sub-agent made, by task id: who called and what it asked.
+   * Optional so folds built before nested sub-agents were tracked still type.
+   */
+  nestedTasks?: Record<string, { parentKey: string; type?: string; description?: string }>;
 };
 
 export type SubagentFoldIndexes = {

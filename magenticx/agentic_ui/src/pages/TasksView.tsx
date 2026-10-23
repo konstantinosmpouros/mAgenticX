@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { motion } from "framer-motion";
 
 import ScheduledTasksPage from "@/features/tasks/components/ScheduledTasksPage";
@@ -15,6 +16,16 @@ export default function TasksView() {
   // Store-backed: selecting it here keeps this view out of the bundle's
   // per-render churn (see ChatView for the same move).
   const agents = useWorkspaceStore((s) => s.agents);
+
+  // The tab reads like the sidebar entry while the page is open; the chat's own
+  // title comes back on the way out.
+  useEffect(() => {
+    const previous = document.title;
+    document.title = "Schedules · mAgenticX";
+    return () => {
+      document.title = previous;
+    };
+  }, []);
 
   return (
     <motion.div
@@ -39,6 +50,7 @@ export default function TasksView() {
         onUpdate={scheduledTasks.update}
         onDelete={scheduledTasks.remove}
         onOpenResult={(conversationId) => navigate("/c/" + conversationId)}
+        onRetry={() => void scheduledTasks.refresh()}
       />
     </motion.div>
   );

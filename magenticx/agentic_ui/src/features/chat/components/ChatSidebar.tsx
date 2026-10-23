@@ -51,7 +51,7 @@ import {
 import { Skeleton } from "@/shared/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { NewChatIcon } from "@/shared/ui/new-chat-icon";
-import { themeFor } from "@/styles/theme/themes";
+import { logoFor } from "@/styles/theme/themes";
 import { INTERACTIVE_SURFACE } from "@/shared/lib/consts";
 import { useTouchMenuTrigger } from "@/features/chat/hooks/useTouchMenuTrigger";
 import { loadSidebarSectionOpen, saveSidebarSectionOpen } from "@/shared/lib/sidebarStorage";
@@ -285,7 +285,7 @@ export default function ChatSidebar({
   const [isSubmittingRename, setIsSubmittingRename] = React.useState(false);
   const renameInputRef = React.useRef<HTMLTextAreaElement | null>(null);
   const renameContainerRef = React.useRef<HTMLDivElement | null>(null);
-  const logoSrc = themeFor(resolvedTheme).logo;
+  const logoSrc = logoFor(resolvedTheme);
 
   const handleConversationSelect = React.useCallback(
     (conversation: ConversationSummary) => {
@@ -950,7 +950,7 @@ export default function ChatSidebar({
               className={cn(
                 `group/nav !flex !h-9 gap-1 items-center rounded-xl bg-transparent px-1.5 py-0 text-sm text-foreground/90 transition-colors supports-[hover:hover]:${INTERACTIVE_SURFACE}`,
               )}
-              tooltip="Scheduled tasks"
+              tooltip="Schedules"
             >
               <div className="relative grid size-9 flex-shrink-0 place-items-center">
                 <MdOutlineSchedule className={`!h-[18px] !w-[18px] ${NAV_ICON_MOTION}`} />
@@ -963,7 +963,7 @@ export default function ChatSidebar({
                   </span>
                 ) : null}
               </div>
-              <span className={RAIL_LABEL}>Tasks</span>
+              <span className={RAIL_LABEL}>Schedules</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

@@ -103,6 +103,7 @@ function cloneFold(fold: TimelineFoldIndexes): TimelineFoldIndexes {
     taskIdRemap: { ...fold.taskIdRemap },
     namespaceToKey: { ...fold.namespaceToKey },
     toolPaths: { ...fold.toolPaths },
+    ...(fold.nestedTasks ? { nestedTasks: { ...fold.nestedTasks } } : {}),
     subFolds: Object.fromEntries(
       Object.entries(fold.subFolds).map(([key, sub]) => [
         key,
@@ -909,6 +910,20 @@ function subCloseThinking(
 }
 
 /**
+ * Give a nested sub-agent's block what its parent's `task` call said: its type,
+ * its task and the parent it works for (the agent map's link; the namespace
+ * path carries the same link when the call was not seen).
+ */
+function applyNestedTask(block: SubagentBlock, fold: TimelineFoldIndexes, key: string): void {
+  const nested = fold.nestedTasks?.[key];
+  if (!nested) return;
+  block.parentTaskId = block.parentTaskId || nested.parentKey;
+  block.type = block.type || nested.type;
+  block.label = block.label || toTitleCase(nested.type);
+  block.description = block.description || nested.description;
+}
+
+/**
  * Fold one event that happened *inside* a sub-agent.
  *
  * This mirrors `applyEvent`, differing only in where it writes (a sub-agent
@@ -921,12 +936,15 @@ function subCloseThinking(
  * The remaining asymmetry is deliberate, not drift:
  *   - `RAW_SSE_EVENT` is sub-only: nested envelopes only arrive inside a
  *     sub-agent stream.
- *   - `TASK_SUBAGENT`, `SUBAGENT_EVENT`, `PRESENT_ARTIFACT`, `RENDER_CHART` and
- *     `TOKEN_USAGE`
+ *   - `SUBAGENT_EVENT`, `PRESENT_ARTIFACT`, `RENDER_CHART` and `TOKEN_USAGE`
  *     are orchestrator-only: they describe the run as a whole, and the
- *     orchestrator is the only emitter (a sub-agent does not spawn sub-agents,
- *     and usage is accounted per run).
- * Add a new event type to BOTH unless it falls into one of those two groups.
+ *     orchestrator is the only emitter (usage is accounted per run).
+ *   - `TASK_SUBAGENT` differs on purpose: a sub-agent that delegates in turn
+ *     calls `task` inside its own stream. That nested sub-agent's events still
+ *     arrive as top-level `SUBAGENT_EVENT`s (one envelope, its namespace one
+ *     level deeper), so they open a block of their own; here the call only
+ *     records what it was asked and by whom, for that block to pick up.
+ * Add a new event type to BOTH unless it falls into one of those groups.
  */
 function applySubagentInnerEvent(session: Session, key: string, inner: RawEvent): void {
   const fold = session.state.fold;
@@ -970,6 +988,24 @@ function applySubagentInnerEvent(session: Session, key: string, inner: RawEvent)
         }))
       : undefined;
     resolveInterrupt(session, interruptId, value.decision, value.reason ?? null, decisions);
+    return;
+  }
+
+  if (type === "CUSTOM" && inner.name === TASK_SUBAGENT_EVENT_TYPE) {
+    const parsed = TaskSubAgentPayloadSchema.safeParse(inner.value);
+    if (!parsed.success) return;
+    fold.nestedTasks = {
+      ...fold.nestedTasks,
+      [parsed.data.task_id]: {
+        parentKey: key,
+        type: parsed.data.subagent_type,
+        description: parsed.data.description,
+      },
+    };
+    const nestedIndex = fold.subagentIndexByKey[parsed.data.task_id];
+    if (nestedIndex !== undefined) {
+      applyNestedTask(blockForWrite<SubagentBlock>(session, nestedIndex), fold, parsed.data.task_id);
+    }
     return;
   }
 
@@ -1153,6 +1189,7 @@ function applyEvent(session: Session, event: RawEvent): void {
       // Receiving any event from inside the sub-agent is the proof it spawned —
       // an approved `task` call. A rejected one never reaches here.
       markSubagentSpawned(session, key, block, eventTimestamp(event));
+      applyNestedTask(block, fold, key);
       block.namespace = block.namespace || wrapper.namespace.join(" / ");
       block.label = block.label || toTitleCase(block.type);
       if (inner && typeof inner === "object") {

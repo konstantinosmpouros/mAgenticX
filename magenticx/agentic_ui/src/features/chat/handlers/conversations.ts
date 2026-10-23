@@ -9,7 +9,9 @@ import {
   setConversationPinned,
   getArchivedConversations,
   forkConversation,
+  saveConversation,
 } from "@/shared/lib/api";
+import { ApiError } from "@/shared/lib/http";
 import { toastError } from "@/shared/lib/toast";
 import type { Dispatch, SetStateAction } from "react";
 import type {
@@ -477,6 +479,50 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     }
   };
 
+  // "Save chat": the open private conversation becomes a normal one. The bridge
+  // queues its messages for memory, and from here on it is listed, searchable
+  // and in Usage — so the summary goes to the top of Chats, the open detail and
+  // the mode leave private (the card fades out of its incognito look), and
+  // Share / Archive / Delete come back. A 409 means it was already saved (a
+  // second tab, a double click): the same end state, so it lands the same way.
+  // Resolves true once the chat is saved.
+  const handleSaveCurrentConversation = async (): Promise<boolean> => {
+    const conversation = currentConversation;
+    if (!userId || !conversation?.id || !conversation.isPrivate) return false;
+    let summary: ConversationSummary;
+    try {
+      summary = await saveConversation(userId, conversation.id);
+    } catch (error) {
+      if (!(error instanceof ApiError && error.status === 409)) {
+        toastError(toast, "Couldn't save chat", error, { duration: 3500 });
+        return false;
+      }
+      const { messages: _messages, created_at, ...rest } = conversation;
+      summary = {
+        ...rest,
+        isPrivate: false,
+        created_at: new Date(created_at).toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+    }
+    setConversations((prev) =>
+      sortConversationSummaries([summary, ...prev.filter((c) => c.id !== summary.id)]),
+    );
+    setCurrentConversation((prev) =>
+      prev && prev.id === summary.id
+        ? { ...prev, isPrivate: false, updated_at: new Date(summary.updated_at) }
+        : prev,
+    );
+    setIsPrivateMode(false);
+    toast({
+      title: "Chat saved",
+      description: "It's in your chat list now, and in search and memory.",
+      duration: 2600,
+    });
+    persistUIState();
+    return true;
+  };
+
   const handleArchiveCurrentConversation = () => {
     // Keep current-thread actions as thin wrappers over the shared row-level handlers.
     void handleArchiveConversation(currentConversation?.id);
@@ -556,6 +602,7 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     handleArchiveConversation,
     handleUnarchiveConversation,
     handleToggleConversationPin,
+    handleSaveCurrentConversation,
     handleArchiveCurrentConversation,
     handleUnarchiveCurrentConversation,
     handleOpenSearch,

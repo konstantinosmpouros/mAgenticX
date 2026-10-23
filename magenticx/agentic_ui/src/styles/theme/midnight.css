@@ -1,0 +1,106 @@
+/* Midnight: sophisticated, secure, powerful. The dark theme: deep navy
+   surfaces with a violet accent, royal and pink glows.
+
+   `.dark` uses the same values: surfaces that stay dark in every theme (the
+   sign-in page, anything else carrying the `dark` class) take Midnight's
+   colors whatever theme is active.
+
+   Every token is an HSL triplet ("H S% L%"), used as `hsl(var(--token))`. */
+
+@layer base {
+  :root[data-theme="midnight"],
+  .dark {
+    --background: 225 60% 7%;
+    --foreground: 230 60% 96%;
+
+    --card: 225 55% 10%;
+    --card-foreground: 230 60% 96%;
+
+    --popover: 225 55% 10%;
+    --popover-foreground: 230 60% 96%;
+
+    /* The violet swatch, lifted to read on navy; dark text on it. */
+    --primary: 262 94% 70%;
+    --primary-foreground: var(--midnight-1);
+    --primary-glow: var(--midnight-4);
+
+    --secondary: 225 45% 13%;
+    --secondary-foreground: 230 60% 96%;
+
+    --muted: 225 45% 13%;
+    --muted-foreground: 228 20% 66%;
+
+    /* shadcn's `accent` is the SUBTLE hover/selected surface, not a brand color. */
+    --accent: 225 40% 16%;
+    --accent-foreground: 230 60% 96%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Status colors, lifted to stay legible on the dark surfaces. */
+    --success: 142 65% 55%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 95% 58%;
+    --warning-foreground: var(--midnight-1);
+    --info: 211 100% 70%;
+    --info-foreground: var(--midnight-1);
+
+    /* The roles the light themes set (light.css), for anything reading them
+       directly. */
+    --theme-primary: 262 94% 70%;
+    --theme-primary-fg: var(--midnight-1);
+    --theme-glow: var(--midnight-4);
+    --theme-gradient: var(--gradient-primary);
+
+    /* A sub-agent at work (styles/subagent.css): the violet, and the pink. */
+    --subagent-active: 262 94% 70%;
+    --subagent-active-glow: var(--midnight-4);
+
+    /* The orb's halo (styles/orb.css): royal, violet, pink, lifted for navy. */
+    --orb-glow-1: 227 85% 62%;
+    --orb-glow-2: var(--midnight-3);
+    --orb-glow-3: var(--midnight-4);
+
+    --border: 225 40% 18%;
+    --input: 225 40% 18%;
+    --ring: transparent;
+
+    /* Chart series: the palette's hues, lifted to read on navy without glowing. */
+    --chart-1: 262 94% 70%;
+    --chart-2: 227 85% 68%;
+    --chart-3: 305 98% 77%;
+    --chart-4: 171 60% 55%;
+    --chart-5: 33 90% 62%;
+
+    /* Neutral hover surfaces. */
+    --hover-surface: 225 40% 16%;
+    --hover-surface-strong: 225 40% 12%;
+
+    --chat-user: 225 45% 14%;
+    --chat-user-foreground: 230 60% 96%;
+    --chat-agent: 225 45% 13%;
+    --chat-agent-foreground: 230 60% 96%;
+
+    --gradient-card: linear-gradient(135deg, hsl(225 45% 12%) 0%, hsl(225 45% 15%) 100%);
+    --gradient-primary: linear-gradient(
+      135deg,
+      hsl(var(--midnight-2)) 0%,
+      hsl(var(--midnight-3)) 55%,
+      hsl(var(--midnight-4)) 100%
+    );
+
+    --shadow-elegant: 0 10px 40px -10px hsl(var(--midnight-3) / 0.35);
+    --shadow-soft: 0 4px 20px -4px hsl(225 60% 3% / 0.45);
+    --shadow-card: 0 2px 8px -2px hsl(225 60% 3% / 0.35);
+
+    --sidebar-foreground: 230 40% 92%;
+    --sidebar-primary: 262 94% 70%;
+    --sidebar-primary-foreground: var(--midnight-1);
+    --sidebar-accent: 225 40% 16%;
+    --sidebar-accent-foreground: 230 60% 96%;
+    --sidebar-border: 225 40% 18%;
+    --sidebar-ring: 262 94% 70%;
+    --sidebar-background: var(--background);
+    --sidebar-icon-bg: color-mix(in srgb, hsl(var(--primary)) 18%, hsl(var(--background)));
+  }
+}

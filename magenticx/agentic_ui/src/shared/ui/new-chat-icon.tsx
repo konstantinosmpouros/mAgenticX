@@ -3,8 +3,8 @@ import type { SVGProps } from "react";
 import { cn } from "@/shared/lib/utils";
 
 /**
- * The "new chat" mark: a rounded square left open at its top-right corner, with
- * a pencil writing into it.
+ * The "new chat" mark: a softly rounded square left open at its top-right
+ * corner, with a pencil writing into it — the same drawing as the thesis app's.
  *
  * Drawn as an outline SVG rather than the old `edit.png` / `edit2.png` pair,
  * which were rendered artwork with a baked-in glow and background: they needed
@@ -29,11 +29,11 @@ export function NewChatIcon({ className, strokeWidth = 2, ...props }: SVGProps<S
       className={cn("h-5 w-5 shrink-0", className)}
       {...props}
     >
-      {/* The page: generous corners, open where the pencil comes in. */}
-      <path d="M11.5 4H7.5A3.5 3.5 0 0 0 4 7.5v9A3.5 3.5 0 0 0 7.5 20h9a3.5 3.5 0 0 0 3.5-3.5v-4" />
-      {/* The pencil: a slim body with a rounded cap at the top-right and a short
-          pointed tip at the bottom-left — kept narrow so it still reads at 20px. */}
-      <path d="M17.4 4.6a1.5 1.5 0 0 1 2.1 2.1L12.2 14l-2.75.65.65-2.75z" />
+      {/* The page: a softly rounded square filling the grid, open where the
+          pencil comes in (the thesis app's mark — it reads fuller at 20px). */}
+      <path d="M11.25 3.75h-3a4.5 4.5 0 0 0-4.5 4.5v7.5a4.5 4.5 0 0 0 4.5 4.5h7.5a4.5 4.5 0 0 0 4.5-4.5v-3" />
+      {/* The pencil: rounded cap at the top-right, pointed tip at the bottom-left. */}
+      <path d="M17.7 4.3a2.12 2.12 0 0 1 3 3l-7.2 7.2-3.85 1.05 1.05-3.85z" />
     </svg>
   );
 }

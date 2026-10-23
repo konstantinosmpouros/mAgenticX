@@ -1,5 +1,5 @@
 """Conversation lifecycle DTOs: create/fork/update, summaries + detail, titles, suggestions, reports."""
-from typing import List, Optional
+from typing import List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 from schema.base import UTCDateTime
 from schema.catalog import AgentPublic
@@ -112,6 +112,12 @@ class ConversationTitleUpdate(BaseModel):
             resolved = resolved[:200].rstrip()
         self.title = resolved
         return self
+
+
+class ConversationVisibilityUpdate(BaseModel):
+    """Save a private conversation as a normal one. One-way: a saved chat
+    cannot be made private again, so the only accepted value is ``false``."""
+    isPrivate: Literal[False]
 
 
 class ConversationReportIn(BaseModel):

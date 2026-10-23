@@ -1,6 +1,6 @@
 import base64
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from typing import List, Optional
 
 from fastapi import HTTPException, status
@@ -182,6 +182,44 @@ async def set_conversation_pin_state(
     )
     await db.commit()
     await db.refresh(conv, attribute_names=["is_pinned", "pinned_at", "updated_at", "agent"])
+
+
+async def save_private_conversation(db: AsyncSession, conv: ConversationTable) -> int:
+    """Turn a private conversation into a normal one ("Save chat"). One-way.
+
+    The conversation joins the user's chat list at the top (its ``updated_at``
+    moves to now, as any activity would), and from then on shows up in search,
+    suggestions and the Usage list, which all filter on ``is_private``.
+
+    Its messages go back on the embedding sweeper's queue: while private, the
+    sweeper looked at them and marked them checked without a vector (privacy
+    was final then). Clearing ``embedding_checked_at`` lets the next passes
+    embed them like any other conversation's, so memory search finds them.
+    Their own ``updated_at`` is left as it was — this is bookkeeping, not an edit.
+
+    Returns the number of messages queued. 409 if the conversation is not private.
+    """
+    if not conv.is_private:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Conversation is already saved.",
+        )
+    now = datetime.now(UTC).replace(tzinfo=None)
+    await db.execute(
+        update(ConversationTable)
+        .where(ConversationTable.id == conv.id, ConversationTable.is_private.is_(True))
+        .values(is_private=False, updated_at=now)
+        .execution_options(synchronize_session=False)
+    )
+    queued = await db.execute(
+        update(MessageTable)
+        .where(MessageTable.conversation_id == conv.id)
+        .values(embedding_checked_at=None, updated_at=MessageTable.updated_at)
+        .execution_options(synchronize_session=False)
+    )
+    await db.commit()
+    await db.refresh(conv, attribute_names=["is_private", "updated_at", "agent"])
+    return queued.rowcount or 0
 
 
 def _preview(text: Optional[str]) -> Optional[str]:

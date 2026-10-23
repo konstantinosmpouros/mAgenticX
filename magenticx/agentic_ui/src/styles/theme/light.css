@@ -1,107 +1,106 @@
-/* Light: the default theme, so its tokens sit on `:root` and every other theme
-   only overrides them under `:root[data-theme="<id>"]` (see README.md).
+/* The tokens every light theme shares. Each light theme (daylight.css,
+   aurora.css, sunset.css, sage.css, citrus.css) only sets its roles:
 
-   Every color is an HSL triplet ("H S% L%"), used as `hsl(var(--token))`, so
-   Tailwind's opacity modifiers work (`bg-primary/10`). */
+     --theme-primary      buttons, links, focus: a swatch deep enough to read
+     --theme-primary-fg   text on the primary color
+     --theme-glow         a lighter swatch for glows and highlights
+     --theme-gradient     the theme's sweep, from its swatches
+     --tint               "H S%" of the surfaces (muted panels, the app frame)
+     --tint-line          "H S%" of borders and hover surfaces
+     --orb-glow-1..3      the orb's halo (styles/orb.css), matched to its artwork
+
+   Midnight (the dark theme) defines its tokens in full: midnight.css.
+
+   Every token is an HSL triplet ("H S% L%"), used as `hsl(var(--token))`, so
+   Tailwind's opacity modifiers work (`bg-primary/10`). The names follow
+   shadcn's contract; see README.md in this folder. */
 
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
+    --foreground: var(--brand-ink);
 
     --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
+    --card-foreground: var(--brand-ink);
 
     --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
+    --popover-foreground: var(--brand-ink);
 
-    --primary: 293 89% 74%;
-    --primary-foreground: 0 0% 9%;
-    --primary-glow: 293 89% 84%;
+    --primary: var(--theme-primary);
+    --primary-foreground: var(--theme-primary-fg);
+    --primary-glow: var(--theme-glow);
 
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
+    --secondary: var(--tint) 96%;
+    --secondary-foreground: var(--brand-ink);
 
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
+    --muted: var(--tint) 96%;
+    --muted-foreground: var(--tint-line) 40%;
 
-    /* shadcn's contract: `accent` is the SUBTLE hover/selected surface used by
-       ghost + outline buttons, dropdown and select items, and the dialog close.
-       It was set to a saturated blue (216 100% 50%), which made every one of
-       those flash bright blue on hover — visible on the Skills tab's remove
-       button. Matched to --hover-surface, which already exists for exactly
-       this job. Nothing in the app used accent as a brand colour. */
-    --accent: 240 5% 90%;
-    --accent-foreground: 240 10% 3.9%;
+    /* shadcn's `accent` is the SUBTLE hover/selected surface (ghost and outline
+       buttons, menu and select items, the dialog close), not a brand color. */
+    --accent: var(--tint-line) 92%;
+    --accent-foreground: var(--brand-ink);
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    /* Status colors — consumed by the toast system (see shared/ui/toast-card.tsx)
-       and available for any status UI. Light-theme lightness is tuned for AA
-       contrast against white surfaces. */
+    /* Status colors (toasts, shared/ui/toast-card.tsx, and status UI), tuned
+       for AA on white. */
     --success: 142 71% 40%;
     --success-foreground: 0 0% 100%;
-
     --warning: 32 95% 44%;
     --warning-foreground: 0 0% 100%;
-
-    --info: 216 100% 50%;
+    --info: 212 85% 50%;
     --info-foreground: 0 0% 100%;
 
     /* A sub-agent at work (styles/subagent.css): its status chip and the light
-       that runs round its card. The brand magenta, deepened so the chip text
-       holds AA on white; the glow is the brand primary itself. */
-    --subagent-active: 293 70% 45%;
-    --subagent-active-glow: 293 89% 74%;
+       that runs round its card. The primary holds AA for the chip text on
+       white; the glow is the theme's lighter swatch. */
+    --subagent-active: var(--theme-primary);
+    --subagent-active-glow: var(--theme-glow);
 
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
+    --border: var(--tint-line) 89%;
+    --input: var(--tint-line) 89%;
     --ring: transparent;
 
-    /* Chart series palette — assigned by series index in ChartCard, so an
-       agent never sends a color and every chart stays theme-correct. Hues are
-       spread around the wheel from the brand primary (293) and kept at a
-       lightness that holds >=3:1 against the light surface. */
-    --chart-1: 293 70% 52%;
-    --chart-2: 199 82% 42%;
-    --chart-3: 152 58% 36%;
-    --chart-4: 33 88% 46%;
-    --chart-5: 349 72% 52%;
+    /* Chart series, assigned by index in ChartCard (an agent never sends a
+       color), kept >= 3:1 on white. */
+    --chart-1: var(--theme-primary);
+    --chart-2: 205 85% 42%;
+    --chart-3: 262 55% 55%;
+    --chart-4: 157 50% 36%;
+    --chart-5: 33 88% 46%;
 
-    /* Neutral hover surfaces for light theme */
-    --hover-surface: 240 5% 90%;
-    --hover-surface-strong: 240 5% 86%;
+    /* Neutral hover surfaces. */
+    --hover-surface: var(--tint-line) 93%;
+    --hover-surface-strong: var(--tint-line) 89%;
 
-    /* Professional chat colors - light theme */
-    /* Match user bubble to dark mode for consistency in light theme */
-    --chat-user: 240 6% 12%;
-    --chat-user-foreground: 0 0% 95%;
-    --chat-agent: 240 4.8% 95.9%;
-    --chat-agent-foreground: 240 10% 3.9%;
+    /* Chat bubbles: the user's bubble is dark in every theme. */
+    --chat-user: var(--tint-line) 14%;
+    --chat-user-foreground: 0 0% 97%;
+    --chat-agent: var(--tint) 96%;
+    --chat-agent-foreground: var(--brand-ink);
 
-    --gradient-card: linear-gradient(135deg, hsl(0, 0%, 100%) 0%, hsl(240, 4.8%, 97%) 100%);
-    --gradient-primary: linear-gradient(135deg, hsl(293, 89%, 74%) 0%, hsl(293, 89%, 84%) 100%);
+    --gradient-card: linear-gradient(135deg, hsl(0 0% 100%) 0%, hsl(var(--tint) 97%) 100%);
+    --gradient-primary: var(--theme-gradient);
 
-    /* Light theme shadows */
-    --shadow-elegant: 0 10px 40px -10px hsl(293, 89%, 74%, 0.15);
-    --shadow-soft: 0 4px 20px -4px hsl(240, 10%, 3.9%, 0.1);
-    --shadow-card: 0 2px 8px -2px hsl(240, 10%, 3.9%, 0.1);
+    --shadow-elegant: 0 10px 40px -10px hsl(var(--theme-primary) / 0.2);
+    --shadow-soft: 0 4px 20px -4px hsl(var(--brand-ink) / 0.1);
+    --shadow-card: 0 2px 8px -2px hsl(var(--brand-ink) / 0.1);
 
-    /* Smooth transitions with different speeds */
     --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     --transition-slow: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 
     --radius: 0.5rem;
 
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-foreground: var(--tint-line) 25%;
+    --sidebar-primary: var(--brand-ink);
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: var(--tint) 96%;
+    --sidebar-accent-foreground: var(--brand-ink);
+    --sidebar-border: var(--tint-line) 89%;
+    --sidebar-ring: var(--theme-primary);
     --sidebar-background: var(--background);
-    --sidebar-icon-bg: color-mix(in srgb, hsl(var(--primary)) 25%, hsl(var(--background)));
+    --sidebar-icon-bg: color-mix(in srgb, hsl(var(--primary)) 14%, hsl(var(--background)));
   }
 }

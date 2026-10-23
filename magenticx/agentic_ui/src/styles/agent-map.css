@@ -1,0 +1,77 @@
+/* The agent map's tree (features/chat/components/agent_map/).
+
+   Markup: .agent-map-group (a list of children, indented under its parent) >
+   .agent-map-branch (one child). Each branch draws its own connector: a rail
+   down the group's left edge (::before) and a rounded elbow into the row
+   (::after), so the lines follow the rows when a branch opens, closes or a
+   row arrives mid-run. The last branch's rail stops at its elbow. `--am-elbow`
+   is the distance from the top of a branch to the middle of its row; set per
+   row kind, since an answer row is shorter than a sub-agent card. A branch
+   whose sub-agent is working lights its connector in the sub-agent colour. */
+
+.agent-map-group {
+  --am-indent: 1.125rem;
+  --am-gap: 0.875rem;
+  --am-line: hsl(var(--primary) / 0.32);
+  position: relative;
+  margin-left: var(--am-indent);
+  padding-left: var(--am-gap);
+}
+
+.agent-map-branch {
+  --am-elbow: 1.75rem;
+  position: relative;
+}
+
+.agent-map-branch::before,
+.agent-map-branch::after {
+  content: "";
+  position: absolute;
+  left: calc(-1 * var(--am-gap));
+  pointer-events: none;
+  transition:
+    border-color 0.3s ease,
+    background-color 0.3s ease;
+}
+
+/* The rail: full height, so it runs on to the next sibling. */
+.agent-map-branch::before {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--am-line);
+}
+
+.agent-map-branch:last-child::before {
+  bottom: auto;
+  height: calc(var(--am-elbow) - 0.625rem);
+}
+
+/* The elbow: a quarter round from the rail into the row. */
+.agent-map-branch::after {
+  top: calc(var(--am-elbow) - 0.625rem);
+  width: calc(var(--am-gap) - 0.125rem);
+  height: 0.625rem;
+  border-left: 1px solid var(--am-line);
+  border-bottom: 1px solid var(--am-line);
+  border-bottom-left-radius: 0.625rem;
+}
+
+.agent-map-branch[data-active="true"]::after {
+  border-color: hsl(var(--subagent-active) / 0.85);
+}
+
+.agent-map-branch[data-active="true"]:last-child::before {
+  background: linear-gradient(to bottom, var(--am-line), hsl(var(--subagent-active) / 0.85));
+}
+
+/* Keyboard focus rings the row, not the whole branch (which holds the
+   children too). */
+.agent-map-item:focus-visible {
+  outline: none;
+}
+
+.agent-map-item:focus-visible > .agent-map-row {
+  outline: 2px solid hsl(var(--primary) / 0.7);
+  outline-offset: 1px;
+}

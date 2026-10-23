@@ -1,24 +1,12 @@
 import * as React from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import {
-  Bot,
-  Check,
-  ChevronRight,
-  CircleAlert,
-  CircleDashed,
-  CircleSlash,
-  Clock,
-  Copy,
-  Hand,
-  Loader2,
-  MessageSquareText,
-  Wrench,
-} from "lucide-react";
+import { Bot, Check, ChevronRight, Copy, Hand, MessageSquareText, Wrench } from "lucide-react";
 
 import { Button } from "@/shared/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { cn } from "@/shared/lib/utils";
 import { HitlRequestSummary } from "./HitlActionSummary";
+import { STATUS_META } from "./subagentStatus";
 
 import type {
   SubagentInterrupt,
@@ -321,42 +309,6 @@ function ToolCallItem({
   );
 }
 
-const STATUS_META: Record<
-  SubagentRunStatus,
-  { label: string; chip: string; icon: React.ReactNode }
-> = {
-  pending: {
-    label: "Starting",
-    chip: "bg-muted text-muted-foreground",
-    icon: <CircleDashed className="h-3 w-3" aria-hidden="true" />,
-  },
-  running: {
-    label: "Running",
-    chip: "bg-[hsl(var(--subagent-active)/0.12)] text-[hsl(var(--subagent-active))]",
-    icon: <Loader2 className="h-3 w-3 motion-safe:animate-spin" aria-hidden="true" />,
-  },
-  awaiting_approval: {
-    label: "Awaiting approval",
-    chip: "bg-warning/15 text-warning",
-    icon: <Clock className="h-3 w-3" aria-hidden="true" />,
-  },
-  done: {
-    label: "Done",
-    chip: "bg-success/15 text-success",
-    icon: <Check className="h-3 w-3" aria-hidden="true" />,
-  },
-  failed: {
-    label: "Failed",
-    chip: "bg-destructive/[0.12] text-destructive",
-    icon: <CircleAlert className="h-3 w-3" aria-hidden="true" />,
-  },
-  cancelled: {
-    label: "Cancelled",
-    chip: "bg-muted text-muted-foreground",
-    icon: <CircleSlash className="h-3 w-3" aria-hidden="true" />,
-  },
-};
-
 /** "<1s", "42s", "3m 05s" — how long a settled sub-agent worked. */
 function formatSubagentDuration(startedAt?: number, endedAt?: number): string | null {
   if (typeof startedAt !== "number" || typeof endedAt !== "number" || endedAt < startedAt) {
@@ -379,6 +331,11 @@ export type SubagentCardProps = {
   // Side-panel mode: expanding the card reveals the section headers only;
   // each section (and each tool) opens on demand instead of all at once.
   defaultCollapsedSections?: boolean;
+  /**
+   * Opens the sub-agent somewhere else (the agent map drills into it): the
+   * card stays a row and a click calls this instead of expanding it.
+   */
+  onOpen?: () => void;
 };
 
 /**
@@ -393,6 +350,7 @@ export function SubagentCard({
   index = 0,
   status = null,
   defaultCollapsedSections = false,
+  onOpen,
 }: SubagentCardProps) {
   const transcript = getSubagentTranscript(subagent);
   const title = getSubagentTitle(subagent, index);
@@ -406,7 +364,8 @@ export function SubagentCard({
   const settled = status === "done" || status === "failed" || status === "cancelled";
   const duration = settled ? formatSubagentDuration(subagent.startedAt, subagent.endedAt) : null;
   const showType = Boolean(subagent.type && normalizeName(subagent.type) !== normalizeName(title));
-  const [cardExpanded, setCardExpanded] = React.useState(false);
+  const [expanded, setCardExpanded] = React.useState(false);
+  const cardExpanded = expanded && !onOpen;
   const [textExpanded, setTextExpanded] = React.useState(!defaultCollapsedSections);
   const [toolsExpanded, setToolsExpanded] = React.useState(!defaultCollapsedSections);
   const [interruptsExpanded, setInterruptsExpanded] = React.useState(!defaultCollapsedSections);
@@ -456,9 +415,9 @@ export function SubagentCard({
         <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-primary/[0.05] to-transparent" />
         <button
           type="button"
-          onClick={() => setCardExpanded((current) => !current)}
-          aria-expanded={cardExpanded}
-          aria-label={`${title}${meta ? `, ${meta.label}` : ""}`}
+          onClick={onOpen ?? (() => setCardExpanded((current) => !current))}
+          aria-expanded={onOpen ? undefined : cardExpanded}
+          aria-label={`${onOpen ? "Open " : ""}${title}${meta ? `, ${meta.label}` : ""}`}
           className="relative flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
         >
           <span

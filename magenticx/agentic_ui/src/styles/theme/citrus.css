@@ -1,0 +1,23 @@
+/* Citrus: vibrant, creative, positive. Burnt orange with amber and peach on
+   warm white. Shared light tokens: light.css. */
+
+@layer base {
+  :root[data-theme="citrus"] {
+    --theme-primary: 21 95% 40%; /* the orange swatch, deep enough for white text */
+    --theme-primary-fg: 0 0% 100%;
+    --theme-glow: var(--citrus-2);
+    --theme-gradient: linear-gradient(
+      135deg,
+      hsl(var(--citrus-1)) 0%,
+      hsl(var(--citrus-3)) 40%,
+      hsl(var(--citrus-2)) 75%,
+      hsl(var(--citrus-4)) 100%
+    );
+    --tint: 30 14%;
+    --tint-line: 30 10%;
+    /* The orb's halo (styles/orb.css): orange, amber, peach. */
+    --orb-glow-1: var(--citrus-1);
+    --orb-glow-2: var(--citrus-2);
+    --orb-glow-3: var(--citrus-3);
+  }
+}

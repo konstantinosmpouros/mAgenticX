@@ -1,11 +1,16 @@
 /**
  * The themes the user can pick. One entry per theme; its colors live in
- * `<id>.css` in this folder (see README.md there).
+ * `<id>.css` in this folder, under `:root[data-theme="<id>"]` (see README.md).
  *
- * Read by the app (Settings → General, the sidebar logo, toasts, anything that
- * needs to know light from dark). `public/theme-init.js` runs before the app
- * loads and keeps its own copy of the dark ids: update it when adding a dark
- * theme.
+ * Read by the app (Settings → General, the sidebar logo, the orb, toasts,
+ * anything that needs to know light from dark). `public/theme-init.js` runs
+ * before the app loads and keeps its own copy of the ids, the dark ids, the
+ * legacy aliases and the first-run choice (resolveStoredTheme): update it when
+ * adding a theme.
+ *
+ * There is no "System" theme: a first visit (or a "system" stored before it was
+ * removed) gets Daylight or Midnight from the device's preference at that
+ * moment, stored as an explicit choice.
  */
 export type ThemeMode = "light" | "dark";
 
@@ -13,42 +18,170 @@ export type ThemeDefinition = {
   /** Stored in localStorage and set as `data-theme` on <html>. */
   id: string;
   label: string;
+  description: string;
   /** Dark themes also get the `dark` class, which Tailwind's `dark:` variant uses. */
   mode: ThemeMode;
-  /** The sidebar logo, drawn to read on this theme's background. */
-  logo: string;
-  /** The theme's swatch in Settings → General (a CSS background). */
-  preview: string;
+  /** Colors for the theme's card in Settings → General: background, surface, accent. */
+  preview: { background: string; surface: string; accent: string };
+  /**
+   * The sidebar logo drawn for this theme (a path under `public/`). Optional:
+   * without one the theme gets the default logo for its mode (DEFAULT_LOGOS).
+   */
+  logo?: string;
+  /**
+   * The orb artwork for this theme (a square WebP under `public/`). Optional:
+   * without one the theme gets DEFAULT_ORB. Retune the theme's --orb-glow-*
+   * (its CSS file) to a new artwork's colours.
+   */
+  orb?: string;
 };
 
-// The ids are next-themes' own "light" and "dark", the names the system
-// preference resolves to, so a stored choice from before themes existed keeps
-// working.
+/** The logo a theme without its own `logo` gets: one drawn for light, one for dark backgrounds. */
+export const DEFAULT_LOGOS: Record<ThemeMode, string> = {
+  light: "/logo2.png",
+  dark: "/logo2_white_magentaX.png",
+};
+
+/** The orb a theme without its own `orb` gets (the Daylight artwork). */
+export const DEFAULT_ORB = "/orbital-hub-transparent.webp";
+
 export const THEMES: readonly ThemeDefinition[] = [
   {
-    id: "light",
-    label: "Light",
+    id: "daylight",
+    label: "Daylight",
+    description: "Clear. Modern. Open.",
     mode: "light",
-    logo: "/logo2.png",
-    preview:
-      "linear-gradient(135deg, hsl(0 0% 100%) 0%, hsl(240 4.8% 95.9%) 52%, hsl(216 50% 92%) 100%)",
+    preview: { background: "#f1f8fd", surface: "#dcebf7", accent: "#0277cd" },
+    orb: "/orbital-hub-transparent.webp",
   },
   {
-    id: "dark",
-    label: "Dark",
+    id: "midnight",
+    label: "Midnight",
+    description: "Sophisticated. Secure. Powerful.",
     mode: "dark",
-    logo: "/logo2_white_magentaX.png",
-    preview:
-      "linear-gradient(135deg, hsl(240 6% 6%) 0%, hsl(240 8% 10%) 55%, hsl(216 100% 8%) 100%)",
+    preview: { background: "#081028", surface: "#111a36", accent: "#a576fa" },
+    orb: "/orbital-hub-midnight.webp",
+  },
+  {
+    id: "aurora",
+    label: "Aurora",
+    description: "Bold. Dynamic. Inspiring.",
+    mode: "light",
+    preview: { background: "#f0f6fd", surface: "#dde9f8", accent: "#8a45f6" },
+    orb: "/orbital-hub-aurora.webp",
+  },
+  {
+    id: "sunset",
+    label: "Sunset",
+    description: "Warm. Creative. Optimistic.",
+    mode: "light",
+    preview: { background: "#faf7f8", surface: "#f1e6ea", accent: "#dd0374" },
+    orb: "/orbital-hub-sunset.webp",
+  },
+  {
+    id: "sage",
+    label: "Sage",
+    description: "Balanced. Natural. Sustainable.",
+    mode: "light",
+    preview: { background: "#f1f9f9", surface: "#dcefef", accent: "#024d58" },
+    orb: "/orbital-hub-sage.webp",
+  },
+  {
+    id: "citrus",
+    label: "Citrus",
+    description: "Vibrant. Creative. Positive.",
+    mode: "light",
+    preview: { background: "#f9f8f7", surface: "#efebe6", accent: "#c74b05" },
+    orb: "/orbital-hub-citrus.webp",
   },
 ];
+
+export const DEFAULT_LIGHT_THEME = "daylight";
+export const DEFAULT_DARK_THEME = "midnight";
 
 export const THEME_IDS: string[] = THEMES.map((theme) => theme.id);
 
 /**
- * The theme definition for a resolved name (next-themes' `resolvedTheme`).
- * Anything unknown, including an unresolved "system", falls back to Light.
+ * Names stored before the palette themes existed, with the theme each one
+ * means. `public/theme-init.js` rewrites a stored legacy name once; this map
+ * covers the rest.
+ */
+export const LEGACY_THEME_ALIASES: Record<string, string> = {
+  light: DEFAULT_LIGHT_THEME,
+  dark: DEFAULT_DARK_THEME,
+};
+
+/**
+ * next-themes' `value` map (the `data-theme` written for each name): every
+ * theme id to itself, plus the legacy names.
+ */
+export const THEME_ATTRIBUTE_VALUES: Record<string, string> = {
+  ...Object.fromEntries(THEME_IDS.map((id) => [id, id])),
+  ...LEGACY_THEME_ALIASES,
+};
+
+/**
+ * The theme definition for a stored or resolved name (next-themes'
+ * `resolvedTheme`), legacy names included. Anything unknown falls back to
+ * Daylight.
  */
 export function themeFor(name: string | undefined | null): ThemeDefinition {
-  return THEMES.find((theme) => theme.id === name) ?? THEMES[0];
+  const id = THEME_ATTRIBUTE_VALUES[name ?? ""] ?? DEFAULT_LIGHT_THEME;
+  return THEMES.find((theme) => theme.id === id) ?? THEMES[0];
+}
+
+/** The sidebar logo for a theme name: its own, or the default for its mode. */
+export function logoFor(name: string | undefined | null): string {
+  const theme = themeFor(name);
+  return theme.logo ?? DEFAULT_LOGOS[theme.mode];
+}
+
+/** The orb artwork for a theme name: its own, or the default. */
+export function orbFor(name: string | undefined | null): string {
+  return themeFor(name).orb ?? DEFAULT_ORB;
+}
+
+/**
+ * The theme to store for what localStorage holds. A theme id stays; a legacy
+ * "light" / "dark" becomes Daylight / Midnight; nothing stored, "system" (the
+ * removed System option) or an unknown name becomes Daylight or Midnight from
+ * the device's preference now. `public/theme-init.js` does the same before the
+ * first paint; keep the two in step.
+ */
+export function resolveStoredTheme(stored: string | null | undefined, prefersDark: boolean): string {
+  if (stored && THEME_IDS.includes(stored)) return stored;
+  if (stored && LEGACY_THEME_ALIASES[stored]) return LEGACY_THEME_ALIASES[stored];
+  return prefersDark ? DEFAULT_DARK_THEME : DEFAULT_LIGHT_THEME;
+}
+
+function prefersDarkScheme(): boolean {
+  try {
+    return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The stored theme, migrated and written back as an explicit choice (a no-op
+ * when theme-init.js already did it). Called once before next-themes mounts;
+ * its result is next-themes' `defaultTheme`, so with storage blocked the app
+ * still starts on the theme theme-init.js painted.
+ */
+export function migrateStoredTheme(storageKey = "theme"): string {
+  let stored: string | null = null;
+  try {
+    stored = window.localStorage.getItem(storageKey);
+  } catch {
+    // No storage (private mode, blocked).
+  }
+  const theme = resolveStoredTheme(stored, prefersDarkScheme());
+  if (stored !== theme) {
+    try {
+      window.localStorage.setItem(storageKey, theme);
+    } catch {
+      // No storage: the choice lasts for this page only.
+    }
+  }
+  return theme;
 }

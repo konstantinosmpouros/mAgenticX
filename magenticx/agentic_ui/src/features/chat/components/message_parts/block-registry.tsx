@@ -30,6 +30,9 @@ export type BlockRenderContext = {
   // A sub-agent block's status as its card shows it (`subagentRunStatus`):
   // computed from the whole run (live or not, pending approvals), not the block.
   subagentStatus?: SubagentRunStatus | null;
+  // Set where a sub-agent card opens the sub-agent elsewhere (the agent map)
+  // instead of expanding in place.
+  onOpenSubagent?: () => void;
   doneStatus?: TimelineTerminalStatus;
   fallbackDurationSeconds?: number | null;
   open: boolean;
@@ -83,6 +86,7 @@ export const BLOCK_REGISTRY: Record<
       subagent={subagentBlockToItem(block as SubagentBlock)}
       index={ctx.subagentIndex}
       status={ctx.subagentStatus}
+      onOpen={ctx.onOpenSubagent}
     />
   ),
   thinking: (block, ctx) => (

@@ -1,0 +1,23 @@
+/* Aurora: bold, dynamic, inspiring. Violet with cyan and magenta glows on
+   cool white. Shared light tokens: light.css. */
+
+@layer base {
+  :root[data-theme="aurora"] {
+    --theme-primary: var(--aurora-3); /* the violet swatch reads on white as is */
+    --theme-primary-fg: 0 0% 100%;
+    --theme-glow: var(--aurora-1);
+    --theme-gradient: linear-gradient(
+      135deg,
+      hsl(var(--aurora-1)) 0%,
+      hsl(var(--aurora-2)) 30%,
+      hsl(var(--aurora-3)) 65%,
+      hsl(var(--aurora-4)) 100%
+    );
+    --tint: 212 76%;
+    --tint-line: 220 30%;
+    /* The orb's halo (styles/orb.css): cyan, violet, magenta. */
+    --orb-glow-1: var(--aurora-1);
+    --orb-glow-2: var(--aurora-3);
+    --orb-glow-3: var(--aurora-4);
+  }
+}

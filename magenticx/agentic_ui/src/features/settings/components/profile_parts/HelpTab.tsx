@@ -30,8 +30,7 @@ type HelpTabProps = {
 };
 
 export default function HelpTab({ archivedConversations, availableTools }: HelpTabProps) {
-  // resolvedTheme, not theme: theme is often "system", which says nothing about
-  // what is on screen.
+  // resolvedTheme, not theme: theme can still be a legacy "light" / "dark".
   const { resolvedTheme } = useTheme();
   const currentTheme = themeFor(resolvedTheme);
   // Tools are no longer globally enabled/disabled — this is the size of the

@@ -1,6 +1,6 @@
 /**
  * Conversation CRUD — list (active/pinned/archived), detail, fork, and the
- * lifecycle mutations (delete, archive, unarchive, pin, unpin, report, rename).
+ * lifecycle mutations (delete, archive, unarchive, pin, unpin, save, report, rename).
  */
 import type {
   CompactionOutcome,
@@ -149,6 +149,25 @@ export async function setConversationPinned(
       csrf: true,
       schema: WireObjectSchema,
       fallbackMessage: pinned ? "Failed to pin conversation" : "Failed to unpin conversation",
+    },
+  );
+  return transformConversationSummary(data);
+}
+
+// Save a private conversation as a normal one ("Save chat") and return the
+// updated summary. One-way; 409 when it is already saved.
+export async function saveConversation(
+  userId: string,
+  conversationId: string,
+): Promise<ConversationSummary> {
+  const data = await requestJson(
+    `${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}/visibility`,
+    {
+      method: "PATCH",
+      csrf: true,
+      body: { isPrivate: false },
+      schema: WireObjectSchema,
+      fallbackMessage: "Failed to save conversation",
     },
   );
   return transformConversationSummary(data);

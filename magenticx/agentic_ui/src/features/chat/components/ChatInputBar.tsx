@@ -58,6 +58,8 @@ type ChatInputBarProps = {
   compaction?: ContextCompactionControl | null;
   // Slash commands (plan 35): the menu, and the command highlighted in the draft.
   slash?: SlashComposer | null;
+  /** The agent-map button, placed right of the context ring. */
+  agentMapControl?: React.ReactNode;
   currentMessage: string;
   setCurrentMessage: (v: string) => void;
   handlePaste: React.ClipboardEventHandler<HTMLTextAreaElement>;
@@ -139,6 +141,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
     conversationStats = null,
     compaction = null,
     slash = null,
+    agentMapControl = null,
     currentMessage,
     setCurrentMessage,
     handlePaste,
@@ -1011,6 +1014,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
                             </TooltipContent>
                           </Tooltip>
                           <ContextMeter context={contextUsage ?? null} stats={conversationStats} compaction={compaction} />
+                          {agentMapControl}
                         </div>
 
                         {dictationStatus === "idle" ? (

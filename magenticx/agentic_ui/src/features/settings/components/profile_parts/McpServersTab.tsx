@@ -19,8 +19,8 @@ type McpServersTabProps = {
 };
 
 export default function McpServersTab({ availableTools }: McpServersTabProps) {
-  // Key off resolvedTheme, not theme: theme is often "system", which would make
-  // the light/dark icon swap misfire and render the dark-variant icon in light mode.
+  // Key off the resolved theme's mode, never a theme name: the light/dark icon
+  // swap follows whether the active palette theme is light or dark.
   const { resolvedTheme } = useTheme();
   const themeMode = themeFor(resolvedTheme).mode;
 

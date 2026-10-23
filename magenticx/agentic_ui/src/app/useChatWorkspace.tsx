@@ -17,6 +17,7 @@ import {
   selectConversationStats,
 } from "@/features/chat/lib/contextUsage";
 import { useConversationCompaction } from "@/features/chat/hooks/useConversationCompaction";
+import { useAgentMap } from "@/features/chat/hooks/useAgentMap";
 import { useProfilePanel } from "@/features/settings/hooks/useProfilePanel";
 import { useSettingsPanels } from "@/features/settings/hooks/useSettingsPanels";
 import { useAttachmentPreview } from "@/features/attachments/hooks/useAttachmentPreview";
@@ -989,6 +990,7 @@ export function useChatWorkspace({
     handleArchiveConversation,
     handleUnarchiveConversation,
     handleToggleConversationPin,
+    handleSaveCurrentConversation,
     handleArchiveCurrentConversation,
     handleUnarchiveCurrentConversation,
     handleOpenSearch,
@@ -1202,6 +1204,15 @@ export function useChatWorkspace({
     },
     [agents, currentAgent, AgentIcon],
   );
+  // The composer's agent map: the sub-agents of every answer on the visible
+  // branch; the streaming answer reads the live run's timeline.
+  const agentMap = useAgentMap(
+    activeMessages,
+    isCurrentConversationBusy ? (activeConversationRun?.assistantMessageId ?? null) : null,
+    isCurrentConversationBusy ? (activeConversationRun?.timeline ?? null) : null,
+  );
+  const agentMapAgentName = currentAgent?.name ?? "Main agent";
+
   const activePlan = activeConversationRun?.timeline?.plan?.items?.length
     ? activeConversationRun.timeline.plan
     : null;
@@ -1409,6 +1420,8 @@ export function useChatWorkspace({
     conversationContext,
     conversationStats,
     conversationCompaction,
+    agentMap,
+    agentMapAgentName,
     activeConversationRun,
     pendingRunInterrupts,
     activeHitlInterrupt,
@@ -1465,6 +1478,7 @@ export function useChatWorkspace({
     handleRenameConversation,
     handleArchiveConversation,
     handleToggleConversationPin,
+    handleSaveCurrentConversation,
     handleReportConversationFromSidebar,
     handleLoadMoreConversations,
     handleTitleClick,

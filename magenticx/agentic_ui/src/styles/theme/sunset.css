@@ -1,0 +1,25 @@
+/* Sunset: warm, creative, optimistic. Deep pink with coral and apricot glows
+   on warm white. The primary is the pink, not the coral: a coral deep enough
+   for white text turns red and would read as "delete". Shared light tokens:
+   light.css. */
+
+@layer base {
+  :root[data-theme="sunset"] {
+    --theme-primary: 329 97% 44%; /* the pink swatch, deep enough for white text */
+    --theme-primary-fg: 0 0% 100%;
+    --theme-glow: var(--sunset-1);
+    --theme-gradient: linear-gradient(
+      135deg,
+      hsl(var(--sunset-1)) 0%,
+      hsl(var(--sunset-2)) 30%,
+      hsl(var(--sunset-3)) 65%,
+      hsl(var(--sunset-4)) 100%
+    );
+    --tint: 340 23%;
+    --tint-line: 340 12%;
+    /* The orb's halo (styles/orb.css): coral, pink, purple. */
+    --orb-glow-1: var(--sunset-1);
+    --orb-glow-2: var(--sunset-3);
+    --orb-glow-3: var(--sunset-4);
+  }
+}

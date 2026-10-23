@@ -22,6 +22,7 @@ from schema import (
     ConversationSummary,
     CreateConversationResponse,
     ConversationTitleUpdate,
+    ConversationVisibilityUpdate,
     MessageOut,
 )
 from core.auth.session import AuthUser, require_csrf_protection
@@ -42,6 +43,7 @@ from utils import (
     list_owned_shares,
     reap_conversation_runtime,
     resolve_conversation_title,
+    save_private_conversation,
     set_conversation_archive_state,
     set_conversation_pin_state,
     validate_convId,
@@ -553,6 +555,35 @@ async def unpinConversation(
     set_context(user_id=user_id, conversation_id=conversation_id)
     await set_conversation_pin_state(db, current_conv, False)
     logger.info("conversation_unpinned", "Conversation unpinned", conversation_id=conversation_id, agent_id=current_conv.agent_id)
+    return ConversationSummary.model_validate(current_conv)
+
+
+@router.patch(
+    "/{user_id}/{conversation_id}/visibility",
+    response_model=ConversationSummary,
+    status_code=status.HTTP_200_OK,
+    summary="Save a private conversation as a normal one",
+)
+async def saveConversationVisibility(
+    user_id: str,
+    conversation_id: str,
+    payload: ConversationVisibilityUpdate,
+    current_user: AuthUser = Depends(validate_userId),
+    current_conv: ConversationTable = Depends(validate_convId),
+    _: None = Depends(require_csrf_protection),
+    db: AsyncSession = Depends(get_db),
+):
+    """Make a private conversation normal ("Save chat"): it joins the chat list,
+    search, suggestions, memory and Usage. One-way; 409 when it is already saved."""
+    set_context(user_id=user_id, conversation_id=conversation_id)
+    queued = await save_private_conversation(db, current_conv)
+    logger.info(
+        "conversation_saved_from_private",
+        "Private conversation saved",
+        conversation_id=conversation_id,
+        agent_id=current_conv.agent_id,
+        queued_for_embedding=queued,
+    )
     return ConversationSummary.model_validate(current_conv)
 
 

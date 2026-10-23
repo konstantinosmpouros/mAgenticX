@@ -9,6 +9,7 @@ import { ChatInputBar } from "@/features/chat/components/ChatInputBar";
 import { ChatDisclaimer } from "@/features/chat/components/ChatDisclaimer";
 import { PlanCard } from "@/features/chat/components/message_parts/PlanningContainer";
 import { HitlInputTakeover } from "@/features/chat/components/HitlInputTakeover";
+import { AgentMapButton } from "@/features/chat/components/agent_map/AgentMapButton";
 import { createCommandActions } from "@/features/chat/handlers/commandActions";
 import { useSlashCommands } from "@/features/chat/hooks/useSlashCommands";
 import { Loader } from "@/shared/ui/shadcn-io/loader";
@@ -55,6 +56,7 @@ export default function ChatView() {
     handleTogglePrivateMode,
     headerHasDivider,
     handleArchiveCurrentConversation,
+    handleSaveCurrentConversation,
     handleUnarchiveCurrentConversation,
     handleReportCurrentConversation,
     handleDeleteCurrentConversation,
@@ -89,6 +91,8 @@ export default function ChatView() {
     conversationContext,
     conversationStats,
     conversationCompaction,
+    agentMap,
+    agentMapAgentName,
     userId,
     openProfilePanel,
     handleRenameConversation,
@@ -155,9 +159,16 @@ export default function ChatView() {
         agentTriggerRef={agentTriggerRef}
         agentPickerOpen={overlayMenus.isAgentPickerOpen}
         onAgentPickerOpenChange={overlayMenus.setIsAgentPickerOpen}
-        showPrivateToggle={(currentConversation?.messages?.length ?? 0) === 0 || isPrivateMode}
+        // Private mode is chosen before the first message; a stored private
+        // chat offers "Save chat" instead (one-way: it becomes a normal chat).
+        showPrivateToggle={(currentConversation?.messages?.length ?? 0) === 0}
         isPrivateMode={isPrivateMode}
         onTogglePrivate={handleTogglePrivateMode}
+        onSaveConversation={
+          currentConversation?.id && currentConversation.isPrivate
+            ? handleSaveCurrentConversation
+            : undefined
+        }
         showBottomBorder={headerHasDivider}
         showConversationActions={Boolean(currentConversation?.id)}
         isConversationArchived={Boolean(currentConversation?.isArchived)}
@@ -228,6 +239,13 @@ export default function ChatView() {
           conversationStats={conversationStats}
           compaction={conversationCompaction}
           slash={voiceSession.isActive ? null : slash}
+          agentMapControl={
+            <AgentMapButton
+              map={agentMap}
+              agentName={agentMapAgentName}
+              visible={!composer.isMessagesEmpty}
+            />
+          }
           currentMessage={composer.currentMessage}
           setCurrentMessage={composer.setCurrentMessage}
           handlePaste={composer.handlePaste}

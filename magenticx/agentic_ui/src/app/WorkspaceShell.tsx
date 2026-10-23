@@ -1,7 +1,8 @@
 import { type ReactNode } from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 
 import { useChatWorkspace, type ChatWorkspaceOptions } from "@/app/useChatWorkspace";
+import { useIncognitoCard } from "@/app/useIncognitoCard";
 import { ChatWorkspaceProvider } from "@/app/workspaceContext";
 
 import SwitchingAccounts from "@/features/auth/components/SwitchingAccounts";
@@ -160,6 +161,11 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
   const agents = useWorkspaceStore((s) => s.agents);
   const currentConversation = useWorkspaceStore((s) => s.currentConversation);
   const pendingDeletion = useWorkspaceStore((s) => s.pendingDeletion);
+  // A private chat (open, or being written) turns the card incognito — on the
+  // chat routes only: the private flag can outlive a visit to /tasks.
+  const isPrivateMode = useWorkspaceStore((s) => s.isPrivateMode);
+  const { pathname } = useLocation();
+  const incognitoClass = useIncognitoCard(isPrivateMode && !pathname.startsWith("/tasks"));
   // Main Chat Interface
   if (!authResolved) {
     return (
@@ -265,7 +271,12 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
           onClose={closeSearchPanel}
           onSelectResult={handleSearchResultSelect}
         />
-        <SidebarInset className="overflow-hidden bg-background md:my-3 md:mr-3 md:h-[calc(100svh-1.5rem)] md:rounded-[1.75rem] md:border md:border-border/60 md:shadow-[0_12px_40px_-16px_rgba(0,0,0,0.35)]">
+        <SidebarInset
+          data-testid="chat-card"
+          className={`overflow-hidden bg-background md:my-3 md:mr-3 md:h-[calc(100svh-1.5rem)] md:rounded-[1.75rem] md:border md:border-border/60 md:shadow-[0_12px_40px_-16px_rgba(0,0,0,0.35)] ${incognitoClass}`}
+        >
+          {/* The incognito card's breathing edge light (styles/private.css). */}
+          <div aria-hidden="true" className="private-card-glow" />
           <TooltipProvider>
             <HitlProvider value={{ resumeRun: resumeInferenceRunHandler, isInterruptResolved }}>
               {/* Fills the card on desktop (md:h-full) and the screen on mobile;
