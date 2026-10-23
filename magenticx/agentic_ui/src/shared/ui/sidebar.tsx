@@ -275,8 +275,11 @@ function SidebarMobileDrawer({
     <AnimatePresence>
       {open && (
         <>
+          {/* Above everything in the conversation panel (the composer and the
+              header sit at z-40), so a click anywhere outside the drawer lands
+              here and closes it; below the drawer (z-50) and the menus it opens. */}
           <motion.div
-            className="fixed inset-0 z-40 bg-black/50 md:hidden"
+            className="fixed inset-0 z-[45] bg-black/50 md:hidden"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -373,10 +376,17 @@ Sidebar.displayName = "Sidebar";
  */
 const SidebarInset = React.forwardRef<HTMLDivElement, React.ComponentProps<"main">>(
   ({ className, ...props }, ref) => {
+    const { isMobile, openMobile } = useSidebar();
+    // While the mobile drawer is open the page behind it is inert: no clicks,
+    // hover or focus. Without this, a modal menu opened from the drawer (which
+    // turns pointer events off outside itself) let the composer, which keeps
+    // `pointer-events-auto`, take the click and hover meant for the drawer.
+    const inert = isMobile && openMobile ? { inert: "" } : {};
     return (
       <main
         ref={ref}
         className={cn("relative flex min-w-0 flex-1 flex-col bg-background", className)}
+        {...inert}
         {...props}
       />
     );
