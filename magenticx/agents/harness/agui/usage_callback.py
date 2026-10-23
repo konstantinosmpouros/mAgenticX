@@ -19,6 +19,19 @@ other usage does — keyed by the callback's run id so the bridge's dedupe holds
 No context occupancy is reported: a LangGraph agent is a pipeline of separate
 prompts (analysis, query generation, ranking, the answer), not one growing
 conversation, so there is no single window to fill.
+
+**Time to first token** is the first streamed chunk with output after
+``on_chat_model_start``, per callback run id — present only for the calls a
+node streams (its answer generation), as a non-streamed call has no first token.
+
+**Tool calls** a node's chains make are reported the same way, as
+``TOOL_USAGE`` (keyed ``lg-<run_id>``): duration, ok/error, output size — the
+metrics a deep agent's ``ToolMetricsMiddleware`` stamps. They queue separately
+(:meth:`UsageMetricsCallback.drain_tools`) so ``drain()`` keeps its shape.
+
+The per-token and per-tool hooks are plain methods (with ``run_inline``):
+LangChain then calls them inline on the sync and async paths alike, where an
+async hook on a sync stream would cost a thread and an event loop per token.
 """
 from __future__ import annotations
 
@@ -27,9 +40,14 @@ from typing import Any, Optional
 from uuid import UUID
 
 from langchain_core.callbacks import AsyncCallbackHandler
+from langchain_core.messages import ToolMessage
 from langchain_core.outputs import LLMResult
+from langgraph.errors import GraphBubbleUp
+from langgraph.types import Command
 
 from core.logging import get_logger
+from harness.middlewares.first_token import is_first_token
+from harness.middlewares.tool_metrics import MAX_TOOL_NAME, content_chars
 from harness.middlewares.usage_metrics import TRUNCATION_FINISH_REASONS, finish_reason
 
 logger = get_logger(__name__)
@@ -81,12 +99,19 @@ class UsageMetricsCallback(AsyncCallbackHandler):
 
     One instance per agent run — never shared — so the queue only ever holds
     this run's calls. Async on purpose: an async handler is awaited in the
-    calling task, so it never needs a thread and never reorders calls.
+    calling task, so it never needs a thread and never reorders calls. Inline
+    for the same reason: its hooks are cheap bookkeeping, so they run before
+    any other handler is gathered.
     """
+
+    run_inline = True
 
     def __init__(self) -> None:
         self._started: dict[UUID, tuple[float, Optional[str]]] = {}
+        self._first_token: dict[UUID, float] = {}
         self._pending: list[tuple[dict[str, Any], str, dict[str, Any]]] = []
+        self._tools_started: dict[UUID, tuple[float, str]] = {}
+        self._pending_tools: list[dict[str, Any]] = []
 
     async def on_chat_model_start(
         self,
@@ -101,8 +126,13 @@ class UsageMetricsCallback(AsyncCallbackHandler):
         model = (metadata or {}).get("ls_model_name") or params.get("model") or params.get("model_name")
         self._started[run_id] = (time.perf_counter(), str(model)[:200] if model else None)
 
+    def on_llm_new_token(self, token: str, *, chunk: Any = None, run_id: UUID, **kwargs: Any) -> None:
+        if run_id in self._started and run_id not in self._first_token and is_first_token(token, chunk):
+            self._first_token[run_id] = time.perf_counter()
+
     async def on_llm_end(self, response: LLMResult, *, run_id: UUID, **kwargs: Any) -> None:
         started_at, model = self._started.pop(run_id, (None, None))
+        first_token_at = self._first_token.pop(run_id, None)
         usage = usage_from_result(response)
         if usage is None:
             logger.debug("usage_callback_no_usage", "A model call reported no token usage")
@@ -110,6 +140,8 @@ class UsageMetricsCallback(AsyncCallbackHandler):
         metrics: dict[str, Any] = {"model": model}
         if started_at is not None:
             metrics["latency_ms"] = int((time.perf_counter() - started_at) * 1000)
+            if first_token_at is not None:
+                metrics["ttft_ms"] = max(int((first_token_at - started_at) * 1000), 0)
         reason = finish_reason_from_result(response)
         if reason:
             metrics["finish_reason"] = reason
@@ -126,8 +158,56 @@ class UsageMetricsCallback(AsyncCallbackHandler):
 
     async def on_llm_error(self, error: BaseException, *, run_id: UUID, **kwargs: Any) -> None:
         self._started.pop(run_id, None)
+        self._first_token.pop(run_id, None)
 
     def drain(self) -> list[tuple[dict[str, Any], str, dict[str, Any]]]:
         """Hand over the calls settled since the last drain, oldest first."""
         pending, self._pending = self._pending, []
+        return pending
+
+    # ---------------------------------------------------------------- tools
+    def on_tool_start(
+        self,
+        serialized: dict[str, Any] | None,
+        input_str: str,
+        *,
+        run_id: UUID,
+        **kwargs: Any,
+    ) -> None:
+        name = kwargs.get("name") or (serialized or {}).get("name") or "tool"
+        self._tools_started[run_id] = (time.perf_counter(), str(name)[:MAX_TOOL_NAME])
+
+    def on_tool_end(self, output: Any, *, run_id: UUID, **kwargs: Any) -> None:
+        if isinstance(output, ToolMessage):
+            status, chars = ("error" if output.status == "error" else "ok"), content_chars(output.content)
+        elif isinstance(output, Command):
+            status, chars = "ok", 0
+        else:
+            status, chars = "ok", content_chars(output)
+        self._settle_tool(run_id, status, chars)
+
+    def on_tool_error(self, error: BaseException, *, run_id: UUID, **kwargs: Any) -> None:
+        if isinstance(error, GraphBubbleUp):
+            # A HITL pause or parent command, not a failure: the call reruns on resume.
+            self._tools_started.pop(run_id, None)
+            return
+        self._settle_tool(run_id, "error", 0)
+
+    def _settle_tool(self, run_id: UUID, status: str, output_chars: int) -> None:
+        started = self._tools_started.pop(run_id, None)
+        if started is None:
+            return
+        started_at, name = started
+        self._pending_tools.append({
+            "tool_call_id": f"lg-{run_id}",
+            "tool_name": name,
+            "duration_ms": int((time.perf_counter() - started_at) * 1000),
+            "status": status,
+            "output_chars": output_chars,
+        })
+
+    def drain_tools(self) -> list[dict[str, Any]]:
+        """Hand over the tool calls settled since the last drain, oldest first,
+        as ``AGUIEmitter.tool_usage`` keyword arguments."""
+        pending, self._pending_tools = self._pending_tools, []
         return pending

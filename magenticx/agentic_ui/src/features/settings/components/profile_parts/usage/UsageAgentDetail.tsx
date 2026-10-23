@@ -14,6 +14,7 @@ import {
   MIN_ANSWERS_FOR_RATIOS,
   cacheHitRate,
   callsPerAnswer,
+  costOf,
   fillDailySeries,
   formatPercent,
   formatRatio,
@@ -21,6 +22,7 @@ import {
   ratio,
   timePerAnswer,
   toolsPerAnswer,
+  truncationRate,
   engineLabel,
 } from "@/features/settings/lib/usageMetrics";
 import { SoftPanel } from "../shared";
@@ -31,6 +33,7 @@ import {
   KpiTile,
   RangeSelect,
   SectionTitle,
+  ToolsSection,
   UsageEmpty,
   UsageError,
 } from "./UsageParts";
@@ -38,8 +41,9 @@ import {
 // Level 2b of the Usage tab: one agent as an entity — what it is (platform or
 // custom, its engine, version, when it was made) and how it behaves across
 // every conversation: what it spends per answer, how hard it works, how well
-// it caches, where its tokens go (itself vs each sub-agent, by model), its
-// trend, and the conversations it spent the most in.
+// it caches, what it costs and how often it is cut off, where its tokens go
+// (itself vs each sub-agent, by model), the tools it calls, its trend, and the
+// conversations it spent the most in.
 
 const MAX_TREND_DAYS = 90;
 const RANGE_DAYS: Record<UsageRange, number> = { "7d": 7, "30d": 30, "90d": 90, all: MAX_TREND_DAYS };
@@ -83,8 +87,8 @@ export function UsageAgentDetail({
     return (
       <div className="space-y-6" aria-hidden>
         <Skeleton className="h-20 rounded-[1.4rem]" />
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {Array.from({ length: 4 }, (_, index) => (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 6 }, (_, index) => (
             <Skeleton key={index} className="h-[6.75rem] rounded-[1.4rem]" />
           ))}
         </div>
@@ -105,6 +109,13 @@ export function UsageAgentDetail({
   const modelSum = [...modelTotals.values()].reduce((sum, value) => sum + value, 0);
   const models = [...modelTotals.entries()].sort((a, b) => b[1] - a[1]);
   const created = agent.createdAt ? new Date(agent.createdAt) : null;
+  // The agent entity carries its total cost; whether some of it went unpriced
+  // is only known per agent × model, so it is read from the groups.
+  const cost = costOf({
+    costMicros: agent.costMicros,
+    unpricedCalls: detail.groups.reduce((sum, group) => sum + group.unpricedCalls, 0),
+  });
+  const cutOffRate = truncationRate(agent);
 
   return (
     <div className="space-y-8">
@@ -129,7 +140,8 @@ export function UsageAgentDetail({
           </div>
           <p className="text-xs text-muted-foreground tabular-nums">
             {agent.answers.toLocaleString()} answers · {agent.conversations.toLocaleString()} conversations ·{" "}
-            {formatCompactTokens(agent.totalTokens)} tokens in the {rangeLabel(range).toLowerCase()}
+            {formatCompactTokens(agent.totalTokens)} tokens
+            {cost.label !== "—" ? ` · ${cost.label}` : ""} in the {rangeLabel(range).toLowerCase()}
             {created && agent.kind === "custom" ? ` · created ${created.toLocaleDateString(undefined, { dateStyle: "medium" })}` : ""}
           </p>
         </div>
@@ -155,7 +167,7 @@ export function UsageAgentDetail({
       ) : (
         <>
           <section className="space-y-3">
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <KpiTile
                 label="Tokens per answer"
                 value={ratios ? formatCompactTokens(ratio(agent.totalTokens, agent.answers) ?? 0) : "—"}
@@ -172,6 +184,16 @@ export function UsageAgentDetail({
                 hint="model time"
               />
               <KpiTile label="Cache hit" value={ratios ? formatPercent(cacheHitRate(agent)) : "—"} hint="of input reused" />
+              <KpiTile label="Cost" value={cost.label} hint={cost.note ?? "estimate at list prices"} />
+              <KpiTile
+                label="Cut off"
+                value={agent.truncatedCalls.toLocaleString()}
+                hint={
+                  agent.truncatedCalls > 0 && cutOffRate !== null
+                    ? `${formatPercent(cutOffRate)} of calls hit the output limit`
+                    : "calls that hit the output limit"
+                }
+              />
             </div>
             {!ratios ? (
               <p className="text-xs text-muted-foreground">
@@ -219,6 +241,11 @@ export function UsageAgentDetail({
             ) : null}
             <CoverageNote detailed={agent.detailedAnswers} total={agent.answers} />
           </section>
+
+          <ToolsSection
+            tools={detail.tools}
+            detail={`The tools ${agent.name} and its sub-agents called in the ${rangeLabel(range).toLowerCase()}.`}
+          />
 
           <section className="space-y-4">
             <SectionTitle title="Heaviest conversations" detail={`Where ${agent.name} spent the most. Private chats are never listed.`} />

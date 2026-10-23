@@ -21,6 +21,7 @@ from core.database import (
     MessageTable,
     MessageUsageTable,
     SessionLocal,
+    ToolUsageTable,
     UserPreferencesTable,
 )
 from core.security.internal_trust import internal_service_headers
@@ -39,6 +40,7 @@ from utils.commands import command_context
 from utils.compaction_lock import compaction_locks
 from utils.conversations import _preview
 from utils.event_log import event_log
+from utils.model_pricing import call_cost_micros
 from utils.output_capture import capture_presented_files, schedule_remaining_capture
 from utils.run_activity import RunActivity, count_run_activity
 from utils.usage_rollups import add_answer_to_rollups
@@ -109,6 +111,52 @@ def _detail_sum(details: Any, kind: str) -> int:
     if not isinstance(details, dict):
         return 0
     return sum(_as_int(v) for k, v in details.items() if str(k) == kind or str(k).endswith(f"_{kind}"))
+
+
+# Plan 41: cost, truncation and speed, derived per settled call — run totals,
+# and columns of the same name on message_usage and usage_daily_groups.
+_GROUP_METRICS = (
+    "cost_micros", "unpriced_calls", "truncated_calls", "ttft_ms", "ttft_calls", "gen_ms", "gen_output_tokens",
+)
+# The run totals summed from TOKEN_USAGE (each also a per-group counter).
+_USAGE_TOTALS = (
+    "input_tokens", "output_tokens", "cached_input_tokens", "reasoning_tokens", "model_latency_ms",
+    *_GROUP_METRICS,
+)
+
+
+def _call_metrics(value: dict[str, Any], input_tokens: int, cached: int, output_tokens: int) -> dict[str, int]:
+    """Plan 41's derivations for one settled model call.
+
+    * cost from ``utils/model_pricing.py``; a model with no price (or no model
+      reported at all) is one unpriced call and adds no cost;
+    * truncated when the agents service says the call hit the output limit;
+    * speed only for a call that streamed (it reports ``ttft_ms``): its time to
+      first token, the time after it, and the output tokens of that time — so
+      tokens per second never mixes in a call that delivered everything at once.
+    """
+    cost = call_cost_micros(value.get("model"), input_tokens, cached, output_tokens)
+    ttft = value.get("ttft_ms")
+    streamed = isinstance(ttft, (int, float)) and not isinstance(ttft, bool) and ttft >= 0
+    ttft_ms = int(ttft) if streamed else 0
+    return {
+        "cost_micros": cost or 0,
+        "unpriced_calls": 1 if cost is None else 0,
+        "truncated_calls": 1 if value.get("truncated") is True else 0,
+        "ttft_ms": ttft_ms,
+        "ttft_calls": 1 if streamed else 0,
+        "gen_ms": max(_as_int(value.get("latency_ms")) - ttft_ms, 0) if streamed else 0,
+        "gen_output_tokens": output_tokens if streamed else 0,
+    }
+
+
+def _add_to_groups(groups: dict[Any, dict[str, int]], key: Any, contribution: dict[str, int], sign: int) -> None:
+    """Add (or, with ``sign=-1``, take back) one call's contribution to its group."""
+    group = groups.setdefault(key, dict.fromkeys(contribution, 0))
+    for field, amount in contribution.items():
+        group[field] += sign * amount
+    if not any(group.values()):
+        del groups[key]
 
 
 def _effective_personalization(prefs_row: UserPreferencesTable | None) -> dict[str, Any]:
@@ -283,6 +331,27 @@ class InferenceRunRuntime:
         self.cached_input_tokens = 0
         self.reasoning_tokens = 0
         self.model_latency_ms = 0
+        # Plan 41, summed the same way: cost in micro-USD and calls on a model
+        # with no price; calls cut off at the output limit; and, over the calls
+        # that streamed, time to first token, generation time after it and the
+        # output tokens of that time (see _call_metrics).
+        self.cost_micros = 0
+        self.unpriced_calls = 0
+        self.truncated_calls = 0
+        self.ttft_ms = 0
+        self.ttft_calls = 0
+        self.gen_ms = 0
+        self.gen_output_tokens = 0
+        # The answer's time to first text (plan 41): from the moment this run
+        # started — the runtime is created as the run's task begins — to the
+        # main agent's first text delta, measured here because only the bridge
+        # sees the whole run (queueing, attachment seeding, every model call
+        # and tool before the text). Monotonic clock. Settled once: by the
+        # first text, or by a HITL interrupt before it, in which case it stays
+        # None — the wait was the human's, not the model's.
+        self.started_at = time.perf_counter()
+        self.first_token_ms: int | None = None
+        self._first_token_settled = False
         # The same usage split by who spent it — (scope, agent, model) → sums —
         # for the message_usage rows (plan 33). Scope is "main" or "subagent";
         # the main agent's label is filled in at finish (the runtime does not
@@ -290,6 +359,12 @@ class InferenceRunRuntime:
         # bare and then wrapped in SUBAGENT_EVENT moves to its sub-agent.
         self.usage_groups: dict[tuple[str, str, str | None], dict[str, int]] = {}
         self._usage_by_call: dict[str, tuple[tuple[str, str, str | None], dict[str, int]]] = {}
+        # Tool calls from TOOL_USAGE (plan 41), the same way: (scope, agent,
+        # tool) → calls / errors / duration_ms / output_chars, each call counted
+        # once by its tool_call_id and moved to its sub-agent when it turns up
+        # wrapped after being seen bare.
+        self.tool_groups: dict[tuple[str, str, str], dict[str, int]] = {}
+        self._tool_by_call: dict[str, tuple[tuple[str, str, str], dict[str, int]]] = {}
         # task_id → sub-agent type, from TASK_SUBAGENT, so a wrapped call is
         # booked to "researcher" rather than to an anonymous sub-agent.
         self._subagent_types: dict[str, str] = {}
@@ -319,15 +394,34 @@ class InferenceRunRuntime:
             return ("compaction", "Compaction", model)
         if main_agent:
             return ("main", "", model)
+        return ("subagent", self._subagent_label(task_id), model)
+
+    def _subagent_label(self, task_id: Any) -> str:
         subagent_type = self._subagent_types.get(str(task_id)) if task_id is not None else None
-        return ("subagent", subagent_type or "sub-agent", model)
+        return subagent_type or "sub-agent"
 
     def _add_to_group(self, key: tuple[str, str, str | None], contribution: dict[str, int], sign: int) -> None:
-        group = self.usage_groups.setdefault(key, dict.fromkeys(contribution, 0))
-        for field, amount in contribution.items():
-            group[field] += sign * amount
-        if not any(group.values()):
-            del self.usage_groups[key]
+        _add_to_groups(self.usage_groups, key, contribution, sign)
+
+    @staticmethod
+    def _book_once(
+        by_call: dict[str, tuple[Any, dict[str, int]]],
+        groups: dict[Any, dict[str, int]],
+        token: str,
+        key: Any,
+    ) -> bool:
+        """True when ``token`` was already counted. A call booked to the main
+        agent that now turns out to be a sub-agent's is moved — every field of
+        its contribution, so no total ever counts it twice or loses it."""
+        counted = by_call.get(token)
+        if counted is None:
+            return False
+        previous_key, contribution = counted
+        if previous_key[0] == "main" and key[0] == "subagent":
+            _add_to_groups(groups, previous_key, contribution, -1)
+            _add_to_groups(groups, key, contribution, 1)
+            by_call[token] = (key, contribution)
+        return True
 
     def _accumulate_usage(self, value: Any, *, main_agent: bool, task_id: Any = None) -> None:
         """Fold one TOKEN_USAGE event into the run's totals (deduped by message)."""
@@ -336,31 +430,24 @@ class InferenceRunRuntime:
         mid = value.get("message_id")
         token = str(mid) if mid is not None else f"usage-{self.next_seq}"
         key = self._usage_group(value, main_agent=main_agent, task_id=task_id)
-        counted = self._usage_by_call.get(token)
-        if counted is not None:
-            # Already in the totals. If it was booked to the main agent and now
-            # turns out to be a sub-agent's, move it — never count it twice.
-            previous_key, contribution = counted
-            if previous_key[0] == "main" and key[0] == "subagent":
-                self._add_to_group(previous_key, contribution, -1)
-                self._add_to_group(key, contribution, 1)
-                self._usage_by_call[token] = (key, contribution)
+        if self._book_once(self._usage_by_call, self.usage_groups, token, key):
             return
+        input_tokens = _as_int(value.get("input_tokens"))
+        cached = _detail_sum(value.get("input_token_details"), "cache_read")
+        output_tokens = _as_int(value.get("output_tokens"))
         contribution = {
             "calls": 1,
-            "input_tokens": _as_int(value.get("input_tokens")),
-            "cached_input_tokens": _detail_sum(value.get("input_token_details"), "cache_read"),
-            "output_tokens": _as_int(value.get("output_tokens")),
+            "input_tokens": input_tokens,
+            "cached_input_tokens": cached,
+            "output_tokens": output_tokens,
             "reasoning_tokens": _detail_sum(value.get("output_token_details"), "reasoning"),
             "model_latency_ms": _as_int(value.get("latency_ms")),
+            **_call_metrics(value, input_tokens, cached, output_tokens),
         }
         self._usage_by_call[token] = (key, contribution)
         self._add_to_group(key, contribution, 1)
-        self.input_tokens += contribution["input_tokens"]
-        self.output_tokens += contribution["output_tokens"]
-        self.cached_input_tokens += contribution["cached_input_tokens"]
-        self.reasoning_tokens += contribution["reasoning_tokens"]
-        self.model_latency_ms += contribution["model_latency_ms"]
+        for field in _USAGE_TOTALS:
+            setattr(self, field, getattr(self, field) + contribution[field])
         if main_agent and isinstance(value.get("context_tokens"), int):
             self.context = {
                 "context_tokens": value.get("context_tokens"),
@@ -370,11 +457,46 @@ class InferenceRunRuntime:
                 "model_name": str(value["model"])[:200] if value.get("model") else None,
             }
 
+    def _accumulate_tool_usage(self, value: Any, *, main_agent: bool, task_id: Any = None) -> None:
+        """Fold one TOOL_USAGE event into the tool groups (plan 41).
+
+        Deduped by ``tool_call_id`` and grouped by (scope, agent, tool) exactly
+        like token usage — a call first seen bare and then wrapped in
+        SUBAGENT_EVENT moves to its sub-agent. Metrics only: the event never
+        carries arguments or output, and nothing here would keep them.
+        """
+        if not isinstance(value, dict):
+            return
+        call_id = value.get("tool_call_id")
+        token = str(call_id) if call_id is not None else f"tool-{self.next_seq}"
+        tool_name = str(value.get("tool_name") or "")[:200] or "unknown tool"
+        key = ("main", "", tool_name) if main_agent else ("subagent", self._subagent_label(task_id), tool_name)
+        if self._book_once(self._tool_by_call, self.tool_groups, token, key):
+            return
+        contribution = {
+            "calls": 1,
+            "errors": 1 if value.get("status") == "error" else 0,
+            "duration_ms": _as_int(value.get("duration_ms")),
+            "output_chars": _as_int(value.get("output_chars")),
+        }
+        self._tool_by_call[token] = (key, contribution)
+        _add_to_groups(self.tool_groups, key, contribution, 1)
+
+    def _note_first_text(self, delta: Any) -> None:
+        """Settle the answer's time to first text on its first non-empty delta."""
+        if self._first_token_settled or not delta:
+            return
+        self._first_token_settled = True
+        self.first_token_ms = max(0, round((time.perf_counter() - self.started_at) * 1000))
+
     @property
     def pending_interrupts(self) -> int:
         return len(self.pending_interrupt_ids)
 
     def register_interrupt(self, value: Any) -> None:
+        # An approval before the first text makes the wait the human's: the
+        # answer's time to first text is then left unmeasured (None).
+        self._first_token_settled = True
         wrapped = value.get("interrupt") if isinstance(value, dict) else None
         raw_id = wrapped.get("id") if isinstance(wrapped, dict) else None
         token = str(raw_id) if raw_id is not None else f"anon-{self.next_seq}"
@@ -496,10 +618,16 @@ class InferenceRunRuntime:
                             self._accumulate_usage(
                                 inner.get("value"), main_agent=False, task_id=value.get("task_id")
                             )
+                        elif inner_name == "TOOL_USAGE":
+                            self._accumulate_tool_usage(
+                                inner.get("value"), main_agent=False, task_id=value.get("task_id")
+                            )
             elif name == "HITL_INTERRUPT":
                 self.register_interrupt(value)
             elif name == "TOKEN_USAGE":
                 self._accumulate_usage(value, main_agent=True)
+            elif name == "TOOL_USAGE":
+                self._accumulate_tool_usage(value, main_agent=True)
             elif name == "TASK_SUBAGENT":
                 if isinstance(value, dict) and value.get("task_id") and value.get("subagent_type"):
                     self._subagent_types[str(value["task_id"])] = str(value["subagent_type"])[:200]
@@ -530,6 +658,9 @@ class InferenceRunRuntime:
             self.thinking_end = time.perf_counter()
         elif event_type in _TEXT_DELTA_TYPES:
             self.content += str(event.get("delta") or "")
+            # Top-level text is the main agent's (a sub-agent's arrives wrapped
+            # in SUBAGENT_EVENT), so this is the answer's first token.
+            self._note_first_text(event.get("delta"))
             if not self.closed_thinking_on_first_chunk:
                 self.closed_thinking_on_first_chunk = True
                 self.thinking_end = time.perf_counter()
@@ -1167,10 +1298,11 @@ async def _record_usage_breakdown(
 ) -> None:
     """Book a finished answer's usage for the Usage tab (plan 33).
 
-    Writes one ``message_usage`` row per (scope, agent, model) group, adds the
-    answer to its conversation's running totals, and adds it to the user's
-    daily rollups — all in the caller's transaction, so the answer and every
-    figure derived from it land together or not at all. Totals are SQL
+    Writes one ``message_usage`` row per (scope, agent, model) group and one
+    ``tool_usage`` row per (scope, agent, tool) (plan 41), adds the answer to
+    its conversation's running totals, and adds it to the user's daily rollups
+    (``tool_usage_daily`` included) — all in the caller's transaction, so the
+    answer and every figure derived from it land together or not at all. Totals are SQL
     expressions (``col = col + n``), so runs finishing concurrently can never
     lose each other's update.
     """
@@ -1191,6 +1323,29 @@ async def _record_usage_breakdown(
                 **group,
             )
         )
+    # What the answer's tools took (plan 41), split the same way.
+    for (scope, agent_name, tool_name), group in runtime.tool_groups.items():
+        db.add(
+            ToolUsageTable(
+                message_id=run.id,
+                conversation_id=run.conversation_id,
+                user_id=conversation.user_id,
+                agent_id=run.agent_id,
+                main_agent_name=run.agent_name,
+                scope=scope,
+                agent_name=main_label if scope == "main" else agent_name,
+                tool_name=tool_name,
+                created_at=created_at,
+                **group,
+            )
+        )
+    # The day's tool rollup keys on the main agent and the tool alone: a
+    # sub-agent's calls of a tool count under the agent that delegated them.
+    tools_by_name: dict[str, dict[str, int]] = {}
+    for (_scope, _agent, tool_name), group in runtime.tool_groups.items():
+        total = tools_by_name.setdefault(tool_name, dict.fromkeys(group, 0))
+        for field, amount in group.items():
+            total[field] += amount
 
     table = ConversationTable
     conversation.usage_answers = table.usage_answers + 1
@@ -1201,6 +1356,8 @@ async def _record_usage_breakdown(
     conversation.usage_model_calls = table.usage_model_calls + activity.model_calls
     conversation.usage_tool_calls = table.usage_tool_calls + activity.tool_calls
     conversation.usage_model_ms = table.usage_model_ms + runtime.model_latency_ms
+    conversation.usage_cost_micros = table.usage_cost_micros + runtime.cost_micros
+    conversation.usage_truncated_calls = table.usage_truncated_calls + runtime.truncated_calls
     if runtime.context.get("context_tokens") is not None:
         conversation.last_context_tokens = runtime.context["context_tokens"]
         conversation.last_context_window = runtime.context.get("context_window")
@@ -1224,6 +1381,13 @@ async def _record_usage_breakdown(
             # Every answer finished from here on records calls and model time.
             "detailed_answers": 1,
             "detailed_input_tokens": runtime.input_tokens,
+            "cost_micros": runtime.cost_micros,
+            "unpriced_calls": runtime.unpriced_calls,
+            "truncated_calls": runtime.truncated_calls,
+            # Added only when measured: first_token_answers is the average's
+            # denominator, so an unmeasured answer never drags it down.
+            "first_token_ms": runtime.first_token_ms or 0,
+            "first_token_answers": 1 if runtime.first_token_ms is not None else 0,
         },
         groups=[
             {
@@ -1236,9 +1400,11 @@ async def _record_usage_breakdown(
                 "output_tokens": group["output_tokens"],
                 "reasoning_tokens": group["reasoning_tokens"],
                 "model_ms": group["model_latency_ms"],
+                **{field: group[field] for field in _GROUP_METRICS},
             }
             for (scope, agent_name, model_name), group in runtime.usage_groups.items()
         ],
+        tools=[{"tool_name": name, **counters} for name, counters in tools_by_name.items()],
     )
 
 
@@ -1284,6 +1450,13 @@ async def _finish_run(run_id: str, runtime: InferenceRunRuntime, status_value: s
         activity = count_run_activity(payload["raw_events"])
         run.model_calls = activity.model_calls if has_usage else None
         run.tool_calls = activity.tool_calls if has_usage else None
+        # Plan 41's figures, NULL like the counts above on an answer that spent
+        # nothing. On one that did, a 0 is a measurement (no call was cut off).
+        for field in _GROUP_METRICS:
+            setattr(run, field, getattr(runtime, field) if has_usage else None)
+        # Measured by the bridge from the text it saw, so kept whenever there was
+        # text — None when there was none, or when a HITL approval came first.
+        run.first_token_ms = runtime.first_token_ms
         run.is_error = is_error
         run.error_message = error_message
         # Advance the branch head so the next turn resumes / forks from the
@@ -1362,6 +1535,14 @@ def build_run_out_from_message(message: MessageTable, *, user_id: str) -> Infere
         contextWindow=message.context_window,
         compactionPercent=message.compaction_percent,
         modelName=message.model_name,
+        costMicros=message.cost_micros,
+        unpricedCalls=message.unpriced_calls,
+        truncatedCalls=message.truncated_calls,
+        firstTokenMs=message.first_token_ms,
+        ttftMs=message.ttft_ms,
+        ttftCalls=message.ttft_calls,
+        genMs=message.gen_ms,
+        genOutputTokens=message.gen_output_tokens,
         errorMessage=message.error_message,
         startedAt=started,
         completedAt=message.streaming_completed_at,

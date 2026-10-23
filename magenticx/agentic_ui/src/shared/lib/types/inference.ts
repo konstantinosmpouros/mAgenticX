@@ -34,6 +34,20 @@ export type InferenceRun = {
   contextWindow?: number;
   compactionPercent?: number;
   modelName?: string;
+  // Inference metrics (plan 41), absent on answers from before them. Cost is
+  // micro-USD for the priced calls; `unpricedCalls` used a model with no price.
+  // `truncatedCalls` ended at the output limit. `firstTokenMs` is the wait from
+  // the run's start to the answer's first words; `ttftMs`/`ttftCalls` sum the
+  // per-call first-token waits, and `genOutputTokens` over `genMs` is the
+  // output speed of the calls that streamed.
+  costMicros?: number;
+  unpricedCalls?: number;
+  truncatedCalls?: number;
+  firstTokenMs?: number;
+  ttftMs?: number;
+  ttftCalls?: number;
+  genMs?: number;
+  genOutputTokens?: number;
   pendingInterrupts?: number;
   errorMessage?: string | null;
   startedAt: Date;

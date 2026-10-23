@@ -142,6 +142,13 @@ Every event name below is a stable string emitted via `EventLogger`. The `http_r
 | `checkpoint_committed` | INFO | durable LangGraph head (`thread_id`, `checkpoint_id`) |
 | `checkpoint_commit_emit_failed`, `checkpoint_interrupt_probe_failed`, `checkpoint_release_failed` | WARN | checkpointer edge cases |
 | `tool_call_error` | WARN | tool raised → encoded as `ToolMessage(status=error)`, `exception_type` |
+| `model_call_rate_limited` | WARN | `RetryOnRateLimitMiddleware` hit a provider 429 and will wait, then retry: `attempt`, `max_attempts`, `delay_seconds`, `exception_type`. Bursts mean a per-minute token quota is too small for the load; never logged for `insufficient_quota` (raised at once) |
+| `model_call_truncated` | WARN | a model call stopped at its output-token ceiling (`finish_reason` `length` / `max_tokens` / `max_output_tokens`) — an HTTP 200 whose reply is cut off: `model`, `finish_reason`, `output_tokens`. Deep agents (`UsageMetricsMiddleware`) and LangGraph agents (`UsageMetricsCallback`) |
+| `usage_metrics_skipped` / `tool_metrics_skipped` | WARN | a model reply / tool result had an unexpected shape, so no `mx_usage_metrics` / `mx_tool_metrics` stamp was attached (the call itself is unaffected): `error_type` |
+| `tool_usage_skipped` | WARN | the normalizer dropped a malformed `mx_tool_metrics` stamp instead of emitting `TOOL_USAGE`: `tool_call_id` |
+| `first_token_skipped` | WARN | `FirstTokenCallback` could not read a streamed chunk; that call reports no `ttft_ms`: `error_type` |
+| `usage_callback_not_attached` | WARN | the run config carries a callback *manager*, so the usage / first-token callback was not added and that telemetry is not reported: `agent_slug`, `callback` |
+| `usage_callback_no_usage` | DEBUG | a LangGraph chat-model call reported no token usage (no `TOKEN_USAGE` for it) |
 | `agent_run_error` | ERROR | encoded as SSE `RUN_ERROR` frame |
 | `event_loop_exception` | ERROR | non-cancellation loop errors (uvloop noise suppressed) |
 

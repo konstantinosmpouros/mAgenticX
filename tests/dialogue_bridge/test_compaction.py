@@ -126,10 +126,17 @@ async def test_compacting_records_it_on_the_answer_and_books_the_summary(
         assert (conversation.usage_model_calls, conversation.usage_model_ms) == (1, 8_000)
         [row] = (await session.execute(select(MessageUsageTable))).scalars().all()
         assert (row.message_id, row.scope, row.agent_name, row.model_name) == (answer_id, "compaction", "Compaction", "gpt-5")
+        # Priced like any call (plan 41): 80K uncached at $1.25 + 10K cached at
+        # $0.125 + 1.2K output at $10 per 1M tokens, in micro-USD.
+        cost = 80_000 * 1.25 + 10_000 * 0.125 + 1_200 * 10
+        assert (row.cost_micros, row.unpriced_calls) == (cost, 0)
+        assert conversation.usage_cost_micros == cost
         [day] = (await session.execute(select(UsageDailyTable))).scalars().all()
         assert (day.answers, day.input_tokens, day.model_calls, day.detailed_input_tokens) == (0, 90_000, 1, 90_000)
+        assert day.cost_micros == cost and day.first_token_answers == 0
         [group] = (await session.execute(select(UsageDailyGroupTable))).scalars().all()
         assert (group.scope, group.group_name, group.calls) == ("compaction", "Compaction", 1)
+        assert group.cost_micros == cost
 
 
 async def test_nothing_to_compact_changes_nothing(client, session_factory, seeded_user, seeded_agent, deep_agent, agents):

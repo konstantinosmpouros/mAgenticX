@@ -320,14 +320,35 @@ class BaseAgent:
         """The ``RunnableConfig`` one stream runs with — ``run_config`` by default.
 
         A LangGraph agent adds its usage callback here (it has no other way to
-        observe its chains' model calls); a deep agent needs nothing extra.
+        observe its chains' model calls); a deep agent adds its first-token
+        callback (the one thing that sees a model call's streamed chunks).
         """
         return self.run_config
 
 
+    def _config_with_callback(self, handler: Any) -> dict[str, Any]:
+        """``run_config`` with ``handler`` appended to its callbacks, which
+        LangChain then carries into every runnable the run invokes.
+
+        A callback *manager* someone configured on purpose is left alone, and
+        that is logged — the handler's telemetry is then simply not reported.
+        """
+        config = dict(self.run_config)
+        existing = config.get("callbacks")
+        if existing is None:
+            config["callbacks"] = [handler]
+        elif isinstance(existing, (list, tuple)):
+            config["callbacks"] = [*existing, handler]
+        else:
+            logger.warning("usage_callback_not_attached", "Run has a callback manager; usage not reported",
+                           agent_slug=self.name, callback=type(handler).__name__)
+        return config
+
+
     def _pending_frames(self) -> list[bytes]:
         """AG-UI frames produced beside the graph's own stream, drained between
-        chunks — none by default (a LangGraph agent's ``TOKEN_USAGE`` events)."""
+        chunks — none by default (a LangGraph agent's ``TOKEN_USAGE`` and
+        ``TOOL_USAGE`` events)."""
         return []
 
 

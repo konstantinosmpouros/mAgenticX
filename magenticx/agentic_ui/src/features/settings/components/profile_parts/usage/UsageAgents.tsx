@@ -11,6 +11,7 @@ import { useUsageQuery } from "@/features/settings/hooks/useUsageQuery";
 import {
   MIN_ANSWERS_FOR_RATIOS,
   cacheHitRate,
+  costValue,
   formatPercent,
   rangeLabel,
   ratio,
@@ -18,7 +19,16 @@ import {
   engineLabel,
 } from "@/features/settings/lib/usageMetrics";
 import { SoftPanel } from "../shared";
-import { AgentKindBadge, RangeSelect, RowsSkeleton, ShareBar, UsageEmpty, UsageError } from "./UsageParts";
+import {
+  AgentKindBadge,
+  RangeSelect,
+  RowsSkeleton,
+  ShareBar,
+  TokensWithCost,
+  TruncatedMark,
+  UsageEmpty,
+  UsageError,
+} from "./UsageParts";
 
 // Level 1b of the Usage tab: every agent the user has worked with, as an
 // entity — Omni and the other platform agents beside the user's own custom
@@ -29,10 +39,11 @@ import { AgentKindBadge, RangeSelect, RowsSkeleton, ShareBar, UsageEmpty, UsageE
 const MAX_COMPARE = 3;
 
 type KindTab = "all" | "platform" | "custom";
-type AgentSort = "tokens" | "perAnswer" | "time" | "cache";
+type AgentSort = "tokens" | "cost" | "perAnswer" | "time" | "cache";
 
 const SORTS: { value: AgentSort; label: string }[] = [
   { value: "tokens", label: "Most tokens" },
+  { value: "cost", label: "Highest cost" },
   { value: "perAnswer", label: "Tokens per answer" },
   { value: "time", label: "Slowest per answer" },
   { value: "cache", label: "Best cache hit" },
@@ -48,6 +59,8 @@ const enoughAnswers = (agent: UsageAgentEntity) => agent.detailedAnswers >= MIN_
 
 function sortValue(agent: UsageAgentEntity, sort: AgentSort): number {
   if (sort === "tokens") return agent.totalTokens;
+  // A total, like tokens: no minimum answers. Unpriced agents sort last.
+  if (sort === "cost") return costValue(agent) ?? -1;
   if (!enoughAnswers(agent)) return -1;
   if (sort === "perAnswer") return ratio(agent.totalTokens, agent.answers) ?? -1;
   if (sort === "time") return timePerAnswer(agent) ?? -1;
@@ -104,6 +117,7 @@ function AgentRow({
                 {engineLabel(agent.engine)}
               </span>
             ) : null}
+            {agent.truncatedCalls > 0 ? <TruncatedMark count={agent.truncatedCalls} /> : null}
           </span>
           <span className="block truncate text-xs text-muted-foreground tabular-nums">
             {agent.answers.toLocaleString()} {agent.answers === 1 ? "answer" : "answers"} · {agent.conversations}{" "}
@@ -129,9 +143,7 @@ function AgentRow({
             cache hit
           </span>
         </span>
-        <span className="w-16 shrink-0 text-right text-sm font-semibold tabular-nums text-foreground">
-          {formatCompactTokens(agent.totalTokens)}
-        </span>
+        <TokensWithCost tokens={agent.totalTokens} costMicros={agent.costMicros} />
         {selecting ? null : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />}
       </span>
       <ShareBar fraction={agent.totalTokens / largest} />

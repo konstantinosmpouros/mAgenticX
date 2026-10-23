@@ -1,13 +1,14 @@
 import type { ReactNode } from "react";
 import { ArrowDown, ArrowUp } from "lucide-react";
 
-import { cn, formatCompactTokens, formatModelTime } from "@/shared/lib/utils";
+import { cn, formatCompactTokens, formatCost, formatModelTime } from "@/shared/lib/utils";
 import { mapIcon } from "@/shared/lib/consts";
 import type { UsageAgentEntity } from "@/shared/lib/types";
 import {
   MIN_ANSWERS_FOR_RATIOS,
   cacheHitRate,
   callsPerAnswer,
+  costValue,
   formatPercent,
   formatRatio,
   ratio,
@@ -35,12 +36,15 @@ const MEASURES: Measure[] = [
   { label: "Answers", value: (a) => a.answers, format: (v) => v.toLocaleString() },
   { label: "Conversations", value: (a) => a.conversations, format: (v) => v.toLocaleString() },
   { label: "Tokens", value: (a) => a.totalTokens, format: formatCompactTokens },
+  // An estimate; "—" for an agent with nothing priced, never "$0.00".
+  { label: "Cost", value: costValue, format: formatCost },
   { label: "Tokens per answer", value: (a) => ratio(a.totalTokens, a.answers), format: formatCompactTokens, perAnswer: true },
   { label: "Calls per answer", value: callsPerAnswer, format: (v) => formatRatio(v), perAnswer: true },
   { label: "Tools per answer", value: toolsPerAnswer, format: (v) => formatRatio(v), perAnswer: true },
   { label: "Time per answer", value: timePerAnswer, format: formatModelTime, perAnswer: true },
   { label: "Time per call", value: timePerCall, format: formatModelTime, perAnswer: true },
   { label: "Cache hit", value: cacheHitRate, format: (v) => formatPercent(v), perAnswer: true },
+  { label: "Cut off at the limit", value: (a) => a.truncatedCalls, format: (v) => v.toLocaleString() },
 ];
 
 function Cell({ children, mark }: { children: ReactNode; mark: "high" | "low" | null }) {

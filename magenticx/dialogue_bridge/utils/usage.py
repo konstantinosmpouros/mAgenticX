@@ -13,9 +13,10 @@ Five read-only views, one per page of the tab:
 
 Every page reads pre-aggregated data, never a sum over the user's answers:
 the Overview and Agents pages read the daily rollups (``usage_daily``,
-``usage_daily_groups`` — migration 0034), the conversation list reads the
-``conversations.usage_*`` running totals, and one conversation reads only its
-own answers and ``message_usage`` rows. All of it is kept by ``_finish_run``.
+``usage_daily_groups`` — migration 0034 — and ``tool_usage_daily``, plan 41),
+the conversation list reads the ``conversations.usage_*`` running totals, and
+one conversation reads only its own answers and ``message_usage`` /
+``tool_usage`` rows. All of it is kept by ``_finish_run``.
 Every query is scoped to the caller and every list is capped, so a response
 is bounded however much the user has used the platform.
 
@@ -42,6 +43,8 @@ from core.database import (
     ConversationTable,
     MessageTable,
     MessageUsageTable,
+    ToolUsageDailyTable,
+    ToolUsageTable,
     UsageDailyGroupTable,
     UsageDailyTable,
 )
@@ -60,6 +63,7 @@ from schema import (
     UsageModelBreakdown,
     UsagePrivateAggregate,
     UsageSummary,
+    UsageToolBreakdown,
     UsageWindow,
 )
 from utils.run_activity import count_run_activity
@@ -67,6 +71,9 @@ from utils.run_activity import count_run_activity
 # Rankings stay short: the Overview shows a top list, not an export.
 MAX_AGENT_ROWS = 12
 MAX_MODEL_ROWS = 12
+MAX_TOOL_ROWS = 12
+# One agent's or one conversation's tools: every tool it used, within reason.
+MAX_DETAIL_TOOL_ROWS = 50
 # The Agents page lists every agent entity a user has worked with — capped.
 MAX_AGENT_ENTITIES = 50
 # The daily series and the "recent" windows share the same horizon.
@@ -101,8 +108,16 @@ _GROUP = UsageDailyGroupTable
 _WINDOW_SOURCES = (
     _DAY.input_tokens, _DAY.output_tokens, _DAY.answers, _DAY.cached_input_tokens, _DAY.reasoning_tokens,
     _DAY.model_ms, _DAY.model_calls, _DAY.tool_calls, _DAY.detailed_answers, _DAY.detailed_input_tokens,
+    # Plan 41.
+    _DAY.cost_micros, _DAY.unpriced_calls, _DAY.truncated_calls, _DAY.first_token_ms, _DAY.first_token_answers,
 )
 _WINDOW_WIDTH = len(_WINDOW_SOURCES)
+# The tool rollup (plan 41): which tools ran, per user, day and main agent.
+_TOOL_DAY = ToolUsageDailyTable
+# Plan 41's per-call metrics, in CallMetrics order, on message_usage and on
+# usage_daily_groups (the same column names on both).
+_CALL_METRICS = ("cost_micros", "unpriced_calls", "truncated_calls", "ttft_ms", "ttft_calls", "gen_ms", "gen_output_tokens")
+_CALL_METRIC_FIELDS = ("costMicros", "unpricedCalls", "truncatedCalls", "ttftMs", "ttftCalls", "genMs", "genOutputTokens")
 
 
 def _utcnow() -> datetime:
@@ -144,7 +159,49 @@ def _window(values) -> UsageWindow:
         inputTokens=v[0], outputTokens=v[1], totalTokens=v[0] + v[1], aiMessages=v[2],
         cachedInputTokens=v[3], reasoningTokens=v[4], modelMs=v[5], modelCalls=v[6],
         toolCalls=v[7], detailedAnswers=v[8], detailedInputTokens=v[9],
+        costMicros=v[10], unpricedCalls=v[11], truncatedCalls=v[12], firstTokenMs=v[13],
+        firstTokenAnswers=v[14],
     )
+
+
+def _call_metric_sums(table: Any) -> list:
+    """Sums of plan 41's per-call metrics over ``table``, in CallMetrics order."""
+    return [func.coalesce(func.sum(table.__table__.c[name]), 0) for name in _CALL_METRICS]
+
+
+def _call_metrics(values) -> dict[str, int]:
+    """CallMetrics keyword arguments from the sums of ``_call_metric_sums``."""
+    return {field: _int(value) for field, value in zip(_CALL_METRIC_FIELDS, values)}
+
+
+def _tool_columns(table: Any) -> list:
+    """Per-tool sums, labelled for ``_tool``, over ``tool_usage`` or its rollup."""
+    return [
+        table.tool_name.label("tool_name"),
+        func.sum(table.calls).label("calls"),
+        func.sum(table.errors).label("errors"),
+        func.sum(table.duration_ms).label("duration_ms"),
+        func.sum(table.output_chars).label("output_chars"),
+    ]
+
+
+def _tool(row: Any) -> UsageToolBreakdown:
+    return UsageToolBreakdown(
+        toolName=str(row.tool_name), calls=_int(row.calls), errors=_int(row.errors),
+        durationMs=_int(row.duration_ms), outputChars=_int(row.output_chars),
+    )
+
+
+async def _tools(db: AsyncSession, table: Any, *where, limit: int) -> list[UsageToolBreakdown]:
+    """The most-called tools among ``table``'s rows matching ``where``."""
+    rows = (await db.execute(
+        select(*_tool_columns(table))
+        .where(*where)
+        .group_by(table.tool_name)
+        .order_by(desc(func.sum(table.calls)), table.tool_name)
+        .limit(limit)
+    )).all()
+    return [_tool(r) for r in rows]
 
 
 def _day(value: Any) -> str:
@@ -170,8 +227,8 @@ async def compute_usage_summary(db: AsyncSession, user_id: str) -> UsageSummary:
 
     One pass over the user's ``usage_daily`` rows computes all-time totals and
     four windows (FILTER clauses); one groups by agent, one by model
-    (``usage_daily_groups``), one by day; two small counts over the user's
-    conversations feed the drill-in cards.
+    (``usage_daily_groups``), one by tool (``tool_usage_daily``), one by day;
+    two small counts over the user's conversations feed the drill-in cards.
     """
     today = _today()
     last_7 = today - timedelta(days=6)
@@ -205,13 +262,15 @@ async def compute_usage_summary(db: AsyncSession, user_id: str) -> UsageSummary:
         select(
             _GROUP.model_name,
             func.sum(_GROUP.calls), func.sum(_GROUP.input_tokens), func.sum(_GROUP.cached_input_tokens),
-            func.sum(_GROUP.output_tokens), func.sum(_GROUP.model_ms),
+            func.sum(_GROUP.output_tokens), func.sum(_GROUP.model_ms), *_call_metric_sums(_GROUP),
         )
         .where(_GROUP.user_id == user_id)
         .group_by(_GROUP.model_name)
         .order_by(desc(func.sum(_GROUP.input_tokens) + func.sum(_GROUP.output_tokens)))
         .limit(MAX_MODEL_ROWS)
     )).all()
+
+    per_tool = await _tools(db, _TOOL_DAY, _TOOL_DAY.user_id == user_id, limit=MAX_TOOL_ROWS)
 
     daily_rows = (await db.execute(
         select(_DAY.day, *_window_columns()).where(mine, _DAY.day >= last_30).group_by(_DAY.day).order_by(_DAY.day)
@@ -244,9 +303,11 @@ async def compute_usage_summary(db: AsyncSession, user_id: str) -> UsageSummary:
             UsageModelBreakdown(
                 model=str(r[0] or "Unknown model"), calls=_int(r[1]), inputTokens=_int(r[2]),
                 cachedInputTokens=_int(r[3]), outputTokens=_int(r[4]), modelMs=_int(r[5]),
+                **_call_metrics(r[6:]),
             )
             for r in model_rows
         ],
+        perTool=per_tool,
         daily=[UsageDailyPoint(date=_day(r[0]), **_window(r[1:]).model_dump()) for r in daily_rows],
         agentCount=_int(row[5 * w]),
         nearCompactionCount=_int(near),
@@ -326,6 +387,7 @@ async def list_usage_conversations(
             conv.id, conv.title, conv.agent_id, conv.agent_name, AgentTable.icon, conv.is_archived,
             conv.usage_answers, conv.usage_input_tokens, conv.usage_cached_tokens, conv.usage_output_tokens,
             conv.usage_total_tokens, conv.usage_model_calls, conv.usage_tool_calls, conv.usage_model_ms,
+            conv.usage_cost_micros, conv.usage_truncated_calls,
             conv.last_context_tokens, conv.last_context_window, conv.usage_updated_at, fill_ratio.label("fill"),
         )
         .outerjoin(AgentTable, AgentTable.id == conv.agent_id)
@@ -361,6 +423,7 @@ async def list_usage_conversations(
             cachedInputTokens=_int(r.usage_cached_tokens), outputTokens=_int(r.usage_output_tokens),
             totalTokens=_int(r.usage_total_tokens), modelCalls=_int(r.usage_model_calls),
             toolCalls=_int(r.usage_tool_calls), modelMs=_int(r.usage_model_ms),
+            costMicros=_int(r.usage_cost_micros), truncatedCalls=_int(r.usage_truncated_calls),
             contextTokens=r.last_context_tokens, contextWindow=r.last_context_window,
             updatedAt=r.usage_updated_at,
         )
@@ -417,6 +480,7 @@ def _group(row: Any) -> UsageAgentGroup:
         inputTokens=_int(row.input_tokens), cachedInputTokens=_int(row.cached_input_tokens),
         outputTokens=_int(row.output_tokens), reasoningTokens=_int(row.reasoning_tokens),
         modelMs=_int(row.model_latency_ms),
+        **_call_metrics(getattr(row, name) for name in _CALL_METRICS),
     )
 
 
@@ -430,6 +494,7 @@ def _group_columns() -> list:
         func.sum(usage.output_tokens).label("output_tokens"),
         func.sum(usage.reasoning_tokens).label("reasoning_tokens"),
         func.sum(usage.model_latency_ms).label("model_latency_ms"),
+        *(column.label(name) for column, name in zip(_call_metric_sums(usage), _CALL_METRICS)),
     ]
 
 
@@ -452,6 +517,7 @@ async def get_usage_conversation(db: AsyncSession, user_id: str, conversation_id
             m.id, m.parent_message_id, m.sender, m.created_at, m.agent_name, m.model_name,
             m.input_tokens, m.output_tokens, m.cached_input_tokens, m.model_calls, m.tool_calls,
             m.model_latency_ms, m.context_tokens, m.context_window, m.compaction_percent,
+            m.cost_micros, m.unpriced_calls, m.truncated_calls, m.first_token_ms,
         ).where(m.conversation_id == conversation_id)
     )).all()
     branch_ids = _latest_branch(rows)
@@ -487,6 +553,9 @@ async def get_usage_conversation(db: AsyncSession, user_id: str, conversation_id
         detail.modelMs += _int(answer.model_latency_ms)
         detail.modelCalls += _int(model_calls)
         detail.toolCalls += _int(tool_calls)
+        detail.costMicros += _int(answer.cost_micros)
+        detail.unpricedCalls += _int(answer.unpriced_calls)
+        detail.truncatedCalls += _int(answer.truncated_calls)
         if answer.model_calls is not None:
             detail.detailedAnswers += 1
             detail.detailedInputTokens += _int(answer.input_tokens)
@@ -500,6 +569,9 @@ async def get_usage_conversation(db: AsyncSession, user_id: str, conversation_id
         .order_by(desc(func.sum(MessageUsageTable.input_tokens) + func.sum(MessageUsageTable.output_tokens)))
     )).all()
     detail.groups = [_group(r) for r in group_rows]
+    detail.tools = await _tools(
+        db, ToolUsageTable, ToolUsageTable.conversation_id == conversation_id, limit=MAX_DETAIL_TOOL_ROWS
+    )
 
     on_branch = [r for r in answers if r.id in branch_ids]
     detail.branchTruncated = len(on_branch) > MAX_BRANCH_POINTS
@@ -511,6 +583,8 @@ async def get_usage_conversation(db: AsyncSession, user_id: str, conversation_id
             cachedInputTokens=_int(answer.cached_input_tokens), modelCalls=model_calls, toolCalls=tool_calls,
             modelMs=answer.model_latency_ms, contextTokens=answer.context_tokens,
             contextWindow=answer.context_window, compactionPercent=answer.compaction_percent,
+            costMicros=answer.cost_micros, unpricedCalls=answer.unpriced_calls,
+            truncatedCalls=answer.truncated_calls, firstTokenMs=answer.first_token_ms,
         ))
     return detail
 
@@ -532,6 +606,8 @@ def _entity_columns() -> list:
         func.coalesce(func.sum(_DAY.tool_calls), 0).label("tool_calls"),
         func.coalesce(func.sum(_DAY.detailed_answers), 0).label("detailed"),
         func.coalesce(func.sum(_DAY.detailed_input_tokens), 0).label("detailed_input"),
+        func.coalesce(func.sum(_DAY.cost_micros), 0).label("cost_micros"),
+        func.coalesce(func.sum(_DAY.truncated_calls), 0).label("truncated_calls"),
         func.max(_DAY.day).label("last_day"),
     ]
 
@@ -573,6 +649,8 @@ def _entity(
         toolCalls=_int(getattr(row, "tool_calls", 0)),
         detailedAnswers=_int(getattr(row, "detailed", 0)),
         detailedInputTokens=_int(getattr(row, "detailed_input", 0)),
+        costMicros=_int(getattr(row, "cost_micros", 0)),
+        truncatedCalls=_int(getattr(row, "truncated_calls", 0)),
         lastUsedAt=datetime.combine(last_day, time()) if isinstance(last_day, date) else None,
         subagents=sorted(used.get("subagents", set())),
         models=sorted(used.get("models", set())),
@@ -702,6 +780,7 @@ async def get_usage_agent(db: AsyncSession, user_id: str, agent_key: str, *, ran
             _GROUP.scope, _GROUP.group_name, _GROUP.model_name,
             func.sum(_GROUP.calls), func.sum(_GROUP.input_tokens), func.sum(_GROUP.cached_input_tokens),
             func.sum(_GROUP.output_tokens), func.sum(_GROUP.reasoning_tokens), func.sum(_GROUP.model_ms),
+            *_call_metric_sums(_GROUP),
         )
         .where(_GROUP.user_id == user_id, _matches(_GROUP, agent_id, label), *_from_day(_GROUP, first_day))
         .group_by(_GROUP.scope, _GROUP.group_name, _GROUP.model_name)
@@ -712,9 +791,14 @@ async def get_usage_agent(db: AsyncSession, user_id: str, agent_key: str, *, ran
             scope=_scope(r[0]), agentId=agent_id if _scope(r[0]) == "main" else None,
             agentName=r[1], model=r[2] or None, calls=_int(r[3]), inputTokens=_int(r[4]),
             cachedInputTokens=_int(r[5]), outputTokens=_int(r[6]), reasoningTokens=_int(r[7]), modelMs=_int(r[8]),
+            **_call_metrics(r[9:]),
         )
         for r in group_rows
     ]
+    tools = await _tools(
+        db, _TOOL_DAY, _TOOL_DAY.user_id == user_id, _matches(_TOOL_DAY, agent_id, label),
+        *_from_day(_TOOL_DAY, first_day), limit=MAX_DETAIL_TOOL_ROWS,
+    )
     used = {
         "subagents": {g.agentName for g in groups if g.scope == "subagent"},
         "models": {g.model for g in groups if g.model},
@@ -753,6 +837,7 @@ async def get_usage_agent(db: AsyncSession, user_id: str, agent_key: str, *, ran
     return UsageAgentDetail(
         agent=_entity(agent_key, totals, agent, conversations, used),
         groups=groups,
+        tools=tools,
         daily=[UsageDailyPoint(date=_day(r[0]), **_window(r[1:]).model_dump()) for r in daily_rows],
         topConversations=top,
     )

@@ -32,7 +32,7 @@ const sharedActionButtonClass = `
     h-8 w-8 text-muted-foreground
     hover:bg-[hsl(var(--hover-surface))] hover:text-muted-foreground
     active:bg-[hsl(var(--hover-surface-strong))] active:text-muted-foreground
-    focus:bg-[hsl(var(--hover-surface-strong))] focus:text-muted-foreground focus:outline-none
+    focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:text-muted-foreground focus:outline-none
     focus:ring-0 focus-visible:ring-0 transition-colors
     disabled:pointer-events-none disabled:opacity-45
 `;

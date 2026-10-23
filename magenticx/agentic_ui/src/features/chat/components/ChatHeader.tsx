@@ -6,10 +6,11 @@ import React from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { SidebarTrigger } from "@/shared/ui/sidebar";
 import { HiOutlineUpload } from "react-icons/hi";
-import { useTheme } from "next-themes";
 import { motion, useAnimationControls } from "framer-motion";
 import type { TargetAndTransition, Transition } from "framer-motion";
 import { INTERACTIVE_SURFACE } from "@/shared/lib/consts";
+import { returnFocusOnlyForKeyboard } from "@/shared/lib/focus-return";
+import { NewChatIcon } from "@/shared/ui/new-chat-icon";
 
 const TAP_PULSE: TargetAndTransition = { scale: [1, 1.28, 1] };
 const TAP_PULSE_TRANSITION: Transition = { duration: 0.36, ease: [0.34, 1.56, 0.64, 1] };
@@ -72,8 +73,6 @@ export default function ChatHeader({
   onNewChat,
   isStreaming = false,
 }: ChatHeaderProps) {
-  const { resolvedTheme } = useTheme();
-  const newChatIconSrc = resolvedTheme === "dark" ? "/edit.png" : "/edit2.png";
 
   const privatePulse = useAnimationControls();
   const moreMenuPulse = useAnimationControls();
@@ -242,12 +241,7 @@ export default function ChatHeader({
                       className={`md:hidden inline-flex items-center justify-center rounded-xl h-10 w-10 text-foreground transition-smooth ${INTERACTIVE_SURFACE} focus-visible:outline-none`}
                       aria-label="New chat"
                     >
-                      <img
-                        src={newChatIconSrc}
-                        alt="New chat"
-                        className="h-7 w-7 object-contain"
-                        draggable={false}
-                      />
+                      <NewChatIcon />
                     </button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom" align="center" className="md:hidden">
@@ -297,6 +291,7 @@ export default function ChatHeader({
                     <DropdownMenu.Content
                       sideOffset={8}
                       align="end"
+                      onCloseAutoFocus={returnFocusOnlyForKeyboard}
                       className="z-50 w-48 rounded-xl border border-border bg-background text-foreground shadow-lg p-1.5 focus:outline-none focus-visible:outline-none origin-top-right data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95"
                     >
                       {showArchiveAction && (

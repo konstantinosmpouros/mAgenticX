@@ -5,23 +5,40 @@ import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/shared/ui/chart";
 import { Skeleton } from "@/shared/ui/skeleton";
-import { cn, formatCompactTokens, formatModelTime } from "@/shared/lib/utils";
-import type { UsageSummary, UsageWindow } from "@/shared/lib/types";
+import { cn, formatCompactTokens, formatModelTime, formatSeconds, formatTokensPerSecond } from "@/shared/lib/utils";
+import type { UsageModelBreakdown, UsageSummary, UsageWindow } from "@/shared/lib/types";
 import {
+  avgTimeToFirstToken,
   cacheHitRate,
+  costOf,
+  costValue,
   describeChange,
   fillDailySeries,
+  firstTokenPerAnswer,
   formatPercent,
   ratio,
   timePerAnswer,
+  tokensPerSecond,
 } from "@/features/settings/lib/usageMetrics";
 import { SoftPanel } from "../shared";
-import { DrillCard, KpiTile, SectionTitle, ShareBar, UsageEmpty, UsageError } from "./UsageParts";
+import {
+  DrillCard,
+  KpiTile,
+  SectionTitle,
+  ShareBar,
+  ToolsSection,
+  TruncatedMark,
+  TruncationNote,
+  UsageEmpty,
+  UsageError,
+} from "./UsageParts";
 
 // Level 0 of the Usage tab: the dashboard you land on. This week against the
-// last (four KPI tiles), the recency windows, a 30-day chart that separates
-// cached input from fresh input and output (or shows model time), the model
-// ranking, and the two ways in — conversations and agents.
+// last (six KPI tiles: tokens, cost, answers, time, first token, cache), the
+// recency windows, a 30-day chart that separates cached input from fresh input
+// and output (or shows model time), the model ranking with each model's cost
+// and speed, the most-called tools, and the two ways in — conversations and
+// agents.
 
 const DAYS = 30;
 
@@ -36,6 +53,7 @@ const timeChart = {
 } satisfies ChartConfig;
 
 function WindowPill({ label, window }: { label: string; window: UsageWindow }) {
+  const cost = costOf(window);
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-0.5 rounded-2xl bg-background/60 px-4 py-3">
       <span className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{label}</span>
@@ -44,16 +62,35 @@ function WindowPill({ label, window }: { label: string; window: UsageWindow }) {
       </span>
       <span className="text-xs tabular-nums text-muted-foreground">
         {window.aiMessages.toLocaleString()} {window.aiMessages === 1 ? "answer" : "answers"}
+        {cost.label !== "—" ? ` · ${cost.label}` : ""}
       </span>
     </div>
   );
 }
 
+/**
+ * A model's cost and speed under its row. Each figure only when its
+ * denominator exists — calls that streamed for first token and speed — so a
+ * model used only before these metrics shows its cost line or nothing.
+ */
+function ModelSpeed({ model }: { model: UsageModelBreakdown }) {
+  const cost = costOf(model);
+  const ttft = avgTimeToFirstToken(model);
+  const speed = tokensPerSecond(model);
+  const parts = [
+    cost.label !== "—" ? `${cost.label}${cost.note ? ` (${cost.note})` : ""}` : cost.note,
+    ttft !== null ? `first token ${formatSeconds(ttft)}` : null,
+    speed !== null ? formatTokensPerSecond(speed) : null,
+  ].filter(Boolean);
+  if (parts.length === 0) return null;
+  return <p className="text-xs tabular-nums text-muted-foreground">{parts.join(" · ")}</p>;
+}
+
 function OverviewSkeleton() {
   return (
     <div className="space-y-6" aria-hidden>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {Array.from({ length: 4 }, (_, index) => (
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: 6 }, (_, index) => (
           <Skeleton key={index} className="h-[6.75rem] rounded-[1.4rem]" />
         ))}
       </div>
@@ -99,6 +136,8 @@ export function UsageOverview({
   const week = summary.last7Days;
   const before = summary.previous7Days;
   const weekTime = timePerAnswer(week);
+  const weekCost = costOf(week);
+  const weekFirstToken = firstTokenPerAnswer(week);
   const leader = summary.perAgent[0];
   const leaderShare = leader ? ratio(leader.totalTokens, summary.totals.totalTokens) : null;
   const largestModel = Math.max(1, ...summary.perModel.map((m) => m.inputTokens + m.outputTokens));
@@ -115,7 +154,7 @@ export function UsageOverview({
       ) : null}
 
       <section className="space-y-3" aria-label="Last 7 days">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <KpiTile
             label="Tokens · 7 days"
             value={formatCompactTokens(week.totalTokens)}
@@ -123,10 +162,15 @@ export function UsageOverview({
             hint="vs the week before"
           />
           <KpiTile
-            label="Cache hit"
-            value={formatPercent(cacheHitRate(week))}
-            change={describeChange(cacheHitRate(week), cacheHitRate(before), "rate")}
-            hint="of input reused"
+            label="Cost · 7 days"
+            value={weekCost.label}
+            change={describeChange(costValue(week), costValue(before), "amount")}
+            hint={weekCost.note ?? "estimate at list prices"}
+          />
+          <KpiTile
+            label="Answers · 7 days"
+            value={week.aiMessages.toLocaleString()}
+            change={describeChange(week.aiMessages, before.aiMessages, "amount")}
           />
           <KpiTile
             label="Time per answer"
@@ -135,9 +179,16 @@ export function UsageOverview({
             hint="model time"
           />
           <KpiTile
-            label="Answers · 7 days"
-            value={week.aiMessages.toLocaleString()}
-            change={describeChange(week.aiMessages, before.aiMessages, "amount")}
+            label="First token"
+            value={weekFirstToken === null ? "—" : formatSeconds(weekFirstToken)}
+            change={describeChange(weekFirstToken, firstTokenPerAnswer(before), "amount")}
+            hint="wait for the first words"
+          />
+          <KpiTile
+            label="Cache hit"
+            value={formatPercent(cacheHitRate(week))}
+            change={describeChange(cacheHitRate(week), cacheHitRate(before), "rate")}
+            hint="of input reused"
           />
         </div>
         <SoftPanel className="flex gap-3 p-3 max-[520px]:flex-col">
@@ -145,6 +196,11 @@ export function UsageOverview({
           <WindowPill label="Last 30 days" window={summary.last30Days} />
           <WindowPill label="All time" window={summary.totals} />
         </SoftPanel>
+        <TruncationNote
+          truncatedCalls={summary.last30Days.truncatedCalls}
+          modelCalls={summary.last30Days.modelCalls}
+          scope="in the last 30 days"
+        />
       </section>
 
       <section className="space-y-4">
@@ -197,7 +253,7 @@ export function UsageOverview({
       </section>
 
       <section className="space-y-4">
-        <SectionTitle title="By model" detail="Which models do the work, and how fast each one answers." />
+        <SectionTitle title="By model" detail="Which models do the work, what they cost, and how fast each one answers." />
         {summary.perModel.length === 0 ? (
           <UsageEmpty icon={Bot} title="No model split yet">
             The model behind each call is recorded from Oct 8 onward — your next answers will fill this in.
@@ -210,7 +266,10 @@ export function UsageOverview({
               return (
                 <div key={model.model} className="space-y-2 px-5 py-3.5">
                   <div className="flex items-center justify-between gap-4">
-                    <span className="truncate font-mono text-sm text-foreground">{model.model}</span>
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="truncate font-mono text-sm text-foreground">{model.model}</span>
+                      {model.truncatedCalls > 0 ? <TruncatedMark count={model.truncatedCalls} /> : null}
+                    </span>
                     <span className="shrink-0 text-sm tabular-nums text-foreground">
                       <span className="font-semibold">{formatCompactTokens(tokens)}</span>
                       <span className="ml-2 text-xs text-muted-foreground">
@@ -218,6 +277,7 @@ export function UsageOverview({
                       </span>
                     </span>
                   </div>
+                  <ModelSpeed model={model} />
                   <ShareBar fraction={tokens / largestModel} />
                 </div>
               );
@@ -225,6 +285,11 @@ export function UsageOverview({
           </SoftPanel>
         )}
       </section>
+
+      <ToolsSection
+        tools={summary.perTool}
+        detail="The most-called tools, all time: how often each fails, how long a call takes, how much it returns."
+      />
 
       <section className="grid gap-3 sm:grid-cols-2" aria-label="Explore">
         <DrillCard

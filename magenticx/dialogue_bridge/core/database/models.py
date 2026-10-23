@@ -9,6 +9,7 @@ from sqlalchemy.sql import func
 from sqlalchemy import DDL, case, event, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import (
+    BigInteger,
     Column,
     Date,
     Float,
@@ -263,6 +264,11 @@ class ConversationTable(Base):
     usage_model_calls = Column(Integer, nullable=False, server_default="0")
     usage_tool_calls = Column(Integer, nullable=False, server_default="0")
     usage_model_ms = Column(Integer, nullable=False, server_default="0")
+    # What the conversation cost, in micro-USD (1 USD = 1,000,000), and how
+    # many model calls stopped at the output limit (plan 41, migration 0041).
+    # Priced calls only: one on a model with no price adds nothing here.
+    usage_cost_micros = Column(BigInteger, nullable=False, server_default="0")
+    usage_truncated_calls = Column(Integer, nullable=False, server_default="0")
     # The most recent answer's main-agent context, for the list's fill bar.
     last_context_tokens = Column(Integer, nullable=True)
     last_context_window = Column(Integer, nullable=True)
@@ -380,6 +386,29 @@ class MessageTable(Base):
     # log exactly as the UI counts them. NULL on answers from before 0033.
     model_calls = Column(Integer, nullable=True)
     tool_calls = Column(Integer, nullable=True)
+    # Inference metrics (plan 41, migration 0041), every model call of the
+    # answer summed, sub-agents included; NULL when it spent nothing, and on
+    # answers from before 0041.
+    # - cost_micros: what the priced calls cost, in micro-USD, priced by the
+    #   bridge (utils/model_pricing.py) when the answer finished;
+    #   unpriced_calls: calls on a model with no price, which add no cost —
+    #   when it is not 0, cost_micros is a lower bound.
+    # - truncated_calls: calls that stopped at the output-token limit.
+    # - first_token_ms: from the run's start to the main agent's first text, as
+    #   the bridge saw it. NULL when the answer had no text, or when a HITL
+    #   approval came first (that wait is the human's, not the model's).
+    # - ttft_ms / ttft_calls: time to first token summed over the calls that
+    #   streamed, and how many did (the denominator of the average).
+    # - gen_ms / gen_output_tokens: those calls' time after the first token and
+    #   the output tokens they produced — tokens/s = gen_output_tokens / gen_ms.
+    cost_micros = Column(BigInteger, nullable=True)
+    unpriced_calls = Column(Integer, nullable=True)
+    truncated_calls = Column(Integer, nullable=True)
+    first_token_ms = Column(Integer, nullable=True)
+    ttft_ms = Column(Integer, nullable=True)
+    ttft_calls = Column(Integer, nullable=True)
+    gen_ms = Column(Integer, nullable=True)
+    gen_output_tokens = Column(Integer, nullable=True)
     # A manual compaction recorded on the answer it follows (plan 34): what it
     # freed, its summary and the summary call's spend; `undone_at` once taken
     # back. NULL on every answer that was not compacted after. Checkpoint ids
@@ -869,6 +898,58 @@ class MessageUsageTable(Base):
     output_tokens = Column(Integer, nullable=False, server_default="0")
     reasoning_tokens = Column(Integer, nullable=False, server_default="0")
     model_latency_ms = Column(Integer, nullable=False, server_default="0")
+    # The group's share of the answer's inference metrics (plan 41), with the
+    # same meaning as the columns of the same name on ``messages``.
+    cost_micros = Column(BigInteger, nullable=False, server_default="0")
+    unpriced_calls = Column(Integer, nullable=False, server_default="0")
+    truncated_calls = Column(Integer, nullable=False, server_default="0")
+    ttft_ms = Column(Integer, nullable=False, server_default="0")
+    ttft_calls = Column(Integer, nullable=False, server_default="0")
+    gen_ms = Column(Integer, nullable=False, server_default="0")
+    gen_output_tokens = Column(Integer, nullable=False, server_default="0")
+    # The answer's creation time, so windowed queries never join messages.
+    created_at = Column(DateTime, nullable=False)
+
+
+class ToolUsageTable(Base):
+    """What one answer's tool calls took: one row per (agent scope, agent, tool).
+
+    The tool twin of ``message_usage`` (plan 41): how often each tool ran, how
+    often it failed, how long it took and how much text it returned — never
+    its arguments or output, which are not captured. Written once, by
+    ``_finish_run``, from the ``TOOL_USAGE`` events of the run (one per settled
+    tool call, deduped by its call id; a call first seen bare and then wrapped
+    in ``SUBAGENT_EVENT`` is booked to its sub-agent). Never updated.
+
+    Denormalised and cascading exactly like ``message_usage``: ``agent_id`` is
+    the answer's MAIN agent on every row, NULL once it is deleted, with
+    ``main_agent_name`` keeping the label.
+    """
+    __tablename__ = "tool_usage"
+    __table_args__ = (
+        Index("ix_tool_usage_user_created", "user_id", "created_at"),
+    )
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    message_id = Column(String, ForeignKey("messages.id", ondelete="CASCADE"), nullable=False, index=True)
+    conversation_id = Column(
+        String, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    agent_id = Column(String, ForeignKey("agents.id", ondelete="SET NULL"), nullable=True)
+    main_agent_name = Column(String, nullable=True)
+    # "main" for the answer's own agent, "subagent" for anything it delegated to.
+    scope = Column(String, nullable=False)
+    # The main agent's name, or the sub-agent's type ("researcher").
+    agent_name = Column(String, nullable=False)
+    tool_name = Column(String, nullable=False)
+    calls = Column(Integer, nullable=False, server_default="0")
+    # Calls that ended in an error: a ToolMessage with status "error" (the
+    # ToolErrorMiddleware's conversions included) or a tool that raised.
+    errors = Column(Integer, nullable=False, server_default="0")
+    # Wall time of the calls, and the length of their results as text.
+    duration_ms = Column(Integer, nullable=False, server_default="0")
+    output_chars = Column(Integer, nullable=False, server_default="0")
     # The answer's creation time, so windowed queries never join messages.
     created_at = Column(DateTime, nullable=False)
 
@@ -911,6 +992,15 @@ class UsageDailyTable(Base):
     tool_calls = Column(Integer, nullable=False, server_default="0")
     detailed_answers = Column(Integer, nullable=False, server_default="0")
     detailed_input_tokens = Column(Integer, nullable=False, server_default="0")
+    # Plan 41 (migration 0041): cost in micro-USD of the priced calls, calls on
+    # a model with no price, calls cut off at the output limit, and the
+    # answers' time to first text — summed over the answers that measured one
+    # (``first_token_answers``, the denominator of the average).
+    cost_micros = Column(BigInteger, nullable=False, server_default="0")
+    unpriced_calls = Column(Integer, nullable=False, server_default="0")
+    truncated_calls = Column(Integer, nullable=False, server_default="0")
+    first_token_ms = Column(Integer, nullable=False, server_default="0")
+    first_token_answers = Column(Integer, nullable=False, server_default="0")
 
 
 class UsageDailyGroupTable(Base):
@@ -943,6 +1033,40 @@ class UsageDailyGroupTable(Base):
     output_tokens = Column(Integer, nullable=False, server_default="0")
     reasoning_tokens = Column(Integer, nullable=False, server_default="0")
     model_ms = Column(Integer, nullable=False, server_default="0")
+    # Plan 41: the same inference metrics as on ``message_usage``, summed.
+    cost_micros = Column(BigInteger, nullable=False, server_default="0")
+    unpriced_calls = Column(Integer, nullable=False, server_default="0")
+    truncated_calls = Column(Integer, nullable=False, server_default="0")
+    ttft_ms = Column(Integer, nullable=False, server_default="0")
+    ttft_calls = Column(Integer, nullable=False, server_default="0")
+    gen_ms = Column(Integer, nullable=False, server_default="0")
+    gen_output_tokens = Column(Integer, nullable=False, server_default="0")
+
+
+class ToolUsageDailyTable(Base):
+    """One user's tool calls on one UTC day under one main agent, per tool (plan 41).
+
+    The rollup twin of ``tool_usage``, kept like ``usage_daily``: an upsert
+    that adds to the day, in the transaction that finalises the answer. A
+    sub-agent's tool calls count under the main agent that delegated to it —
+    the Overview and agent pages ask "which tools", not "which sub-agent's".
+    ``agent_key`` / ``agent_id`` / ``agent_name`` behave exactly as on
+    ``usage_daily``. Outlives deleted conversations; the account purge deletes
+    it explicitly.
+    """
+    __tablename__ = "tool_usage_daily"
+    __table_args__ = (PrimaryKeyConstraint("user_id", "day", "agent_key", "tool_name"),)
+
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    day = Column(Date, nullable=False)
+    agent_key = Column(String, nullable=False)
+    agent_id = Column(String, ForeignKey("agents.id", ondelete="SET NULL"), nullable=True)
+    agent_name = Column(String, nullable=True)
+    tool_name = Column(String, nullable=False)
+    calls = Column(Integer, nullable=False, server_default="0")
+    errors = Column(Integer, nullable=False, server_default="0")
+    duration_ms = Column(Integer, nullable=False, server_default="0")
+    output_chars = Column(Integer, nullable=False, server_default="0")
 
 
 # -------------------------------------------------------------------------------

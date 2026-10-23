@@ -40,6 +40,7 @@ from utils.agents import build_agent_compact_undo_url, build_agent_compact_url, 
 from utils.compaction_lock import compaction_locks
 from utils.inference_runs import ACTIVE_RUN_STATUSES
 from utils.messages import get_owned_message
+from utils.model_pricing import call_cost_micros
 from utils.usage_rollups import add_answer_to_rollups
 
 logger = get_logger(__name__)
@@ -156,6 +157,12 @@ async def _book_compaction_usage(
     if not (usage.input_tokens or usage.output_tokens):
         return
     model = result.model[:200] if result.model else None
+    calls = usage.calls or 1
+    # Priced like an answer's calls (plan 41). The summary arrives as one total,
+    # so a long-context tier is chosen by its summed input — exact for the one
+    # call a compaction makes.
+    cost = call_cost_micros(model, usage.input_tokens, usage.cached_input_tokens, usage.output_tokens)
+    priced = {"cost_micros": cost or 0, "unpriced_calls": calls if cost is None else 0}
     db.add(
         MessageUsageTable(
             message_id=message.id,
@@ -173,9 +180,11 @@ async def _book_compaction_usage(
             reasoning_tokens=usage.reasoning_tokens,
             model_latency_ms=usage.latency_ms,
             created_at=at,
+            **priced,
         )
     )
     table = ConversationTable
+    conversation.usage_cost_micros = table.usage_cost_micros + priced["cost_micros"]
     conversation.usage_input_tokens = table.usage_input_tokens + usage.input_tokens
     conversation.usage_cached_tokens = table.usage_cached_tokens + usage.cached_input_tokens
     conversation.usage_output_tokens = table.usage_output_tokens + usage.output_tokens
@@ -201,6 +210,7 @@ async def _book_compaction_usage(
             "detailed_answers": 0,
             # Measured with full detail, so it belongs in the cache-hit base.
             "detailed_input_tokens": usage.input_tokens,
+            **priced,
         },
         groups=[{
             "scope": COMPACTION_SCOPE,
@@ -212,6 +222,7 @@ async def _book_compaction_usage(
             "output_tokens": usage.output_tokens,
             "reasoning_tokens": usage.reasoning_tokens,
             "model_ms": usage.latency_ms,
+            **priced,
         }],
     )
 

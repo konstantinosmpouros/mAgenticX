@@ -10,6 +10,7 @@ TASK_SUBAGENT_EVENT_TYPE = "TASK_SUBAGENT"
 SUBAGENT_EVENT_TYPE = "SUBAGENT_EVENT"
 BEFORE_AGENT_EVENT_TYPE = "BEFORE_AGENT_EVENT"
 TOKEN_USAGE_EVENT_TYPE = "TOKEN_USAGE"
+TOOL_USAGE_EVENT_TYPE = "TOOL_USAGE"
 CHECKPOINT_COMMITTED_EVENT_TYPE = "CHECKPOINT_COMMITTED"
 PRESENT_ARTIFACT_EVENT_TYPE = "PRESENT_ARTIFACT"
 RENDER_CHART_EVENT_TYPE = "RENDER_CHART"
@@ -106,9 +107,30 @@ class TokenUsageEvent(BaseModel):
     # output-token ceiling (the reply is cut off, though nothing failed).
     finish_reason: Optional[str] = None
     truncated: Optional[bool] = None
+    # ms from the call's start to its first streamed token; absent when the
+    # call did not stream.
+    ttft_ms: int | None = None
     # "compaction" for the summary call of an automatic compaction — booked
     # under its own usage scope, never the conversation's context reading.
     purpose: Optional[Literal["compaction"]] = None
+
+
+# ------------------------------------------------------------------
+# Tool usage event
+# ------------------------------------------------------------------
+class ToolUsageEvent(BaseModel):
+    """One settled tool call's metrics — never its arguments or output.
+
+    Deep agents: synthesised by the normalizer right after the call's
+    ``TOOL_CALL_RESULT``, from the stamp ``ToolMetricsMiddleware`` put on the
+    ToolMessage. LangGraph agents: queued by their run callback, keyed
+    ``lg-<run_id>``. ``tool_call_id`` is the bridge's dedupe key.
+    """
+    tool_call_id: str
+    tool_name: str
+    duration_ms: int
+    status: Literal["ok", "error"]
+    output_chars: int
 
 
 # ------------------------------------------------------------------

@@ -94,13 +94,20 @@ def test_usage_is_split_by_scope_agent_and_model():
     runtime.apply_event(_subagent(_model_usage("x1", "gpt-5-mini", inp=50, out=1), "unbound-task"))
     runtime.apply_event(_model_usage("m2", "gpt-5", inp=1_200, out=20, cached=1_000, latency=1_100))
 
+    # Plan 41's metrics ride along in every group: cost in micro-USD from the
+    # default prices; gpt-5-mini has none, so its call is unpriced.
+    no_metrics = dict.fromkeys(("cost_micros", "unpriced_calls", "truncated_calls", "ttft_ms", "ttft_calls",
+                                "gen_ms", "gen_output_tokens"), 0)
     assert runtime.usage_groups == {
         ("main", "", "gpt-5"): {"calls": 2, "input_tokens": 2_200, "cached_input_tokens": 1_800,
-                                "output_tokens": 30, "reasoning_tokens": 0, "model_latency_ms": 2_000},
+                                "output_tokens": 30, "reasoning_tokens": 0, "model_latency_ms": 2_000,
+                                **no_metrics, "cost_micros": 450 + 575},
         ("subagent", "researcher", "gpt-4.1"): {"calls": 2, "input_tokens": 500, "cached_input_tokens": 0,
-                                                "output_tokens": 10, "reasoning_tokens": 0, "model_latency_ms": 500},
+                                                "output_tokens": 10, "reasoning_tokens": 0, "model_latency_ms": 500,
+                                                **no_metrics, "cost_micros": 640 + 440},
         ("subagent", "sub-agent", "gpt-5-mini"): {"calls": 1, "input_tokens": 50, "cached_input_tokens": 0,
-                                                  "output_tokens": 1, "reasoning_tokens": 0, "model_latency_ms": 0},
+                                                  "output_tokens": 1, "reasoning_tokens": 0, "model_latency_ms": 0,
+                                                  **no_metrics, "unpriced_calls": 1},
     }
     assert sum(g["input_tokens"] for g in runtime.usage_groups.values()) == runtime.input_tokens
 

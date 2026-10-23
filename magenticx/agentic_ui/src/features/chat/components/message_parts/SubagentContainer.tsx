@@ -136,7 +136,7 @@ function CopyableContentBox({
                 h-8 w-8 text-zinc-400
                 hover:bg-white/10 hover:text-zinc-100
                 active:bg-white/15 active:text-zinc-100
-                focus:bg-white/15 focus:text-zinc-100 focus:outline-none
+                focus-visible:bg-white/15 focus-visible:text-zinc-100 focus:outline-none
                 focus:ring-0 focus-visible:ring-0 transition-colors
               "
               onMouseDown={(event) => event.preventDefault()}

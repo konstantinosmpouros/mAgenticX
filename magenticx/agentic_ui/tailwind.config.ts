@@ -3,6 +3,9 @@ import tailwindcssAnimate from "tailwindcss-animate";
 
 export default {
 	darkMode: ["class"],
+	// `hover:` only on devices that can hover: on a touch screen a tap would
+	// otherwise leave the button painted "hovered" until the next tap elsewhere.
+	future: { hoverOnlyWhenSupported: true },
 content: [
 		"./pages/**/*.{ts,tsx}",
 		"./components/**/*.{ts,tsx}",

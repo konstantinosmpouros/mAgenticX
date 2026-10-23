@@ -14,4 +14,6 @@ from harness.agui.events import (
     BeforeAgentEvent,
     TOKEN_USAGE_EVENT_TYPE,
     TokenUsageEvent,
+    TOOL_USAGE_EVENT_TYPE,
+    ToolUsageEvent,
 )

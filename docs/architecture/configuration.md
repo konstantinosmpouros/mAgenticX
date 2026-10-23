@@ -157,6 +157,29 @@ Every per-user limit (keyed on the path's `{user_id}`) is declared as an endpoin
 
 All rate limits are counted in **Redis** via `fastapi-redis-sdk` (they survive restarts and hold across replicas) and **fail open** on a Redis outage. The SDK's own `REDIS_*` env settings are **not** read from the environment — `core/cache/integration.py` primes them programmatically from the values above plus the Redis section below (so the file-backed password and internal CA are honored), then scrubs the password back out of the process env.
 
+### Model pricing (`PricingSettings`)
+
+The Usage tab's cost figures (plan 41, see [usage-analytics](../flows/usage-analytics.md#pricing)). The default price table lives in `utils/model_pricing.py`; these variables only override it.
+
+| Env var | Default | What it does |
+| --- | --- | --- |
+| `MODEL_PRICES_JSON` | empty (defaults only) | JSON object `{model: prices}` merged over the defaults, USD per 1M tokens. An entry replaces that model's whole default, adds a new model, or — with `null` — removes a default price (the model becomes "unpriced"). |
+| `MODEL_PRICES_JSON_FILE` | unset | Path to a file holding the same JSON (the repo's `*_FILE` convention); wins over `MODEL_PRICES_JSON` when set and non-empty. |
+
+```json
+{
+  "gpt-4.1": {"input": 2.00, "cached_input": 0.50, "output": 8.00},
+  "my-proxy:custom-model": {"input": 1.00, "output": 4.00},
+  "gpt-6-luna": {
+    "input": 0.10, "cached_input": 0.01, "output": 0.50,
+    "long_context": {"above_input_tokens": 272000, "input": 0.20, "cached_input": 0.02, "output": 0.75}
+  },
+  "o3-mini": null
+}
+```
+
+`input` and `output` are required; `cached_input` defaults to `input`; `long_context` replaces all three prices for a call whose input exceeds `above_input_tokens` (a positive integer). Prices must be non-negative numbers, and unknown keys are refused (a typo such as `"ouput"` must not price at zero). The table is parsed when `utils.model_pricing` is imported at startup: **bad JSON or a bad entry stops the bridge**. A model name is matched exactly, then without a `provider:` prefix, then without a `-YYYY-MM-DD` suffix. Changing a price never re-prices stored answers. The defaults are estimates — verify them against your invoice.
+
 ### Redis (`RedisSettings`)
 
 | Env var | Default | What it does |
@@ -394,6 +417,18 @@ Each built-in workflow agent picks its models per node. All accept `openai:<mode
 | `SUMMARIZATION_KEEP_MESSAGES` | `20` | Fallback recent-message retention. |
 | `SUMMARIZATION_MANUAL_MIN_FRACTION` | `0.05` | A **manual** compaction (the composer's context ring, plan 34) is allowed once the context passes this fraction of the window. The UI applies the same 5% (`MANUAL_COMPACTION_MIN_PERCENT`). |
 
+### Model-call rate-limit retry (`RateLimitRetrySettings`)
+
+`RetryOnRateLimitMiddleware` (`harness/middlewares/rate_limit.py`), guaranteed outermost on every deep agent and declared sub-agent, waits out a provider 429 instead of failing the run. The OpenAI client's own short retries rarely outlast a per-minute token quota.
+
+| Env var | Default | What it does |
+| --- | --- | --- |
+| `MODEL_RATE_LIMIT_RETRY_ATTEMPTS` | `4` (1–10) | Attempts in all, the first included. |
+| `MODEL_RATE_LIMIT_RETRY_DELAY_SECONDS` | `15.0` | Wait before each retry; a larger numeric `Retry-After` from the provider wins. |
+| `MODEL_RATE_LIMIT_RETRY_MAX_DELAY_SECONDS` | `120.0` | Cap on any single wait. |
+
+A 429 with code `insufficient_quota` (the account is out of credit) is never retried. Re-issuing is safe, because a 429 is refused before any token streams. Each retry logs `model_call_rate_limited`. The run emits nothing while it waits, but the bridge's stream keeps heartbeating.
+
 ### Remote skill sources (`RemoteSkillsSettings`)
 
 The skill catalogue is the allowlisted remote sources, indexed daily (see [remote-skills](../flows/remote-skills.md)). The **sources themselves are not configurable** — the allowlist is security policy and lives in code (`harness/skill_registry/remote/sources.py`), because an env-editable source URL would be an SSRF lever.
@@ -499,6 +534,7 @@ These flip behavior at boot; all are **fail-closed by default** (secure unless e
 - **JWT TTLs and CORS are validated.** Out-of-range JWT durations raise; `CORS_ALLOWED_ORIGINS` containing `*` with credentials on raises. These are startup failures, not silent clamps.
 - **Cookie names auto-prefix `__Host-`** when `SESSION_COOKIE_SECURE=true` and no `SESSION_COOKIE_DOMAIN` is set. Set a domain only if you genuinely need cross-subdomain cookies — it drops the `__Host-` hardening.
 - **agents reads two databases.** `DATABASE_*` (bridge) and `AGENT_RUNTIME_DATABASE_*` (agents checkpointer) are different DBs on the same Postgres instance, and the latter is a **raw psycopg** conninfo (`postgresql://`), not the bridge's `postgresql+asyncpg://`.
+- **A bad `MODEL_PRICES_JSON` is a start failure**, not a silent fallback to the defaults: the bridge refuses to boot rather than price every answer wrong.
 - **rag_service is the odd one out** — it uses `ENVIRONMENT` (not `APP_ENV`/`ENV`) and keeps `LOG_LEVEL`/`LOG_FORMAT` on `AppSettings`, while the bridge/agents keep them on a `LoggingSettings` group. Same vars, slightly different internal shape.
 
 ---
@@ -508,7 +544,8 @@ These flip behavior at boot; all are **fail-closed by default** (secure unless e
 | Concept | File | What to look for |
 | --- | --- | --- |
 | bridge settings | [magenticx/dialogue_bridge/core/settings.py](../../magenticx/dialogue_bridge/core/settings.py) | every `*Settings` class + `validation_alias` |
-| agents settings | [magenticx/agents/core/settings.py](../../magenticx/agents/core/settings.py) | checkpointer, workflows, deep-agents, filesystem |
+| agents settings | [magenticx/agents/core/settings.py](../../magenticx/agents/core/settings.py) | checkpointer, workflows, deep-agents, filesystem, `RateLimitRetrySettings` |
+| model price table | [magenticx/dialogue_bridge/utils/model_pricing.py](../../magenticx/dialogue_bridge/utils/model_pricing.py) | `DEFAULT_PRICES`, `parse_price_table()`, `call_cost_micros()` |
 | rag settings | [magenticx/rag_service/core/settings.py](../../magenticx/rag_service/core/settings.py) | `AppSettings`, `RagSettings`, `ProxySettings` |
 | TLS toggles | [magenticx/tls/entrypoint-tls.sh](../../magenticx/tls/entrypoint-tls.sh) | `REQUIRE_TLS`, `REQUIRE_MTLS` |
 | nginx env substitution | [magenticx/agentic_ui/nginx.conf.template](../../magenticx/agentic_ui/nginx.conf.template) | `BFF_BASE_URL`, `TRUSTED_PROXY_SECRET` |

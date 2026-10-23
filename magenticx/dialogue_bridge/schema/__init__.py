@@ -130,6 +130,7 @@ from schema.usage import (
     UsageModelBreakdown,
     UsagePrivateAggregate,
     UsageSummary,
+    UsageToolBreakdown,
     UsageWindow,
 )
 from schema.user_agents import (
@@ -247,6 +248,7 @@ __all__ = [
     "UsageModelBreakdown",
     "UsagePrivateAggregate",
     "UsageSummary",
+    "UsageToolBreakdown",
     "UsageWindow",
     "UserPreferences",
     "UserProfile",

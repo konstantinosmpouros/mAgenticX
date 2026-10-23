@@ -17,4 +17,5 @@ export type {
   UsageAgentEntity,
   UsageAgentList,
   UsageAgentDetail,
+  UsageToolBreakdown,
 } from "../schemas";

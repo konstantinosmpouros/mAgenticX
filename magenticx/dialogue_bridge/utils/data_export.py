@@ -64,6 +64,7 @@ from core.database import (
     MessageUsageTable,
     ScheduledTaskTable,
     SessionLocal,
+    ToolUsageTable,
     UserAgentToolPrefTable,
     UserAvatarTable,
     UserPreferencesTable,
@@ -130,6 +131,10 @@ _MESSAGES = (
     MessageTable.context_window, MessageTable.model_name, MessageTable.model_calls,
     MessageTable.tool_calls, MessageTable.compaction, MessageTable.command, MessageTable.is_error,
     MessageTable.error_message, MessageTable.scheduled_task_id, MessageTable.created_at,
+    # Plan 41: cost, truncation and speed of the answer.
+    MessageTable.cost_micros, MessageTable.unpriced_calls, MessageTable.truncated_calls,
+    MessageTable.first_token_ms, MessageTable.ttft_ms, MessageTable.ttft_calls, MessageTable.gen_ms,
+    MessageTable.gen_output_tokens,
 )
 # Where each answer's tokens went (plan 33): main agent vs each sub-agent, by model.
 _MESSAGE_USAGE = (
@@ -138,7 +143,17 @@ _MESSAGE_USAGE = (
     MessageUsageTable.model_name, MessageUsageTable.calls, MessageUsageTable.input_tokens,
     MessageUsageTable.cached_input_tokens, MessageUsageTable.output_tokens,
     MessageUsageTable.reasoning_tokens, MessageUsageTable.model_latency_ms,
-    MessageUsageTable.created_at,
+    MessageUsageTable.cost_micros, MessageUsageTable.unpriced_calls, MessageUsageTable.truncated_calls,
+    MessageUsageTable.ttft_ms, MessageUsageTable.ttft_calls, MessageUsageTable.gen_ms,
+    MessageUsageTable.gen_output_tokens, MessageUsageTable.created_at,
+)
+# What each answer's tools took (plan 41) — counts and sizes only; tool
+# arguments and output are never stored, so never exported.
+_TOOL_USAGE = (
+    ToolUsageTable.id, ToolUsageTable.message_id, ToolUsageTable.conversation_id,
+    ToolUsageTable.main_agent_name, ToolUsageTable.scope, ToolUsageTable.agent_name,
+    ToolUsageTable.tool_name, ToolUsageTable.calls, ToolUsageTable.errors, ToolUsageTable.duration_ms,
+    ToolUsageTable.output_chars, ToolUsageTable.created_at,
 )
 _ATTACHMENTS = (
     AttachmentTable.id, AttachmentTable.message_id, MessageTable.conversation_id,
@@ -531,6 +546,14 @@ async def _all_message_usage(user_id: str) -> AsyncIterator[dict]:
             yield row
 
 
+async def _all_tool_usage(user_id: str) -> AsyncIterator[dict]:
+    # Per conversation, on ix_tool_usage_conversation_id, like message_usage.
+    async for conversation_id in _conversation_ids(user_id):
+        base = select(*_TOOL_USAGE).where(ToolUsageTable.conversation_id == conversation_id)
+        async for row in _pages(_by_id(base, ToolUsageTable.id), lambda r: (r["id"],)):
+            yield row
+
+
 async def _all_attachments(user_id: str, include_files: bool) -> AsyncIterator[dict]:
     async for conversation_id in _conversation_ids(user_id):
         async for row in _attachment_rows(conversation_id):
@@ -575,6 +598,7 @@ moment it was created. All times are UTC.
 | `conversations/conversations.ndjson` | One conversation per line |
 | `conversations/messages.ndjson` | One message per line, with its `conversation_id` |
 | `conversations/message_usage.ndjson` | Where each answer's tokens went: the main agent and each sub-agent, by model |
+| `conversations/tool_usage.ndjson` | How often each answer's tools ran, failed and took, by agent and tool (never their input or output) |
 | `conversations/attachments.ndjson` | One attachment per line; `archive_path` is where its file is in this archive (empty in a text-only export) |
 | `conversations/reports.ndjson` | Conversations you reported |
 | `conversations/shares.ndjson` | Conversations you shared (the links themselves are not included) |
@@ -749,6 +773,7 @@ async def stream_export(user_id: str, *, include_attachments: bool, claim: Expor
             _ndjson(zs, em, "conversations/conversations.ndjson", _conversation_rows(user_id)),
             _ndjson(zs, em, "conversations/messages.ndjson", _all_messages(user_id)),
             _ndjson(zs, em, "conversations/message_usage.ndjson", _all_message_usage(user_id)),
+            _ndjson(zs, em, "conversations/tool_usage.ndjson", _all_tool_usage(user_id)),
             _ndjson(zs, em, "conversations/attachments.ndjson", _all_attachments(user_id, include_attachments)),
             _ndjson(zs, em, "conversations/reports.ndjson",
                     _pages(_by_id(select(*_REPORTS).where(ConversationReportTable.user_id == user_id),

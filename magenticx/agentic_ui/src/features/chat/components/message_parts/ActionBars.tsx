@@ -28,8 +28,9 @@ import { BsStopCircleFill } from "react-icons/bs";
 import type { LucideIcon } from "lucide-react";
 import type { MessageOut } from "@/shared/lib/types";
 import { BranchControls } from "./BranchControls";
-import { MessageUsage } from "./MessageUsage";
+import { MessageUsage, TruncatedMark } from "./MessageUsage";
 import { INTERACTIVE_SURFACE_QUIET } from "@/shared/lib/consts";
+import { returnFocusOnlyForKeyboard } from "@/shared/lib/focus-return";
 
 type BranchControlsConfig = {
   parentId: string | null;
@@ -102,7 +103,7 @@ const CopyButton = ({
             h-8 w-8 text-muted-foreground
             hover:bg-[hsl(var(--hover-surface))] hover:text-muted-foreground
             active:bg-[hsl(var(--hover-surface-strong))] active:text-muted-foreground
-            focus:bg-[hsl(var(--hover-surface-strong))] focus:text-muted-foreground focus:outline-none
+            focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:text-muted-foreground focus:outline-none
             focus:ring-0 focus-visible:ring-0 transition-colors
           "
           onMouseDown={(event) => event.preventDefault()}
@@ -190,7 +191,7 @@ export const AIActionBar = ({
 
   return (
     <div className="flex w-full flex-wrap items-center gap-2">
-      {(timestampLabel || agentName || usageVisible) && (
+      {(timestampLabel || agentName || usageVisible || (message.truncatedCalls ?? 0) > 0) && (
         <div className="flex items-center gap-2 text-xs md:text-sm text-muted-foreground">
           {timestampLabel ? <span>{timestampLabel}</span> : null}
           {agentName ? (
@@ -199,7 +200,7 @@ export const AIActionBar = ({
               <span>{agentName}</span>
             </span>
           ) : null}
-          {usageVisible ? <MessageUsage message={message} /> : null}
+          {usageVisible ? <MessageUsage message={message} /> : <TruncatedMark message={message} />}
         </div>
       )}
       <div className="flex items-center gap-0.5">
@@ -218,7 +219,7 @@ export const AIActionBar = ({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className={`h-8 w-8 ${INTERACTIVE_SURFACE_QUIET} focus:bg-[hsl(var(--hover-surface-strong))] ${
+                  className={`h-8 w-8 ${INTERACTIVE_SURFACE_QUIET} focus-visible:bg-[hsl(var(--hover-surface-strong))] ${
                     message.liked === true
                       ? "text-[#de8bff] hover:!text-[#de8bff]"
                       : "text-muted-foreground hover:!text-muted-foreground"
@@ -253,7 +254,7 @@ export const AIActionBar = ({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className={`h-8 w-8 ${INTERACTIVE_SURFACE_QUIET} focus:bg-[hsl(var(--hover-surface-strong))] ${
+                  className={`h-8 w-8 ${INTERACTIVE_SURFACE_QUIET} focus-visible:bg-[hsl(var(--hover-surface-strong))] ${
                     message.liked === false
                       ? "text-[#de8bff] hover:!text-[#de8bff]"
                       : "text-muted-foreground hover:!text-muted-foreground"
@@ -292,7 +293,7 @@ export const AIActionBar = ({
                   h-8 w-8 text-muted-foreground
                   hover:bg-[hsl(var(--hover-surface))] hover:text-muted-foreground
                   active:bg-[hsl(var(--hover-surface-strong))] active:text-muted-foreground
-                  focus:bg-[hsl(var(--hover-surface-strong))] focus:text-muted-foreground focus:outline-none
+                  focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:text-muted-foreground focus:outline-none
                   focus:ring-0 focus-visible:ring-0 transition-colors
                   [&_svg]:!size-[18px]
                 "
@@ -328,7 +329,7 @@ export const AIActionBar = ({
                       h-8 w-8 text-muted-foreground
                       hover:bg-[hsl(var(--hover-surface))] hover:text-muted-foreground
                       active:bg-[hsl(var(--hover-surface-strong))] active:text-muted-foreground
-                      focus:bg-[hsl(var(--hover-surface-strong))] focus:text-muted-foreground focus:outline-none
+                      focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:text-muted-foreground focus:outline-none
                       focus:ring-0 focus-visible:ring-0 transition-colors
                       data-[state=open]:bg-[hsl(var(--hover-surface-strong))]
                     "
@@ -352,6 +353,7 @@ export const AIActionBar = ({
                 <DropdownMenu.Content
                   align="start"
                   side="top"
+                  onCloseAutoFocus={returnFocusOnlyForKeyboard}
                   sideOffset={8}
                   collisionPadding={10}
                   className="z-[70] min-w-[12rem] rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-lg animate-scale-in"
@@ -419,7 +421,7 @@ export const AIActionBar = ({
                   h-8 w-8 text-muted-foreground
                   hover:bg-[hsl(var(--hover-surface))] hover:text-muted-foreground
                   active:bg-[hsl(var(--hover-surface-strong))] active:text-muted-foreground
-                  focus:bg-[hsl(var(--hover-surface-strong))] focus:text-muted-foreground focus:outline-none
+                  focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:text-muted-foreground focus:outline-none
                   focus:ring-0 focus-visible:ring-0 transition-colors
                 "
                   onMouseDown={(event) => event.preventDefault()}
@@ -451,7 +453,7 @@ export const AIActionBar = ({
                   relative h-8 w-8 text-muted-foreground
                   hover:bg-[hsl(var(--hover-surface))] hover:text-muted-foreground
                   active:bg-[hsl(var(--hover-surface-strong))] active:text-muted-foreground
-                  focus:bg-[hsl(var(--hover-surface-strong))] focus:text-muted-foreground focus:outline-none
+                  focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:text-muted-foreground focus:outline-none
                   focus:ring-0 focus-visible:ring-0 transition-colors
                 "
                   onMouseDown={(event) => event.preventDefault()}
@@ -527,7 +529,7 @@ export const UserActionBar = ({
                   h-8 w-8 text-muted-foreground
                   hover:bg-[hsl(var(--hover-surface))] hover:text-muted-foreground
                   active:bg-[hsl(var(--hover-surface-strong))] active:text-muted-foreground
-                  focus:bg-[hsl(var(--hover-surface-strong))] focus:text-muted-foreground focus:outline-none
+                  focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:text-muted-foreground focus:outline-none
                   focus:ring-0 focus-visible:ring-0 transition-colors
                 "
                   onMouseDown={(event) => event.preventDefault()}

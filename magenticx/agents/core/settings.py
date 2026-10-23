@@ -632,9 +632,9 @@ class RateLimitRetrySettings(BaseSettings):
     """
     model_config = _BASE_MODEL_CONFIG
 
-    max_attempts: int = Field(4, ge=1, le=10, validation_alias="INFERENCE_RATE_LIMIT_MAX_ATTEMPTS")
-    delay_seconds: float = Field(15.0, ge=0, validation_alias="INFERENCE_RATE_LIMIT_DELAY_SECONDS")
-    max_delay_seconds: float = Field(120.0, ge=0, validation_alias="INFERENCE_RATE_LIMIT_MAX_DELAY_SECONDS")
+    max_attempts: int = Field(4, ge=1, le=10, validation_alias="MODEL_RATE_LIMIT_RETRY_ATTEMPTS")
+    delay_seconds: float = Field(15.0, ge=0, validation_alias="MODEL_RATE_LIMIT_RETRY_DELAY_SECONDS")
+    max_delay_seconds: float = Field(120.0, ge=0, validation_alias="MODEL_RATE_LIMIT_RETRY_MAX_DELAY_SECONDS")
 
 
 class AguiSettings(BaseSettings):

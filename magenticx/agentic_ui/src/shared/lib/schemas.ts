@@ -420,6 +420,16 @@ export type UsageWindow = {
   /** Answers that recorded call counts and model time — the ratio denominators. */
   detailedAnswers: number;
   detailedInputTokens: number;
+  /** Estimated cost in micro-USD of the priced calls (plan 41); 0 before pricing. */
+  costMicros: number;
+  /** Calls whose model has no price — their cost is missing, not zero. */
+  unpricedCalls: number;
+  /** Calls the model ended at its output limit (finish_reason "length"). */
+  truncatedCalls: number;
+  /** Sum of each answer's wait to its first words, over `firstTokenAnswers`. */
+  firstTokenMs: number;
+  /** Answers that measured a first token — the denominator for `firstTokenMs`. */
+  firstTokenAnswers: number;
 };
 
 const toCount = (value: unknown): number =>
@@ -451,8 +461,42 @@ const toUsageWindow = (raw: unknown): UsageWindow => {
     toolCalls: toCount(record.toolCalls),
     detailedAnswers: toCount(record.detailedAnswers),
     detailedInputTokens: toCount(record.detailedInputTokens),
+    costMicros: toCount(record.costMicros),
+    unpricedCalls: toCount(record.unpricedCalls),
+    truncatedCalls: toCount(record.truncatedCalls),
+    firstTokenMs: toCount(record.firstTokenMs),
+    firstTokenAnswers: toCount(record.firstTokenAnswers),
   };
 };
+
+// Per model and per agent × model (plan 41): cost, cut-off calls, and speed.
+// `ttftCalls` and `genMs` are the denominators for the averages — only calls
+// that streamed report them, so older calls never drag a speed down.
+const toUsageCallMetrics = (record: Record<string, unknown>) => ({
+  costMicros: toCount(record.costMicros),
+  unpricedCalls: toCount(record.unpricedCalls),
+  truncatedCalls: toCount(record.truncatedCalls),
+  ttftMs: toCount(record.ttftMs),
+  ttftCalls: toCount(record.ttftCalls),
+  genMs: toCount(record.genMs),
+  genOutputTokens: toCount(record.genOutputTokens),
+});
+
+// One tool's settled calls (plan 41). Metrics only — never arguments or output.
+// A row without a name cannot be keyed or labelled, so it is dropped.
+const toUsageToolBreakdown = (record: Record<string, unknown>) => ({
+  toolName: toText(record.toolName) ?? "",
+  calls: toCount(record.calls),
+  errors: toCount(record.errors),
+  durationMs: toCount(record.durationMs),
+  outputChars: toCount(record.outputChars),
+});
+export type UsageToolBreakdown = ReturnType<typeof toUsageToolBreakdown>;
+
+const toUsageTools = (raw: unknown): UsageToolBreakdown[] =>
+  toUsageList(raw)
+    .map(toUsageToolBreakdown)
+    .filter((tool) => tool.toolName);
 
 const toUsageSummary = (raw: Record<string, unknown>) => ({
   totals: toUsageWindow(raw.totals),
@@ -472,11 +516,13 @@ const toUsageSummary = (raw: Record<string, unknown>) => ({
     cachedInputTokens: toCount(record.cachedInputTokens),
     outputTokens: toCount(record.outputTokens),
     modelMs: toCount(record.modelMs),
+    ...toUsageCallMetrics(record),
   })),
   daily: toUsageList(raw.daily).map((record) => ({
     ...toUsageWindow(record),
     date: typeof record.date === "string" ? record.date : "",
   })),
+  perTool: toUsageTools(raw.perTool),
   agentCount: toCount(raw.agentCount),
   nearCompactionCount: toCount(raw.nearCompactionCount),
 });
@@ -505,6 +551,8 @@ const toUsageConversationRow = (record: Record<string, unknown>) => ({
   contextTokens: toOptionalCount(record.contextTokens),
   contextWindow: toOptionalCount(record.contextWindow),
   updatedAt: toText(record.updatedAt),
+  costMicros: toCount(record.costMicros),
+  truncatedCalls: toCount(record.truncatedCalls),
 });
 
 export const UsageConversationPageSchema = z.record(z.unknown()).transform((raw) => {
@@ -539,6 +587,7 @@ const toUsageAgentGroup = (record: Record<string, unknown>) => ({
   outputTokens: toCount(record.outputTokens),
   reasoningTokens: toCount(record.reasoningTokens),
   modelMs: toCount(record.modelMs),
+  ...toUsageCallMetrics(record),
 });
 export type UsageAgentGroup = ReturnType<typeof toUsageAgentGroup>;
 
@@ -558,7 +607,11 @@ export const UsageConversationDetailSchema = z.record(z.unknown()).transform((ra
   detailedAnswers: toCount(raw.detailedAnswers),
   detailedInputTokens: toCount(raw.detailedInputTokens),
   callsComplete: raw.callsComplete !== false,
+  costMicros: toCount(raw.costMicros),
+  unpricedCalls: toCount(raw.unpricedCalls),
+  truncatedCalls: toCount(raw.truncatedCalls),
   groups: toUsageList(raw.groups).map(toUsageAgentGroup),
+  tools: toUsageTools(raw.tools),
   branch: toUsageList(raw.branch).map((record) => ({
     id: toText(record.id) ?? "",
     createdAt: toText(record.createdAt),
@@ -573,6 +626,12 @@ export const UsageConversationDetailSchema = z.record(z.unknown()).transform((ra
     contextTokens: toOptionalCount(record.contextTokens),
     contextWindow: toOptionalCount(record.contextWindow),
     compactionPercent: Number.isFinite(record.compactionPercent) ? Number(record.compactionPercent) : null,
+    // Null for an answer from before plan 41 (or one that spent nothing), so
+    // the row can leave the figure out instead of claiming "$0.00".
+    costMicros: toOptionalCount(record.costMicros),
+    unpricedCalls: toOptionalCount(record.unpricedCalls),
+    truncatedCalls: toOptionalCount(record.truncatedCalls),
+    firstTokenMs: toOptionalCount(record.firstTokenMs),
   })),
   branchTruncated: raw.branchTruncated === true,
 }));
@@ -605,6 +664,8 @@ const toUsageAgentEntity = (record: Record<string, unknown>) => ({
   toolCalls: toCount(record.toolCalls),
   detailedAnswers: toCount(record.detailedAnswers),
   detailedInputTokens: toCount(record.detailedInputTokens),
+  costMicros: toCount(record.costMicros),
+  truncatedCalls: toCount(record.truncatedCalls),
   lastUsedAt: toText(record.lastUsedAt),
   subagents: (Array.isArray(record.subagents) ? record.subagents : []).filter(
     (name): name is string => typeof name === "string",
@@ -623,6 +684,7 @@ export type UsageAgentList = z.infer<typeof UsageAgentListSchema>;
 export const UsageAgentDetailSchema = z.record(z.unknown()).transform((raw) => ({
   agent: toUsageAgentEntity(toUsageRecord(raw.agent)),
   groups: toUsageList(raw.groups).map(toUsageAgentGroup),
+  tools: toUsageTools(raw.tools),
   daily: toUsageList(raw.daily).map((record) => ({
     ...toUsageWindow(record),
     date: typeof record.date === "string" ? record.date : "",

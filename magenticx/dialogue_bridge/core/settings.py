@@ -486,6 +486,30 @@ class InferenceSettings(BaseSettings):
     ws_subscribe_timeout_seconds: float = Field(10.0, validation_alias="INFERENCE_WS_SUBSCRIBE_TIMEOUT_SECONDS")
 
 
+class PricingSettings(BaseSettings):
+    """Model prices for the Usage tab's cost figures (plan 41).
+
+    The defaults live in ``utils/model_pricing.py``; this is only the operator's
+    override, a JSON object of ``{model: {input, cached_input, output,
+    long_context?}}`` in USD per 1M tokens, merged over them. From
+    ``MODEL_PRICES_JSON_FILE`` (a mounted file, the repo's ``*_FILE``
+    convention) or ``MODEL_PRICES_JSON`` itself. Parsed and validated when
+    ``utils.model_pricing`` is imported at startup, so a bad value stops the
+    bridge from starting rather than pricing every answer wrong.
+    """
+    model_config = _BASE_MODEL_CONFIG
+
+    prices_json: str = Field("", validation_alias="MODEL_PRICES_JSON")
+
+    @field_validator("prices_json", mode="before")
+    @classmethod
+    def _load_prices_json(cls, value: object) -> object:
+        resolved = _resolve_file_backed_secret("MODEL_PRICES_JSON")
+        if resolved:
+            return resolved
+        return value.strip() if isinstance(value, str) else ""
+
+
 class SpeechSettings(BaseSettings):
     model_config = _BASE_MODEL_CONFIG
 
@@ -1193,6 +1217,7 @@ class Settings(BaseSettings):
     entra: EntraSettings = Field(default_factory=EntraSettings)
     upstream: UpstreamSettings = Field(default_factory=UpstreamSettings)
     inference: InferenceSettings = Field(default_factory=InferenceSettings)
+    pricing: PricingSettings = Field(default_factory=PricingSettings)
     voice: VoiceSettings = Field(default_factory=VoiceSettings)
     speech: SpeechSettings = Field(default_factory=SpeechSettings)
     attachments: AttachmentSettings = Field(default_factory=AttachmentSettings)

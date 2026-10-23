@@ -87,9 +87,14 @@ magenticx/agents/
 │   ├── agui/                   ★ AG-UI protocol (NOT runtime/protocols/agui)
 │   │   ├── emitter.py          AGUIEmitter — encodes every AG-UI event to SSE bytes
 │   │   ├── events.py           Custom event Pydantic models + name constants
-│   │   └── normalizer.py       AGUIStreamNormalizer — LangGraph chunk → AG-UI SSE
+│   │   ├── normalizer.py       AGUIStreamNormalizer — LangGraph chunk → AG-UI SSE
+│   │   └── usage_callback.py   UsageMetricsCallback — LangGraph agents' TOKEN_USAGE / TOOL_USAGE
 │   ├── middlewares/
 │   │   ├── tool_error.py       ToolErrorMiddleware (tool exception → error ToolMessage)
+│   │   ├── tool_metrics.py     ToolMetricsMiddleware (duration/status/output size → mx_tool_metrics)
+│   │   ├── usage_metrics.py    UsageMetricsMiddleware (model, latency, context, finish_reason/truncated, ttft → mx_usage_metrics)
+│   │   ├── first_token.py      first_token_scope + FirstTokenCallback (time to first token)
+│   │   ├── rate_limit.py       RetryOnRateLimitMiddleware (wait out a provider 429)
 │   │   └── summarization.py    ConfigurableSummarizationMiddleware + factory + stock-exclusion
 │   ├── tools/
 │   │   ├── charts.py           ⚠ EMPTY placeholder (no code yet)
@@ -207,6 +212,7 @@ Settings groups (env alias → default):
 - **ModelProfileSettings** — `MODEL_CONTEXT_WINDOWS`→`{"openai:gpt-6-luna": 1050000}`: windows for models the pinned `langchain-openai` has no profile for, registered as deepagents `ProviderProfile`s by `register_model_windows()` at the start of `build_deep_agent`.
 - **FilesystemSettings** — `AGENTS_FILESYSTEM_ROOT`→`/var/agents/filesystem`, `SKILLS_REGISTRY_GLOBAL_ROOT`, `SKILLS_REGISTRY_USERS_ROOT`, `INPUT_MAX_FILE_BYTES`→25MB, `INPUT_MAX_FILES`→10, `MEMORY_MAX_ENTRIES`→60.
 - **SummarizationSettings** — `SUMMARIZATION_TRIGGER_FRACTION`→0.95, `SUMMARIZATION_KEEP_FRACTION`→0.30, `SUMMARIZATION_TRIGGER_TOKENS`→200000, `SUMMARIZATION_KEEP_MESSAGES`→20, `SUMMARIZATION_MANUAL_MIN_FRACTION`→0.05 (plan 34; every compaction cuts at the latest question and the summary reads all it folds).
+- **RateLimitRetrySettings** — `MODEL_RATE_LIMIT_RETRY_ATTEMPTS`→4 (1–10, attempts in all), `MODEL_RATE_LIMIT_RETRY_DELAY_SECONDS`→15.0, `MODEL_RATE_LIMIT_RETRY_MAX_DELAY_SECONDS`→120.0 — `RetryOnRateLimitMiddleware`'s wait between retries of a 429'd model call (a larger `Retry-After` wins, capped).
 - **BridgeSettings** — `DIALOGUE_BRIDGE_URL`→`https://dialogue_bridge:8002`, `BRIDGE_MEMORY_SEARCH_PATH`→`/v1/internal/memory/search`, timeouts; `.memory_search_url`.
 
 **Two boot validators** on the top-level `Settings`:
@@ -320,9 +326,9 @@ Class identity attributes (overridden by subclasses as plain class attrs): `name
 - `RESERVED_DEEPAGENT_TOOL_NAMES` = `{write_todos, ls, read_file, write_file, edit_file, glob, grep, execute, task, remember}` — stripped from attached MCP tools (`_apply_live_tools` override).
 - `_impl_dir` = the concrete subclass's directory (asset discovery root).
 - Lifecycle hooks run in order in `ensure_built()`: `load_skills()` → `["/skills/"]`; `load_memory()` → None; `load_agent_md()` → `["/memories/AGENTS.md"]` (or `[]` if memory off); `register_subagents()`; **`register_agent()`** (abstract, last).
-- `build_deep_agent(model, system_prompt, subagents, interrupt_on, middleware)` — the base assembler: builds the CompositeBackend factory, composes middleware (`ToolErrorMiddleware` + tuned summarizer; force-guaranteed on main + each subagent; stock summarizer excluded), composes the system prompt via `harness/prompt_engineering.compose_system_prompt(instructions, self.prompt_context())` — order: instructions → personalization → workspace → platform verbs → memory → current date/time, each section empty when its feature is off — then `create_deep_agent(model, name, tools=self.tools+self._builtin_tools(), system_prompt, subagents, interrupt_on, middleware, memory=self.agent_md_paths, skills=self.skills_paths, backend, permissions=WORKSPACE_WRITE_DENY, context_schema, checkpointer, store=None)`. Personalization applies to the **main agent only**, never sub-agents.
+- `build_deep_agent(model, system_prompt, subagents, interrupt_on, middleware)` — the base assembler: builds the CompositeBackend factory, composes middleware (tuned summarizer + the platform guarantees of `_ensure_platform_middleware` — `RetryOnRateLimitMiddleware` outermost, `ToolMetricsMiddleware` directly outside `ToolErrorMiddleware`, `UsageMetricsMiddleware` innermost — force-guaranteed on main + each declared subagent, never duplicated; stock summarizer excluded), composes the system prompt via `harness/prompt_engineering.compose_system_prompt(instructions, self.prompt_context())` — order: instructions → personalization → workspace → platform verbs → memory → current date/time, each section empty when its feature is off — then `create_deep_agent(model, name, tools=self.tools+self._builtin_tools(), system_prompt, subagents, interrupt_on, middleware, memory=self.agent_md_paths, skills=self.skills_paths, backend, permissions=WORKSPACE_WRITE_DENY, context_schema, checkpointer, store=None)`. Personalization applies to the **main agent only**, never sub-agents.
 - `_builtin_tools()` — `remember` (when `use_memory`) + `search_past_conversations` (opt-in via `context.search_past_convs`) + `present_artifact` (when a `conversation_id` exists) + `create_skill` (ungated, but approval-gated by default via `native_hitl_defaults()`); `[]` if no `user_id`.
-- `astream(...)` — `stream_mode=["messages","updates"]`, **`subgraphs=True`** (surfaces nested sub-agent events).
+- `astream(...)` — `stream_mode=["messages","updates"]`, **`subgraphs=True`** (surfaces nested sub-agent events). `_stream_config()` adds `FirstTokenCallback` to the run config (via `BaseAgent._config_with_callback`), which LangChain carries into every sub-agent — the only thing that sees streamed chunks, so `UsageMetricsMiddleware` can report `ttft_ms`. A LangGraph agent adds its `UsageMetricsCallback` the same way and drains it between chunks in `_pending_frames()` (`drain()` → `TOKEN_USAGE`, `drain_tools()` → `TOOL_USAGE`).
 
 **`use_memory` gates four things together** (desync any one and the agent lies about its mounts): the `/memories/` mount, the `remember`/`forget` tools, `load_agent_md()`, and the memory section of the composed prompt (`PromptContext.use_memory` → `prompts/memory_prompt.py`).
 
@@ -349,7 +355,7 @@ Two halves: the **emitter** (event object → SSE bytes) and the **normalizer** 
 | `tool_call_result` | `TOOL_CALL_RESULT` | `tool_call_id`, `message_id`, `content`, `error?` |
 | `tool_call_end` | `TOOL_CALL_END` | `tool_call_id` |
 
-**Custom events** (`EventType.CUSTOM`, `name` + `value`): `PLAN_SNAPSHOT` (from `write_todos`), `TASK_SUBAGENT` (from `task`), `SUBAGENT_EVENT` (wraps a nested normalized event), `BEFORE_AGENT_EVENT`, `TOKEN_USAGE` (from `usage_metadata`), `HITL_INTERRUPT` (from `__interrupt__`), `CHECKPOINT_COMMITTED` (terminal, namespace forced `None`, emitted by the router not the normalizer).
+**Custom events** (`EventType.CUSTOM`, `name` + `value`): `PLAN_SNAPSHOT` (from `write_todos`), `TASK_SUBAGENT` (from `task`), `SUBAGENT_EVENT` (wraps a nested normalized event), `BEFORE_AGENT_EVENT`, `TOKEN_USAGE` (from `usage_metadata` + the `mx_usage_metrics` stamp: model, latency, context, `finish_reason`, `truncated`, `ttft_ms`), `TOOL_USAGE` (after `TOOL_CALL_END`, from the `mx_tool_metrics` stamp: `tool_name`, `duration_ms`, `status`, `output_chars`; none for `write_todos`/`task`/`present_artifact`/`render_chart`), `HITL_INTERRUPT` (from `__interrupt__`), `CHECKPOINT_COMMITTED` (terminal, namespace forced `None`, emitted by the router not the normalizer).
 
 **`AGUIStreamNormalizer`** (`harness/agui/normalizer.py`) — contract: `messages` mode → assistant text + tool-result messages only; `updates` mode → tool intent, plans, sub-agents, interrupts. Policies: `__interrupt__`→HITL only; `write_todos`→plan snapshot only; `task`→sub-agent event only; other tools→full `start/args/result/end` (result matched later from the `ToolMessage`). Module-global `_THREAD_NAMESPACE_BINDINGS` (keyed by `run_id`) persists sub-agent namespace↔task bindings across a run's legs so a HITL resume keeps the same UI block; released at run end unless paused. Drops summarization-internal LLM text so compaction never renders as a reply, but reports it: `CONTEXT_COMPACTION` started/done and the summary call's `TOKEN_USAGE {purpose: compaction}` (plan 34).
 
@@ -494,6 +500,9 @@ agent_runtime (rows)                → mount
 ## 15. Middlewares
 
 - **`ToolErrorMiddleware`** — wraps every tool call (sync + async); on exception returns a `ToolMessage(status="error", content="Tool '<name>' failed: ...")` instead of aborting, so the model can recover and the normalizer surfaces `TOOL_CALL_RESULT` with `error:true`. **Force-guaranteed on the main agent AND every sub-agent** (parent middleware doesn't reach subagents).
+- **`ToolMetricsMiddleware`** (plan 41) — times every tool call and stamps `{tool_name, duration_ms, status, output_chars}` on the ToolMessage's `response_metadata["mx_tool_metrics"]` (on the call's ToolMessage inside a `Command`, with `output_chars` 0); the normalizer turns it into `TOOL_USAGE`. Sits directly outside `ToolErrorMiddleware`, so a tool that raised is timed and counted as `status: "error"`; an exception that still escapes (e.g. `GraphBubbleUp`) propagates unrecorded. Metrics only — never arguments or output.
+- **`UsageMetricsMiddleware`** — stamps each model reply's `response_metadata["mx_usage_metrics"]` with `model`, `latency_ms`, context fill, `finish_reason` and `truncated` (`length`/`max_tokens`/`max_output_tokens`; logs `model_call_truncated`) and, via `first_token_scope()` + `FirstTokenCallback` (`first_token.py`), `ttft_ms` for a call that streamed. Innermost, so it times only the attempt that answered.
+- **`RetryOnRateLimitMiddleware`** — outermost; on a provider 429 (OpenAI `RateLimitError` by name, or `status_code == 429`) it waits `MODEL_RATE_LIMIT_RETRY_DELAY_SECONDS` (or a larger `Retry-After`, capped at `MODEL_RATE_LIMIT_RETRY_MAX_DELAY_SECONDS`) and re-issues the call, up to `MODEL_RATE_LIMIT_RETRY_ATTEMPTS` attempts, logging `model_call_rate_limited`. Never retries `insufficient_quota`; everything else (incl. `GraphBubbleUp`) passes straight through.
 - **`ConfigurableSummarizationMiddleware`** — thin subclass of deepagents' `SummarizationMiddleware` with a distinct type so `exclude_stock_summarization` (a `HarnessProfile` with `excluded_middleware={"SummarizationMiddleware"}`) drops the stock one and only the env-tuned one runs. `build_summarization_middleware(model, backend)` uses fraction thresholds for models with a token-window profile, else token/message fallbacks; offloads history to `/conversation_history/`. Compacts on its own at 95% of the window. Serves `POST /agents/{slug}/compact` (cut at the latest exchange) (and `/compact/undo`), which compact or restore a branch thread between turns through `harness/checkpointer/compaction.py` — see [context-compaction](../flows/context-compaction.md).
 
 ---
@@ -569,7 +578,8 @@ Structured, async, per-request-context logging.
 - **`stream_mode` differs by base class** — `"custom"` (LangGraph, writer-emitted bytes) vs `["messages","updates"]`+`subgraphs=True` (Deep, normalizer-driven). Wrong mode = no UI events.
 - **normalizer/message_id keyed on `run_id`**, not the branch-scoped `thread_id`.
 - **Two module-level caches assume a single worker**: `checkpointer.store._checkpointer` and `normalizer._THREAD_NAMESPACE_BINDINGS`. Multiple uvicorn workers would each hold their own — fine for the durable saver (shared DB) but the namespace cache is per-process, so pin sticky routing or a single worker for HITL correctness.
-- **`ToolErrorMiddleware` must be on the main agent AND every subagent** — a tool exception must degrade to a `ToolMessage`, never abort.
+- **`ToolErrorMiddleware` must be on the main agent AND every subagent** — a tool exception must degrade to a `ToolMessage`, never abort. The same holds for the rate-limit retry and both metrics middlewares (`_ensure_platform_middleware`).
+- **deepagents' built-in `general-purpose` sub-agent gets none of the platform middleware** — it is not in the declared `subagents` list `build_deep_agent` augments, so it has no rate-limit retry, no `TOOL_USAGE` and no `finish_reason`/`truncated`/`ttft_ms` (a pre-existing gap; its token usage still arrives).
 - **Stock deepagents summarizer must be excluded** per model spec or its lower threshold wins.
 - **`RESERVED_DEEPAGENT_TOOL_NAMES`** must be stripped from attached MCP tools.
 - **`use_memory` gates four things together** — desync one and the agent advertises a mount it lacks.

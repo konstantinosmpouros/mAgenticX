@@ -1,13 +1,36 @@
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
-import { AlertCircle, Archive, ArrowDownRight, ArrowUpRight, ChevronRight, Info, Layers, Minus, Shrink, Wand2 } from "lucide-react";
+import {
+  AlertCircle,
+  AlertTriangle,
+  Archive,
+  ArrowDownRight,
+  ArrowUpRight,
+  ChevronRight,
+  Info,
+  Layers,
+  Minus,
+  Shrink,
+  Wand2,
+  Wrench,
+} from "lucide-react";
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 import { Skeleton } from "@/shared/ui/skeleton";
-import { cn, formatCompactTokens, formatModelTime } from "@/shared/lib/utils";
+import { cn, formatCompactTokens, formatCost, formatModelTime, formatSeconds } from "@/shared/lib/utils";
 import type { UsageRange } from "@/shared/lib/api";
-import type { UsageAgentGroup, UsageAgentKind } from "@/shared/lib/types";
-import { RANGE_OPTIONS, contextFill, formatPercent, ratio } from "@/features/settings/lib/usageMetrics";
+import type { UsageAgentGroup, UsageAgentKind, UsageToolBreakdown } from "@/shared/lib/types";
+import {
+  RANGE_OPTIONS,
+  contextFill,
+  costOf,
+  formatPercent,
+  ratio,
+  toolAvgDuration,
+  toolAvgOutput,
+  toolErrorRate,
+  truncationRate,
+} from "@/features/settings/lib/usageMetrics";
 import { SoftPanel } from "../shared";
 
 // The pieces every page of the Usage tab is built from, so the Overview, the
@@ -157,8 +180,8 @@ export function AgentGroupTable({
   const largest = Math.max(1, ...groups.map((g) => g.inputTokens + g.outputTokens));
   return (
     <SoftPanel className="divide-y divide-border/40 overflow-hidden">
-      <div className="hidden grid-cols-[minmax(0,1fr)_4rem_5rem_4.5rem_4.5rem] gap-3 px-5 py-2.5 sm:grid">
-        {["Agent · model", "Calls", "Tokens", "Cached", "Time"].map((heading, index) => (
+      <div className="hidden grid-cols-[minmax(0,1fr)_4rem_5rem_4.5rem_4.5rem_5rem] gap-3 px-5 py-2.5 sm:grid">
+        {["Agent · model", "Calls", "Tokens", "Cached", "Time", "Cost"].map((heading, index) => (
           <span key={heading} className={cn(EYEBROW, index > 0 && "text-right")}>
             {heading}
           </span>
@@ -166,6 +189,7 @@ export function AgentGroupTable({
       </div>
       {groups.map((group) => {
         const tokens = group.inputTokens + group.outputTokens;
+        const cost = costOf(group);
         const name = (
           <span className="flex min-w-0 items-center gap-2">
             {group.scope === "subagent" ? (
@@ -182,12 +206,13 @@ export function AgentGroupTable({
                 {group.model}
               </span>
             ) : null}
+            {group.truncatedCalls > 0 ? <TruncatedMark count={group.truncatedCalls} /> : null}
           </span>
         );
         const canOpen = Boolean(onOpenAgent && group.scope === "main" && group.agentId);
         return (
           <div key={`${group.scope}:${group.agentId ?? ""}:${group.agentName}:${group.model ?? ""}`} className="space-y-2 px-5 py-3">
-            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 text-sm tabular-nums sm:grid-cols-[minmax(0,1fr)_4rem_5rem_4.5rem_4.5rem]">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 text-sm tabular-nums sm:grid-cols-[minmax(0,1fr)_4rem_5rem_4.5rem_4.5rem_5rem]">
               {canOpen ? (
                 <button
                   type="button"
@@ -210,12 +235,148 @@ export function AgentGroupTable({
                 {formatPercent(ratio(group.cachedInputTokens, group.inputTokens))}
               </span>
               <span className="hidden text-right text-muted-foreground sm:block">{formatModelTime(group.modelMs)}</span>
+              <span
+                className="hidden text-right text-muted-foreground sm:block"
+                title={cost.note ? `Estimate (${cost.note})` : "Estimate at list prices"}
+              >
+                {cost.label}
+              </span>
             </div>
             <ShareBar fraction={tokens / largest} />
           </div>
         );
       })}
     </SoftPanel>
+  );
+}
+
+/**
+ * A list row's total: tokens, with the estimated cost under it when there is
+ * one. A row whose answers predate pricing (cost 0) shows tokens alone rather
+ * than "$0.00".
+ */
+export function TokensWithCost({ tokens, costMicros }: { tokens: number; costMicros: number }) {
+  return (
+    <span className="w-16 shrink-0 text-right tabular-nums">
+      <span className="block text-sm font-semibold text-foreground">{formatCompactTokens(tokens)}</span>
+      {costMicros > 0 ? (
+        <span className="block text-[0.7rem] text-muted-foreground" title="Estimate at list prices">
+          {formatCost(costMicros)}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+/** A quiet mark that some of a row's calls ended at the model's output limit. */
+export function TruncatedMark({ count }: { count: number }) {
+  const label = `${count.toLocaleString()} ${count === 1 ? "call" : "calls"} cut off at the output limit`;
+  return (
+    <span className="inline-flex shrink-0 items-center text-warning" title={label}>
+      <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
+      <span className="sr-only">{label}</span>
+    </span>
+  );
+}
+
+/**
+ * How many model calls ended at the output limit: answers that stop
+ * mid-sentence. Calm on purpose, a muted line with one amber icon, and nothing
+ * at all when no call was cut off.
+ */
+export function TruncationNote({
+  truncatedCalls,
+  modelCalls,
+  scope,
+}: {
+  truncatedCalls: number;
+  modelCalls: number;
+  scope: string;
+}) {
+  if (truncatedCalls <= 0) return null;
+  const rate = truncationRate({ truncatedCalls, modelCalls });
+  const one = truncatedCalls === 1;
+  return (
+    <p className="flex items-start gap-2 text-xs text-muted-foreground">
+      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" aria-hidden />
+      <span>
+        {truncatedCalls.toLocaleString()} model {one ? "call" : "calls"} {scope} hit the output limit and{" "}
+        {one ? "was" : "were"} cut off{rate !== null ? ` (${formatPercent(rate)} of calls)` : ""}.
+      </span>
+    </p>
+  );
+}
+
+/**
+ * The tools an agent called (plan 41): how often, how often they failed, how
+ * long a call takes and how much it returns. Laid out like the agent table so
+ * the two read together; on a phone the figures wrap under the name.
+ */
+export function ToolTable({ tools }: { tools: UsageToolBreakdown[] }) {
+  const largest = Math.max(1, ...tools.map((tool) => tool.calls));
+  const columns = "sm:grid-cols-[minmax(0,1fr)_4rem_4.5rem_4.5rem_5.5rem]";
+  return (
+    <SoftPanel className="divide-y divide-border/40 overflow-hidden">
+      <div className={cn("hidden gap-3 px-5 py-2.5 sm:grid", columns)}>
+        {["Tool", "Calls", "Errors", "Avg time", "Avg output"].map((heading, index) => (
+          <span key={heading} className={cn(EYEBROW, index > 0 && "text-right")}>
+            {heading}
+          </span>
+        ))}
+      </div>
+      {tools.map((tool) => {
+        const duration = toolAvgDuration(tool);
+        const output = toolAvgOutput(tool);
+        const errors = formatPercent(toolErrorRate(tool));
+        return (
+          <div key={tool.toolName} className="space-y-2 px-5 py-3">
+            <div
+              className={cn(
+                "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 text-sm tabular-nums",
+                columns,
+              )}
+            >
+              <span className="truncate font-mono text-sm text-foreground">{tool.toolName}</span>
+              <span className="text-right text-muted-foreground sm:text-foreground">
+                <span className="sm:hidden">
+                  {tool.calls.toLocaleString()} calls · {errors} errors
+                </span>
+                <span className="hidden sm:inline">{tool.calls.toLocaleString()}</span>
+              </span>
+              <span
+                className={cn("hidden text-right sm:block", tool.errors > 0 ? "text-warning" : "text-muted-foreground")}
+                title={`${tool.errors.toLocaleString()} of ${tool.calls.toLocaleString()} calls failed`}
+              >
+                {errors}
+              </span>
+              <span className="hidden text-right text-muted-foreground sm:block">
+                {duration === null ? "—" : formatSeconds(duration)}
+              </span>
+              <span className="hidden text-right text-muted-foreground sm:block">
+                {output === null ? "—" : `${formatCompactTokens(output)} chars`}
+              </span>
+            </div>
+            <ShareBar fraction={tool.calls / largest} />
+          </div>
+        );
+      })}
+    </SoftPanel>
+  );
+}
+
+/** A page's Tools section: the table, or a plain word on why it is empty. */
+export function ToolsSection({ tools, detail }: { tools: UsageToolBreakdown[]; detail: string }) {
+  return (
+    <section className="space-y-4">
+      <SectionTitle title="Tools" detail={detail} />
+      {tools.length === 0 ? (
+        <UsageEmpty icon={Wrench} title="No tool calls recorded">
+          Tool calls are timed from this update onward; answers that use a tool will fill this in.
+        </UsageEmpty>
+      ) : (
+        <ToolTable tools={tools} />
+      )}
+    </section>
   );
 }
 

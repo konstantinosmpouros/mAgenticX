@@ -16,8 +16,10 @@ from harness.tools.gates import resolve_interrupt_on, strip_reserved_names, trus
 from harness.tools.registry import NativeToolContext, build_auto_attach_tools
 from harness.middlewares import (
     ConfigurableSummarizationMiddleware,
+    FirstTokenCallback,
     RetryOnRateLimitMiddleware,
     ToolErrorMiddleware,
+    ToolMetricsMiddleware,
     UsageMetricsMiddleware,
     build_summarization_middleware,
     exclude_stock_summarization,
@@ -104,6 +106,7 @@ class DeepAgent(BaseAgent, ABC):
     build_summarization_middleware = staticmethod(build_summarization_middleware)
     usage_metrics_middleware = UsageMetricsMiddleware
     rate_limit_middleware = RetryOnRateLimitMiddleware
+    tool_metrics_middleware = ToolMetricsMiddleware
 
     # The main agent's own summarizer once built (None when its stack carries
     # none) — what a manual compaction of this agent's thread runs (plan 34).
@@ -148,6 +151,13 @@ class DeepAgent(BaseAgent, ABC):
         """``subgraphs=True`` so a sub-agent's chunks arrive namespaced — the
         normalizer keys its AG-UI bindings on that namespace."""
         return {"subgraphs": True}
+
+
+    def _stream_config(self) -> Mapping[str, Any]:
+        """``run_config`` plus the first-token callback: the only thing that sees
+        a model call's streamed chunks, so ``UsageMetricsMiddleware`` can report
+        time to first token. LangChain carries it into every sub-agent."""
+        return self._config_with_callback(FirstTokenCallback())
 
 
 
@@ -252,7 +262,8 @@ class DeepAgent(BaseAgent, ABC):
     def default_middleware(self, model: Any, backend: Any) -> list[Any]:
         """The middleware stack a deep agent gets unless it overrides this.
 
-        Override to add/drop/reconfigure middleware. ``ToolErrorMiddleware`` and
+        Override to add/drop/reconfigure middleware. ``ToolErrorMiddleware``,
+        ``ToolMetricsMiddleware``, ``RetryOnRateLimitMiddleware`` and
         ``UsageMetricsMiddleware`` are force-guaranteed by ``build_deep_agent``
         regardless, so it's safe to omit them here. The summarizer replaces
         deepagents' stock one with env-tuned thresholds and offloads to
@@ -318,6 +329,35 @@ class DeepAgent(BaseAgent, ABC):
         if not any(isinstance(m, ToolErrorMiddleware) for m in items):
             items.insert(0, ToolErrorMiddleware())
         return items
+
+
+    @staticmethod
+    def _ensure_tool_metrics_middleware(stack: Sequence[Any] | None) -> list[Any]:
+        """Return ``stack`` with ``ToolMetricsMiddleware`` guaranteed (never
+        duplicated), so every tool call — main agent and every sub-agent — is
+        reported as ``TOOL_USAGE``.
+
+        Placed directly before ``ToolErrorMiddleware`` (first means outermost),
+        so a tool that raised reaches it as the converted error ToolMessage and
+        is counted as an error; first in the stack when there is none.
+        """
+        items = list(stack or [])
+        if any(isinstance(m, ToolMetricsMiddleware) for m in items):
+            return items
+        index = next((i for i, m in enumerate(items) if isinstance(m, ToolErrorMiddleware)), 0)
+        items.insert(index, ToolMetricsMiddleware())
+        return items
+
+
+    @classmethod
+    def _ensure_platform_middleware(cls, stack: Sequence[Any] | None) -> list[Any]:
+        """Every guarantee a deep agent's or sub-agent's stack gets, in order:
+        tool errors degrade to results, tool calls are measured, rate limits
+        are waited out, model calls are measured."""
+        stack = cls._ensure_tool_error_middleware(stack)
+        stack = cls._ensure_tool_metrics_middleware(stack)
+        stack = cls._ensure_rate_limit_middleware(stack)
+        return cls._ensure_usage_metrics_middleware(stack)
 
 
     @staticmethod
@@ -430,9 +470,7 @@ class DeepAgent(BaseAgent, ABC):
         self.register_model_windows()
         backend = self._build_composite_backend()
         stack = middleware if middleware is not None else self.default_middleware(model, backend)
-        stack = self._ensure_tool_error_middleware(stack)  # guarantee on the main agent
-        stack = self._ensure_rate_limit_middleware(stack)
-        stack = self._ensure_usage_metrics_middleware(stack)
+        stack = self._ensure_platform_middleware(stack)  # guarantee on the main agent
         self.summarizer = find_summarizer(stack)
         exclude_stock_summarization(model if isinstance(model, str) else "")
 
@@ -456,14 +494,7 @@ class DeepAgent(BaseAgent, ABC):
         augmented_subagents: SubAgentsT = subagents
         if isinstance(subagents, (list, tuple)):
             augmented_subagents = [
-                {
-                    **spec,
-                    "middleware": self._ensure_usage_metrics_middleware(
-                        self._ensure_rate_limit_middleware(
-                            self._ensure_tool_error_middleware(spec.get("middleware"))
-                        )
-                    ),
-                }
+                {**spec, "middleware": self._ensure_platform_middleware(spec.get("middleware"))}
                 if isinstance(spec, dict) and "runnable" not in spec
                 else spec
                 for spec in subagents

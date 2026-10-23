@@ -36,6 +36,8 @@ from core.database import (
     MessageTable,
     MessageUsageTable,
     ScheduledTaskTable,
+    ToolUsageDailyTable,
+    ToolUsageTable,
     UsageDailyGroupTable,
     UsageDailyTable,
     UserAgentToolPrefTable,
@@ -125,6 +127,9 @@ async def _seed_user_data(session_factory, user, agent, *, conversations=3, mess
                     s.add(MessageUsageTable(message_id=msg.id, conversation_id=conv.id, user_id=user.id,
                                             agent_id=agent.id, scope="main", agent_name="A",
                                             created_at=datetime(2026, 10, 8)))
+                    s.add(ToolUsageTable(message_id=msg.id, conversation_id=conv.id, user_id=user.id,
+                                         agent_id=agent.id, scope="main", agent_name="A", tool_name="read_file",
+                                         calls=1, created_at=datetime(2026, 10, 8)))
                 if m == 0:
                     blob = BlobTable(data=b"x" * 1000)
                     s.add(blob)
@@ -139,6 +144,9 @@ async def _seed_user_data(session_factory, user, agent, *, conversations=3, mess
         s.add(UsageDailyTable(user_id=user.id, day=date(2026, 10, 8), agent_key=agent.id, agent_id=agent.id, answers=2))
         s.add(UsageDailyGroupTable(user_id=user.id, day=date(2026, 10, 8), agent_key=agent.id, scope="main",
                                    group_name="A", model_name="gpt-5", calls=2))
+        # The tool rollup (plan 41) likewise.
+        s.add(ToolUsageDailyTable(user_id=user.id, day=date(2026, 10, 8), agent_key=agent.id, agent_id=agent.id,
+                                  tool_name="read_file", calls=2))
         await s.commit()
     return ids
 
@@ -207,6 +215,8 @@ async def test_a_purge_removes_everything_of_the_user_and_nothing_else(session_f
                           (MessageUsageTable, MessageUsageTable.user_id),
                           (UsageDailyTable, UsageDailyTable.user_id),
                           (UsageDailyGroupTable, UsageDailyGroupTable.user_id),
+                          (ToolUsageTable, ToolUsageTable.user_id),
+                          (ToolUsageDailyTable, ToolUsageDailyTable.user_id),
                           (AgentTable, AgentTable.owner_user_id)):
         assert await _count(session_factory, model, column == uid) == 0, model.__tablename__
 

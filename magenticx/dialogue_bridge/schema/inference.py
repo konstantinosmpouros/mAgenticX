@@ -50,6 +50,15 @@ class InferenceRunOut(BaseModel):
     contextWindow: Optional[int] = None
     compactionPercent: Optional[float] = None
     modelName: Optional[str] = None
+    # Inference metrics (plan 41), mirroring MessageOut.
+    costMicros: int | None = None
+    unpricedCalls: int | None = None
+    truncatedCalls: int | None = None
+    firstTokenMs: int | None = None
+    ttftMs: int | None = None
+    ttftCalls: int | None = None
+    genMs: int | None = None
+    genOutputTokens: int | None = None
     errorMessage: Optional[str] = None
     startedAt: UTCDateTime
     completedAt: Optional[UTCDateTime] = None

@@ -99,6 +99,7 @@ magenticx/dialogue_bridge/
 │   ├── conversations.py · messages.py · attachments.py · embeddings.py · shared_conv.py · share_export.py
 │   ├── scheduled_tasks.py (Scheduler loop) · agents.py (agent cache) · titles.py · suggestions.py
 │   ├── speech.py · voice.py · search.py · skills.py · skills_cache.py · memories.py · usage.py · validators.py
+│   ├── usage_rollups.py (daily usage + tool rollups) · model_pricing.py (price table, call_cost_micros) · run_activity.py
 ├── requirements.txt · Dockerfile
 ```
 
@@ -146,6 +147,7 @@ Groups (env alias → default):
 - **TLS** — `INTERNAL_CA_CERT_PATH` (str; drives Postgres verify-full + Redis TLS), `INTERNAL_CLIENT_CERT_PATH`/`_KEY_PATH` (SecretStr).
 - **Upstream** — `AGENTS_SERVICE_URL`→`https://agents:8003`.
 - **Inference** — `INFERENCE_TOOL_RESULT_MAX_CHARS`→16000, `INFERENCE_WS_SUBSCRIBE_TIMEOUT_SECONDS`→10.0.
+- **Pricing** (`PricingSettings`) — `MODEL_PRICES_JSON` / `MODEL_PRICES_JSON_FILE`→empty: a JSON override merged over `utils/model_pricing.py`'s default prices (USD per 1M tokens). Parsed when that module is imported; **invalid → startup fail**. See [configuration](../architecture/configuration.md#model-pricing-pricingsettings).
 - **Speech / Attachments / Share / Generation / Embeddings** — dictation 25MiB; attachments 25MiB each + 10/msg + DOCX-preview-token TTL 60s; share default 30d / max 365d; embeddings `EMBEDDINGS_ENABLED`→True, `dimensions`→1536 (must match agents + migration 0010), sweeper batch 64 / 0.75s active / 8s idle.
 - **HTTP timeouts** — per-upstream `httpx.Timeout` (inference read/write 180s; generation 120s; voice 75s).
 - **Voice** — `realtime_model`→`gpt-realtime`, `default_realtime_voice`→alloy, 11-voice frozenset.
@@ -176,6 +178,8 @@ Async engine (`core/database/engine.py`): `create_async_engine(url, connect_args
 | **attachments** / **blobs** | attachment metadata (file_name/mime_type/size_bytes) → `blob_id`(1:1). **blobs.data is `LargeBinary` — bytes live in Postgres, no filesystem/object store.** |
 | **scheduled_tasks** | `user_id`, `agent_id`(SET NULL)/agent_name/agent_slug, `conversation_id`(bound mode), `prompt`, `target_mode`(fresh/bound), `schedule_kind`(one_off/interval/cron), `schedule_spec`(JSON), `timezone`, `status`, `next_run_at`, `last_run_*`, `run_count`/`max_runs`, `expires_at`. Partial index `WHERE status='active'`. `last_run_message_id` is a plain String (NOT an FK — avoids a cycle). |
 | **message_embeddings** | `message_id` PK+FK(CASCADE) 1:1, `embedding Vector(1536)` (pgvector), `model`, `created_at`. **HNSW cosine index** (`vector_cosine_ops`) in migration 0010. Separate table so the hot `messages` table stays lean. |
+| **message_usage** / **tool_usage** | Per-answer splits written once by `_finish_run`: tokens, cost, truncation and speed per (scope, agent, model) (0033, metrics 0041); tool calls, errors, duration and output size per (scope, agent, tool) (0041). |
+| **usage_daily** / **usage_daily_groups** / **tool_usage_daily** | Per-user, per-day, per-agent rollups the Usage tab reads (0034; cost / truncation / first-token / speed columns and `tool_usage_daily` in 0041). Purged explicitly with the account. See [database-schema](../architecture/database-schema.md) and [usage-analytics](../flows/usage-analytics.md). |
 
 The `conversations ↔ messages` cross-FK cycle is resolved via `use_alter` in the baseline.
 
@@ -202,7 +206,9 @@ The `conversations ↔ messages` cross-FK cycle is resolved via `use_alter` in t
 | `0013` | `attachments.origin` (user-uploaded vs agent-generated). |
 | `0014` | link auth identities — `users.vault_user_id` nullable + `oidc_subject` + `auth_providers` (Entra OIDC SSO). |
 | `0015` | `user_preferences.personality` + `custom_instructions` (personalization). |
-| `0016` | **destructive** — retire global tool enablement: drop `user_preferences.tools`, `messages.streaming_enabled_tools`, `scheduled_tasks.enabled_tools`. Tools are now per-agent (`agent.yaml`) + per-(user, agent) disables on the agents service. **Current head.** |
+| `0016` | **destructive** — retire global tool enablement: drop `user_preferences.tools`, `messages.streaming_enabled_tools`, `scheduled_tasks.enabled_tools`. Tools are now per-agent (`agent.yaml`) + per-(user, agent) disables on the agents service. |
+| `0017`–`0040` | See [database-schema](../architecture/database-schema.md) (usage tables `0032`–`0034`, compaction `0035`, generated-file capture `0039`, `messages.command` `0040`, …). |
+| `0041_inference_metrics` | Plan 41: cost (`BIGINT` micro-USD), unpriced / truncated calls, time to first token and generation speed on `messages`, `message_usage`, `conversations`, `usage_daily`, `usage_daily_groups`; new `tool_usage` + `tool_usage_daily`. Additive, no backfill. **Current head.** |
 
 Partial/`postgresql_where` and pgvector-opclass indexes are always hand-written (autogenerate blind spots). **No inference-run table exists** — the run is the `messages.streaming_*` columns, present since the baseline.
 
@@ -323,9 +329,9 @@ Process-global manager with per-run dicts (`_tasks`, `_cancel_events`, `_runtime
 Assigns a monotonic `seq`, then:
 
 - **`TOOL_CALL_RESULT`** — content truncated to `INFERENCE_TOOL_RESULT_MAX_CHARS` (16000, flags `truncated:true`), also unwrapped inside `SUBAGENT_EVENT`.
-- **`CUSTOM`** — `SUBAGENT_EVENT` unwraps its inner event; nested `HITL_INTERRUPT` → `register_interrupt`, nested `TOKEN_USAGE` → `_accumulate_usage(main_agent=False)`; top-level `HITL_INTERRUPT`/`TOKEN_USAGE` likewise (`main_agent=True`; a `purpose: compaction` usage is grouped as `("compaction", "Compaction", model)`, plan 34) — every call adds to the token, cached, reasoning and latency sums, but only a main-agent call replaces the context snapshot (`context_tokens`/`context_window`/`compaction_percent`/`model_name`). Every call is also grouped by (scope, agent, model) — a sub-agent named by the `task_id → subagent_type` map built from top-level `TASK_SUBAGENT`, a call first seen bare then wrapped moved to its sub-agent — and `_finish_run` books those groups as `message_usage` rows, the conversation's `usage_*` totals and the user's daily rollups (see [usage-analytics](../flows/usage-analytics.md)); **`CHECKPOINT_COMMITTED`** captures `produced_checkpoint_id` and **returns `None`** — deliberately not streamed and not persisted to `raw_events` (it carries internal thread/checkpoint UUIDs that must not leak into share snapshots/clones).
+- **`CUSTOM`** — `SUBAGENT_EVENT` unwraps its inner event; nested `HITL_INTERRUPT` → `register_interrupt`, nested `TOKEN_USAGE` → `_accumulate_usage(main_agent=False)`, nested `TOOL_USAGE` → `_accumulate_tool_usage(main_agent=False)`; top-level `HITL_INTERRUPT`/`TOKEN_USAGE`/`TOOL_USAGE` likewise (`main_agent=True`; a `purpose: compaction` usage is grouped as `("compaction", "Compaction", model)`, plan 34) — every call adds to the token, cached, reasoning and latency sums, but only a main-agent call replaces the context snapshot (`context_tokens`/`context_window`/`compaction_percent`/`model_name`). Every call is also grouped by (scope, agent, model) — a sub-agent named by the `task_id → subagent_type` map built from top-level `TASK_SUBAGENT`, a call first seen bare then wrapped moved to its sub-agent — and `_finish_run` books those groups as `message_usage` rows, the conversation's `usage_*` totals and the user's daily rollups (see [usage-analytics](../flows/usage-analytics.md)). Plan 41: each call is also priced (`_call_metrics` → `utils/model_pricing.call_cost_micros`; unknown model → `unpriced_calls`), counted as truncated when `truncated` is true, and — when it reported `ttft_ms` — adds to `ttft_ms`/`ttft_calls`/`gen_ms`/`gen_output_tokens`; `TOOL_USAGE` is deduped by `tool_call_id` into `(scope, agent, tool)` groups booked as `tool_usage` rows and `tool_usage_daily`; **`CHECKPOINT_COMMITTED`** captures `produced_checkpoint_id` and **returns `None`** — deliberately not streamed and not persisted to `raw_events` (it carries internal thread/checkpoint UUIDs that must not leak into share snapshots/clones).
 - **THINKING_*** — tracks thinking duration + collects thought previews.
-- **TEXT_MESSAGE_CHUNK/CONTENT** — concatenated into `content`; first content chunk closes the thinking timer.
+- **TEXT_MESSAGE_CHUNK/CONTENT** — concatenated into `content`; first content chunk closes the thinking timer and, if it is non-empty, settles the answer's `first_token_ms` (from the runtime's creation; left `None` if a HITL interrupt registered first).
 - Every non-suppressed event → `_append_raw` (with **coalescing**: consecutive text deltas by `(messageId, namespace)` and `TOOL_CALL_ARGS` by `toolCallId` merge into one entry — even one level down inside `SUBAGENT_EVENT` by `task_id`; **`THINKING_TEXT_MESSAGE_CONTENT` is NOT coalesced** — discrete steps).
 - **Interrupts tracked as an identity set** (`pending_interrupt_ids`, keyed by `interrupt.id`) — a sub-agent interrupt is delivered twice (top-level + wrapped), and each `/resume` resolves exactly one id, so a bare counter would drift and the run would hang forever.
 - **Token usage** summed across all AI messages + resume legs, deduped by `message_id`.
@@ -480,6 +486,7 @@ Queue-based structured logging (mirrors the agents service): a non-blocking `Que
 - **Blobs are in Postgres** (`blobs.data`), no object storage. Embeddings are bridge-stored but **agents-computed** (bridge has no OpenAI key).
 - **Auth is stateless** — no session table (dropped in 0008); logout relies on a fail-open Redis `sid` denylist; refresh rotates with replay detection.
 - **`/v1/internal/*` is defense-in-depth** — internal secret + nginx edge deny; exempt from the per-user rate limiter.
+- **Cost is priced at finish and stored** (`utils/model_pricing.py`, micro-USD `BIGINT`); a price change never re-prices old answers, and an invalid `MODEL_PRICES_JSON` aborts startup. The answer's `first_token_ms` is the bridge's own measurement, not an agents field.
 - **Alembic runs in a subprocess** (in-process deadlocks); a failed migration crashes startup unless `RUN_MIGRATIONS_ON_STARTUP=false`.
 - **README is stale** on `core/` paths, the `sessions` table, and SSE-as-primary — trust this document + the code.
 

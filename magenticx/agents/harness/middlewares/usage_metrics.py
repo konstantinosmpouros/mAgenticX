@@ -23,6 +23,11 @@ against, so the gauge and the compaction trigger can never disagree.
 set when the model stopped at its output-token ceiling. That stop is an HTTP 200
 with no exception — without the flag a cut-off answer is indistinguishable from
 a short one — so a truncated call is also logged as ``model_call_truncated``.
+
+**Time to first token** (``ttft_ms``) is measured from the same start as
+``latency_ms`` to the call's first streamed chunk, which only a callback can see
+— see ``harness.middlewares.first_token`` for how the two meet. A call that did
+not stream carries none.
 """
 from __future__ import annotations
 
@@ -35,6 +40,7 @@ from langchain.agents.middleware.types import AgentMiddleware
 from langchain_core.messages import AIMessage
 
 from core.logging import get_logger
+from harness.middlewares.first_token import first_token_scope
 
 try:
     # Private, but it is the very table ``model.profile`` is filled from; used
@@ -125,20 +131,23 @@ class UsageMetricsMiddleware(AgentMiddleware):
 
     def wrap_model_call(self, request: Any, handler: Callable[[Any], Any]) -> Any:
         started = time.monotonic()
-        response = handler(request)
-        self._stamp(request, response, started)
+        with first_token_scope() as call:
+            response = handler(request)
+        self._stamp(request, response, started, call.first_token_at)
         return response
 
     async def awrap_model_call(self, request: Any, handler: Callable[[Any], Awaitable[Any]]) -> Any:
         started = time.monotonic()
-        response = await handler(request)
-        self._stamp(request, response, started)
+        with first_token_scope() as call:
+            response = await handler(request)
+        self._stamp(request, response, started, call.first_token_at)
         return response
 
-    def _stamp(self, request: Any, response: Any, started: float) -> None:
+    def _stamp(self, request: Any, response: Any, started: float, first_token_at: float | None = None) -> None:
         """Attach the metrics. Never fails the call: a reply without metrics is
         still a reply, so a surprise in the response shape is logged and skipped."""
         latency_ms = int((time.monotonic() - started) * 1000)
+        ttft_ms = max(int((first_token_at - started) * 1000), 0) if first_token_at is not None else None
         try:
             model = getattr(request, "model", None)
             window = context_window(model)
@@ -147,6 +156,8 @@ class UsageMetricsMiddleware(AgentMiddleware):
                 usage = message.usage_metadata or {}
                 prompt = usage.get("input_tokens")
                 metrics: dict[str, Any] = {"model": name, "latency_ms": latency_ms, "context_window": window}
+                if ttft_ms is not None:
+                    metrics["ttft_ms"] = ttft_ms
                 if isinstance(prompt, int):
                     metrics["context_tokens"] = prompt
                     if window:

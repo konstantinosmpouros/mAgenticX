@@ -136,6 +136,7 @@ async def test_a_full_export_holds_the_users_data_and_nothing_else(
         assert names[-1] == "manifest.json"                       # written last
         assert {"README.md", "account/profile.json", "account/preferences.json",
                 "conversations/conversations.ndjson", "conversations/shares.ndjson",
+                "conversations/message_usage.ndjson", "conversations/tool_usage.ndjson",
                 "agents/agents.ndjson", "skills/notes/SKILL.md", "skills/notes/logo.png"} <= set(names)
         assert sorted(m["content"] for m in messages) == ["message 0", "message 1", "message 2"]
         assert len({m["id"] for m in messages}) == 3                  # none skipped, none twice

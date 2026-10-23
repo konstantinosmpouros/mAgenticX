@@ -5,19 +5,30 @@ import { Area, AreaChart, CartesianGrid, ReferenceDot, ReferenceLine, XAxis, YAx
 
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/shared/ui/chart";
 import { Skeleton } from "@/shared/ui/skeleton";
-import { formatCompactTokens, formatModelTime } from "@/shared/lib/utils";
+import { describeCost, formatCompactTokens, formatModelTime, formatSeconds } from "@/shared/lib/utils";
 import { getUsageConversation } from "@/shared/lib/api";
 import type { UsageAgentGroup, UsageAnswerPoint } from "@/shared/lib/types";
 import { useUsageQuery } from "@/features/settings/hooks/useUsageQuery";
-import { cacheHitRate, contextFill, formatPercent, timePerAnswer } from "@/features/settings/lib/usageMetrics";
+import { cacheHitRate, contextFill, costOf, formatPercent, ratio, timePerAnswer } from "@/features/settings/lib/usageMetrics";
 import { SoftPanel } from "../shared";
-import { AgentGroupTable, CoverageNote, KpiTile, SectionTitle, UsageEmpty, UsageError } from "./UsageParts";
+import {
+  AgentGroupTable,
+  CoverageNote,
+  KpiTile,
+  SectionTitle,
+  ToolsSection,
+  TruncatedMark,
+  TruncationNote,
+  UsageEmpty,
+  UsageError,
+} from "./UsageParts";
 
 // Level 2a of the Usage tab: one conversation, analysed. What it spent (every
 // answer, replaced ones included), how its main agent's context filled up
 // along the branch it opens on — with the window, where summarizing kicks in,
 // and the points where it likely compacted — who did the work (main agent vs
-// each sub-agent, by model), and every answer on that branch.
+// each sub-agent, by model), the tools it called, and every answer on that
+// branch with its cost, first-token wait and whether it was cut off.
 
 const contextChart = {
   tokens: { label: "Context", color: "hsl(var(--primary))" },
@@ -45,21 +56,37 @@ function contextSeries(branch: UsageAnswerPoint[]): ContextPoint[] {
   return points;
 }
 
+/** Average first-token wait over the answers on the branch that measured one. */
+function branchFirstToken(branch: UsageAnswerPoint[]): number | null {
+  const measured = branch.filter((answer) => answer.firstTokenMs !== null);
+  return ratio(
+    measured.reduce((sum, answer) => sum + (answer.firstTokenMs ?? 0), 0),
+    measured.length,
+  );
+}
+
 function AnswerRow({ answer, position }: { answer: UsageAnswerPoint; position: number }) {
   const fill = contextFill(answer.contextTokens, answer.contextWindow);
   const when = answer.createdAt ? new Date(answer.createdAt) : null;
+  // Null on answers from before plan 41: the figure is left out, not "$0.00".
+  const cost = answer.costMicros !== null ? describeCost(answer.costMicros, answer.unpricedCalls) : null;
   const details = [
     `${formatCompactTokens(answer.inputTokens + answer.outputTokens)} tokens`,
+    cost ? (cost.note ? `${cost.label} (${cost.note})` : cost.label) : null,
     answer.modelCalls !== null ? `${answer.modelCalls} ${answer.modelCalls === 1 ? "call" : "calls"}` : null,
     answer.toolCalls ? `${answer.toolCalls} tools` : null,
     answer.modelMs !== null ? formatModelTime(answer.modelMs) : null,
+    answer.firstTokenMs !== null ? `first token ${formatSeconds(answer.firstTokenMs)}` : null,
     fill !== null ? `${Math.round(fill * 100)}% context` : null,
   ].filter(Boolean);
   return (
     <div className="flex min-w-0 items-center gap-3 px-5 py-3">
       <span className="w-8 shrink-0 text-xs tabular-nums text-muted-foreground">#{position}</span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm text-foreground tabular-nums">{details.join(" · ")}</span>
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-sm text-foreground tabular-nums">{details.join(" · ")}</span>
+          {answer.truncatedCalls ? <TruncatedMark count={answer.truncatedCalls} /> : null}
+        </span>
         <span className="block truncate text-xs text-muted-foreground">
           {[when?.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }), answer.agentName, answer.model]
             .filter(Boolean)
@@ -98,8 +125,8 @@ export function UsageConversationDetail({
   if (!detail) {
     return (
       <div className="space-y-6" aria-hidden>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {Array.from({ length: 4 }, (_, index) => (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 6 }, (_, index) => (
             <Skeleton key={index} className="h-[6.75rem] rounded-[1.4rem]" />
           ))}
         </div>
@@ -112,6 +139,8 @@ export function UsageConversationDetail({
   const window = detail.branch.reduce<number | null>((found, a) => a.contextWindow ?? found, null);
   const compaction = detail.branch.reduce<number | null>((found, a) => a.compactionPercent ?? found, null);
   const perAnswer = timePerAnswer(detail);
+  const cost = costOf(detail);
+  const firstToken = branchFirstToken(detail.branch);
   const newestFirst = detail.branch.map((answer, index) => ({ answer, position: index + 1 })).reverse();
 
   return (
@@ -131,15 +160,24 @@ export function UsageConversationDetail({
         </button>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiTile label="Tokens" value={formatCompactTokens(detail.totalTokens)} hint={`${formatCompactTokens(detail.inputTokens)} in · ${formatCompactTokens(detail.outputTokens)} out`} />
-        <KpiTile label="Cache hit" value={formatPercent(cacheHitRate(detail))} hint="of input reused" />
-        <KpiTile
-          label="Model calls"
-          value={detail.modelCalls.toLocaleString()}
-          hint={`${detail.toolCalls.toLocaleString()} tool calls${detail.callsComplete ? "" : " · partial"}`}
-        />
-        <KpiTile label="Time per answer" value={perAnswer === null ? "—" : formatModelTime(perAnswer)} hint="model time" />
+      <div className="space-y-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <KpiTile label="Tokens" value={formatCompactTokens(detail.totalTokens)} hint={`${formatCompactTokens(detail.inputTokens)} in · ${formatCompactTokens(detail.outputTokens)} out`} />
+          <KpiTile label="Cost" value={cost.label} hint={cost.note ?? "estimate at list prices"} />
+          <KpiTile label="Cache hit" value={formatPercent(cacheHitRate(detail))} hint="of input reused" />
+          <KpiTile
+            label="Model calls"
+            value={detail.modelCalls.toLocaleString()}
+            hint={`${detail.toolCalls.toLocaleString()} tool calls${detail.callsComplete ? "" : " · partial"}`}
+          />
+          <KpiTile label="Time per answer" value={perAnswer === null ? "—" : formatModelTime(perAnswer)} hint="model time" />
+          <KpiTile
+            label="First token"
+            value={firstToken === null ? "—" : formatSeconds(firstToken)}
+            hint="avg wait, answers shown below"
+          />
+        </div>
+        <TruncationNote truncatedCalls={detail.truncatedCalls} modelCalls={detail.modelCalls} scope="in this conversation" />
       </div>
 
       <section className="space-y-4">
@@ -205,6 +243,8 @@ export function UsageConversationDetail({
         )}
         <CoverageNote detailed={detail.detailedAnswers} total={detail.answers} />
       </section>
+
+      <ToolsSection tools={detail.tools} detail="Every tool this conversation called, replaced answers included." />
 
       {newestFirst.length > 0 ? (
         <section className="space-y-4">

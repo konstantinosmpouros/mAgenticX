@@ -51,6 +51,8 @@ from core.database import (
     MessageUsageTable,
     ScheduledTaskTable,
     SessionLocal,
+    ToolUsageDailyTable,
+    ToolUsageTable,
     UsageDailyGroupTable,
     UsageDailyTable,
     UserAgentToolPrefTable,
@@ -446,6 +448,7 @@ async def _delete_conversation_batch(conversation_ids: list[str], deletion_id: s
                 break
             embeddings = await session.execute(delete(MessageEmbeddingTable).where(MessageEmbeddingTable.message_id.in_(ids)))
             await session.execute(delete(MessageUsageTable).where(MessageUsageTable.message_id.in_(ids)))
+            await session.execute(delete(ToolUsageTable).where(ToolUsageTable.message_id.in_(ids)))
             await session.execute(delete(MessageTable).where(MessageTable.id.in_(ids)))
             await session.commit()
         counts["messages"] = counts.get("messages", 0) + len(ids)
@@ -509,10 +512,11 @@ async def _step_user(user_id: str, deletion_id: str, counts: dict[str, Any]) -> 
             (ScheduledTaskTable, ScheduledTaskTable.user_id),
             (ConversationReportTable, ConversationReportTable.user_id),
             (ConversationShareTable, ConversationShareTable.owner_user_id),
-            # Usage rollups (plan 33) outlive deleted conversations by design —
+            # Usage rollups (plan 33; the tool rollup, plan 41) outlive deleted conversations by design —
             # spend happened — so they go here, with the account, explicitly.
             (UsageDailyTable, UsageDailyTable.user_id),
             (UsageDailyGroupTable, UsageDailyGroupTable.user_id),
+            (ToolUsageDailyTable, ToolUsageDailyTable.user_id),
             (AgentTable, AgentTable.owner_user_id),
         ):
             await session.execute(delete(table).where(column == user_id))

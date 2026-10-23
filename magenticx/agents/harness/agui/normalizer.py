@@ -1,10 +1,17 @@
 import json
 import mimetypes
 from typing import Any, List, Optional, Tuple, Dict
+
+from pydantic import ValidationError
+
+from core.logging import get_logger
 from harness.agui.emitter import AGUIEmitter
 from harness.middlewares.summarization import COMPACTION_KEY
+from harness.middlewares.tool_metrics import TOOL_METRICS_KEY
 from harness.middlewares.usage_metrics import METRICS_KEY as USAGE_METRICS_KEY
 from harness.tools.charts import normalize_chart_payload
+
+logger = get_logger(__name__)
 
 
 _ALLOWED_MODES = {"messages", "updates"}
@@ -506,9 +513,31 @@ class AGUIStreamNormalizer:
                 out,
                 self.emitter.tool_call_end(tool_call_id=tool_call_id, namespace=ns_label),
             )
+            self._push(out, self._tool_usage(msg, tool_call_id, ns_label))
 
             self._pending_tool_call_ids.discard(tool_call_id)
             self._finished_tool_call_ids.add(tool_call_id)
+
+
+    def _tool_usage(self, msg: Any, tool_call_id: str, ns_label: str | None) -> bytes | None:
+        """``TOOL_USAGE`` from the stamp ``ToolMetricsMiddleware`` put on the
+        result, or nothing when it is absent. Telemetry never breaks the stream:
+        a malformed stamp is logged and dropped."""
+        stamp = (getattr(msg, "response_metadata", None) or {}).get(TOOL_METRICS_KEY)
+        if not isinstance(stamp, dict):
+            return None
+        try:
+            return self.emitter.tool_usage(
+                tool_call_id=tool_call_id,
+                tool_name=stamp.get("tool_name") or getattr(msg, "name", None) or "tool",
+                duration_ms=stamp.get("duration_ms"),
+                status=stamp.get("status"),
+                output_chars=stamp.get("output_chars"),
+                namespace=ns_label,
+            )
+        except ValidationError:
+            logger.warning("tool_usage_skipped", "Malformed tool metrics on a tool result", tool_call_id=tool_call_id)
+            return None
 
 
 

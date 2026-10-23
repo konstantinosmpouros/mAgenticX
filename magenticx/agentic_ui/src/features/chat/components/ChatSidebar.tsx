@@ -51,6 +51,7 @@ import {
 } from "@/shared/ui/sidebar";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
+import { NewChatIcon } from "@/shared/ui/new-chat-icon";
 import { INTERACTIVE_SURFACE } from "@/shared/lib/consts";
 import { useTouchMenuTrigger } from "@/features/chat/hooks/useTouchMenuTrigger";
 import { loadSidebarSectionOpen, saveSidebarSectionOpen } from "@/shared/lib/sidebarStorage";
@@ -252,7 +253,6 @@ export default function ChatSidebar({
   const renameInputRef = React.useRef<HTMLTextAreaElement | null>(null);
   const renameContainerRef = React.useRef<HTMLDivElement | null>(null);
   const isDarkTheme = (resolvedTheme ?? theme) === "dark";
-  const newChatIconSrc = isDarkTheme ? "/edit.png" : "/edit2.png";
   const logoSrc = isDarkTheme ? "/logo2_white_magentaX.png" : "/logo2.png";
 
   const handleConversationSelect = React.useCallback(
@@ -871,12 +871,7 @@ export default function ChatSidebar({
               tooltip="New chat"
             >
               <div className="grid size-9 flex-shrink-0 place-items-center rounded-lg">
-                <img
-                  src={newChatIconSrc}
-                  alt="New chat"
-                  className="h-7 w-7 object-contain"
-                  draggable={false}
-                />
+                <NewChatIcon className="!h-5 !w-5" />
               </div>
               <span className="text-md group-data-[collapsible=icon]:hidden">New chat</span>
             </SidebarMenuButton>

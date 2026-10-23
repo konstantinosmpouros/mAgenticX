@@ -35,6 +35,15 @@ class UsageWindow(BaseModel):
     # their input tokens — the denominators for every per-answer ratio.
     detailedAnswers: int = 0
     detailedInputTokens: int = 0
+    # Plan 41. Cost in micro-USD of the priced calls — a lower bound while
+    # unpricedCalls > 0 (calls on a model with no price); calls cut off at the
+    # output limit; the answers' time to first text, summed over the answers
+    # that measured one (firstTokenAnswers, the average's denominator).
+    costMicros: int = 0
+    unpricedCalls: int = 0
+    truncatedCalls: int = 0
+    firstTokenMs: int = 0
+    firstTokenAnswers: int = 0
 
 
 class UsageAgentBreakdown(UsageWindow):
@@ -47,7 +56,23 @@ class UsageDailyPoint(UsageWindow):
     date: str
 
 
-class UsageModelBreakdown(BaseModel):
+class CallMetrics(BaseModel):
+    """Plan 41's per-call figures for a set of model calls, summed.
+
+    ``ttftMs`` is the time to first token over the ``ttftCalls`` calls that
+    streamed; ``genMs`` / ``genOutputTokens`` their time after it and the output
+    tokens it produced (tokens/s = genOutputTokens / genMs * 1000).
+    """
+    costMicros: int = 0
+    unpricedCalls: int = 0
+    truncatedCalls: int = 0
+    ttftMs: int = 0
+    ttftCalls: int = 0
+    genMs: int = 0
+    genOutputTokens: int = 0
+
+
+class UsageModelBreakdown(CallMetrics):
     """One model's share of the calls made since usage was split by model."""
     model: str
     calls: int = 0
@@ -55,6 +80,16 @@ class UsageModelBreakdown(BaseModel):
     cachedInputTokens: int = 0
     outputTokens: int = 0
     modelMs: int = 0
+
+
+class UsageToolBreakdown(BaseModel):
+    """One tool's calls (plan 41): how often it ran and failed, its total wall
+    time and the total length of its results — averages are the client's."""
+    toolName: str
+    calls: int = 0
+    errors: int = 0
+    durationMs: int = 0
+    outputChars: int = 0
 
 
 class UsageSummary(BaseModel):
@@ -70,6 +105,8 @@ class UsageSummary(BaseModel):
     last30Days: UsageWindow
     perAgent: List[UsageAgentBreakdown] = Field(default_factory=list)
     perModel: List[UsageModelBreakdown] = Field(default_factory=list)
+    # The most-called tools, all time (plan 41).
+    perTool: list[UsageToolBreakdown] = Field(default_factory=list)
     daily: List[UsageDailyPoint] = Field(default_factory=list)
     agentCount: int = 0
     nearCompactionCount: int = 0
@@ -94,6 +131,8 @@ class UsageConversationRow(BaseModel):
     modelCalls: int = 0
     toolCalls: int = 0
     modelMs: int = 0
+    costMicros: int = 0
+    truncatedCalls: int = 0
     contextTokens: Optional[int] = None
     contextWindow: Optional[int] = None
     updatedAt: Optional[datetime] = None
@@ -113,7 +152,7 @@ class UsageConversationPage(BaseModel):
     private: Optional[UsagePrivateAggregate] = None
 
 
-class UsageAgentGroup(BaseModel):
+class UsageAgentGroup(CallMetrics):
     """Where tokens went inside an answer set: one agent scope × agent × model.
 
     ``compaction`` is the summary calls that compacted the conversation (plan
@@ -146,6 +185,11 @@ class UsageAnswerPoint(BaseModel):
     contextTokens: Optional[int] = None
     contextWindow: Optional[int] = None
     compactionPercent: Optional[float] = None
+    # Plan 41; null on answers from before it was measured.
+    costMicros: int | None = None
+    unpricedCalls: int | None = None
+    truncatedCalls: int | None = None
+    firstTokenMs: int | None = None
 
 
 class UsageConversationDetail(BaseModel):
@@ -165,9 +209,13 @@ class UsageConversationDetail(BaseModel):
     modelMs: int = 0
     detailedAnswers: int = 0
     detailedInputTokens: int = 0
+    costMicros: int = 0
+    unpricedCalls: int = 0
+    truncatedCalls: int = 0
     # False when older answers were too many to count calls for on the fly.
     callsComplete: bool = True
     groups: List[UsageAgentGroup] = Field(default_factory=list)
+    tools: list[UsageToolBreakdown] = Field(default_factory=list)
     branch: List[UsageAnswerPoint] = Field(default_factory=list)
     branchTruncated: bool = False
 
@@ -197,6 +245,8 @@ class UsageAgentEntity(BaseModel):
     toolCalls: int = 0
     detailedAnswers: int = 0
     detailedInputTokens: int = 0
+    costMicros: int = 0
+    truncatedCalls: int = 0
     lastUsedAt: Optional[datetime] = None
     subagents: List[str] = Field(default_factory=list)
     models: List[str] = Field(default_factory=list)
@@ -219,5 +269,6 @@ class UsageAgentDetail(BaseModel):
     its daily trend and its heaviest (non-private) conversations."""
     agent: UsageAgentEntity
     groups: List[UsageAgentGroup] = Field(default_factory=list)
+    tools: list[UsageToolBreakdown] = Field(default_factory=list)
     daily: List[UsageDailyPoint] = Field(default_factory=list)
     topConversations: List[UsageAgentConversation] = Field(default_factory=list)

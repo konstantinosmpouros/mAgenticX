@@ -8,7 +8,8 @@
  * by is `null`, and the UI shows "—" rather than a misleading zero.
  */
 import type { UsageRange } from "@/shared/lib/api";
-import type { UsageDailyPoint, UsageWindow } from "@/shared/lib/types";
+import type { UsageDailyPoint, UsageToolBreakdown, UsageWindow } from "@/shared/lib/types";
+import { describeCost } from "@/shared/lib/utils";
 
 export const RANGE_OPTIONS: { value: UsageRange; label: string }[] = [
   { value: "7d", label: "Last 7 days" },
@@ -35,6 +36,54 @@ export const timePerAnswer = (w: Detailed) => ratio(w.modelMs, w.detailedAnswers
 export const timePerCall = (w: Detailed) => ratio(w.modelMs, w.modelCalls);
 export const callsPerAnswer = (w: Detailed) => ratio(w.modelCalls, w.detailedAnswers);
 export const toolsPerAnswer = (w: Detailed) => ratio(w.toolCalls, w.detailedAnswers);
+
+// Plan 41's measures follow the same rule, each with its own denominator: an
+// answer's first-token wait over the answers that measured one, a call's over
+// the calls that streamed, output speed over the time those calls generated.
+
+/** Average wait from an answer's start to its first words, in ms. */
+export const firstTokenPerAnswer = (w: Pick<UsageWindow, "firstTokenMs" | "firstTokenAnswers">) =>
+  ratio(w.firstTokenMs, w.firstTokenAnswers);
+
+type CallSpeed = { ttftMs: number; ttftCalls: number; genMs: number; genOutputTokens: number };
+
+/** Average time to first token per model call, in ms. */
+export const avgTimeToFirstToken = (m: CallSpeed) => ratio(m.ttftMs, m.ttftCalls);
+/** Output tokens per second while generating (after the first token). */
+export const tokensPerSecond = (m: CallSpeed) => {
+  const perMs = ratio(m.genOutputTokens, m.genMs);
+  return perMs === null ? null : perMs * 1000;
+};
+
+/**
+ * Share of model calls cut off at the output limit. `modelCalls` is the best
+ * denominator there is — calls made before truncation was counted are in it,
+ * so over a range that spans that change the rate reads low, never high.
+ */
+export const truncationRate = (w: { truncatedCalls: number; modelCalls: number }) =>
+  ratio(w.truncatedCalls, w.modelCalls);
+
+/**
+ * A total's cost as the Usage pages show it. A sum of 0 with nothing unpriced
+ * is answers from before pricing (or nothing at all), so it says "—" rather
+ * than claim "$0.00"; see `describeCost` for the rest.
+ */
+export const costOf = (w: { costMicros: number; unpricedCalls?: number }) =>
+  describeCost(
+    w.costMicros > 0 || (w.unpricedCalls ?? 0) > 0 ? w.costMicros : null,
+    w.unpricedCalls ?? 0,
+  );
+
+/** The micro-USD a total can be ranked or compared by, or null when it has none. */
+export const costValue = (w: { costMicros: number }) => (w.costMicros > 0 ? w.costMicros : null);
+
+type ToolTotals = Pick<UsageToolBreakdown, "calls" | "errors" | "durationMs" | "outputChars">;
+
+export const toolErrorRate = (t: ToolTotals) => ratio(t.errors, t.calls);
+/** A tool call's average wall time, in ms. */
+export const toolAvgDuration = (t: ToolTotals) => ratio(t.durationMs, t.calls);
+/** A tool call's average result size, in characters. */
+export const toolAvgOutput = (t: ToolTotals) => ratio(t.outputChars, t.calls);
 
 export const formatPercent = (value: number | null) =>
   value === null ? "—" : `${Math.round(value * 100)}%`;

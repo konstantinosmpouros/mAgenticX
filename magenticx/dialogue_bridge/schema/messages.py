@@ -59,6 +59,20 @@ class MessageOut(BaseModel):
     contextWindow: Optional[int] = Field(None, validation_alias="context_window")
     compactionPercent: Optional[float] = Field(None, validation_alias="compaction_percent")
     modelName: Optional[str] = Field(None, validation_alias="model_name")
+    # Inference metrics (plan 41), null on answers that spent nothing or predate
+    # them: cost in micro-USD of the priced calls (a lower bound while
+    # unpricedCalls > 0), calls cut off at the output limit, time from the run's
+    # start to the first text, and over the calls that streamed: time to first
+    # token (summed), how many, and the time and output tokens after it —
+    # tokens/s = genOutputTokens / genMs * 1000.
+    costMicros: int | None = Field(None, validation_alias="cost_micros")
+    unpricedCalls: int | None = Field(None, validation_alias="unpriced_calls")
+    truncatedCalls: int | None = Field(None, validation_alias="truncated_calls")
+    firstTokenMs: int | None = Field(None, validation_alias="first_token_ms")
+    ttftMs: int | None = Field(None, validation_alias="ttft_ms")
+    ttftCalls: int | None = Field(None, validation_alias="ttft_calls")
+    genMs: int | None = Field(None, validation_alias="gen_ms")
+    genOutputTokens: int | None = Field(None, validation_alias="gen_output_tokens")
     error: Optional[bool] = Field(None, validation_alias="is_error")
     errorMessage: Optional[str] = Field(None, validation_alias="error_message")
     # Final run lifecycle status of an assistant message (completed/cancelled/

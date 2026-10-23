@@ -27,6 +27,10 @@ from harness.agui.events import (
     TOKEN_USAGE_EVENT_TYPE,
     TokenUsageEvent,
 
+    # Per-tool-call metrics
+    TOOL_USAGE_EVENT_TYPE,
+    ToolUsageEvent,
+
     # Durable checkpoint head marker
     CHECKPOINT_COMMITTED_EVENT_TYPE,
     CheckpointCommittedEvent,
@@ -353,12 +357,41 @@ class AGUIEmitter:
             compaction_percent=metrics.get("compaction_percent"),
             finish_reason=metrics.get("finish_reason"),
             truncated=metrics.get("truncated"),
+            ttft_ms=metrics.get("ttft_ms"),
             purpose="compaction" if purpose == "compaction" else None,
         )
         custom_event = CustomEvent(
             type=EventType.CUSTOM,
             name=TOKEN_USAGE_EVENT_TYPE,
             value=payload.model_dump(exclude_none=True),
+        )
+        return self._emit(custom_event, writer, namespace)
+
+
+    # ---------- Tool usage (custom event) ----------
+    def tool_usage(
+        self,
+        *,
+        tool_call_id: str,
+        tool_name: str,
+        duration_ms: int,
+        status: str,
+        output_chars: int,
+        writer: Any = None,
+        namespace: str | None = None,
+    ) -> CustomEvent:
+        """Emit one settled tool call's metrics (never its arguments or output)."""
+        payload = ToolUsageEvent(
+            tool_call_id=tool_call_id,
+            tool_name=str(tool_name)[:200],
+            duration_ms=duration_ms,
+            status="error" if status == "error" else "ok",
+            output_chars=output_chars,
+        )
+        custom_event = CustomEvent(
+            type=EventType.CUSTOM,
+            name=TOOL_USAGE_EVENT_TYPE,
+            value=payload.model_dump(),
         )
         return self._emit(custom_event, writer, namespace)
 

@@ -347,6 +347,61 @@ export function formatModelTime(ms: number): string {
   return `${hours}h ${minutes - hours * 60}m`;
 }
 
+/**
+ * A wait in seconds — time to first token, a tool's average run. Always
+ * seconds (never "840 ms") so a column of them lines up; two decimals under a
+ * second, where the difference between 0.3 s and 0.8 s is the whole story.
+ * Past a minute it reads like model time.
+ */
+export function formatSeconds(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return "—";
+  if (ms >= 60_000) return formatModelTime(ms);
+  const seconds = ms / 1000;
+  return `${seconds.toFixed(seconds < 1 ? 2 : 1)} s`;
+}
+
+/** Output speed: whole tokens per second, one decimal when it is slow. */
+export function formatTokensPerSecond(value: number): string {
+  if (!Number.isFinite(value) || value < 0) return "—";
+  return `${value < 10 ? value.toFixed(1) : Math.round(value).toString()} tok/s`;
+}
+
+/**
+ * Money from micro-USD (the bridge's unit: 1 USD = 1,000,000), as an estimate
+ * reads: "$12.34" for a dollar or more, up to four decimals below that so a
+ * single answer's "$0.0123" is not rounded to nothing, "< $0.0001" for less,
+ * and "—" for no figure at all. Dollars always — the price list is in USD — and
+ * the grouping is fixed (en-US) so "$1,234.50" never turns into "$1.234,50".
+ */
+export function formatCost(micros: number | null | undefined): string {
+  if (micros === null || micros === undefined || !Number.isFinite(micros) || micros < 0) return "—";
+  const usd = micros / 1_000_000;
+  if (usd === 0) return "$0.00";
+  if (usd < 0.0001) return "< $0.0001";
+  if (usd < 1) {
+    // Four decimals, trailing zeros trimmed back to two: $0.50, $0.0123.
+    const text = usd.toFixed(4).replace(/0{1,2}$/, "");
+    return `$${text}`;
+  }
+  return `$${usd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+/**
+ * What a cost figure can honestly say. `costMicros` is null when nothing was
+ * recorded (an answer from before pricing); a zero cost with unpriced calls
+ * means no model it used has a price — "—", never "$0.00". Some priced, some
+ * not: the figure is a floor, so it says "partly unpriced".
+ */
+export function describeCost(
+  costMicros: number | null | undefined,
+  unpricedCalls: number | null | undefined = 0,
+): { label: string; note: "not priced" | "partly unpriced" | null } {
+  const unpriced = unpricedCalls ?? 0;
+  if (costMicros === null || costMicros === undefined) return { label: "—", note: null };
+  if (costMicros <= 0 && unpriced > 0) return { label: "—", note: "not priced" };
+  return { label: formatCost(costMicros), note: unpriced > 0 ? "partly unpriced" : null };
+}
+
 // The agents occasionally emit "•" bullets, which Streamdown doesn't treat as
 // list markers — normalize them to "-" so every text surface renders the same.
 export const normalizeBulletMarkdown = (text: string): string =>

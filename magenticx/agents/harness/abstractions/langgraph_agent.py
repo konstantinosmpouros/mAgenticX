@@ -53,8 +53,9 @@ class LangGraphAgent(BaseAgent, ABC):
             thread_id=self.context.get("run_id")
             or self.run_config.get("configurable", {}).get("thread_id", "")
         )
-        # This run's model calls, turned into TOKEN_USAGE events: the chains
-        # behind a LangGraph agent's nodes report usage no other way.
+        # This run's model and tool calls, turned into TOKEN_USAGE / TOOL_USAGE
+        # events: the chains behind a LangGraph agent's nodes report usage no
+        # other way.
         self.usage_callback = UsageMetricsCallback()
 
 
@@ -158,23 +159,15 @@ class LangGraphAgent(BaseAgent, ABC):
     def _stream_config(self) -> Mapping[str, Any]:
         """``run_config`` plus this run's usage callback, which LangChain then
         carries into every chain a node invokes."""
-        config = dict(self.run_config)
-        existing = config.get("callbacks")
-        if existing is None:
-            config["callbacks"] = [self.usage_callback]
-        elif isinstance(existing, (list, tuple)):
-            config["callbacks"] = [*existing, self.usage_callback]
-        else:
-            # A callback manager someone configured on purpose: leave it, and
-            # say so — this run's usage will not be reported.
-            logger.warning("usage_callback_not_attached", "Run has a callback manager; usage not reported",
-                           agent_slug=self.name)
-        return config
+        return self._config_with_callback(self.usage_callback)
 
 
     def _pending_frames(self) -> list[bytes]:
-        """One ``TOKEN_USAGE`` frame per model call settled since the last drain."""
-        return [
+        """One ``TOKEN_USAGE`` frame per model call and one ``TOOL_USAGE`` frame
+        per tool call settled since the last drain."""
+        frames = [
             self.agui_emitter.token_usage(usage, message_id=call_id, metrics=metrics)
             for usage, call_id, metrics in self.usage_callback.drain()
         ]
+        frames += [self.agui_emitter.tool_usage(**call) for call in self.usage_callback.drain_tools()]
+        return frames

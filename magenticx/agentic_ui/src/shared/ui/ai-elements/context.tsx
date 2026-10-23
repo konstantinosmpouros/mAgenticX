@@ -15,8 +15,9 @@ import { createContext, useContext } from "react";
  * its own sections. Adapted where this app differs:
  *
  * - Radix Tooltip instead of HoverCard: same surface, no new dependency.
- * - No cost: upstream prices tokens with `tokenlens` for ONE model, while a
- *   reply here can mix models; cost estimation is plan 16's server-side job.
+ * - Cost is not computed here: upstream prices tokens with `tokenlens` for
+ *   ONE model, while a reply here can mix models, so the bridge prices each
+ *   call (plan 41) and the caller passes the figure to a `ContextMetricRow`.
  * - Usage is this app's shape (`cachedInputTokens`, nullable fields). A row
  *   with nothing to report renders nothing, as upstream does.
  */
@@ -91,4 +92,27 @@ export const ContextReasoningUsage = () => (
 
 export const ContextCacheUsage = () => (
   <UsageRow label="Cache" tokens={useContextValue().usage?.cachedInputTokens} />
+);
+
+/**
+ * A label → value row that is not a token count (cost, time to first token,
+ * output speed), styled like the usage rows above so the card reads as one
+ * list. `hint` is a muted qualifier after the value ("partly unpriced").
+ */
+export const ContextMetricRow = ({
+  label,
+  value,
+  hint,
+}: {
+  label: ReactNode;
+  value: ReactNode;
+  hint?: ReactNode;
+}) => (
+  <div className="flex items-center justify-between gap-3 text-xs">
+    <span className="text-muted-foreground">{label}</span>
+    <span className="text-right text-foreground tabular-nums">
+      {value}
+      {hint ? <span className="ml-1 text-muted-foreground">({hint})</span> : null}
+    </span>
+  </div>
 );

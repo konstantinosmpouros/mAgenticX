@@ -9,7 +9,7 @@ import type { UsageConversationSort, UsageRange } from "@/shared/lib/api";
 import { useUsageConversationList } from "@/features/settings/hooks/useUsageConversationList";
 import { rangeLabel } from "@/features/settings/lib/usageMetrics";
 import { SoftPanel } from "../shared";
-import { FillBar, RangeSelect, RowsSkeleton, UsageEmpty, UsageError } from "./UsageParts";
+import { FillBar, RangeSelect, RowsSkeleton, TokensWithCost, TruncatedMark, UsageEmpty, UsageError } from "./UsageParts";
 
 // Level 1a of the Usage tab: every conversation ranked by what it spent (or by
 // recency, or by how full its context is), searchable by title and filterable
@@ -135,6 +135,7 @@ export function UsageConversations({
                     <span className="flex min-w-0 items-center gap-1.5">
                       <span className="truncate text-sm font-medium text-foreground">{row.title || "Untitled conversation"}</span>
                       {row.isArchived ? <Archive className="h-3 w-3 shrink-0 text-muted-foreground" aria-label="Archived" /> : null}
+                      {row.truncatedCalls > 0 ? <TruncatedMark count={row.truncatedCalls} /> : null}
                     </span>
                     <span className="block truncate text-xs text-muted-foreground">
                       {[row.agentName, `${row.answers} ${row.answers === 1 ? "answer" : "answers"}`, row.toolCalls ? `${row.toolCalls} tool calls` : null]
@@ -145,9 +146,7 @@ export function UsageConversations({
                   <span className="hidden shrink-0 sm:block">
                     <FillBar tokens={row.contextTokens} window={row.contextWindow} />
                   </span>
-                  <span className="w-16 shrink-0 text-right text-sm font-semibold tabular-nums text-foreground">
-                    {formatCompactTokens(row.totalTokens)}
-                  </span>
+                  <TokensWithCost tokens={row.totalTokens} costMicros={row.costMicros} />
                   <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
                 </button>
               );

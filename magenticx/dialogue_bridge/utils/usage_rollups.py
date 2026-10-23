@@ -1,7 +1,8 @@
 """Keep the daily usage rollups (plan 33): add one finished answer to its day.
 
 ``usage_daily`` and ``usage_daily_groups`` hold, per user, UTC day and agent,
-what ``messages`` and ``message_usage`` would sum to — so the Usage tab's
+what ``messages`` and ``message_usage`` would sum to (and ``tool_usage_daily``,
+plan 41, what ``tool_usage`` would) — so the Usage tab's
 Overview and Agents pages read a few hundred rows instead of every answer the
 user ever got (see migration 0034 for why that matters).
 
@@ -20,7 +21,7 @@ from sqlalchemy.dialects.postgresql import insert as postgres_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.database import UsageDailyGroupTable, UsageDailyTable
+from core.database import ToolUsageDailyTable, UsageDailyGroupTable, UsageDailyTable
 
 UNKNOWN_AGENT = "Unknown agent"
 
@@ -54,12 +55,16 @@ async def add_answer_to_rollups(
     agent_name: Optional[str],
     answer: dict[str, int],
     groups: list[dict[str, Any]],
+    tools: list[dict[str, Any]] | None = None,
 ) -> None:
     """Add one answer's totals to its day, and each of its usage groups to theirs.
 
     ``answer`` carries the ``usage_daily`` counters (answers, tokens, model
-    time, calls, the ``detailed_*`` pair); ``groups`` one dict per (scope,
-    group_name, model_name) with the ``usage_daily_groups`` counters.
+    time, calls, the ``detailed_*`` pair, plan 41's cost / truncation / first
+    token); ``groups`` one dict per (scope, group_name, model_name) with the
+    ``usage_daily_groups`` counters; ``tools`` one dict per ``tool_name`` with
+    the ``tool_usage_daily`` counters (plan 41). Only the counters a caller
+    passes are added, so each caller books exactly what it measured.
     """
     identity = {
         "user_id": user_id,
@@ -83,4 +88,12 @@ async def add_answer_to_rollups(
             ("user_id", "day", "agent_key", "scope", "group_name", "model_name"),
             {**identity, **group},
             counters,
+        )
+    for tool in tools or ():
+        await _add(
+            db,
+            ToolUsageDailyTable,
+            ("user_id", "day", "agent_key", "tool_name"),
+            {**identity, **tool},
+            tuple(name for name in tool if name != "tool_name"),
         )

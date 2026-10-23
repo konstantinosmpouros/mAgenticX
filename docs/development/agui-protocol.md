@@ -101,7 +101,8 @@ All custom events share a wrapper shape:
 | `TASK_SUBAGENT` | `TaskSubAgentEvent` | Orchestrator delegated a task to a sub-agent |
 | `SUBAGENT_EVENT` | `SubAgentEvent` | An AG-UI event emitted by a sub-agent, wrapped with task context |
 | `BEFORE_AGENT_EVENT` | `BeforeAgentEvent` | Pre-execution message injected by `PatchToolCallsMiddleware` into a sub-agent |
-| `TOKEN_USAGE` | `TokenUsageEvent` | Per-AI-message token usage, one per settled `AIMessage`; namespace-attributed for sub-agents. Input/output/total plus `input_token_details` (cached) and `output_token_details` (reasoning); and, from `UsageMetricsMiddleware`, `model`, `latency_ms`, `context_window`, `context_tokens`, `context_percent`, `compaction_percent`. The middleware stamps them on `AIMessage.response_metadata["mx_usage_metrics"]` — deep agents do not stream the custom channel — and the normalizer folds them into this event. The UI keeps the main agent's latest context on `RunTimeline.context` (the composer gauge). `purpose: "compaction"` marks the summary call of an automatic compaction (plan 34): the bridge books it under its own `compaction` usage scope, never as the context reading. **LangGraph agents** emit it too: `UsageMetricsCallback` (on the run config) times each chat-model call their chains make and the stream loop drains one `TOKEN_USAGE` per call (`message_id` `lg-<run id>`, `model` + `latency_ms`, no context fields — a pipeline has no single window) |
+| `TOKEN_USAGE` | `TokenUsageEvent` | Per-AI-message token usage, one per settled `AIMessage`; namespace-attributed for sub-agents. Input/output/total plus `input_token_details` (cached) and `output_token_details` (reasoning); and, from `UsageMetricsMiddleware`, `model`, `latency_ms`, `context_window`, `context_tokens`, `context_percent`, `compaction_percent`, `finish_reason` (why the provider ended the call, whichever API shape reported it), `truncated` (`true` when `finish_reason` is `length` / `max_tokens` / `max_output_tokens` — the call hit its output-token ceiling; also logged as `model_call_truncated`) and `ttft_ms` (ms from the call's start to its first streamed text or tool-call chunk, seen by `FirstTokenCallback`; absent when the call did not stream). The middleware stamps them on `AIMessage.response_metadata["mx_usage_metrics"]` — deep agents do not stream the custom channel — and the normalizer folds them into this event. The UI keeps the main agent's latest context on `RunTimeline.context` (the composer gauge). `purpose: "compaction"` marks the summary call of an automatic compaction (plan 34): the bridge books it under its own `compaction` usage scope, never as the context reading. **LangGraph agents** emit it too: `UsageMetricsCallback` (on the run config) times each chat-model call their chains make and the stream loop drains one `TOKEN_USAGE` per call (`message_id` `lg-<run id>`, `model` + `latency_ms` + `finish_reason`/`truncated`, `ttft_ms` only for a call the node streamed, no context fields — a pipeline has no single window) |
+| `TOOL_USAGE` | `ToolUsageEvent` | One settled tool call's metrics (plan 41): `{tool_call_id, tool_name, duration_ms, status: "ok"\|"error", output_chars}` — never its arguments or output. **Deep agents:** `ToolMetricsMiddleware` (directly outside `ToolErrorMiddleware`, so a tool that raised is counted as `status: "error"`) stamps `ToolMessage.response_metadata["mx_tool_metrics"]`, and the normalizer emits `TOOL_USAGE` right after the call's `TOOL_CALL_RESULT` → `TOOL_CALL_END`; a sub-agent's is wrapped in `SUBAGENT_EVENT` like its other events. A `Command` result reports `output_chars: 0`. Not emitted for the tools the normalizer hides (`write_todos`, `task`, `present_artifact`, `render_chart` — their result is consumed silently). **LangGraph agents:** `UsageMetricsCallback.on_tool_start/end/error` times the tools their chains call and the stream loop drains them (`drain_tools()`, `tool_call_id` `lg-<run id>`; a `GraphBubbleUp` is a pause, not an error, and is not reported). The bridge dedupes by `tool_call_id` and books `tool_usage` (see [usage-analytics](../flows/usage-analytics.md)); the UI timeline ignores it. |
 | `HITL_INTERRUPT` | `HITLInterruptEvent` | Graph paused — waiting for human input |
 | `CHECKPOINT_COMMITTED` | `{thread_id, checkpoint_id}` | Terminal event emitted by the agent once its durable LangGraph checkpoint is written. The bridge captures it in `apply_event` and `_finish_run` persists `checkpoint_id` on the AI message, so the branch's next turn can resume/fork from the right head. Carries the branch-scoped checkpoint `thread_id`, not the run id. |
 | `PRESENT_ARTIFACT` | `PresentArtifactEvent` | A deep-agent deliverable explicitly designated via the `present_artifact` tool. Synthesized by the normalizer when it detects the tool call **by name for the top-level orchestrator only** (a sub-agent's call is dropped), carrying `{artifact_id, path, filename, title, summary, mime, status}` display metadata (no bytes). The bridge captures it in `apply_event` into `runtime.presented_artifacts`, and `_finish_run` reads the files back from the agents service and persists them as `attachments(origin='generated')` on the AI message. Lands in `raw_events` so the artifact card survives reconnection. |
@@ -163,11 +164,32 @@ Every standard AG-UI event emitted by a sub-agent is re-emitted wrapped in this 
   "total_tokens": 5307,
   "input_token_details": { "cache_read": 0 },
   "output_token_details": { "reasoning": 0 },
-  "message_id": "lc_run--..."
+  "message_id": "lc_run--...",
+  "model": "gpt-4.1",
+  "latency_ms": 2140,
+  "finish_reason": "stop",
+  "truncated": false,
+  "ttft_ms": 610
 }
 ```
 
-Emitted once per **settled** `AIMessage` (read from `updates`-mode `usage_metadata` in `_handle_updates_payload`), for the main agent and each sub-agent — sub-agent usage is namespace-wrapped in a `SUBAGENT_EVENT`. The bridge sums input/output across the whole run (all model calls + sub-agents + resume legs), deduping by `message_id`, and persists the totals on `messages.input_tokens` / `messages.output_tokens`. **Collect-only:** the numbers reach the UI on the message DTO but nothing renders them yet.
+Emitted once per **settled** `AIMessage` (read from `updates`-mode `usage_metadata` in `_handle_updates_payload`), for the main agent and each sub-agent — sub-agent usage is namespace-wrapped in a `SUBAGENT_EVENT`. The bridge sums input/output across the whole run (all model calls + sub-agents + resume legs), deduping by `message_id`, and persists the totals on `messages.input_tokens` / `messages.output_tokens`, and derives per call the cost, `truncated_calls` and the speed figures (`ttft_ms`, `gen_ms = latency_ms − ttft_ms`, `gen_output_tokens`) — see [usage-analytics](../flows/usage-analytics.md). The reply's usage card and the Usage tab render them.
+
+`ttft_ms` and `latency_ms` share one start: `UsageMetricsMiddleware` opens a `first_token_scope()` (a mutable record in a `ContextVar`) around `handler(request)`, and `FirstTokenCallback` — added to the deep agent's run config by `DeepAgent._stream_config()`, which LangChain carries into every sub-agent — stamps that record on the first chunk with text or a tool-call fragment. Under `RetryOnRateLimitMiddleware` (outermost), both time only the attempt that answered, never a 429 wait.
+
+#### `ToolUsageEvent`
+
+```json
+{
+  "tool_call_id": "call_abc123",
+  "tool_name": "web_search",
+  "duration_ms": 1830,
+  "status": "ok",
+  "output_chars": 5240
+}
+```
+
+One per settled tool call; `tool_name` is capped at 200 characters. A malformed `mx_tool_metrics` stamp is logged (`tool_usage_skipped`) and dropped — telemetry never breaks the stream.
 
 #### `HITLInterruptEvent`
 
@@ -297,7 +319,7 @@ Tool calls span two modes: `args` arrive in the `updates` chunk (from the `AIMes
 | `_finished_tool_call_ids` | `TOOL_CALL_RESULT` + `TOOL_CALL_END` emitted (dedup guard) |
 | `_ignored_tool_call_ids` | `write_todos` and `task` — result message is expected but discarded |
 
-`_emit_tool_message_result()` checks all four sets before emitting. A `ToolMessage` whose `tool_call_id` is in `_ignored_tool_call_ids` is silently consumed (removed from the set) and produces no events.
+`_emit_tool_message_result()` checks all four sets before emitting. A `ToolMessage` whose `tool_call_id` is in `_ignored_tool_call_ids` is silently consumed (removed from the set) and produces no events — including no `TOOL_USAGE`. Otherwise the order is `TOOL_CALL_RESULT` → `TOOL_CALL_END` → `TOOL_USAGE` (the last only when the message carries an `mx_tool_metrics` stamp, `_tool_usage()`).
 
 ---
 
@@ -385,17 +407,22 @@ flowchart TD
     A["apply_event(event)"] --> S["seq-stamp event\n(+ truncate TOOL_CALL_RESULT)"]
     S --> B{event.type}
     B -->|"CUSTOM"| C{event.name}
-    C -->|"SUBAGENT_EVENT"| F["if inner is HITL_INTERRUPT:\nregister_interrupt(inner.value)\nelif inner is TOKEN_USAGE:\n_accumulate_usage(inner.value, main_agent=False)"]
-    C -->|"HITL_INTERRUPT"| H["register_interrupt(value)"]
-    C -->|"TOKEN_USAGE"| N["_accumulate_usage(value, main_agent=True)\n(only the main agent moves the context snapshot)"]
+    C -->|"SUBAGENT_EVENT"| F["if inner is HITL_INTERRUPT:\nregister_interrupt(inner.value)\nelif inner is TOKEN_USAGE:\n_accumulate_usage(inner.value, main_agent=False)\nelif inner is TOOL_USAGE:\n_accumulate_tool_usage(inner.value, main_agent=False)"]
+    C -->|"HITL_INTERRUPT"| H["register_interrupt(value)\n(also settles first_token_ms as None\nif no text was seen yet)"]
+    C -->|"TOKEN_USAGE"| N["_accumulate_usage(value, main_agent=True)\n(only the main agent moves the context snapshot;\n_call_metrics: cost, truncation, ttft / gen)"]
+    C -->|"TOOL_USAGE"| TU["_accumulate_tool_usage(value, main_agent=True)\n(dedupe by tool_call_id → tool_groups)"]
     C -->|"CHECKPOINT_COMMITTED"| CC["capture checkpoint_id\n(persisted by _finish_run)"]
     B -->|"THINKING_START"| I["thinking_start = perf_counter()\nthinking_end = 0.0"]
     B -->|"THINKING_TEXT_MESSAGE_CONTENT"| J["thoughts.append(delta)"]
     B -->|"TOOL_CALL_START"| K["thoughts.append('[tool] {name}')"]
     B -->|"THINKING_END"| L["thinking_end = perf_counter()"]
-    B -->|"TEXT_MESSAGE_CHUNK\nor TEXT_MESSAGE_CONTENT"| M["content += delta\nif not closed_thinking:\n  closed_thinking=True\n  thinking_end = perf_counter()"]
+    B -->|"TEXT_MESSAGE_CHUNK\nor TEXT_MESSAGE_CONTENT"| M["content += delta\n_note_first_text(delta) → first_token_ms (once)\nif not closed_thinking:\n  closed_thinking=True\n  thinking_end = perf_counter()"]
     B & C --> Z["_append_raw(event)\n(coalesced log append)"]
 ```
+
+**Usage accumulation** (plan 33 / 41): `TOKEN_USAGE` and `TOOL_USAGE` are folded once each — by `message_id` and `tool_call_id` — into run totals and `(scope, agent, model)` / `(scope, agent, tool)` groups; a call first seen bare and then wrapped in `SUBAGENT_EVENT` moves to its sub-agent (`_book_once`). `_finish_run` books them (see [usage-analytics](../flows/usage-analytics.md)).
+
+**First token** is measured by the bridge itself, not reported by the agents: `first_token_ms` is the time from the runtime's creation (the run task's start, monotonic clock) to the first non-empty top-level text delta — a sub-agent's text arrives wrapped and never counts. It is settled once; a `HITL_INTERRUPT` registered before any text settles it as `None` (the wait was the human's).
 
 `thinking_duration_seconds()` computes the elapsed time from `first_event_ts` (or `thinking_start`) to `thinking_end` (or now). This value is stored on the `MessageTable` row as `thinkingTime` and used as the fallback duration label on legacy timelines.
 
@@ -623,7 +650,10 @@ Sub-agent rendering folds entirely from the `TASK_SUBAGENT` / `SUBAGENT_EVENT` e
 | Concept | File | What to look for |
 | --- | --- | --- |
 | Custom event type constants | [magenticx/agents/harness/agui/events.py](../../magenticx/agents/harness/agui/events.py) | `HITL_INTERRUPT_EVENT_TYPE`, `PLAN_SNAPSHOT_EVENT_TYPE`, `CHECKPOINT_COMMITTED_EVENT_TYPE`, `PRESENT_ARTIFACT_EVENT_TYPE`, `RENDER_CHART_EVENT_TYPE`, etc. |
-| Custom event Pydantic models | [magenticx/agents/harness/agui/events.py](../../magenticx/agents/harness/agui/events.py) | `HITLInterruptEvent`, `PlanSnapshot`, `PlanItem`, `TaskSubAgentEvent`, `SubAgentEvent`, `BeforeAgentEvent`, `TokenUsageEvent`, `CheckpointCommittedEvent`, `PresentArtifactEvent` |
+| Custom event Pydantic models | [magenticx/agents/harness/agui/events.py](../../magenticx/agents/harness/agui/events.py) | `HITLInterruptEvent`, `PlanSnapshot`, `PlanItem`, `TaskSubAgentEvent`, `SubAgentEvent`, `BeforeAgentEvent`, `TokenUsageEvent`, `ToolUsageEvent`, `CheckpointCommittedEvent`, `PresentArtifactEvent` |
+| Per-call metrics stamps | [magenticx/agents/harness/middlewares/usage_metrics.py](../../magenticx/agents/harness/middlewares/usage_metrics.py), [first_token.py](../../magenticx/agents/harness/middlewares/first_token.py), [tool_metrics.py](../../magenticx/agents/harness/middlewares/tool_metrics.py) | `mx_usage_metrics` (incl. `ttft_ms` via `first_token_scope` / `FirstTokenCallback`), `mx_tool_metrics` (`ToolMetricsMiddleware`) |
+| `TOOL_USAGE` synthesis | [magenticx/agents/harness/agui/normalizer.py](../../magenticx/agents/harness/agui/normalizer.py), [usage_callback.py](../../magenticx/agents/harness/agui/usage_callback.py) | `_tool_usage()` after `TOOL_CALL_END`; LangGraph: `UsageMetricsCallback.drain_tools()` |
+| Usage / first-token accumulation (bridge) | [magenticx/dialogue_bridge/utils/inference_runs.py](../../magenticx/dialogue_bridge/utils/inference_runs.py) | `_accumulate_usage()`, `_accumulate_tool_usage()`, `_call_metrics()`, `_note_first_text()`, `register_interrupt()` |
 | `present_artifact` detection (orchestrator-only) | [magenticx/agents/harness/agui/normalizer.py](../../magenticx/agents/harness/agui/normalizer.py) | tool-call switch in `_handle_updates_payload()` — `if tc_name == "present_artifact"` gated on `namespace is None` |
 | `present_artifact` tool | [magenticx/agents/harness/tools/present_artifact/tool.py](../../magenticx/agents/harness/tools/present_artifact/tool.py) | `build_present_artifact_tool()` — validates the output/ path, returns a confirmation (never emits) |
 | Output-file read-back | [magenticx/agents/router/inference.py](../../magenticx/agents/router/inference.py) | `GET …/output-files` → `harness.filesystem.read_output_files()` |
