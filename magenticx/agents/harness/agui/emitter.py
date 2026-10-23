@@ -20,6 +20,8 @@ from harness.agui.events import (
     # Sub-agent envelope event
     SUBAGENT_EVENT_TYPE,
     SubAgentEvent,
+    SUBAGENT_COMPLETED_EVENT_TYPE,
+    SubAgentCompletedEvent,
     BEFORE_AGENT_EVENT_TYPE,
     BeforeAgentEvent,
 
@@ -300,6 +302,34 @@ class AGUIEmitter:
         custom_event = CustomEvent(
             type=EventType.CUSTOM,
             name=SUBAGENT_EVENT_TYPE,
+            value=payload.model_dump(),
+        )
+        return self._emit(custom_event, writer, namespace)
+
+
+    # ---------- Sub-agent completed ----------
+    def subagent_completed(
+        self,
+        *,
+        task_id: str,
+        status: str = "completed",
+        subagent_namespace: Sequence[str] | None = None,
+        started_at: int | None = None,
+        ended_at: int | None = None,
+        writer: Any = None,
+        namespace: str | None = None,
+    ) -> bytes | None:
+        """A delegated sub-agent returned: its card can show done/failed mid-run."""
+        payload = SubAgentCompletedEvent(
+            task_id=task_id,
+            status="error" if status == "error" else "completed",
+            namespace=list(subagent_namespace) if subagent_namespace else None,
+            started_at=started_at,
+            ended_at=ended_at,
+        )
+        custom_event = CustomEvent(
+            type=EventType.CUSTOM,
+            name=SUBAGENT_COMPLETED_EVENT_TYPE,
             value=payload.model_dump(),
         )
         return self._emit(custom_event, writer, namespace)

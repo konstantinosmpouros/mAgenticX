@@ -19,6 +19,7 @@ export const HITL_INTERRUPT_EVENT_TYPE = "HITL_INTERRUPT" as const;
 export const PLAN_SNAPSHOT_EVENT_TYPE = "PLAN_SNAPSHOT" as const;
 export const TASK_SUBAGENT_EVENT_TYPE = "TASK_SUBAGENT" as const;
 export const SUBAGENT_EVENT_TYPE = "SUBAGENT_EVENT" as const;
+export const SUBAGENT_COMPLETED_EVENT_TYPE = "SUBAGENT_COMPLETED" as const;
 export const BEFORE_AGENT_EVENT_TYPE = "BEFORE_AGENT_EVENT" as const;
 export const TOKEN_USAGE_EVENT_TYPE = "TOKEN_USAGE" as const;
 export const PRESENT_ARTIFACT_EVENT_TYPE = "PRESENT_ARTIFACT" as const;
@@ -70,6 +71,17 @@ export const SubAgentPayloadSchema = z.object({
   task_id: z.string(),
   namespace: z.array(z.string()),
   event: z.record(z.string(), z.any()),
+});
+
+// A delegated sub-agent returned (the orchestrator got its `task` result).
+// `task_id` is the `task` tool-call id; `namespace` the sub-agent's LangGraph
+// namespace path when the service had bound it — the UI resolves either.
+export const SubAgentCompletedPayloadSchema = z.object({
+  task_id: z.string(),
+  status: z.string().nullish(),
+  namespace: z.array(z.string()).nullish(),
+  started_at: z.number().nullish(),
+  ended_at: z.number().nullish(),
 });
 
 // ------------------------------------------------------

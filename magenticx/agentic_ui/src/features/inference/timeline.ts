@@ -10,7 +10,9 @@ import {
   PresentArtifactPayloadSchema,
   RENDER_CHART_EVENT_TYPE,
   RenderChartPayloadSchema,
+  SUBAGENT_COMPLETED_EVENT_TYPE,
   SUBAGENT_EVENT_TYPE,
+  SubAgentCompletedPayloadSchema,
   SubAgentPayloadSchema,
   TASK_SUBAGENT_EVENT_TYPE,
   TaskSubAgentPayloadSchema,
@@ -27,6 +29,7 @@ import type {
   RunTimeline,
   SubagentBlock,
   SubagentFoldIndexes,
+  SubagentRunStatus,
   ThinkingBlock,
   TimelineBlock,
   TimelineFoldIndexes,
@@ -617,6 +620,7 @@ function resolveInterrupt(
       });
     }
   });
+  settleAwaitingSubagents(session);
 }
 
 // ------------------------------------------------------
@@ -682,6 +686,7 @@ function ensureSubagentBlock(
     kind: "subagent",
     id: nextBlockId(session),
     taskId: key,
+    status: "pending",
     blocks: [],
   };
   session.state.blocks.push(block);
@@ -708,7 +713,22 @@ function ensureSubagentBlock(
  * a block via TASK_SUBAGENT (emitted at tool-call time, before the HITL gate)
  * and then sat there forever with no response and no tool activity.
  */
-function markSubagentSpawned(session: Session, block: SubagentBlock): void {
+function markSubagentSpawned(
+  session: Session,
+  key: string,
+  block: SubagentBlock,
+  ts?: number,
+): void {
+  // Events from inside it: it is working — unless it is parked on its own
+  // approval (an event can still trail the interrupt) or already returned.
+  if (
+    block.status === undefined ||
+    block.status === "pending" ||
+    (block.status === "awaiting_approval" && !hasPendingSubagentInterrupt(session, key))
+  ) {
+    block.status = "running";
+  }
+  if (block.startedAt === undefined && ts !== undefined) block.startedAt = ts;
   if (block.spawned) return;
   block.spawned = true;
   let count = 0;
@@ -716,6 +736,101 @@ function markSubagentSpawned(session: Session, block: SubagentBlock): void {
     if (candidate.kind === "subagent" && candidate.spawned) count += 1;
   }
   session.state.subagentCount = count;
+}
+
+const SUBAGENT_SETTLED = new Set<SubagentRunStatus>(["done", "failed", "cancelled"]);
+
+function isSubagentSettled(block: SubagentBlock): boolean {
+  return block.status !== undefined && SUBAGENT_SETTLED.has(block.status);
+}
+
+function hasPendingSubagentInterrupt(session: Session, key: string): boolean {
+  return session.state.interrupts.some(
+    (item) => item.status === "pending" && item.subagentId === key,
+  );
+}
+
+/** The fold key of the sub-agent block at `index` (the reverse of subagentIndexByKey). */
+function subagentKeyAt(session: Session, index: number): string | undefined {
+  return Object.entries(session.state.fold.subagentIndexByKey).find(
+    ([, value]) => value === index,
+  )?.[0];
+}
+
+/**
+ * After an approval resolves: a sub-agent that was waiting on it goes back to
+ * running (spawned) or to pending (a `task` call approved but not started yet;
+ * a rejected one stays pending and is never shown once the run settles).
+ */
+function settleAwaitingSubagents(session: Session): void {
+  const topLevelPending = session.state.interrupts.some(
+    (item) => item.status === "pending" && !item.subagentId,
+  );
+  session.state.blocks.forEach((block, index) => {
+    if (block.kind !== "subagent" || block.status !== "awaiting_approval") return;
+    if (block.spawned) {
+      const key = subagentKeyAt(session, index);
+      if (key && hasPendingSubagentInterrupt(session, key)) return;
+      blockForWrite<SubagentBlock>(session, index).status = "running";
+    } else if (!topLevelPending) {
+      blockForWrite<SubagentBlock>(session, index).status = "pending";
+    }
+  });
+}
+
+/**
+ * The block a SUBAGENT_COMPLETED refers to. The event carries the `task`
+ * tool-call id, while SUBAGENT_EVENT routes by LangGraph namespace (plus the
+ * taskIdRemap aliasing): normally both land on the TASK_SUBAGENT block, but when
+ * the service could not bind a namespace to its call (a resume that lost the
+ * binding) the sub-agent's events opened a second, namespace-keyed block and
+ * the call-id block stayed unspawned. Prefer the call-id block when it really
+ * ran; otherwise the block the event's namespace was routed to.
+ */
+function resolveCompletedSubagent(
+  session: Session,
+  taskId: string,
+  namespace: string[] | null | undefined,
+): { index: number; aliasIndex?: number } | null {
+  const fold = session.state.fold;
+  const remapped = fold.taskIdRemap[taskId];
+  const byId =
+    fold.subagentIndexByKey[taskId] ??
+    (remapped !== undefined ? fold.subagentIndexByKey[remapped] : undefined);
+  const nsKey = namespace?.length ? fold.namespaceToKey[namespace.join(" / ")] : undefined;
+  const byNamespace = nsKey !== undefined ? fold.subagentIndexByKey[nsKey] : undefined;
+  const spawned = (index: number) => Boolean((session.state.blocks[index] as SubagentBlock).spawned);
+  if (byId !== undefined && spawned(byId)) return { index: byId };
+  if (byNamespace !== undefined) {
+    return byId !== undefined && byId !== byNamespace
+      ? { index: byNamespace, aliasIndex: byId }
+      : { index: byNamespace };
+  }
+  return byId !== undefined ? { index: byId } : null;
+}
+
+function applySubagentCompleted(session: Session, event: RawEvent): void {
+  const parsed = SubAgentCompletedPayloadSchema.safeParse(event.value);
+  if (!parsed.success) return;
+  const { task_id, status, namespace, started_at, ended_at } = parsed.data;
+  const target = resolveCompletedSubagent(session, task_id, namespace);
+  if (!target) return;
+  const block = blockForWrite<SubagentBlock>(session, target.index);
+  block.status = status === "error" ? "failed" : "done";
+  block.endedByRun = undefined;
+  block.endedAt = ended_at ?? eventTimestamp(event) ?? block.endedAt;
+  if (block.startedAt === undefined && typeof started_at === "number") {
+    block.startedAt = started_at;
+  }
+  if (target.aliasIndex !== undefined) {
+    // The orphaned call-id block: give its task metadata to the block that
+    // really ran, and settle it (it is unspawned, so it is never shown).
+    const alias = blockForWrite<SubagentBlock>(session, target.aliasIndex);
+    block.type = block.type || alias.type;
+    block.label = alias.label || block.label;
+    block.description = block.description || alias.description;
+    alias.status = block.status;
+  }
 }
 
 function subEnsureThinking(
@@ -870,6 +985,8 @@ function applySubagentInnerEvent(session: Session, key: string, inner: RawEvent)
 
   if (type === "CUSTOM" && inner.name === HITL_INTERRUPT_EVENT_TYPE) {
     const approval = pushInterrupt(session, inner.value, key);
+    const owner = blockForWrite<SubagentBlock>(session, parentIndex);
+    if (approval && !isSubagentSettled(owner)) owner.status = "awaiting_approval";
     // A pending approval never opens a thinking block of its own — the
     // input-bar takeover is the approval surface. It binds onto the stalled
     // tool step in the sub-agent's open block; a chip item is the fallback
@@ -997,6 +1114,11 @@ function applyEvent(session: Session, event: RawEvent): void {
       return;
     }
 
+    if (name === SUBAGENT_COMPLETED_EVENT_TYPE) {
+      applySubagentCompleted(session, event);
+      return;
+    }
+
     if (name === SUBAGENT_EVENT_TYPE) {
       const parsed = SubAgentPayloadSchema.safeParse(event.value);
       if (!parsed.success) return;
@@ -1030,7 +1152,7 @@ function applyEvent(session: Session, event: RawEvent): void {
       const { block } = ensureSubagentBlock(session, key, eventTimestamp(event));
       // Receiving any event from inside the sub-agent is the proof it spawned —
       // an approved `task` call. A rejected one never reaches here.
-      markSubagentSpawned(session, block);
+      markSubagentSpawned(session, key, block, eventTimestamp(event));
       block.namespace = block.namespace || wrapper.namespace.join(" / ");
       block.label = block.label || toTitleCase(block.type);
       if (inner && typeof inner === "object") {
@@ -1041,6 +1163,18 @@ function applyEvent(session: Session, event: RawEvent): void {
 
     if (name === HITL_INTERRUPT_EVENT_TYPE) {
       const approval = pushInterrupt(session, event.value);
+      // The orchestrator's `task` call gated before it ran: its (unspawned)
+      // sub-agent card waits on this approval.
+      if (
+        approval &&
+        parseHitlInterrupt(approval.content).actions.some((action) => action.toolName === "task")
+      ) {
+        session.state.blocks.forEach((block, index) => {
+          if (block.kind === "subagent" && !block.spawned && block.status === "pending") {
+            blockForWrite<SubagentBlock>(session, index).status = "awaiting_approval";
+          }
+        });
+      }
       // Same rule as sub-agent interrupts: never open a lone "Waiting for
       // approval" thinking block — the takeover owns the pending state. The
       // approval binds onto the stalled tool step; a chip item is the
@@ -1171,9 +1305,47 @@ export function finalizeTimeline(state: RunTimeline, status: TimelineTerminalSta
     }
     subFold.openContentIndex = null;
   }
+  // A sub-agent still working when the run ended ends with the run: done,
+  // failed or cancelled (kept distinct). Unspawned ones (a rejected or never
+  // started `task` call) are left as they are — they are not shown.
+  const ended: SubagentRunStatus =
+    status === "completed" ? "done" : status === "failed" ? "failed" : "cancelled";
+  session.state.blocks.forEach((block, index) => {
+    if (block.kind !== "subagent" || !block.spawned) return;
+    if (isSubagentSettled(block) && !block.endedByRun) return;
+    const write = blockForWrite<SubagentBlock>(session, index);
+    write.status = ended;
+    write.endedByRun = true;
+  });
   session.state.terminal = true;
   session.state.terminalStatus = status;
   return session.state;
+}
+
+/**
+ * The status a sub-agent card shows, or null when it is not shown at all.
+ *
+ * `live` is whether this run is still streaming to this view. A run that is
+ * not live and not terminal (a reload mid-run, a dropped stream) never shows a
+ * sub-agent as working: it is waiting on an approval when one is pending,
+ * otherwise it stopped. An unspawned block (the `task` call before it ran) is
+ * shown only while it can still run — never once the run is over.
+ */
+export function subagentRunStatus(
+  block: SubagentBlock,
+  timeline: Pick<RunTimeline, "terminal" | "interrupts">,
+  live: boolean,
+): SubagentRunStatus | null {
+  const pending = timeline.interrupts.some((item) => item.status === "pending");
+  if (!block.spawned) {
+    if (timeline.terminal) return null;
+    if (block.status === "awaiting_approval" && pending) return "awaiting_approval";
+    return live && block.status !== "done" && block.status !== "failed" ? "pending" : null;
+  }
+  const status = block.status ?? "running";
+  if (status !== "running" && status !== "pending") return status;
+  if (live && !timeline.terminal) return "running";
+  return pending ? "awaiting_approval" : "cancelled";
 }
 
 export const TERMINAL_TIMELINE_STATUSES = new Set(["completed", "cancelled", "failed"]);
@@ -1360,6 +1532,8 @@ export function subagentBlockToItem(block: SubagentBlock): SubagentItem {
     text: text || undefined,
     tools,
     interrupts,
+    startedAt: block.startedAt,
+    endedAt: block.endedAt,
   };
 }
 

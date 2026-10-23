@@ -2,7 +2,6 @@
 import {
   MessageSquare,
   MoreHorizontal,
-  Building2,
   PanelLeft,
   Search,
   Archive,
@@ -52,6 +51,7 @@ import {
 import { Skeleton } from "@/shared/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { NewChatIcon } from "@/shared/ui/new-chat-icon";
+import { themeFor } from "@/styles/theme/themes";
 import { INTERACTIVE_SURFACE } from "@/shared/lib/consts";
 import { useTouchMenuTrigger } from "@/features/chat/hooks/useTouchMenuTrigger";
 import { loadSidebarSectionOpen, saveSidebarSectionOpen } from "@/shared/lib/sidebarStorage";
@@ -135,6 +135,39 @@ const sectionListMotion = (reduceMotion: boolean | null) => ({
   transition: reduceMotion ? { duration: 0 } : { duration: 0.18, ease: "easeOut" as const },
 });
 
+// Conversation rows are motion <li>s: they fade in with a short stagger (also
+// when the rail opens and the list mounts), slide to their new place when the
+// list reorders (a pin, a new chat on top), and the selected row's highlight
+// glides from row to row.
+const MotionMenuItem = motion.create(SidebarMenuItem);
+// The top actions' icons grow a little on hover (the row is `group/nav`).
+const NAV_ICON_MOTION =
+  "transition-transform duration-300 ease-out motion-safe:supports-[hover:hover]:group-hover/nav:scale-110";
+// What the open rail adds beside the icons (labels, the chat list) fades in
+// once the width transition is under way rather than being squeezed into the
+// narrow rail; on collapse it goes at once, before the width closes. Labels are
+// display:none while collapsed and the list unmounts, so this replays on every
+// expand.
+const RAIL_REVEAL = "motion-safe:animate-sidebar-reveal";
+// Labels also never wrap: mid-animation the rail is narrower than "New chat".
+const RAIL_LABEL = `whitespace-nowrap ${RAIL_REVEAL} group-data-[collapsible=icon]:hidden`;
+const ROW_SPRING = { type: "spring", stiffness: 520, damping: 42, mass: 0.8 } as const;
+const rowMotion = (reduceMotion: boolean | null, index: number) => ({
+  layout: "position" as const,
+  initial: reduceMotion ? { opacity: 0 } : { opacity: 0, y: 4 },
+  animate: { opacity: 1, y: 0 },
+  exit: reduceMotion
+    ? { opacity: 0, transition: { duration: 0 } }
+    : { opacity: 0, x: -8, transition: { duration: 0.15, ease: "easeIn" as const } },
+  transition: reduceMotion
+    ? { duration: 0 }
+    : {
+        opacity: { duration: 0.22, delay: Math.min(index * 0.025, 0.3) },
+        y: { duration: 0.22, delay: Math.min(index * 0.025, 0.3) },
+        layout: ROW_SPRING,
+      },
+});
+
 /**
  * A sidebar section heading that folds its list ("Pinned", "Chats").
  *
@@ -160,7 +193,7 @@ function SectionToggle({
         aria-expanded={open}
         aria-controls={controlsId}
         onClick={onToggle}
-        className="group/section mr-5 h-11 gap-1 pr-0 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:text-foreground md:h-8"
+        className="group/section mr-5 h-11 gap-1 px-2.5 text-left text-[13px] font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:text-foreground md:h-8"
       >
         <span>{label}</span>
         <ChevronRight
@@ -213,7 +246,7 @@ export default function ChatSidebar({
   sidebarInteractionHook,
 }: ChatSidebarProps) {
   const { isMobile, setOpenMobile, state, toggleSidebar } = useSidebar();
-  const { resolvedTheme, theme } = useTheme();
+  const { resolvedTheme } = useTheme();
   const isCollapsed = !isMobile && state === "collapsed";
   const contentRef = React.useRef<HTMLDivElement | null>(null);
   const reduceMotion = useReducedMotion();
@@ -252,8 +285,7 @@ export default function ChatSidebar({
   const [isSubmittingRename, setIsSubmittingRename] = React.useState(false);
   const renameInputRef = React.useRef<HTMLTextAreaElement | null>(null);
   const renameContainerRef = React.useRef<HTMLDivElement | null>(null);
-  const isDarkTheme = (resolvedTheme ?? theme) === "dark";
-  const logoSrc = isDarkTheme ? "/logo2_white_magentaX.png" : "/logo2.png";
+  const logoSrc = themeFor(resolvedTheme).logo;
 
   const handleConversationSelect = React.useCallback(
     (conversation: ConversationSummary) => {
@@ -482,20 +514,20 @@ export default function ChatSidebar({
 
   // One row renderer for both sections: Pinned and Chats are views over the
   // same list, so rename, delete and the streaming spinner behave identically.
-  const renderConversationRow = (conversation: ConversationSummary) => {
+  const renderConversationRow = (conversation: ConversationSummary, index: number) => {
     const agent = conversation.agent;
-    const Icon = agent?.icon ?? Building2;
     const rawTitle = typeof conversation.title === "string" ? conversation.title.trim() : "";
     const lastMessage = (conversation.lastMessage ?? "").trim();
     const fallbackTitle = lastMessage || agent?.name || "Untitled chat";
     const resolvedTitle = rawTitle || fallbackTitle;
     const isRenaming = renamingConversationId === conversation.id;
+    const isActive = conversation.id === currentConversationId;
 
     return (
-      <SidebarMenuItem key={conversation.id}>
+      <MotionMenuItem key={conversation.id} {...rowMotion(reduceMotion, index)}>
         <SidebarMenuButton
           size="lg"
-          isActive={conversation.id === currentConversationId}
+          isActive={isActive}
           onClick={(event) => {
             if (isRenaming) {
               event.stopPropagation();
@@ -523,15 +555,30 @@ export default function ChatSidebar({
               </div>
             ),
           }}
-          className="items-center gap-2.5 rounded-lg bg-transparent py-1.5 text-left shadow-none transition-all duration-200 supports-[hover:hover]:hover:scale-[1.01] supports-[hover:hover]:hover:shadow-[0_8px_24px_rgba(0,0,0,0.35)] supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] supports-[hover:hover]:hover:!text-primary/60 active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:!text-primary focus-visible:ring-2 focus-visible:scale-[1.01] data-[active=true]:bg-primary/10 data-[active=true]:text-primary data-[active=true]:supports-[hover:hover]:hover:!bg-primary/10 data-[active=true]:supports-[hover:hover]:hover:!text-primary data-[active=true]:focus-visible:!bg-primary/10 !h-auto min-h-[2.5rem]"
+          // Overflow stays visible so the gliding highlight is not clipped while
+          // it moves in; titles sit above it (z-[1]) in every row it passes.
+          className="group/row relative !h-auto min-h-[2rem] items-center !overflow-visible rounded-xl bg-transparent px-2.5 py-1 text-left text-muted-foreground shadow-none transition-colors duration-150 supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] supports-[hover:hover]:hover:text-foreground active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface))] focus-visible:text-foreground focus-visible:ring-2 data-[active=true]:font-medium data-[active=true]:text-foreground"
         >
-          <div className="sidebar-icon-badge flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl text-primary">
-            <Icon size={14} />
-          </div>
+          {isActive && (
+            // The selected row's highlight, shared across rows (and sections), so it
+            // glides to the newly selected chat; a short bar of the brand gradient
+            // marks it.
+            <motion.span
+              layoutId="sidebar-active-row"
+              aria-hidden
+              className="absolute inset-0 z-0 rounded-xl bg-[hsl(var(--hover-surface))]"
+              transition={reduceMotion ? { duration: 0 } : ROW_SPRING}
+            >
+              <span
+                className="absolute left-[3px] top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-full"
+                style={{ background: "var(--gradient-primary)" }}
+              />
+            </motion.span>
+          )}
           {isRenaming ? (
             <div
               ref={renameContainerRef}
-              className="flex w-full items-center gap-2 rounded-xl border border-border/60 bg-background/80 px-2 py-1"
+              className="relative z-[1] flex w-full items-center gap-2 rounded-xl border border-border/60 bg-background/80 px-2 py-1"
               onClick={(event) => event.stopPropagation()}
             >
               <textarea
@@ -562,17 +609,19 @@ export default function ChatSidebar({
                   void handleSubmitRename();
                 }}
                 disabled={!canSubmitRename || isSubmittingRename}
-                className="grid size-7 flex-shrink-0 place-items-center rounded-full bg-[#f093f9] text-[#1b0f2a] shadow-md transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50"
+                className="grid size-7 flex-shrink-0 place-items-center rounded-full bg-primary text-primary-foreground shadow-md transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isSubmittingRename ? (
-                  <Loader size={14} className="text-[#1b0f2a]" />
+                  <Loader size={14} className="text-primary-foreground" />
                 ) : (
                   <ArrowRight className="h-3.5 w-3.5" />
                 )}
               </button>
             </div>
           ) : (
-            <span className="truncate text-sm font-medium text-foreground">{resolvedTitle}</span>
+            <span className="relative z-[1] truncate text-[13px] transition-transform duration-200 ease-out motion-safe:supports-[hover:hover]:group-hover/row:translate-x-[3px]">
+              {resolvedTitle}
+            </span>
           )}
         </SidebarMenuButton>
         {!isRenaming &&
@@ -582,7 +631,7 @@ export default function ChatSidebar({
               onClick={(event) => event.stopPropagation()}
               onMouseDown={(event) => event.stopPropagation()}
               onPointerDown={(event) => event.stopPropagation()}
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:!bg-transparent hover:!text-muted-foreground active:!bg-transparent focus-visible:!bg-transparent focus-visible:text-foreground peer-data-[size=lg]/menu-button:!top-1/2 peer-data-[size=lg]/menu-button:-translate-y-1/2"
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:!bg-transparent hover:!text-muted-foreground active:!bg-transparent focus-visible:!bg-transparent focus-visible:text-foreground peer-data-[size=lg]/menu-button:!top-1/2 peer-data-[size=lg]/menu-button:-translate-y-1/2"
             >
               <Loader size={14} />
             </SidebarMenuAction>
@@ -607,7 +656,7 @@ export default function ChatSidebar({
                   onMouseDown={(event) => event.stopPropagation()}
                   onPointerDown={(event) => event.stopPropagation()}
                   showOnHover
-                  className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:!bg-transparent hover:!text-muted-foreground active:!bg-transparent focus-visible:!bg-transparent focus-visible:text-foreground peer-data-[size=lg]/menu-button:!top-1/2 peer-data-[size=lg]/menu-button:-translate-y-1/2"
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:!bg-transparent hover:!text-muted-foreground active:!bg-transparent focus-visible:!bg-transparent focus-visible:text-foreground peer-data-[size=lg]/menu-button:!top-1/2 peer-data-[size=lg]/menu-button:-translate-y-1/2"
                 >
                   <MoreHorizontal size={14} />
                 </SidebarMenuAction>
@@ -682,7 +731,7 @@ export default function ChatSidebar({
               </DropdownMenu.Portal>
             </DropdownMenu.Root>
           ))}
-      </SidebarMenuItem>
+      </MotionMenuItem>
     );
   };
 
@@ -781,16 +830,13 @@ export default function ChatSidebar({
   return (
     <SidebarRoot
       collapsible="icon"
-      className={cn(
-        "relative overflow-hidden",
-        isCollapsed
-          ? "bg-transparent [&_[data-sidebar=sidebar]]:bg-transparent [&_[data-sidebar=sidebar]]:text-foreground"
-          : "bg-sidebar",
-      )}
+      // A transparent rail on the shell's tinted frame (WorkspaceShell); the
+      // chat card beside it carries the edge, so no border here.
+      className="relative overflow-hidden border-r-0 bg-transparent [&_[data-sidebar=sidebar]]:bg-transparent [&_[data-sidebar=sidebar]]:text-foreground"
       onMouseEnter={handleSidebarMouseEnter}
       onMouseLeave={handleSidebarMouseLeave}
     >
-      <SidebarHeader className="gap-3 py-4 px-2">
+      <SidebarHeader className="gap-4 px-2 pb-2 pt-4">
         <SidebarMenu className="!gap-0">
           <SidebarMenuItem>
             <SidebarMenuButton
@@ -798,12 +844,10 @@ export default function ChatSidebar({
               tooltip="Go to workspace"
               onClick={handleTitleClickInternal}
               className={cn(
-                `group items-center gap-3 rounded-lg bg-transparent px-3 py-3 text-left transition supports-[hover:hover]:${INTERACTIVE_SURFACE}`,
-                // Collapsed: only drop to the shared px-1.5 lead (justify-start, full
-                // width) so the logo centers at the same x as every other icon. Height
-                // stays h-12 (size lg) in BOTH states — changing it would shift the logo
-                // and push the action menu below it up/down.
-                "group-data-[collapsible=icon]:px-1.5",
+                // The same px-1.5 lead in both states (and h-12): the logo sits at
+                // the same x and y as every icon below it whether the rail is open
+                // or collapsed, so toggling never moves it.
+                `group items-center gap-2 rounded-xl bg-transparent px-1.5 py-0 text-left transition supports-[hover:hover]:${INTERACTIVE_SURFACE}`,
               )}
             >
               <div className="relative flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg transition bg-transparent">
@@ -822,7 +866,7 @@ export default function ChatSidebar({
                   )}
                 />
               </div>
-              <div className="flex min-w-0 flex-col text-left group-data-[collapsible=icon]:hidden">
+              <div className={cn("flex min-w-0 flex-col text-left", RAIL_LABEL)}>
                 <span className="truncate text-sm font-semibold text-foreground">mAgenticX</span>
                 <span className="truncate text-xs text-muted-foreground">Workspace</span>
               </div>
@@ -830,7 +874,7 @@ export default function ChatSidebar({
             <SidebarMenuAction
               asChild
               showOnHover={false}
-              className="right-2 top-1.5 -translate-y-0.5 group-data-[collapsible=icon]:hidden"
+              className={cn("right-2 top-1.5 -translate-y-0.5", RAIL_LABEL)}
             >
               <SidebarTrigger
                 className={`size-9 [&_svg]:h-5 [&_svg]:w-5 supports-[hover:hover]:${INTERACTIVE_SURFACE}`}
@@ -843,37 +887,45 @@ export default function ChatSidebar({
           <SidebarMenuItem>
             <SidebarMenuButton
               size="lg"
+              onClick={handleNewChatClick}
+              className={cn(
+                // A card when the rail is open; the plain icon row when collapsed.
+                // Its 1px border + px-[5px] make the same 6px lead as the px-1.5
+                // rows below, so the icon never moves.
+                "group/nav !flex !h-10 items-center gap-1 rounded-xl border border-border/70 bg-background px-[5px] py-0 text-sm font-medium text-foreground shadow-sm transition-colors supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))]",
+                "group-data-[collapsible=icon]:border-transparent group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:shadow-none",
+              )}
+              tooltip="New chat"
+            >
+              <div className="grid size-9 flex-shrink-0 place-items-center">
+                {/* 20px, not the 18px of the rows below: an outlined square reads
+                    smaller than a magnifier or a waveform at the same box size. */}
+                <NewChatIcon
+                  className={`!h-5 !w-5 ${NAV_ICON_MOTION} motion-safe:supports-[hover:hover]:group-hover/nav:-rotate-12`}
+                />
+              </div>
+              <span className={RAIL_LABEL}>New chat</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+
+        <SidebarMenu className="!gap-0.5">
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              size="lg"
               onClick={handleSearchClick}
               className={cn(
                 // Frozen by construction: a constant px-1.5 lead + full width in both
                 // states keeps the icon pinned at the same x (centered when collapsed,
                 // see SIDEBAR_WIDTH_ICON), so only the rail width animates around it.
-                `!flex !h-10 gap-1 items-center rounded-lg bg-transparent px-1.5 py-1 transition supports-[hover:hover]:${INTERACTIVE_SURFACE}`,
+                `group/nav !flex !h-9 gap-1 items-center rounded-xl bg-transparent px-1.5 py-0 text-sm text-foreground/90 transition-colors supports-[hover:hover]:${INTERACTIVE_SURFACE}`,
               )}
               tooltip="Search"
             >
-              <div className="grid size-9 flex-shrink-0 place-items-center rounded-lg">
-                <Search className="!h-5 !w-5" />
+              <div className="grid size-9 flex-shrink-0 place-items-center">
+                <Search className={`!h-[18px] !w-[18px] ${NAV_ICON_MOTION}`} />
               </div>
-              <span className="text-md group-data-[collapsible=icon]:hidden">Search</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              size="lg"
-              onClick={handleNewChatClick}
-              className={cn(
-                // Frozen by construction: a constant px-1.5 lead + full width in both
-                // states keeps the icon pinned at the same x (centered when collapsed,
-                // see SIDEBAR_WIDTH_ICON), so only the rail width animates around it.
-                `!flex !h-10 gap-1 items-center rounded-lg bg-transparent px-1.5 py-1 transition supports-[hover:hover]:${INTERACTIVE_SURFACE}`,
-              )}
-              tooltip="New chat"
-            >
-              <div className="grid size-9 flex-shrink-0 place-items-center rounded-lg">
-                <NewChatIcon className="!h-5 !w-5" />
-              </div>
-              <span className="text-md group-data-[collapsible=icon]:hidden">New chat</span>
+              <span className={RAIL_LABEL}>Search</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
@@ -881,17 +933,14 @@ export default function ChatSidebar({
               size="lg"
               onClick={handleVoiceModeClick}
               className={cn(
-                // Frozen by construction: a constant px-1.5 lead + full width in both
-                // states keeps the icon pinned at the same x (centered when collapsed,
-                // see SIDEBAR_WIDTH_ICON), so only the rail width animates around it.
-                `!flex !h-10 gap-1 items-center rounded-lg bg-transparent px-1.5 py-1 transition supports-[hover:hover]:${INTERACTIVE_SURFACE}`,
+                `group/nav !flex !h-9 gap-1 items-center rounded-xl bg-transparent px-1.5 py-0 text-sm text-foreground/90 transition-colors supports-[hover:hover]:${INTERACTIVE_SURFACE}`,
               )}
               tooltip="Voice mode"
             >
-              <div className="grid size-9 flex-shrink-0 place-items-center rounded-lg">
-                <PiWaveformBold className="!h-5 !w-5" />
+              <div className="grid size-9 flex-shrink-0 place-items-center">
+                <PiWaveformBold className={`!h-[18px] !w-[18px] ${NAV_ICON_MOTION}`} />
               </div>
-              <span className="text-md group-data-[collapsible=icon]:hidden">Voice mode</span>
+              <span className={RAIL_LABEL}>Voice mode</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
@@ -899,15 +948,12 @@ export default function ChatSidebar({
               size="lg"
               onClick={handleScheduledTasksClick}
               className={cn(
-                // Frozen by construction: a constant px-1.5 lead + full width in both
-                // states keeps the icon pinned at the same x (centered when collapsed,
-                // see SIDEBAR_WIDTH_ICON), so only the rail width animates around it.
-                `!flex !h-10 gap-1 items-center rounded-lg bg-transparent px-1.5 py-1 transition supports-[hover:hover]:${INTERACTIVE_SURFACE}`,
+                `group/nav !flex !h-9 gap-1 items-center rounded-xl bg-transparent px-1.5 py-0 text-sm text-foreground/90 transition-colors supports-[hover:hover]:${INTERACTIVE_SURFACE}`,
               )}
               tooltip="Scheduled tasks"
             >
-              <div className="relative grid size-9 flex-shrink-0 place-items-center rounded-lg">
-                <MdOutlineSchedule className="!h-5 !w-5" />
+              <div className="relative grid size-9 flex-shrink-0 place-items-center">
+                <MdOutlineSchedule className={`!h-[18px] !w-[18px] ${NAV_ICON_MOTION}`} />
                 {scheduledTasksRunningCount > 0 ? (
                   <span
                     className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground"
@@ -917,7 +963,7 @@ export default function ChatSidebar({
                   </span>
                 ) : null}
               </div>
-              <span className="text-md group-data-[collapsible=icon]:hidden">Tasks</span>
+              <span className={RAIL_LABEL}>Tasks</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -926,11 +972,11 @@ export default function ChatSidebar({
       {/* The body itself never scrolls: the "Chats" heading stays pinned and
           only the conversation list below it scrolls (and pages in more). */}
       <SidebarContent
-        className="flex-1 overflow-hidden pl-2 pr-0 pt-0"
+        className="flex-1 overflow-hidden pl-3 pr-0 pt-2"
         onClick={toggleCollapsedOnBlankArea}
       >
         {!isCollapsed && (
-          <>
+          <div className={cn("flex min-h-0 flex-1 flex-col", RAIL_REVEAL)}>
             {/* No pins, no section: it appears with the first pin and leaves with the last. */}
             <AnimatePresence initial={false}>
               {pinnedConversations.length > 0 && (
@@ -955,11 +1001,15 @@ export default function ChatSidebar({
                           // Capped so a long pin list scrolls on its own and
                           // never pushes Chats off the screen.
                           className="max-h-[30dvh] overflow-y-auto pr-5"
+                          // Lets the rows' layout animations account for this list's scroll.
+                          layoutScroll
                           {...sectionListMotion(reduceMotion)}
                         >
                           <SidebarGroupContent>
                             <SidebarMenu className="!gap-0">
-                              {pinnedConversations.map(renderConversationRow)}
+                              <AnimatePresence>
+                                {pinnedConversations.map(renderConversationRow)}
+                              </AnimatePresence>
                             </SidebarMenu>
                           </SidebarGroupContent>
                         </motion.div>
@@ -987,6 +1037,7 @@ export default function ChatSidebar({
                     // Flush with the sidebar's right edge so the scrollbar sits
                     // there; pr-5 keeps the rows where they were before.
                     className="min-h-0 flex-1 overflow-y-auto pb-4 pr-5"
+                    layoutScroll
                     {...sectionListMotion(reduceMotion)}
                   >
                     <SidebarGroupContent className="min-h-0 flex-1 space-y-2">
@@ -999,7 +1050,9 @@ export default function ChatSidebar({
                         </div>
                       ) : (
                         <SidebarMenu className="!gap-0">
-                          {chatConversations.map(renderConversationRow)}
+                          <AnimatePresence>
+                            {chatConversations.map(renderConversationRow)}
+                          </AnimatePresence>
                         </SidebarMenu>
                       )}
                       {showAllPinnedHint && (
@@ -1013,13 +1066,11 @@ export default function ChatSidebar({
                 )}
               </AnimatePresence>
             </SidebarGroup>
-          </>
+          </div>
         )}
       </SidebarContent>
 
-      <SidebarFooter
-        className={cn("py-3 px-2", !isCollapsed && "border-t border-sidebar-border/40")}
-      >
+      <SidebarFooter className="px-2 pb-3 pt-2">
         <SidebarMenu className="!gap-0">
           <SidebarMenuItem>
             <DropdownMenu.Root open={profileMenuOpen} onOpenChange={setProfileMenuOpen}>
@@ -1035,17 +1086,17 @@ export default function ChatSidebar({
                     <SidebarMenuButton
                       size="lg"
                       className={cn(
-                        // Frozen by construction, matching the Search/New chat/Voice/Tasks rows:
-                        // a constant px-1.5 lead keeps the avatar pinned at the same x in both
-                        // states (centered when collapsed, see SIDEBAR_WIDTH_ICON), so toggling
-                        // the rail never shifts it.
-                        `!flex items-center gap-1 rounded-lg bg-transparent px-1.5 py-2 transition supports-[hover:hover]:${INTERACTIVE_SURFACE}`,
-                        "group-data-[collapsible=icon]:!h-12",
+                        // A card when the rail is open, like New chat; frozen by construction:
+                        // the same h-14 and the same 6px lead (1px border + px-[5px]) in both
+                        // states keep the avatar pinned at the same x and y (centered when
+                        // collapsed, see SIDEBAR_WIDTH_ICON), so toggling never shifts it.
+                        "!flex !h-14 items-center gap-2 rounded-2xl border border-border/60 bg-background px-[5px] py-2 shadow-sm transition-colors supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))]",
+                        "group-data-[collapsible=icon]:border-transparent group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:shadow-none",
                         "group-data-[collapsible=icon]:supports-[hover:hover]:hover:bg-transparent group-data-[collapsible=icon]:focus-visible:bg-transparent group-data-[collapsible=icon]:active:bg-transparent",
                         profileMenuOpen && "bg-[hsl(var(--hover-surface))]",
                       )}
                     >
-                      <div className="sidebar-icon-badge grid size-9 flex-shrink-0 place-items-center overflow-hidden rounded-xl text-primary">
+                      <div className="grid size-9 flex-shrink-0 place-items-center overflow-hidden rounded-full bg-primary text-primary-foreground">
                         {avatarUrl ? (
                           <img
                             src={avatarUrl}
@@ -1056,7 +1107,7 @@ export default function ChatSidebar({
                           <span className="text-sm font-semibold">{profileInitials}</span>
                         )}
                       </div>
-                      <div className="flex min-w-0 flex-1 flex-col group-data-[collapsible=icon]:hidden">
+                      <div className={cn("flex min-w-0 flex-1 flex-col", RAIL_LABEL)}>
                         <span className="truncate text-sm font-medium text-foreground">
                           {profileName}
                         </span>
@@ -1064,7 +1115,12 @@ export default function ChatSidebar({
                           {profileEmail}
                         </span>
                       </div>
-                      <ChevronsUpDown className="ml-auto h-4 w-4 flex-shrink-0 text-muted-foreground group-data-[collapsible=icon]:hidden" />
+                      <ChevronsUpDown
+                        className={cn(
+                          "ml-auto h-4 w-4 flex-shrink-0 text-muted-foreground",
+                          RAIL_LABEL,
+                        )}
+                      />
                     </SidebarMenuButton>
                   </DropdownMenu.Trigger>
                 </TooltipTrigger>

@@ -3,13 +3,14 @@ import { Bot, ListTodo } from "lucide-react";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/shared/ui/sheet";
 import { PlanItems } from "./PlanningContainer";
 import { SubagentCard } from "./SubagentContainer";
-import { subagentBlockToItem } from "@/features/inference";
+import { subagentBlockToItem, subagentRunStatus } from "@/features/inference";
 import type { PlanSnapshot } from "@/features/inference/agui";
 import type { RunTimeline, SubagentBlock } from "@/shared/lib/types";
 
-// Post-run side panels: once a run terminates, the plan card and the
-// sub-agent panels leave the message body and live behind two action-bar
-// buttons. Both panels replay state derived from the same run timeline.
+// Post-run side panels behind two action-bar buttons: once a run terminates
+// the plan card leaves the message body for its panel; the sub-agent cards
+// stay inline and the sub-agents panel lists them again, all together. Both
+// panels replay state derived from the same run timeline.
 
 type PlanSidePanelProps = {
   plan: PlanSnapshot;
@@ -46,11 +47,20 @@ export function PlanSidePanel({ plan, open, onOpenChange }: PlanSidePanelProps) 
 
 type SubagentsSidePanelProps = {
   timeline: RunTimeline;
+  // Whether the run still streams to this view. The panel opens from the
+  // action bar of a settled message today, so it defaults to false; the cards
+  // show the same status (and ring) as their inline twins either way.
+  isLive?: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 };
 
-export function SubagentsSidePanel({ timeline, open, onOpenChange }: SubagentsSidePanelProps) {
+export function SubagentsSidePanel({
+  timeline,
+  isLive = false,
+  open,
+  onOpenChange,
+}: SubagentsSidePanelProps) {
   // Spawned only. A sub-agent block is opened by TASK_SUBAGENT, which fires when
   // the orchestrator *calls* the `task` tool — before the HITL gate. A call the
   // user rejected leaves an unspawned block behind: it is a refused tool
@@ -90,6 +100,7 @@ export function SubagentsSidePanel({ timeline, open, onOpenChange }: SubagentsSi
               key={block.id}
               subagent={subagentBlockToItem(block)}
               index={index}
+              status={subagentRunStatus(block, timeline, isLive)}
               defaultCollapsedSections
             />
           ))}

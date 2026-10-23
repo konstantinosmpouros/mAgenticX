@@ -259,6 +259,15 @@ async def resume_agent(agent_slug: str, req: AgentResumeRequest):
             detail="No pending interrupt found on the checkpoint.",
         )
 
+    # The resume stream runs through a fresh normalizer: re-teach it the `task`
+    # calls still awaiting their result, so a sub-agent spawned once its gated
+    # `task` is approved keeps that call's id (one card in the UI) and its
+    # result raises SUBAGENT_COMPLETED.
+    normalizer = getattr(agent, "agui_normalizer", None)
+    values = getattr(snapshot, "values", None)
+    if normalizer is not None and isinstance(values, dict):
+        normalizer.seed_pending_tasks(values.get("messages"))
+
     pending_interrupt = pending_interrupts[0]
     pending_id = getattr(pending_interrupt, "id", None)
     # When the bridge passes the interrupt_id the user clicked, verify it

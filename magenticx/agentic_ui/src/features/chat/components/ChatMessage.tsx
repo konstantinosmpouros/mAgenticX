@@ -155,6 +155,14 @@ export function ChatMessage({
     [message.created_at],
   );
 
+  // The live reply before the agent's first block: nothing to show yet. The
+  // thinking orb under the conversation (AiTransitionIndicator) stands in for
+  // it, and the empty row collapses (ChatBody) so the answer, when it comes,
+  // starts where the orb is.
+  if (isStreamingThisMessage && (timeline?.blocks.length ?? 0) === 0 && !showAttachments) {
+    return null;
+  }
+
   return (
     <div
       className={`space-y-2 md:space-y-2 ${isUser ? "flex flex-col items-end" : ""} group/message`}
@@ -183,9 +191,9 @@ export function ChatMessage({
             />
           ) : timeline && !(isStreamingThisMessage && timeline.blocks.length === 0) ? (
             // While the run's reply is live but the agent hasn't emitted its
-            // first block yet (transition phase), render nothing — the pulsing
-            // transition dot below is the only "something is happening" signal.
-            // Rendering here too would double up ("Reasoning…" + dot).
+            // first block yet (transition phase), render nothing — the thinking
+            // orb below is the only "something is happening" signal. Rendering
+            // here too would double up ("Reasoning…" + orb).
             <AgentRunTimeline
               timeline={timeline}
               runId={message.id}

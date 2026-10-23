@@ -1,4 +1,5 @@
 import { Fragment, useMemo } from "react";
+import { subagentRunStatus } from "@/features/inference";
 import type { AttachmentOut, MessageOut, RunTimeline, TimelineBlock } from "@/shared/lib/types";
 import { BLOCK_REGISTRY, type BlockRenderContext } from "./block-registry";
 
@@ -6,9 +7,6 @@ type TimelineSequenceProps = {
   timeline: RunTimeline;
   runId: string;
   isStreaming: boolean;
-  // Post-terminal the sub-agent panels leave the message body for the
-  // action-bar side panel; inline they render only while streaming.
-  hideSubagents?: boolean;
   fallbackThinkingSeconds?: number | null;
   expandedThinking: Record<string, boolean>;
   onToggleThinking: (key: string, next?: boolean) => void;
@@ -26,7 +24,6 @@ export function TimelineSequence({
   timeline,
   runId,
   isStreaming,
-  hideSubagents = false,
   fallbackThinkingSeconds,
   expandedThinking,
   onToggleThinking,
@@ -34,17 +31,22 @@ export function TimelineSequence({
   onDownloadAttachment,
   onPreviewAttachment,
 }: TimelineSequenceProps) {
-  // Post-run the sub-agent containers leave the body for the side panel,
-  // which would leave the thinking blocks around them stacked back-to-back —
-  // merge those neighbours into one block so the settled message reads as a
-  // single "Thought for Ns" per stretch of work.
+  // Sub-agent cards stay inline for good — while the run streams and after it
+  // settles (also on reload), each with its final status. Only a `task` call
+  // that never ran (rejected at its approval, or the run ended first) has no
+  // card: dropping it would leave the thinking blocks around it stacked
+  // back-to-back, so those neighbours merge into one "Thought for Ns".
+  const runLive = isStreaming && !timeline.terminal;
   const renderBlocks = useMemo<TimelineBlock[]>(() => {
-    if (!hideSubagents) return timeline.blocks;
     const merged: TimelineBlock[] = [];
+    let dropped = false;
     for (const block of timeline.blocks) {
-      if (block.kind === "subagent") continue;
+      if (block.kind === "subagent" && subagentRunStatus(block, timeline, runLive) === null) {
+        dropped = true;
+        continue;
+      }
       const last = merged[merged.length - 1];
-      if (block.kind === "thinking" && last?.kind === "thinking") {
+      if (dropped && block.kind === "thinking" && last?.kind === "thinking") {
         merged[merged.length - 1] = {
           ...last,
           items: [...last.items, ...block.items],
@@ -53,10 +55,11 @@ export function TimelineSequence({
         };
         continue;
       }
+      dropped = false;
       merged.push(block);
     }
     return merged;
-  }, [timeline.blocks, hideSubagents]);
+  }, [timeline, runLive]);
 
   const lastThinkingIndex = useMemo(() => {
     for (let i = renderBlocks.length - 1; i >= 0; i -= 1) {
@@ -79,6 +82,8 @@ export function TimelineSequence({
           runId,
           subagentIndex,
           isLiveActive,
+          subagentStatus:
+            block.kind === "subagent" ? subagentRunStatus(block, timeline, runLive) : undefined,
           doneStatus:
             timeline.terminal && isLast
               ? timeline.terminalStatus

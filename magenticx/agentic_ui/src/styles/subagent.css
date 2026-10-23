@@ -1,0 +1,74 @@
+/* Sub-agent cards in the answer timeline
+   (features/chat/components/message_parts/SubagentContainer.tsx).
+
+   While a sub-agent works, a light travels round its border: a conic gradient
+   whose start angle (--subagent-angle, a registered property so it can be
+   animated) turns once every 2.6 s, masked to a 1.5px ring. A blurred copy
+   under it is the glow. Settled cards keep a plain border, so a glance shows
+   which sub-agents are still working. Colors come from the theme
+   (--subagent-active, --subagent-active-glow in styles/theme/*). Reduced
+   motion: no turning, the ring stays lit. */
+@property --subagent-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+.subagent-card {
+  position: relative;
+  isolation: isolate;
+}
+
+.subagent-card[data-active="true"]::before,
+.subagent-card[data-active="true"]::after {
+  content: "";
+  position: absolute;
+  inset: -1.5px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: conic-gradient(
+    from var(--subagent-angle),
+    transparent 0deg,
+    hsl(var(--subagent-active) / 0.15) 40deg,
+    hsl(var(--subagent-active)) 90deg,
+    hsl(var(--subagent-active-glow)) 120deg,
+    transparent 170deg,
+    transparent 190deg,
+    hsl(var(--subagent-active) / 0.15) 220deg,
+    hsl(var(--subagent-active)) 270deg,
+    hsl(var(--subagent-active-glow)) 300deg,
+    transparent 350deg
+  );
+  animation: subagent-border-spin 2.6s linear infinite;
+}
+
+/* The ring: the gradient shows only in the 1.5px padding band. */
+.subagent-card[data-active="true"]::before {
+  z-index: 1;
+  padding: 1.5px;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+/* The glow: the same gradient, blurred, behind the card. */
+.subagent-card[data-active="true"]::after {
+  z-index: -1;
+  filter: blur(10px);
+  opacity: 0.45;
+}
+
+@keyframes subagent-border-spin {
+  to {
+    --subagent-angle: 360deg;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .subagent-card[data-active="true"]::before,
+  .subagent-card[data-active="true"]::after {
+    animation: none;
+  }
+}

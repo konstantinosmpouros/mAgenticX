@@ -4,6 +4,8 @@ import { TooltipProvider } from "@/shared/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
+import { THEME_IDS } from "@/styles/theme/themes";
+import { ThemeModeSync } from "@/shared/ui/theme-mode-sync";
 import { WorkspaceShell } from "./app/WorkspaceShell";
 import ChatView from "./pages/ChatView";
 import TasksView from "./pages/TasksView";
@@ -22,13 +24,18 @@ const App = () => {
 
   return (
     <QueryClientProvider client={queryClient}>
+      {/* Themes are defined in src/styles/theme: `data-theme` picks one, and
+          ThemeModeSync adds the `dark` class for the dark ones. */}
       <ThemeProvider
-        attribute="class"
+        attribute="data-theme"
+        themes={THEME_IDS}
         defaultTheme="system"
         enableSystem={true}
+        enableColorScheme={false}
         disableTransitionOnChange={true}
         storageKey="theme"
       >
+        <ThemeModeSync />
         <TooltipProvider>
           <Toaster />
           {consented ? (

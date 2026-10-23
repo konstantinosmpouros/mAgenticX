@@ -22,6 +22,20 @@ content: [
     		}
     	},
     	extend: {
+    		// Opacity steps the components use beyond Tailwind's multiples of 5
+    		// (e.g. `text-white/62`, `bg-primary/12`); without them those classes
+    		// are silently not generated.
+    		opacity: {
+    			'8': '0.08',
+    			'12': '0.12',
+    			'18': '0.18',
+    			'24': '0.24',
+    			'48': '0.48',
+    			'62': '0.62',
+    			'78': '0.78',
+    			'88': '0.88',
+    			'92': '0.92'
+    		},
     		colors: {
     			border: 'hsl(var(--border))',
     			input: 'hsl(var(--input))',
@@ -104,6 +118,19 @@ content: [
     			smooth: 'var(--transition-smooth)'
     		},
     		keyframes: {
+    			// The sidebar's labels and chat list as the rail opens: they wait for the
+    			// width to get going, then fade in from a hair to the left. Played each
+    			// time they go from display:none to shown (see ChatSidebar).
+    			'sidebar-reveal': {
+    				from: {
+    					opacity: '0',
+    					transform: 'translateX(-4px)'
+    				},
+    				to: {
+    					opacity: '1',
+    					transform: 'translateX(0)'
+    				}
+    			},
     			// Sweeps a highlight across text, for the account-switch interstitial.
     			// Pairs with a background-clip:text gradient (see .animate-shimmer-text).
     			'shimmer-text': {
@@ -179,6 +206,9 @@ content: [
     		},
     		animation: {
     			'shimmer-text': 'shimmer-text 2.2s linear infinite',
+    			// Starts halfway through the rail's 200ms width transition (sidebar.tsx);
+    			// `both` keeps the label hidden during the delay.
+    			'sidebar-reveal': 'sidebar-reveal 0.2s ease-out 0.1s both',
     			'fade-in': 'fade-in 0.3s ease-out',
     			// Message rows: a gentle, steady rise that decelerates to a settle, tuned to
     			// feel coordinated with the ~420ms scroll-anchor glide rather than a fast pop.

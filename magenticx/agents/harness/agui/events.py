@@ -8,6 +8,7 @@ HITL_INTERRUPT_EVENT_TYPE = "HITL_INTERRUPT"
 PLAN_SNAPSHOT_EVENT_TYPE = "PLAN_SNAPSHOT"
 TASK_SUBAGENT_EVENT_TYPE = "TASK_SUBAGENT"
 SUBAGENT_EVENT_TYPE = "SUBAGENT_EVENT"
+SUBAGENT_COMPLETED_EVENT_TYPE = "SUBAGENT_COMPLETED"
 BEFORE_AGENT_EVENT_TYPE = "BEFORE_AGENT_EVENT"
 TOKEN_USAGE_EVENT_TYPE = "TOKEN_USAGE"
 TOOL_USAGE_EVENT_TYPE = "TOOL_USAGE"
@@ -63,6 +64,30 @@ class SubAgentEvent(BaseModel):
     task_id: str
     namespace: List[str]
     event: Dict[str, Any]
+
+
+# ------------------------------------------------------------------
+# Sub-agent completed Event
+# ------------------------------------------------------------------
+class SubAgentCompletedEvent(BaseModel):
+    """A delegated sub-agent returned: the orchestrator got its ``task`` result.
+
+    Emitted once per ``task`` tool call, when its ToolMessage arrives, so the UI
+    can mark that sub-agent's card done (or failed) while the run goes on — the
+    result text itself is never forwarded (the orchestrator restates it).
+
+    ``task_id`` is the ``task`` tool_call_id (the id TASK_SUBAGENT used);
+    ``namespace`` is the sub-agent's LangGraph namespace path when it was bound
+    to that call, so a UI that keyed the sub-agent's events by namespace can
+    resolve it either way. ``started_at``/``ended_at`` are epoch ms; started_at
+    is the moment the sub-agent's namespace was first seen (absent when that
+    happened on an earlier stream the service no longer remembers).
+    """
+    task_id: str
+    status: Literal["completed", "error"]
+    namespace: list[str] | None = None
+    started_at: int | None = None
+    ended_at: int | None = None
 
 
 # ------------------------------------------------------------------

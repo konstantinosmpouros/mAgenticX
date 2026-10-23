@@ -7,7 +7,6 @@ import {
   ShieldQuestion,
   ShieldX,
   Wrench,
-  X,
   XCircle,
 } from "lucide-react";
 import {
@@ -23,7 +22,14 @@ import { useWorkspaceStore } from "@/shared/stores/workspaceStore";
 import { ToolCallArgsView, ToolCallResultView } from "./ToolCallViews";
 import { ShimmeringText } from "@/shared/ui/shadcn-io/shimmering-text";
 import { MarkdownRenderer } from "@/shared/ui/markdownRenderer";
-import { useHitl, parseHitlInterrupt } from "@/features/inference";
+import { useHitl } from "@/features/inference";
+import { useApprovalSummaries } from "@/features/chat/hooks/useApprovalSummaries";
+import {
+  approvalHeadline,
+  hasApprovalDetail,
+  presentApproval,
+} from "@/features/chat/lib/approvalPresentation";
+import { HitlActionSummary, HitlSummaryList } from "./HitlActionSummary";
 import { cn } from "@/shared/lib/utils";
 import type {
   ThinkingBlock,
@@ -128,6 +134,12 @@ const TimelineToolItem = memo(
           ? "decision-sent"
           : "pending"
         : approval.status;
+    // A gated call shows what was put to the user — the same summary the
+    // approval bar showed — so the record reads as the decision was made.
+    const approvalSummary = useMemo(
+      () => (approval ? presentApproval({ toolName: tool.name, args }, serverId) : null),
+      [approval, tool.name, args, serverId],
+    );
 
     return (
       <Collapsible open={open} onOpenChange={setOpen}>
@@ -137,8 +149,8 @@ const TimelineToolItem = memo(
           className={cn(
             "text-sm",
             tool.state === "output-error" && "text-destructive",
-            face === "pending" && "text-amber-500",
-            face === "rejected" && "text-orange-500",
+            face === "pending" && "text-warning",
+            face === "rejected" && "text-destructive",
           )}
           label={
             <CollapsibleTrigger
@@ -155,7 +167,7 @@ const TimelineToolItem = memo(
                 </span>
               ) : null}
               {face === "pending" ? (
-                <span className="shrink-0 text-amber-500 text-xs font-medium">Needs approval</span>
+                <span className="shrink-0 text-warning text-xs font-medium">Needs approval</span>
               ) : face === "decision-sent" ? (
                 <span className="shrink-0 text-muted-foreground text-xs">Decision sent</span>
               ) : face === "approved" ? (
@@ -170,9 +182,13 @@ const TimelineToolItem = memo(
           }
         >
           <CollapsibleContent className="space-y-3 outline-none data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 data-[state=closed]:animate-out data-[state=open]:animate-in">
-            <ToolCallArgsView tool={tool} args={args} serverId={serverId} />
+            {approvalSummary ? (
+              <HitlActionSummary summary={approvalSummary} className="text-foreground" />
+            ) : (
+              <ToolCallArgsView tool={tool} args={args} serverId={serverId} />
+            )}
             {face === "pending" ? (
-              <div className="rounded-md border border-amber-500/25 bg-amber-500/[0.06] px-3 py-2 text-amber-500 text-xs">
+              <div className="rounded-md border border-warning/25 bg-warning/[0.06] px-3 py-2 text-warning text-xs">
                 Waiting for your approval — respond in the bar below.
               </div>
             ) : null}
@@ -206,35 +222,52 @@ const TimelineHitlItem = memo(
     runId: string;
     isLast: boolean;
   }) => {
+    const [open, setOpen] = useState(false);
     const hitl = useHitl();
     const clientResolved = hitl ? hitl.isInterruptResolved(runId, approval.id) : false;
-    const parsed = useMemo(() => parseHitlInterrupt(approval.content), [approval.content]);
-    const subject = parsed.toolName ? `${parsed.toolName}` : "agent action";
+    const summaries = useApprovalSummaries(approval.content);
+    // A batch bound to one record shows only its own action.
+    const own =
+      typeof approval.actionIndex === "number" && summaries[approval.actionIndex]
+        ? [summaries[approval.actionIndex]]
+        : summaries;
+    const headline = approvalHeadline(own);
+    const hasDetail = own.some(hasApprovalDetail);
 
     if (approval.status === "pending" && !clientResolved) {
       return null;
     }
-    if (approval.status === "rejected") {
-      return (
-        <ChainOfThoughtStep icon={X} hideConnector={isLast} className="text-sm text-orange-500">
-          <div className="flex w-fit max-w-full items-center gap-2 rounded-2xl border border-orange-500/25 bg-orange-500/[0.06] px-3 py-1.5 text-[12px] text-orange-500">
-            <span className="font-medium">Rejected</span>
-            <span className="truncate text-orange-500/70">
-              · {subject}
-              {approval.reason ? ` — ${approval.reason}` : ""}
-            </span>
-          </div>
-        </ChainOfThoughtStep>
-      );
-    }
-    const label = approval.status === "approved" ? "Approved" : "Decision sent";
+    const rejected = approval.status === "rejected";
+    const label = rejected ? "Rejected" : approval.status === "approved" ? "Approved" : "Decision sent";
     return (
-      <ChainOfThoughtStep icon={Check} hideConnector={isLast} className="text-sm text-emerald-500">
-        <div className="flex w-fit max-w-full items-center gap-2 rounded-2xl border border-emerald-500/25 bg-emerald-500/[0.06] px-3 py-1.5 text-[12px] text-emerald-500">
-          <span className="font-medium">{label}</span>
-          <span className="truncate text-emerald-500/70">· {subject}</span>
-        </div>
-      </ChainOfThoughtStep>
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <ChainOfThoughtStep
+          icon={rejected ? ShieldX : Check}
+          hideConnector={isLast}
+          className={cn("text-sm", rejected ? "text-destructive" : "text-success")}
+          label={
+            <CollapsibleTrigger
+              disabled={!hasDetail}
+              className="flex max-w-full items-center gap-2 text-left transition-colors hover:text-foreground disabled:cursor-default"
+              aria-label={`Toggle ${headline} details`}
+            >
+              <span className={cn("shrink-0 font-medium", rejected ? "text-destructive" : "text-success")}>
+                {label}
+              </span>
+              <span className="truncate text-muted-foreground">
+                · {headline}
+                {rejected && approval.reason ? ` — ${approval.reason}` : ""}
+              </span>
+            </CollapsibleTrigger>
+          }
+        >
+          {hasDetail ? (
+            <CollapsibleContent className="space-y-3 text-foreground outline-none data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 data-[state=closed]:animate-out data-[state=open]:animate-in">
+              <HitlSummaryList summaries={own} />
+            </CollapsibleContent>
+          ) : null}
+        </ChainOfThoughtStep>
+      </Collapsible>
     );
   },
 );

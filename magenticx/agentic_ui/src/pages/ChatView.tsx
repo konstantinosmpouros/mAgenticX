@@ -1,9 +1,12 @@
 import { useMemo } from "react";
+import { motion, useReducedMotion } from "framer-motion";
+import type { Variants } from "framer-motion";
 import { Textarea } from "@/shared/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 
 import ChatHeader from "@/features/chat/components/ChatHeader";
 import { ChatInputBar } from "@/features/chat/components/ChatInputBar";
+import { ChatDisclaimer } from "@/features/chat/components/ChatDisclaimer";
 import { PlanCard } from "@/features/chat/components/message_parts/PlanningContainer";
 import { HitlInputTakeover } from "@/features/chat/components/HitlInputTakeover";
 import { createCommandActions } from "@/features/chat/handlers/commandActions";
@@ -12,6 +15,30 @@ import { Loader } from "@/shared/ui/shadcn-io/loader";
 
 import { useChatWorkspaceContext } from "@/app/workspaceContext";
 import { useWorkspaceStore } from "@/shared/stores/workspaceStore";
+
+// The chat <-> voice body swap. Both surfaces stay mounted for the exit beat
+// (useVoiceBodyTransition), stacked: the leaving one fades and slides away
+// while the arriving one comes in — the chat body as a whole, a beat late, the
+// voice body item by item (VoiceModeBody's variants: orb first, then its text).
+// The composer swaps alongside in ChatInputBar with the same easing. Exits end
+// well inside the hook's 560ms beat. Reduced motion: a quick crossfade.
+const SWAP_EASE = [0.22, 1, 0.36, 1] as const;
+const CHAT_PANEL: Variants = {
+  hidden: { opacity: 0, y: 12 },
+  shown: { opacity: 1, y: 0, transition: { duration: 0.34, ease: SWAP_EASE, delay: 0.08 } },
+  exit: { opacity: 0, y: 10, transition: { duration: 0.2, ease: "easeIn" } },
+};
+const VOICE_PANEL: Variants = {
+  hidden: {},
+  shown: { transition: { delayChildren: 0.1 } },
+  exit: {},
+};
+const FADE_PANEL: Variants = {
+  hidden: { opacity: 0 },
+  shown: { opacity: 1, transition: { duration: 0.15 } },
+  exit: { opacity: 0, transition: { duration: 0.12 } },
+};
+const BODY_MODES = ["chat", "voice"] as const;
 
 /**
  * The conversation surface for routes "/" and "/c/:conversationId": header,
@@ -79,6 +106,7 @@ export default function ChatView() {
   const loadingConversation = useWorkspaceStore((s) => s.loadingConversation);
   const selectedAgent = useWorkspaceStore((s) => s.selectedAgent);
   const starterSuggestions = useWorkspaceStore((s) => s.starterSuggestions);
+  const reduceMotion = useReducedMotion() ?? false;
 
   // Slash commands (plan 35): the agent the next message goes to decides the
   // menu; each action calls what its button calls.
@@ -146,27 +174,37 @@ export default function ChatView() {
         isStreaming={isCurrentConversationBusy}
       />
 
-      {/* Region below the header — the positioning context (and flex column) for
-          the body + composer. Making THIS the containing block for the absolutely
-          positioned empty-state composer (instead of the whole shell, which
-          includes the header) is what makes it structurally impossible for the
-          centered greeting/composer to overlap the header and steal its clicks. */}
+      {/* Region below the header — the flex column for the body + composer, and
+          the area the empty-state lift is measured against (useChatEffects).
+          Measuring THIS box (instead of the whole shell, which includes the
+          header) and clipping to it is what makes it structurally impossible
+          for the lifted greeting/composer to overlap the header and steal its
+          clicks. */}
       <div className="relative flex flex-1 min-h-0 flex-col overflow-hidden">
         {/* Chat Messages Container*/}
         <div className="voice-chat-transition-shell relative flex flex-1 min-h-0 overflow-hidden">
-          {bodyTransition.exiting ? (
-            <div
-              className={`voice-chat-panel voice-chat-panel-${bodyTransition.exiting} voice-chat-panel-exit`}
-              aria-hidden="true"
-            >
-              {renderConversationBody(bodyTransition.exiting)}
-            </div>
-          ) : null}
-          <div
-            className={`voice-chat-panel voice-chat-panel-${bodyTransition.current} voice-chat-panel-enter`}
-          >
-            {renderConversationBody(bodyTransition.current)}
-          </div>
+          {/* Keyed by surface in a fixed order, so the chat body that is leaving
+              is the same element that was showing — it keeps its scroll
+              position while it fades out instead of remounting at the top. */}
+          {BODY_MODES.filter(
+            (mode) => mode === bodyTransition.current || mode === bodyTransition.exiting,
+          ).map((mode) => {
+            const leaving = mode === bodyTransition.exiting;
+            return (
+              <motion.div
+                key={mode}
+                className={`voice-chat-panel ${leaving ? "voice-chat-panel-exit" : "voice-chat-panel-enter"}`}
+                aria-hidden={leaving || undefined}
+                variants={reduceMotion ? FADE_PANEL : mode === "chat" ? CHAT_PANEL : VOICE_PANEL}
+                // The first chat body is simply there; a surface arriving later
+                // enters.
+                initial={mode === "chat" && !bodyTransition.exiting ? false : "hidden"}
+                animate={leaving ? "exit" : "shown"}
+              >
+                {renderConversationBody(mode)}
+              </motion.div>
+            );
+          })}
         </div>
 
         {/* Input Area */}
@@ -174,15 +212,12 @@ export default function ChatView() {
           mode={voiceSession.isActive ? "voice" : "chat"}
           voiceBarVisible={voiceBarReady}
           chatBarVisible={chatBarReady}
-          // Centered empty state
+          // Always at the bottom; the empty screen lifts it to the middle, so
+          // it stays mounted and glides between a conversation and a new chat.
+          // Voice mode keeps it at the bottom once the bar has settled there.
           isMessagesEmpty={composer.isMessagesEmpty}
-          positionClass={
-            settledVoiceActive
-              ? "sticky bottom-0 left-0 right-0 z-30 p-6"
-              : composer.isMessagesEmpty
-                ? "absolute left-1/2 top-[35%] z-40 w-full p-6"
-                : "sticky bottom-0 left-0 right-0 z-30 p-6"
-          }
+          positionClass="sticky bottom-0 left-0 right-0 z-40 px-6 pt-6"
+          liftY={settledVoiceActive ? null : composer.liftY}
 
           // pass through your existing state/handlers/refs
           attachments={composer.attachments}
@@ -206,7 +241,6 @@ export default function ChatView() {
           fileInputRef={composer.fileInputRef}
           textareaRef={composer.textareaRef}
           containerRef={composer.composerContainerRef}
-          emptyWrapperStyle={settledVoiceActive ? undefined : composer.emptyWrapperStyle}
           textareaMaxHeight={composer.textareaMaxHeight}
           onDictationSubmit={composer.handleDictationSubmit}
           onDictationStatusChange={composer.handleDictationStatusChange}
@@ -267,6 +301,10 @@ export default function ChatView() {
           starterSuggestions={canShowStarterSuggestions ? starterSuggestions : []}
           onStarterSuggestionSelect={handleStarterSuggestionSelect}
         />
+
+        {/* The card's footer: under the composer in a conversation, at the
+            bottom edge while the empty screen lifts the composer. */}
+        <ChatDisclaimer />
       </div>
 
       {loadingConversation && (

@@ -21,9 +21,9 @@ type AgentRunTimelineProps = {
 // temporal block sequence the reducer derived from the run's event log:
 // collapsible Thinking blocks (thoughts + tool executions + inline HITL
 // approvals, ending in the Done sentinel once the run is terminal),
-// alternating with markdown content blocks. Sub-agent panels render inline
-// only while the run streams; settled messages move them to the action-bar
-// side panel.
+// alternating with markdown content blocks. Sub-agent cards render inline,
+// while the run streams and after it settles, with their status; the
+// action-bar side panel lists them again.
 export function AgentRunTimeline({
   timeline,
   runId,
@@ -58,7 +58,6 @@ export function AgentRunTimeline({
         timeline={timeline}
         runId={runId}
         isStreaming={isStreaming}
-        hideSubagents={!isStreaming && timeline.terminal}
         fallbackThinkingSeconds={fallbackThinkingSeconds}
         expandedThinking={expandedThinking}
         onToggleThinking={onToggleThinking}

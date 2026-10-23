@@ -1,10 +1,11 @@
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
-*/
+/* Light: the default theme, so its tokens sit on `:root` and every other theme
+   only overrides them under `:root[data-theme="<id>"]` (see README.md).
+
+   Every color is an HSL triplet ("H S% L%"), used as `hsl(var(--token))`, so
+   Tailwind's opacity modifiers work (`bg-primary/10`). */
 
 @layer base {
   :root {
-    /* Light theme */
     --background: 0 0% 100%;
     --foreground: 240 10% 3.9%;
 
@@ -48,6 +49,12 @@ All colors MUST be HSL.
     --info: 216 100% 50%;
     --info-foreground: 0 0% 100%;
 
+    /* A sub-agent at work (styles/subagent.css): its status chip and the light
+       that runs round its card. The brand magenta, deepened so the chip text
+       holds AA on white; the glow is the brand primary itself. */
+    --subagent-active: 293 70% 45%;
+    --subagent-active-glow: 293 89% 74%;
+
     --border: 240 5.9% 90%;
     --input: 240 5.9% 90%;
     --ring: transparent;
@@ -73,46 +80,6 @@ All colors MUST be HSL.
     --chat-agent: 240 4.8% 95.9%;
     --chat-agent-foreground: 240 10% 3.9%;
 
-    /* Light theme gradients */
-    --gradient-bg-1: linear-gradient(
-      135deg,
-      hsl(0, 0%, 100%) 0%,
-      hsl(240, 4.8%, 95.9%) 50%,
-      hsl(216, 50%, 92%) 100%
-    );
-    --gradient-bg-2: linear-gradient(
-      135deg,
-      hsl(260, 15%, 98%) 0%,
-      hsl(280, 20%, 95%) 50%,
-      hsl(293, 60%, 92%) 100%
-    );
-    --gradient-bg-3: linear-gradient(
-      135deg,
-      hsl(220, 25%, 98%) 0%,
-      hsl(240, 30%, 95%) 50%,
-      hsl(260, 40%, 92%) 100%
-    );
-    --gradient-bg-4: linear-gradient(
-      135deg,
-      hsl(200, 35%, 98%) 0%,
-      hsl(220, 40%, 95%) 50%,
-      hsl(240, 50%, 92%) 100%
-    );
-    --gradient-bg-5: linear-gradient(
-      135deg,
-      hsl(180, 45%, 98%) 0%,
-      hsl(200, 50%, 95%) 50%,
-      hsl(220, 60%, 92%) 100%
-    );
-    --gradient-bg-6: linear-gradient(
-      135deg,
-      hsl(160, 35%, 98%) 0%,
-      hsl(180, 40%, 95%) 50%,
-      hsl(200, 50%, 92%) 100%
-    );
-
-    /* Current animated gradient */
-    --gradient-bg: var(--gradient-bg-1);
     --gradient-card: linear-gradient(135deg, hsl(0, 0%, 100%) 0%, hsl(240, 4.8%, 97%) 100%);
     --gradient-primary: linear-gradient(135deg, hsl(293, 89%, 74%) 0%, hsl(293, 89%, 84%) 100%);
 
@@ -127,7 +94,6 @@ All colors MUST be HSL.
 
     --radius: 0.5rem;
 
-    --sidebar: oklch(0.985 0 0);
     --sidebar-foreground: 240 5.3% 26.1%;
     --sidebar-primary: 240 5.9% 10%;
     --sidebar-primary-foreground: 0 0% 98%;

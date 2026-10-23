@@ -1,5 +1,4 @@
 import React from "react";
-import type { ComponentType } from "react";
 import { useReducedMotion } from "framer-motion";
 import { ScrollArea } from "@/shared/ui/scroll-area";
 import { ArrowDown } from "lucide-react";
@@ -8,8 +7,11 @@ import type { Agent, MessageOut, RunTimeline, ThinkingState } from "@/shared/lib
 import { cn } from "@/shared/lib/utils";
 import type { AttachmentLike } from "./message_parts/MessageAttachments";
 import { ChatMessage } from "./ChatMessage";
+import { AiTransitionIndicator } from "./AiTransitionIndicator";
 import { CompactionDivider } from "./message_parts/CompactionDivider";
 import { ConversationRail } from "./message_parts/ConversationRail";
+
+import { findStreamAnchor, streamScrollTarget } from "@/features/chat/lib/streamScroll";
 
 // Distance (px) of the newest REAL content below the fold before the
 // jump-to-bottom button appears.
@@ -26,19 +28,20 @@ const UNPIN_SCROLL_DELTA = 3;
 // A scroll event landing within this many px of our last programmatic write is treated
 // as our own echo, not a user scroll.
 const PROGRAMMATIC_ECHO_PX = 2;
-// Gap kept above the question while it sits anchored at the top during streaming.
-const SCROLL_PADDING_TOP = 24;
-// Gap kept below the newest line so it never butts against the composer.
-const BOTTOM_BREATHING_ROOM = 48;
-// Ride-along uses an exponential approach (fraction of the remaining distance closed
-// per frame at 60fps) — ideal for a target that keeps moving as the answer streams.
-const EASE_FOLLOW = 0.26;
-// Below this many px from the target the ride-along tween snaps and stops.
+// Ride-along is a critically damped spring (no overshoot) toward a target that keeps
+// moving as the answer streams. Its velocity carries over between frames and
+// retargets, so each streamed line eases the view along instead of kicking it: an
+// exponential approach (a fixed share of the distance per frame) jumped from rest to
+// full speed on every chunk, which read as a tremble. ~0.5s to settle.
+const FOLLOW_STIFFNESS = 12;
+// Below this distance (px) and speed (px/s) the spring snaps to its target and stops.
 const SETTLE_EPSILON = 0.5;
-// Deliberate moves (turn start, re-stick, jump button) use a FIXED-DURATION
-// ease-in-out so a large jump reads as a smooth, controlled glide instead of an
-// exponential approach that covers most of the distance in the first frame (a
-// near-teleport).
+const SETTLE_SPEED = 4;
+// The most time (ms) one animation frame may advance a scroll tween.
+const MAX_FRAME_MS = 25;
+// Deliberate moves (turn start, jump button) use a FIXED-DURATION ease-in-out so a
+// large jump reads as a smooth, controlled glide — starting and ending at rest —
+// instead of an approach that covers most of the distance in the first frame.
 //
 // The duration is NOT flat. Scroll distance here is unbounded — one screen or
 // fifty — so a single number makes the *velocity* vary wildly: a long trip
@@ -46,8 +49,9 @@ const SETTLE_EPSILON = 0.5;
 // both ends instead.
 type GlideCurve = { minMs: number; maxMs: number; msPerPx: number };
 
-// Turn start and settle-at-end. Automatic, so it stays tighter at the top end —
-// the answer should not sit behind a second of animation on every single reply.
+// Turn start: the sent question rising to the top. Automatic, so it stays tighter
+// at the top end — the answer should not sit behind a second of animation on every
+// single reply.
 const TURN_GLIDE: GlideCurve = { minMs: 520, maxMs: 900, msPerPx: 0.28 };
 // The jump-to-bottom button. User-initiated and the longest trip in the app, so
 // it gets room to read as a deliberate move you can follow with your eye.
@@ -55,6 +59,18 @@ const BUTTON_GLIDE: GlideCurve = { minMs: 600, maxMs: 1200, msPerPx: 0.32 };
 
 const glideDuration = (distancePx: number, curve: GlideCurve) =>
   Math.min(curve.maxMs, curve.minMs + distancePx * curve.msPerPx);
+
+// How the next scheduled move travels. Several requests can land in one frame (a
+// turn starting is also a message-list change); the strongest wins, so a glide is
+// never downgraded to a plain follow by the render that comes with it.
+type ScrollMode = "follow" | "glide" | "glideButton" | "instant";
+const MODE_PRIORITY: Record<ScrollMode, number> = {
+  follow: 0,
+  glide: 1,
+  glideButton: 2,
+  instant: 3,
+};
+
 
 type ChatBody = {
   messages: MessageOut[];
@@ -74,7 +90,8 @@ type ChatBody = {
   conversationIsReported?: boolean;
   stickyUserBarId: string | null;
   onFlashUserActionBar: (messageId: string) => void;
-  AiTransitionIndicator?: ComponentType;
+  /** The bridge orb between sending and the agent's first signal. */
+  showAiTransition?: boolean;
   thinkingState: ThinkingState | null;
   // The active run's assistant placeholder id. Fallback identity for the
   // streaming reply when thinkingState hasn't activated yet (pre-first-signal)
@@ -132,7 +149,7 @@ export default function ChatBody({
   conversationIsReported = false,
   stickyUserBarId,
   onFlashUserActionBar,
-  AiTransitionIndicator,
+  showAiTransition = false,
   thinkingState,
   activeRunAssistantMessageId = null,
   messagesEndRef,
@@ -166,9 +183,9 @@ export default function ChatBody({
   const viewportRef = React.useRef<HTMLDivElement | null>(null);
   const columnRef = React.useRef<HTMLDivElement | null>(null);
   // Spacer rendered just past the real content end. While a run streams it grows
-  // to give the answer room to breathe (and to let the question sit at the top);
-  // it relaxes to 0 at rest. Height is driven imperatively so per-token stream
-  // ticks never trigger a React re-render.
+  // to give the answer room to breathe (and to let the question sit at the top).
+  // Height is driven imperatively so per-token stream ticks never trigger a React
+  // re-render.
   const bottomSpacerRef = React.useRef<HTMLDivElement | null>(null);
   // Last scrollTop we OBSERVED in a scroll event — the reference for "which way did
   // the user just move". Updated only by handleScroll.
@@ -178,22 +195,26 @@ export default function ChatBody({
   // position-based, so it works even during a fast stream (no fragile time window that
   // a per-token tick could keep alive and thereby block a real scrollbar/keyboard move).
   const lastWrittenTopRef = React.useRef(0);
+  // Where the view last was, whoever moved it (our writes and scroll events).
+  const lastKnownTopRef = React.useRef(0);
   const scrollFrameRef = React.useRef<number | null>(null);
-  // The custom scroll tween shares one rAF handle (animFrameRef): either a ride-along
-  // spring easing toward targetScrollRef, or a fixed-duration glide. Driven ourselves
-  // instead of native scrollTo({behavior:"smooth"}) because the spring must retarget
-  // mid-flight (every stream token) and every move must be cancelable by a user gesture.
+  const pendingModeRef = React.useRef<ScrollMode | null>(null);
+  // The ONE owner of the scroll position: a single rAF handle shared by the
+  // ride-along spring and the fixed-duration glides, so two writers can never
+  // fight. Driven ourselves instead of native scrollTo({behavior:"smooth"}) because
+  // the spring must retarget mid-flight (every stream token) and every move must be
+  // cancelable by a user gesture.
   const animFrameRef = React.useRef<number | null>(null);
   const targetScrollRef = React.useRef(0);
-  // True while a fixed-duration glide owns the scroll — ride-along ticks defer to it so
-  // the deliberate move plays out uninterrupted, and any user gesture cancels it.
+  const velocityRef = React.useRef(0);
+  // True while a fixed-duration glide owns the scroll — ride-along ticks only retarget
+  // and resize the spacer, so the deliberate move plays out uninterrupted; any user
+  // gesture cancels it.
   const glidingRef = React.useRef(false);
   const suppressFollowRef = React.useRef(false);
-  const pendingGlideRef = React.useRef(false);
-  // Previous streaming state, so the settle-at-bottom glide fires once when the run
-  // ends rather than on every later re-render (which would fight the user's scroll).
-  const wasStreamingRef = React.useRef(false);
-  const prevStreamingIdRef = React.useRef<string | null>(null);
+  // The turn the view last glided to, so the glide fires once per turn.
+  const turnKeyRef = React.useRef<string | null>(null);
+  const prevResetKeyRef = React.useRef<string | null | undefined>(undefined);
   const touchYRef = React.useRef(0);
   const [isPinnedToBottom, setIsPinnedToBottom] = React.useState(true);
   const [showJumpToBottom, setShowJumpToBottom] = React.useState(false);
@@ -213,33 +234,68 @@ export default function ChatBody({
     return null;
   }, [activeRunAssistantMessageId, thinkingState?.branchPath]);
 
-  // The turn we anchor to the top while streaming: the user message that started
-  // the run (the streaming reply's parent), falling back to the reply itself.
-  const anchorMessageId = React.useMemo(() => {
-    if (!streamingMessageId) return null;
-    const streaming = messages.find((m) => m.id === streamingMessageId);
-    return streaming?.parentMessageId ?? streamingMessageId;
-  }, [streamingMessageId, messages]);
+  // Row keys. The optimistic echo (`temp-…`) is replaced by the stored message
+  // when the run starts — same text, same slot. Keyed as the echo was, the row is
+  // not remounted: a remount replayed its entrance animation (the question blinked
+  // out and back) and made the turn look new to the scroll logic.
+  const rowKeyByIdRef = React.useRef(new Map<string, string>());
+  const committedIdsRef = React.useRef<string[]>([]);
+  const rowKeys = React.useMemo(() => {
+    const keyById = rowKeyByIdRef.current;
+    const previous = committedIdsRef.current;
+    const ids = new Set(messages.map((m) => m.id));
+    return messages.map((message, index) => {
+      const known = keyById.get(message.id);
+      if (known) return known;
+      const before = previous[index];
+      if (message.sender === "user" && before?.startsWith("temp-") && !ids.has(before)) {
+        const key = keyById.get(before) ?? before;
+        keyById.set(message.id, key);
+        return key;
+      }
+      return message.id;
+    });
+  }, [messages]);
+  React.useEffect(() => {
+    committedIdsRef.current = messages.map((m) => m.id);
+  }, [messages]);
 
-  // Measure the viewport + key content offsets in scroll coordinates. The real
-  // content bottom is read from messagesEndRef, which sits ABOVE the streaming
-  // spacer, so it stays independent of the current spacer height.
+  // The question the live reply answers, held near the top while it streams.
+  const anchorMessageId = React.useMemo(
+    () =>
+      isStreaming
+        ? findStreamAnchor(
+            messages,
+            activeRunAssistantMessageId ?? (thinkingState?.isActive ? streamingMessageId : null),
+          )
+        : null,
+    [isStreaming, messages, activeRunAssistantMessageId, thinkingState?.isActive, streamingMessageId],
+  );
+  const anchorIndex = anchorMessageId ? messages.findIndex((m) => m.id === anchorMessageId) : -1;
+  const turnKey = anchorIndex >= 0 ? rowKeys[anchorIndex] : null;
+
+  // Measure the viewport + key content offsets in scroll coordinates. Layout
+  // offsets (offsetTop within the column), not getBoundingClientRect: a row that
+  // is still playing its entrance animation is translated, and measuring the
+  // transform aimed the view a few px off, then corrected it — a visible tremble.
+  // The real content bottom is read from messagesEndRef, which sits ABOVE the
+  // streaming spacer, so it stays independent of the current spacer height.
   const measure = React.useCallback(() => {
     const viewport = viewportRef.current;
-    if (!viewport) return null;
+    const column = columnRef.current;
+    if (!viewport || !column) return null;
     const H = viewport.clientHeight;
     const scrollTop = viewport.scrollTop;
-    const vTop = viewport.getBoundingClientRect().top;
+    const columnTop =
+      column.getBoundingClientRect().top - viewport.getBoundingClientRect().top + scrollTop;
     const endEl = messagesEndRef.current;
-    const contentBottom = endEl
-      ? endEl.getBoundingClientRect().top - vTop + scrollTop
-      : viewport.scrollHeight;
+    const contentBottom = endEl ? columnTop + endEl.offsetTop : viewport.scrollHeight;
     let anchorTop: number | null = null;
-    if (anchorMessageId && columnRef.current) {
-      const anchorEl = columnRef.current.querySelector(`[data-message-id="${anchorMessageId}"]`);
-      if (anchorEl) {
-        anchorTop = (anchorEl as HTMLElement).getBoundingClientRect().top - vTop + scrollTop;
-      }
+    if (anchorMessageId) {
+      const anchorEl = column.querySelector<HTMLElement>(
+        `[data-message-id="${CSS.escape(anchorMessageId)}"]`,
+      );
+      if (anchorEl) anchorTop = columnTop + anchorEl.offsetTop;
     }
     return { H, scrollTop, contentBottom, anchorTop };
   }, [anchorMessageId, messagesEndRef]);
@@ -269,24 +325,80 @@ export default function ChatBody({
       animFrameRef.current = null;
     }
     glidingRef.current = false;
+    velocityRef.current = 0;
+  }, []);
+
+  const writeScrollTop = React.useCallback((top: number) => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    viewport.scrollTop = top;
+    lastWrittenTopRef.current = top;
+    lastKnownTopRef.current = top;
   }, []);
 
   const snapScrollTo = React.useCallback(
     (target: number) => {
-      const viewport = viewportRef.current;
-      if (!viewport) return;
       stopScrollAnim();
-      const to = Math.max(0, target);
-      viewport.scrollTop = to;
-      lastWrittenTopRef.current = to;
+      targetScrollRef.current = Math.max(0, target);
+      writeScrollTop(targetScrollRef.current);
     },
-    [stopScrollAnim],
+    [stopScrollAnim, writeScrollTop],
+  );
+
+  // Ride-along: a critically damped spring toward targetScrollRef. Retargeting is
+  // just updating the ref — the running loop picks it up with its velocity intact,
+  // so the motion stays continuous as the stream appends. Defers to a running glide.
+  const springScrollTo = React.useCallback(
+    (target: number) => {
+      targetScrollRef.current = Math.max(0, target);
+      if (prefersReducedMotion) {
+        snapScrollTo(targetScrollRef.current);
+        return;
+      }
+      if (animFrameRef.current !== null) return; // a glide or the spring is running — it picks up the target
+
+      let lastTs: number | null = null;
+      const step = (nowTs: number) => {
+        const vp = viewportRef.current;
+        if (!vp) {
+          animFrameRef.current = null;
+          return;
+        }
+        // Clamp the step (as the glide does) so a late frame or a backgrounded
+        // tab never makes it leap.
+        const dt = lastTs === null ? 1 / 60 : Math.min(MAX_FRAME_MS, nowTs - lastTs) / 1000;
+        lastTs = nowTs;
+        const target = targetScrollRef.current;
+        // From where we last wrote, not vp.scrollTop: the browser rounds the scroll
+        // offset to device pixels, and integrating from the rounded value stalls.
+        const offset = lastWrittenTopRef.current - target;
+        const v = velocityRef.current;
+        if (Math.abs(offset) <= SETTLE_EPSILON && Math.abs(v) <= SETTLE_SPEED) {
+          // Settled: write the exact target and stop. Critically we do NOT keep any
+          // programmatic window alive here — so between tokens a real scrollbar or
+          // keyboard move up is recognised immediately during the gap phase.
+          writeScrollTop(target);
+          velocityRef.current = 0;
+          animFrameRef.current = null;
+          return;
+        }
+        // Exact critically damped step: no overshoot, stable at any frame time.
+        const w = FOLLOW_STIFFNESS;
+        const decay = Math.exp(-w * dt);
+        const drift = v + w * offset;
+        writeScrollTop(target + (offset + drift * dt) * decay);
+        velocityRef.current = (v - w * drift * dt) * decay;
+        animFrameRef.current = window.requestAnimationFrame(step);
+      };
+      animFrameRef.current = window.requestAnimationFrame(step);
+    },
+    [prefersReducedMotion, snapScrollTo, writeScrollTop],
   );
 
   // Deliberate move: a FIXED-DURATION ease-in-out from the current position to the
-  // target. Used for the entrance, re-stick and the jump button so a big jump feels
-  // like a smooth, controlled glide. Owns the scroll (glidingRef) so ride-along ticks
-  // don't fight it; any user gesture calls stopScrollAnim() to cancel it instantly.
+  // target, starting and ending at rest. Owns the scroll (glidingRef) so ride-along
+  // ticks don't fight it; when it lands, the spring takes over from rest if the
+  // stream has moved the target meanwhile. Any user gesture calls stopScrollAnim().
   const glideScrollTo = React.useCallback(
     (target: number, durationMs: number) => {
       const viewport = viewportRef.current;
@@ -298,109 +410,63 @@ export default function ChatBody({
         return;
       }
       stopScrollAnim();
+      targetScrollRef.current = to;
       glidingRef.current = true;
-      const startedAt = window.performance.now();
+      let elapsed = 0;
+      let lastTs = window.performance.now();
       const step = (nowTs: number) => {
-        const vp = viewportRef.current;
-        if (!vp) {
+        if (!viewportRef.current) {
           animFrameRef.current = null;
           glidingRef.current = false;
           return;
         }
-        const t = Math.min(1, (nowTs - startedAt) / durationMs);
-        // easeInOutCubic — gentle acceleration and deceleration at both ends.
-        const eased = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-        const pos = from + (to - from) * eased;
-        vp.scrollTop = pos;
-        lastWrittenTopRef.current = pos;
-        if (t >= 1) {
-          vp.scrollTop = to;
-          lastWrittenTopRef.current = to;
-          animFrameRef.current = null;
-          glidingRef.current = false;
+        // The glide's own clock advances at most a couple of frames per frame:
+        // when a busy frame (the list re-rendering as the run starts) is late,
+        // the move slows for a beat instead of leaping to catch up.
+        elapsed += Math.min(MAX_FRAME_MS, Math.max(0, nowTs - lastTs));
+        lastTs = nowTs;
+        const t = Math.min(1, elapsed / durationMs);
+        // easeInOutSine — soft at both ends, and an even pace between: a cubic's
+        // peak speed (3x the average) read as a lurch mid-way on a long move.
+        const eased = (1 - Math.cos(Math.PI * t)) / 2;
+        writeScrollTop(from + (to - from) * eased);
+        if (t < 1) {
+          animFrameRef.current = window.requestAnimationFrame(step);
           return;
         }
-        animFrameRef.current = window.requestAnimationFrame(step);
+        animFrameRef.current = null;
+        glidingRef.current = false;
+        if (Math.abs(targetScrollRef.current - to) >= 1) springScrollTo(targetScrollRef.current);
       };
       animFrameRef.current = window.requestAnimationFrame(step);
     },
-    [prefersReducedMotion, stopScrollAnim, snapScrollTo],
-  );
-
-  // Ride-along: exponential approach toward an ever-moving target. Retargeting is just
-  // updating targetScrollRef — the running loop picks it up, so the motion stays
-  // continuous as the stream appends. Defers to an in-flight glide.
-  const springScrollTo = React.useCallback(
-    (target: number) => {
-      const viewport = viewportRef.current;
-      if (!viewport) return;
-      targetScrollRef.current = Math.max(0, target);
-      if (prefersReducedMotion) {
-        snapScrollTo(targetScrollRef.current);
-        return;
-      }
-      if (glidingRef.current) return; // a deliberate glide owns the scroll right now
-      if (animFrameRef.current !== null) return; // spring already running — it picks up the new target
-
-      const step = () => {
-        const vp = viewportRef.current;
-        if (!vp) {
-          animFrameRef.current = null;
-          return;
-        }
-        const diff = targetScrollRef.current - vp.scrollTop;
-        if (Math.abs(diff) <= SETTLE_EPSILON) {
-          // Settled: write the exact target (usually a no-op) and stop. Critically we
-          // do NOT keep any programmatic window alive here — so between tokens a real
-          // scrollbar/keyboard move up is recognised immediately during the gap phase.
-          vp.scrollTop = targetScrollRef.current;
-          lastWrittenTopRef.current = targetScrollRef.current;
-          animFrameRef.current = null;
-          return;
-        }
-        const next = vp.scrollTop + diff * EASE_FOLLOW;
-        vp.scrollTop = next;
-        lastWrittenTopRef.current = next;
-        animFrameRef.current = window.requestAnimationFrame(step);
-      };
-      animFrameRef.current = window.requestAnimationFrame(step);
-    },
-    [prefersReducedMotion, snapScrollTo],
+    [prefersReducedMotion, stopScrollAnim, snapScrollTo, springScrollTo, writeScrollTop],
   );
 
   // Single source of truth for "keep the stream in view": sizes the spacer and moves
-  // to the right target for the current mode — hold the question at the top while the
-  // answer is short, ride the bottom (with breathing room) once it fills the viewport,
-  // plain bottom otherwise. Mode picks the motion: "glide"/"glideButton" for deliberate
-  // fixed-duration moves, "follow" for per-token ride-along, "instant" for switches.
+  // to the right target (streamScrollTarget). The mode picks the motion: "glide" /
+  // "glideButton" for deliberate fixed-duration moves, "follow" for per-token
+  // ride-along, "instant" for switches. Reduced motion takes the same spots instantly.
   const followTick = React.useCallback(
-    (mode: "glide" | "glideButton" | "follow" | "instant") => {
+    (mode: ScrollMode) => {
       const viewport = viewportRef.current;
       const m = measure();
       if (!viewport || !m) return;
 
       let spacer = 0;
       let target: number;
-      const canAnchor = isStreaming && !prefersReducedMotion && m.anchorTop != null;
-      if (canAnchor) {
-        const anchorTop = m.anchorTop as number;
-        const contentBelowAnchor = Math.max(0, m.contentBottom - anchorTop);
-        const anchorSpace = m.H - SCROLL_PADDING_TOP;
-        if (contentBelowAnchor < anchorSpace) {
-          // Answer still shorter than the viewport — hold the question near the top
-          // and let the reply fill the space below it.
-          spacer = anchorSpace - contentBelowAnchor;
-          target = anchorTop - SCROLL_PADDING_TOP;
-        } else {
-          // Answer fills the viewport — ride the bottom with breathing room.
-          spacer = BOTTOM_BREATHING_ROOM;
-          target = m.contentBottom + spacer - m.H;
-        }
-      } else if (isStreaming && !prefersReducedMotion) {
-        spacer = BOTTOM_BREATHING_ROOM;
-        target = m.contentBottom + spacer - m.H;
+      if (isStreaming) {
+        ({ target, spacer } = streamScrollTarget({
+          viewportHeight: m.H,
+          scrollTop: m.scrollTop,
+          // Where the view is heading, so a running move is never pulled back.
+          heading: animFrameRef.current !== null ? targetScrollRef.current : m.scrollTop,
+          contentBottom: m.contentBottom,
+          anchorTop: m.anchorTop,
+          // Only a deliberate move (the turn's glide, the button) goes back up.
+          hold: mode === "follow",
+        }));
       } else {
-        spacer = 0;
         target = m.contentBottom - m.H;
       }
 
@@ -409,8 +475,10 @@ export default function ChatBody({
       const to = Math.max(0, target);
       if (mode === "instant") {
         snapScrollTo(to);
-      } else if (mode === "follow") {
-        springScrollTo(to);
+      } else if (mode === "follow" || glidingRef.current) {
+        // A running glide keeps the scroll; the spring takes the new target after it.
+        if (glidingRef.current) targetScrollRef.current = to;
+        else springScrollTo(to);
       } else {
         const distance = Math.abs(to - viewport.scrollTop);
         glideScrollTo(
@@ -419,37 +487,27 @@ export default function ChatBody({
         );
       }
     },
-    [
-      measure,
-      isStreaming,
-      prefersReducedMotion,
-      setSpacerHeight,
-      snapScrollTo,
-      springScrollTo,
-      glideScrollTo,
-    ],
+    [measure, isStreaming, setSpacerHeight, snapScrollTo, springScrollTo, glideScrollTo],
   );
 
-  const scheduleFollow = React.useCallback(
-    (mode: "glide" | "glideButton" | "follow" | "instant" = "follow") => {
-      if (scrollFrameRef.current !== null) {
-        window.cancelAnimationFrame(scrollFrameRef.current);
-      }
-      scrollFrameRef.current = window.requestAnimationFrame(() => {
-        scrollFrameRef.current = null;
-        // A pending glide (turn start / re-stick) upgrades a plain follow so the
-        // deliberate move keeps its gentle fixed-duration easing even though the
-        // ride-along effect is what actually fires.
-        let resolved = mode;
-        if (pendingGlideRef.current) {
-          if (resolved === "follow") resolved = "glide";
-          pendingGlideRef.current = false;
-        }
-        followTick(resolved);
-      });
-    },
-    [followTick],
-  );
+  // The scheduled frame calls the LATEST followTick (its measurement closes over the
+  // current anchor), not the one captured when the frame was requested.
+  const followTickRef = React.useRef(followTick);
+  followTickRef.current = followTick;
+  // One measurement per frame however many requests land in it; the strongest
+  // requested mode wins (MODE_PRIORITY).
+  const scheduleFollow = React.useCallback((mode: ScrollMode = "follow") => {
+    const pending = pendingModeRef.current;
+    pendingModeRef.current =
+      pending && MODE_PRIORITY[pending] > MODE_PRIORITY[mode] ? pending : mode;
+    if (scrollFrameRef.current !== null) return; // already scheduled for this frame
+    scrollFrameRef.current = window.requestAnimationFrame(() => {
+      scrollFrameRef.current = null;
+      const resolved = pendingModeRef.current ?? "follow";
+      pendingModeRef.current = null;
+      followTickRef.current(resolved);
+    });
+  }, []);
 
   React.useEffect(() => {
     return () => {
@@ -462,31 +520,48 @@ export default function ChatBody({
     };
   }, []);
 
-  // Conversation switch / initial load: reset to a clean pinned-at-bottom state
-  // with no leftover spacer from a previous stream.
+  // We own the scroll position, so the browser's scroll anchoring must not also
+  // adjust it when rows above the fold change size: its correction landed as an
+  // unexplained jump and read as the user scrolling.
   React.useEffect(() => {
+    const viewport = viewportRef.current;
+    if (viewport) viewport.style.overflowAnchor = "none";
+  }, []);
+
+  // Conversation switch / initial load: reset to a clean pinned-at-bottom state
+  // with no leftover spacer from a previous stream. Not when a new chat's first
+  // message makes its conversation (no id -> the temporary shell "" -> the stored
+  // id): that is the same screen, mid-send, and a reset would cut the move short.
+  React.useEffect(() => {
+    const previous = prevResetKeyRef.current;
+    prevResetKeyRef.current = scrollResetKey;
+    const sameNewChat =
+      (previous === "" && Boolean(scrollResetKey)) ||
+      ((previous === null || previous === undefined) && scrollResetKey === "");
+    if (previous !== undefined && sameNewChat) return;
     stopScrollAnim();
+    turnKeyRef.current = null;
+    rowKeyByIdRef.current.clear();
     setIsPinnedToBottom(true);
     setShowJumpToBottom(false);
     setSpacerHeight(0);
-    prevStreamingIdRef.current = null;
     scheduleFollow("instant");
   }, [scrollResetKey, scheduleFollow, setSpacerHeight, stopScrollAnim]);
 
-  // A new reply began: re-pin and glide so the question rises to the top with the
-  // answer area open below it (the "scroll a bit more" entrance).
+  // A new turn began (a send, a retry, an edit): re-pin and glide so the question
+  // rises to the top with the answer area open below it. Keyed on the turn, not on
+  // the reply's id, which changes once the run starts — one glide per turn.
   React.useEffect(() => {
-    if (!isStreaming || !streamingMessageId) {
-      prevStreamingIdRef.current = streamingMessageId;
+    if (!isStreaming) {
+      turnKeyRef.current = null;
       return;
     }
-    if (prevStreamingIdRef.current !== streamingMessageId) {
-      prevStreamingIdRef.current = streamingMessageId;
-      suppressFollowRef.current = false;
-      setIsPinnedToBottom(true);
-      scheduleFollow("glide");
-    }
-  }, [isStreaming, streamingMessageId, scheduleFollow]);
+    if (!turnKey || turnKeyRef.current === turnKey) return;
+    turnKeyRef.current = turnKey;
+    suppressFollowRef.current = false;
+    setIsPinnedToBottom(true);
+    scheduleFollow("glide");
+  }, [isStreaming, turnKey, scheduleFollow]);
 
   // Ride the stream while pinned. Once the user detaches (isPinnedToBottom false)
   // nothing here re-pins them — only a deliberate return to the bottom does — so a
@@ -505,8 +580,8 @@ export default function ChatBody({
 
     // Only ride the stream while it's actually running and the user hasn't
     // detached. At rest we never auto-scroll on a re-render (a like, a token-usage
-    // toggle, …) — settling at the bottom is owned by the reset / run-finished
-    // effects — we only keep the jump button in sync.
+    // toggle, …) — settling at the bottom is owned by the reset effect — we only
+    // keep the jump button in sync.
     if (!isStreaming || !isPinnedToBottom) {
       setShowJumpToBottom(distanceFromBottom() > JUMP_BUTTON_DISTANCE);
       return;
@@ -523,18 +598,49 @@ export default function ChatBody({
     scheduleFollow,
   ]);
 
-  // Run finished: drop the breathing room so the resting layout looks normal,
-  // keeping the final answer where it is.
+  // Content shrinking under the view while a run streams — a retry's old answer
+  // giving way to the new reply — would make the browser clamp the view up a
+  // step before any follow could react. Before paint, the spacer takes up the
+  // slack and the view stays where it was; the turn's glide then moves it.
+  React.useLayoutEffect(() => {
+    const viewport = viewportRef.current;
+    const spacerEl = bottomSpacerRef.current;
+    if (!isStreaming || !viewport || !spacerEl) return;
+    const m = measure();
+    if (!m) return;
+    const keep = lastKnownTopRef.current;
+    const needed = keep + m.H - m.contentBottom;
+    if (needed > (parseFloat(spacerEl.style.height) || 0)) setSpacerHeight(needed);
+    if (viewport.scrollTop < keep - 1) writeScrollTop(keep);
+  }, [messages, liveTimeline, isStreaming, measure, setSpacerHeight, writeScrollTop]);
+
+  // Size changes that are not renders of this list — the composer shrinking back
+  // to one line after a send, a window resize, an image or a diagram finishing its
+  // layout — also move the target while streaming, so the follow re-measures.
+  React.useEffect(() => {
+    const viewport = viewportRef.current;
+    const column = columnRef.current;
+    if (!isStreaming || !isPinnedToBottom || !viewport || !column) return;
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => scheduleFollow("follow"));
+    observer.observe(viewport);
+    observer.observe(column);
+    return () => observer.disconnect();
+  }, [isStreaming, isPinnedToBottom, scheduleFollow]);
+
+  // Run finished: nothing moves. The spacer keeps exactly the room the view
+  // needs where it is (and where a running move is heading); dropping it to 0
+  // shortened the page under the view and the browser clamped it down a step.
+  const wasStreamingRef = React.useRef(false);
   React.useEffect(() => {
     const wasStreaming = wasStreamingRef.current;
     wasStreamingRef.current = Boolean(isStreaming);
-    // Only act on the run's END transition — never on later re-renders, or a stray
-    // messages/callback change would keep yanking the user back down after they've
-    // scrolled up to read.
     if (isStreaming || !wasStreaming) return;
-    setSpacerHeight(0);
-    if (isPinnedToBottom) scheduleFollow("glide");
-  }, [isStreaming, isPinnedToBottom, scheduleFollow, setSpacerHeight]);
+    const m = measure();
+    if (!m) return;
+    const heading = animFrameRef.current !== null ? targetScrollRef.current : m.scrollTop;
+    setSpacerHeight(Math.max(0, Math.max(m.scrollTop, heading) + m.H - m.contentBottom));
+  }, [isStreaming, measure, setSpacerHeight]);
 
   const handleJumpToBottom = React.useCallback(() => {
     setIsPinnedToBottom(true);
@@ -589,6 +695,7 @@ export default function ChatBody({
       const viewport = event.currentTarget;
       const cur = viewport.scrollTop;
       onScrolledPastTop?.(cur > 4);
+      lastKnownTopRef.current = cur;
 
       // Our own programmatic scroll lands within a couple px of the value we just
       // wrote — that's an echo, not the user, so it never (un)pins.
@@ -609,15 +716,15 @@ export default function ChatBody({
         return;
       }
       if (distance <= RESTICK_DISTANCE && !isPinnedToBottom) {
-        // Drifted back to the pinned position (near the actual scroll bottom) — re-attach
-        // and glide the rest of the way, then ride the stream again. Measuring from the
-        // scroll bottom (not the content bottom) is what lets the user STAY detached in
-        // the gap phase instead of being re-pinned the moment they stop scrolling up.
-        if (isStreaming) pendingGlideRef.current = true;
+        // Drifted back to the pinned position (near the actual scroll bottom) — re-attach;
+        // the follow eases the rest of the way, then rides the stream again. Measuring
+        // from the scroll bottom (not the content bottom) is what lets the user STAY
+        // detached in the gap phase instead of being re-pinned the moment they stop
+        // scrolling up.
         setIsPinnedToBottom(true);
       }
     },
-    [distanceFromBottom, isStreaming, isPinnedToBottom, onScrolledPastTop, stopScrollAnim],
+    [distanceFromBottom, isPinnedToBottom, onScrolledPastTop, stopScrollAnim],
   );
 
   React.useEffect(() => {
@@ -626,6 +733,7 @@ export default function ChatBody({
     if (!viewport) return;
     onScrolledPastTop(viewport.scrollTop > 4);
   }, [messages.length, onScrolledPastTop]);
+
 
   return (
     <div className="relative min-h-0 flex-1 overflow-hidden">
@@ -639,7 +747,7 @@ export default function ChatBody({
       >
         <div
           ref={columnRef}
-          className="w-full max-w-3xl mx-auto p-3 md:p-6 space-y-4 md:space-y-6 messages-container transition-smooth"
+          className="relative w-full max-w-3xl mx-auto p-3 md:p-6 space-y-4 md:space-y-6 messages-container transition-smooth"
         >
           {loadingConversation && (
             <div className="space-y-4">
@@ -661,7 +769,7 @@ export default function ChatBody({
           )}
 
           {!loadingConversation &&
-            messages.map((message) => {
+            messages.map((message, index) => {
               const isEditingMessage = editingMessageId === message.id;
 
               const userActionVisibilityClass = `transition-opacity ${
@@ -682,9 +790,12 @@ export default function ChatBody({
 
               return (
                 <div
-                  key={message.id}
+                  key={rowKeys[index]}
                   data-message-id={message.id}
-                  className="animate-message-in space-y-2"
+                  // `empty:hidden`: the live reply renders nothing before its
+                  // first block, and its row then takes no room (or gap), so the
+                  // answer starts where the thinking orb sits.
+                  className="animate-message-in space-y-2 empty:hidden"
                 >
                   <ChatMessage
                     message={message}
@@ -749,7 +860,7 @@ export default function ChatBody({
               );
             })}
 
-          {AiTransitionIndicator ? <AiTransitionIndicator /> : null}
+          <AiTransitionIndicator visible={showAiTransition} />
 
           <div ref={messagesEndRef} />
           {/* Streaming breathing-room / top-anchor slack. Height is set imperatively

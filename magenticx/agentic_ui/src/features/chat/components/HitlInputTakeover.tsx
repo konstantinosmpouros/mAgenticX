@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion, type Variants } from "framer-motion";
 import {
   Check,
@@ -10,12 +10,11 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
-import {
-  summariseInterrupt,
-  type HitlInterrupt,
-} from "@/features/chat/components/message_parts/HitlInterruptCard";
+import type { HitlInterrupt } from "@/features/chat/components/message_parts/HitlInterruptCard";
+import { HitlActionSummary } from "@/features/chat/components/message_parts/HitlActionSummary";
+import { useApprovalSummaries } from "@/features/chat/hooks/useApprovalSummaries";
+import { approvalHeadline, hasApprovalDetail } from "@/features/chat/lib/approvalPresentation";
 import { cn } from "@/shared/lib/utils";
-import { parseHitlInterrupt } from "@/features/inference";
 
 export type HitlActionDecision = { decision: "approve" | "reject"; reason?: string };
 
@@ -40,11 +39,12 @@ export function HitlInputTakeover({ interrupt, pendingCount, onResolve }: HitlIn
   const [error, setError] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const reasonRef = useRef<HTMLInputElement>(null);
-  const parsed = useMemo(() => parseHitlInterrupt(interrupt.content), [interrupt.content]);
-  const actions = parsed.actions.length
-    ? parsed.actions
-    : [{ toolName: parsed.toolName, description: parsed.description, argsText: parsed.argsText }];
+  // One summary per gated tool call: a title and only the fields worth reading
+  // (approvalPresentation.ts) — never the middleware's repr of the arguments.
+  const actions = useApprovalSummaries(interrupt.content);
   const isBatch = actions.length > 1;
+  const single = actions[0];
+  const singleHasDetail = Boolean(single && hasApprovalDetail(single));
 
   // Deck state (batch path): the top card, a per-card decision + reason that can
   // be revisited and overwritten, and the exit gesture for the slide animation.
@@ -55,13 +55,7 @@ export function HitlInputTakeover({ interrupt, pendingCount, onResolve }: HitlIn
   const [reasons, setReasons] = useState<string[]>(() => actions.map(() => ""));
   const [exitKind, setExitKind] = useState<"approve" | "reject" | "next" | "prev">("next");
 
-  const summaryLine = parsed.toolName
-    ? `The agent wants to run: ${parsed.toolName}${parsed.requestCount > 1 ? ` (+${parsed.requestCount - 1} more)` : ""}`
-    : (parsed.description?.split("\n").find((line) => line.trim()) ??
-      summariseInterrupt(interrupt.content)
-        .split("\n")
-        .find((line) => line.trim()) ??
-      "The agent is asking for your approval.");
+  const summaryLine = approvalHeadline(actions);
 
   useEffect(() => {
     // New interrupt → fresh deck + form state.
@@ -156,11 +150,11 @@ export function HitlInputTakeover({ interrupt, pendingCount, onResolve }: HitlIn
   };
 
   return (
-    <div className="relative z-20 overflow-hidden rounded-[2rem] border border-amber-500/45 bg-background shadow-lg">
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-12 bg-gradient-to-b from-amber-500/[0.10] via-amber-500/[0.04] to-transparent" />
+    <div className="relative z-20 overflow-hidden rounded-[2rem] border border-warning/45 bg-background shadow-lg">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-12 bg-gradient-to-b from-warning/[0.10] via-warning/[0.04] to-transparent" />
 
       <div className="relative flex items-center gap-3 px-4 pt-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-500/[0.18] text-amber-500">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-warning/[0.18] text-warning">
           <ShieldAlert className="h-4 w-4" />
         </span>
         {isBatch ? (
@@ -184,7 +178,7 @@ export function HitlInputTakeover({ interrupt, pendingCount, onResolve }: HitlIn
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
-              <span className="min-w-[3.2rem] rounded-full bg-amber-500/15 px-2 py-0.5 text-center text-[10px] font-medium text-amber-500">
+              <span className="min-w-[3.2rem] rounded-full bg-warning/15 px-2 py-0.5 text-center text-[10px] font-medium text-warning">
                 {index + 1} of {total}
               </span>
               <button
@@ -202,54 +196,38 @@ export function HitlInputTakeover({ interrupt, pendingCount, onResolve }: HitlIn
           <button
             type="button"
             onClick={() => setDetailOpen((prev) => !prev)}
-            aria-expanded={detailOpen}
+            disabled={!singleHasDetail}
+            aria-expanded={singleHasDetail ? detailOpen : undefined}
             aria-label={detailOpen ? "Hide approval details" : "Show approval details"}
-            className="group flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50 rounded-lg"
+            className="group flex min-w-0 flex-1 items-center gap-2 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning/50 disabled:cursor-default"
           >
             <span className="min-w-0">
               <span className="block truncate text-sm font-semibold text-foreground">
                 Approval required
                 {pendingCount > 1 ? (
-                  <span className="ml-2 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-500">
+                  <span className="ml-2 rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-medium text-warning">
                     1 of {pendingCount}
                   </span>
                 ) : null}
               </span>
               <span className="block truncate text-xs text-muted-foreground">{summaryLine}</span>
             </span>
-            <ChevronDown
-              className={cn(
-                "h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:text-foreground",
-                detailOpen && "rotate-180",
-              )}
-            />
+            {singleHasDetail ? (
+              <ChevronDown
+                className={cn(
+                  "h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:text-foreground",
+                  detailOpen && "rotate-180",
+                )}
+              />
+            ) : null}
           </button>
         )}
       </div>
 
-      {/* Single-action detail expander (unchanged). */}
-      {!isBatch && detailOpen ? (
-        <div className="relative mx-4 mt-2 max-h-52 space-y-2 overflow-y-auto rounded-xl border border-border bg-background/70 px-3 py-2.5">
-          {parsed.description ? (
-            <p className="whitespace-pre-wrap break-words text-[12.5px] leading-5 text-foreground">
-              {parsed.description}
-            </p>
-          ) : null}
-          {parsed.argsText ? (
-            <div>
-              <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                Arguments
-              </p>
-              <pre className="whitespace-pre-wrap [overflow-wrap:anywhere] rounded-lg bg-muted/40 px-2.5 py-2 font-mono text-[11px] leading-5 text-foreground">
-                {parsed.argsText}
-              </pre>
-            </div>
-          ) : null}
-          {!parsed.description && !parsed.argsText ? (
-            <pre className="whitespace-pre-wrap [overflow-wrap:anywhere] font-mono text-[11px] leading-5 text-foreground">
-              {parsed.raw}
-            </pre>
-          ) : null}
+      {/* Single action: what exactly is being approved, in its natural form. */}
+      {!isBatch && detailOpen && single && singleHasDetail ? (
+        <div className="scrollbar-muted relative mx-4 mt-2 max-h-[min(22rem,45vh)] overflow-y-auto overscroll-contain rounded-xl border border-border bg-background px-3 py-2.5">
+          <HitlActionSummary summary={single} />
         </div>
       ) : null}
 
@@ -262,7 +240,7 @@ export function HitlInputTakeover({ interrupt, pendingCount, onResolve }: HitlIn
                 <div
                   key={`deck-back-${i}`}
                   aria-hidden
-                  className="absolute inset-x-0 top-0 h-full rounded-2xl border border-amber-500/20 bg-secondary/40"
+                  className="absolute inset-x-0 top-0 h-full rounded-2xl border border-warning/20 bg-secondary/40"
                   style={{
                     transform: `translateY(${(i + 1) * 7}px) scale(${1 - (i + 1) * 0.04})`,
                     opacity: 0.55 - i * 0.18,
@@ -278,7 +256,7 @@ export function HitlInputTakeover({ interrupt, pendingCount, onResolve }: HitlIn
                 key="submitting"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="flex h-[156px] items-center justify-center rounded-2xl border border-amber-500/40 bg-background"
+                className="flex h-[156px] items-center justify-center rounded-2xl border border-warning/40 bg-background"
               >
                 <span className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" /> Resuming with your decisions…
@@ -297,14 +275,14 @@ export function HitlInputTakeover({ interrupt, pendingCount, onResolve }: HitlIn
                     ? { duration: 0.12 }
                     : { type: "spring", stiffness: 420, damping: 34 }
                 }
-                className="relative rounded-2xl border border-amber-500/40 bg-background px-3.5 py-3 shadow-sm"
+                className="relative rounded-2xl border border-warning/40 bg-background px-3.5 py-3 shadow-sm"
               >
                 <div className="mb-2 flex items-center gap-2">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-md bg-amber-500/15 text-[11px] font-semibold text-amber-500">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-md bg-warning/15 text-[11px] font-semibold text-warning">
                     {index + 1}
                   </span>
                   <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
-                    {actions[index]?.toolName ?? `Action ${index + 1}`}
+                    {actions[index]?.title ?? `Action ${index + 1}`}
                   </span>
                   {currentDecision ? (
                     <span
@@ -322,14 +300,10 @@ export function HitlInputTakeover({ interrupt, pendingCount, onResolve }: HitlIn
                   )}
                 </div>
 
-                {actions[index]?.argsText ? (
-                  <pre className="max-h-24 overflow-y-auto whitespace-pre-wrap [overflow-wrap:anywhere] rounded-lg bg-muted/40 px-2.5 py-1.5 font-mono text-[11px] leading-5 text-foreground">
-                    {actions[index]?.argsText}
-                  </pre>
-                ) : actions[index]?.description ? (
-                  <p className="max-h-24 overflow-y-auto whitespace-pre-wrap break-words text-[12px] leading-5 text-muted-foreground">
-                    {actions[index]?.description}
-                  </p>
+                {actions[index] && hasApprovalDetail(actions[index]) ? (
+                  <div className="scrollbar-muted max-h-44 overflow-y-auto overscroll-contain">
+                    <HitlActionSummary summary={actions[index]} />
+                  </div>
                 ) : null}
 
                 <input
@@ -337,7 +311,7 @@ export function HitlInputTakeover({ interrupt, pendingCount, onResolve }: HitlIn
                   onChange={(event) => setCardReason(event.target.value)}
                   placeholder="Reason if you reject (optional)"
                   disabled={busy !== null}
-                  aria-label={`Rejection reason for ${actions[index]?.toolName ?? `action ${index + 1}`}`}
+                  aria-label={`Rejection reason for ${actions[index]?.title ?? `action ${index + 1}`}`}
                   className="mt-2.5 h-9 w-full rounded-lg border border-border bg-background px-3 text-xs text-foreground placeholder:text-muted-foreground/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-60"
                 />
 

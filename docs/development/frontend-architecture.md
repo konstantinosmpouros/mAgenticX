@@ -22,9 +22,10 @@ src/
   index.css                  # entry point only — an ordered @import list, no rules
   App.css  vite-env.d.ts
   styles/                    # the actual CSS, split by domain
-    tokens.light.css  tokens.dark.css     #   design tokens (:root / .dark)
+    theme/                                #   design tokens, one file per theme + themes.ts registry (see its README)
     base.css                              #   reset, body, shared transition utils
-    voice-transitions.css  voice-orb.css  #   voice UI + its keyframes
+    voice-transitions.css                 #   the stacked chat/voice body panels
+    composer.css  orb.css                 #   the composer's light; the AI orb (shared/ui/orb.tsx) per state
     skeleton.css  toast.css  markdown.css scrollbars.css  misc.css
 
   pages/                     # one file per route — composes a feature, wires routing

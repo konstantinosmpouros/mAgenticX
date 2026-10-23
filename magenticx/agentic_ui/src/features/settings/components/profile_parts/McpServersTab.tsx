@@ -4,6 +4,7 @@ import { ChevronDown } from "lucide-react";
 
 import { cn } from "@/shared/lib/utils";
 import type { ToolWithStatus } from "@/shared/lib/types";
+import { themeFor } from "@/styles/theme/themes";
 import { InfoCard, MetricCard, SoftPanel } from "./shared";
 import { McpIcon } from "./icons";
 
@@ -21,7 +22,7 @@ export default function McpServersTab({ availableTools }: McpServersTabProps) {
   // Key off resolvedTheme, not theme: theme is often "system", which would make
   // the light/dark icon swap misfire and render the dark-variant icon in light mode.
   const { resolvedTheme } = useTheme();
-  const currentTheme = resolvedTheme === "dark" ? "dark" : "light";
+  const themeMode = themeFor(resolvedTheme).mode;
 
   // Group tools by their server (read-only; no preference state involved).
   const serverGroups = useMemo(
@@ -98,10 +99,7 @@ export default function McpServersTab({ availableTools }: McpServersTabProps) {
                   >
                     <div className="flex items-center gap-3">
                       <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-border/60 bg-muted">
-                        <McpIcon
-                          size={20}
-                          variant={currentTheme === "dark" ? "white" : "darkGrey"}
-                        />
+                        <McpIcon size={20} variant={themeMode === "dark" ? "white" : "darkGrey"} />
                       </div>
                       <div>
                         <p className="text-sm font-semibold text-foreground">{serverLabel}</p>

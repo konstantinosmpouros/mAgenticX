@@ -193,8 +193,9 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
     );
   }
   return (
-    // Main chat interface with sidebar, header, conversation container, and input area
-    <div className="min-h-svh max-h-svh bg-background dark:bg-gradient-to-br dark:from-slate-950/20 dark:via-slate-700/30 dark:to-slate-950/20">
+    // Main chat interface: the sidebar sits on a tinted frame, and the
+    // conversation area floats beside it as a rounded card (full-bleed on mobile).
+    <div className="min-h-svh max-h-svh bg-muted/70 dark:bg-black/60">
       <SidebarProvider
         className="min-h-svh"
         open={sidebarOpen}
@@ -264,12 +265,14 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
           onClose={closeSearchPanel}
           onSelectResult={handleSearchResultSelect}
         />
-        <SidebarInset className="bg-transparent">
+        <SidebarInset className="overflow-hidden bg-background md:my-3 md:mr-3 md:h-[calc(100svh-1.5rem)] md:rounded-[1.75rem] md:border md:border-border/60 md:shadow-[0_12px_40px_-16px_rgba(0,0,0,0.35)]">
           <TooltipProvider>
             <HitlProvider value={{ resumeRun: resumeInferenceRunHandler, isInterruptResolved }}>
+              {/* Fills the card on desktop (md:h-full) and the screen on mobile;
+                  the overlays mounted here stay inside the card's rounded edge. */}
               <div
                 id={OVERLAY_HOST_ID}
-                className="animate-fade-in flex min-h-svh max-h-svh flex-col relative overflow-hidden transition-slow"
+                className="animate-fade-in relative flex h-svh flex-col overflow-hidden transition-slow md:h-full"
               >
                 {/* The routed view: ChatView ("/", "/c/:id") or TasksView ("/tasks"),
                   or `children` when ChatShell is used directly (shared conversation).

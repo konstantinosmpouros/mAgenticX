@@ -2,6 +2,7 @@ import { useTheme } from "next-themes";
 import { AppWindow, Archive, ExternalLink, MoonStar, Sparkles } from "lucide-react";
 
 import type { ConversationSummary, HelpCard, ToolWithStatus } from "@/shared/lib/types";
+import { themeFor } from "@/styles/theme/themes";
 import { InfoCard, SoftPanel } from "./shared";
 
 const HELP_CARDS: HelpCard[] = [
@@ -29,8 +30,10 @@ type HelpTabProps = {
 };
 
 export default function HelpTab({ archivedConversations, availableTools }: HelpTabProps) {
-  const { theme } = useTheme();
-  const currentTheme = theme === "dark" ? "dark" : "light";
+  // resolvedTheme, not theme: theme is often "system", which says nothing about
+  // what is on screen.
+  const { resolvedTheme } = useTheme();
+  const currentTheme = themeFor(resolvedTheme);
   // Tools are no longer globally enabled/disabled — this is the size of the
   // available MCP catalog (per-agent enablement lives in Settings → Agents).
   const toolCount = availableTools.length;
@@ -113,10 +116,10 @@ export default function HelpTab({ archivedConversations, availableTools }: HelpT
             </div>
             <div className="flex items-center gap-3 px-4 py-4">
               <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                {currentTheme === "dark" ? <MoonStar size={18} /> : <Sparkles size={18} />}
+                {currentTheme.mode === "dark" ? <MoonStar size={18} /> : <Sparkles size={18} />}
               </div>
               <div>
-                <p className="text-sm font-semibold text-foreground">Theme: {currentTheme}</p>
+                <p className="text-sm font-semibold text-foreground">Theme: {currentTheme.label}</p>
                 <p className="text-sm text-muted-foreground">
                   Active shell appearance for the workspace.
                 </p>

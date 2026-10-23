@@ -10,6 +10,8 @@ from harness.agui.events import (
     TaskSubAgentEvent,
     SUBAGENT_EVENT_TYPE,
     SubAgentEvent,
+    SUBAGENT_COMPLETED_EVENT_TYPE,
+    SubAgentCompletedEvent,
     BEFORE_AGENT_EVENT_TYPE,
     BeforeAgentEvent,
     TOKEN_USAGE_EVENT_TYPE,

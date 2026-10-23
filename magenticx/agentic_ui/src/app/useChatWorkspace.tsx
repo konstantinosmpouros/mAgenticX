@@ -919,21 +919,15 @@ export function useChatWorkspace({
     showHelpPanel,
   ]);
 
-  // Create AI transition handlers.
-  // Memoized deliberately: this factory returns a *component*, and React
-  // compares element types by identity. Calling it bare gave `<AiTransitionIndicator/>`
-  // a brand-new type on every render, so the indicator's DOM was torn down and
-  // rebuilt on every streamed token instead of simply re-rendering.
-  const { AiTransitionIndicator } = useMemo(
-    () =>
-      createAiTransitionHandlers({
-        showAiTransition,
-        thinkingState,
-        activeBranchPath,
-        runBranchPath: activeConversationRun?.messagePath,
-      }),
-    [showAiTransition, thinkingState, activeBranchPath, activeConversationRun?.messagePath],
-  );
+  // Whether the bridge orb shows (the transition between sending and the
+  // agent's first signal). A flag rather than a component made per render, so
+  // the indicator stays one element and can fade out when the answer starts.
+  const { showAiTransitionIndicator } = createAiTransitionHandlers({
+    showAiTransition,
+    thinkingState,
+    activeBranchPath,
+    runBranchPath: activeConversationRun?.messagePath,
+  });
 
   // Retry handlers
   const { handleRetryAiMessage } = createRetryHandlers({
@@ -1320,7 +1314,7 @@ export function useChatWorkspace({
         conversationIsReported={Boolean(currentConversation?.isReported)}
         stickyUserBarId={stickyUserBarId}
         onFlashUserActionBar={flashUserActionBar}
-        AiTransitionIndicator={AiTransitionIndicator}
+        showAiTransition={showAiTransitionIndicator}
         thinkingState={thinkingState}
         messagesEndRef={messagesEndRef}
         AgentIcon={AgentIcon}

@@ -3,6 +3,9 @@ import { Check, Loader2, ShieldAlert, X } from "lucide-react";
 
 import { Button } from "@/shared/ui/button";
 import { cn } from "@/shared/lib/utils";
+import { useApprovalSummaries } from "@/features/chat/hooks/useApprovalSummaries";
+import { approvalHeadline } from "@/features/chat/lib/approvalPresentation";
+import { HitlSummaryList } from "./HitlActionSummary";
 
 export type HitlInterrupt = {
   // LangGraph interrupt's unique id — distinguishes consecutive HITLs that
@@ -27,25 +30,10 @@ type HitlInterruptCardProps = {
   className?: string;
 };
 
-export function summariseInterrupt(content: unknown): string {
-  if (typeof content === "string") return content.trim();
-  if (content && typeof content === "object") {
-    const obj = content as Record<string, unknown>;
-    const question = obj.question ?? obj.prompt ?? obj.message ?? obj.text ?? obj.description;
-    if (typeof question === "string" && question.trim()) return question.trim();
-    try {
-      return JSON.stringify(content, null, 2);
-    } catch {
-      return String(content);
-    }
-  }
-  return content === null || content === undefined ? "" : String(content);
-}
-
-// The card is the smallest reusable unit: it renders inline inside the
-// Thinking block of the run timeline. The pending
-// approval also surfaces as the input-bar takeover (HitlInputTakeover), which
-// drives the same resolver.
+// The smallest reusable approval unit: what is being asked (the same summary
+// the input-bar takeover shows — approvalPresentation.ts), a reason, and the
+// decision. The pending approval in a chat surfaces as the input-bar takeover
+// (HitlInputTakeover), which drives the same resolver.
 export function HitlInterruptCard({
   interrupt,
   resolved,
@@ -56,7 +44,8 @@ export function HitlInterruptCard({
   const [busy, setBusy] = useState<"approve" | "reject" | null>(null);
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const summary = summariseInterrupt(interrupt.content);
+  const summaries = useApprovalSummaries(interrupt.content);
+  const headline = approvalHeadline(summaries);
 
   const handle = async (decision: "approve" | "reject") => {
     setBusy(decision);
@@ -88,7 +77,7 @@ export function HitlInterruptCard({
           {resolution === "approved" ? "Approved" : isRejected ? "Rejected" : "Decision sent"}
         </span>
         <span className={cn("truncate", isRejected ? "text-destructive/70" : "text-success/70")}>
-          · thread {interrupt.threadId}
+          · {headline}
         </span>
       </div>
     );
@@ -97,29 +86,23 @@ export function HitlInterruptCard({
   return (
     <div
       className={cn(
-        "relative overflow-hidden rounded-[24px] border border-amber-500/45 bg-card px-4 py-3.5 shadow-card",
+        "relative overflow-hidden rounded-[24px] border border-warning/45 bg-card px-4 py-3.5 shadow-card",
         className,
       )}
     >
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-14 bg-gradient-to-b from-amber-500/[0.10] via-amber-500/[0.04] to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-14 bg-gradient-to-b from-warning/[0.10] via-warning/[0.04] to-transparent" />
 
       <div className="relative mb-2.5 flex items-center gap-2">
-        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-500/[0.18] text-amber-500">
+        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-warning/[0.18] text-warning">
           <ShieldAlert className="h-3.5 w-3.5" />
         </span>
         <div className="min-w-0 flex-1">
           <h4 className="truncate text-[13px] font-semibold text-foreground">Approval required</h4>
-          <p className="truncate text-[10.5px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-            thread {interrupt.threadId}
-          </p>
+          <p className="truncate text-xs text-muted-foreground">{headline}</p>
         </div>
       </div>
 
-      {summary ? (
-        <pre className="relative mb-3 max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded-xl border border-border bg-background/70 px-3 py-2 font-mono text-[11.5px] leading-5 text-foreground">
-          {summary}
-        </pre>
-      ) : null}
+      <HitlSummaryList summaries={summaries} className="relative mb-3" />
 
       <textarea
         value={reason}

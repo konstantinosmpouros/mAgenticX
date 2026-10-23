@@ -1,5 +1,6 @@
 import json
 import mimetypes
+import time
 from typing import Any, List, Optional, Tuple, Dict
 
 from pydantic import ValidationError
@@ -25,12 +26,21 @@ _ALLOWED_MODES = {"messages", "updates"}
 # this store keeps the binding stable across the paused->resume boundary.
 # Same lifecycle + single-worker assumption as the checkpointer cache.
 _THREAD_NAMESPACE_BINDINGS: Dict[str, Dict[tuple, str]] = {}
+# When each bound sub-agent started (task tool_call_id -> epoch ms), same
+# lifecycle as the bindings: SUBAGENT_COMPLETED carries it as ``started_at``
+# even when the sub-agent returns on a later (resume) stream.
+_THREAD_TASK_STARTED_AT: dict[str, dict[str, int]] = {}
 
 
 def release_namespace_bindings(thread_id: str) -> None:
     """Drop the persisted namespace bindings for a finished/fresh run."""
     if thread_id:
         _THREAD_NAMESPACE_BINDINGS.pop(thread_id, None)
+        _THREAD_TASK_STARTED_AT.pop(thread_id, None)
+
+
+def _now_ms() -> int:
+    return int(time.time() * 1000)
 
 class AGUIStreamNormalizer:
     """
@@ -61,6 +71,7 @@ class AGUIStreamNormalizer:
 
         # --- custom event dedupe ---
         self._emitted_subagent_task_ids: set[str] = set()
+        self._completed_subagent_task_ids: set[str] = set()  # SUBAGENT_COMPLETED sent
         self._last_plan_fingerprint: Optional[str] = None
 
         # --- automatic compaction (plan 34) ---
@@ -491,6 +502,19 @@ class AGUIStreamNormalizer:
         if not tool_call_id:
             return
 
+        # A `task` result means that sub-agent has returned: say so now, so its
+        # card turns done/failed while the run goes on (the result text itself
+        # is never forwarded). Recognised by id when this stream announced the
+        # task, and by name otherwise — a fresh normalizer on /resume never saw
+        # the `task` call, so its id is in none of the sets above.
+        if self._is_subagent_task_result(msg, tool_call_id, ns_label):
+            self._ignored_tool_call_ids.discard(tool_call_id)
+            self._pending_tasks.pop(tool_call_id, None)  # rejected → never binds
+            if tool_call_id not in self._completed_subagent_task_ids:
+                self._completed_subagent_task_ids.add(tool_call_id)
+                self._push(out, self._subagent_completed(str(tool_call_id), is_error, ns_label))
+            return
+
         # Ignore results for write_todos/task tool calls (because we never emitted start/args)
         if tool_call_id in self._ignored_tool_call_ids:
             self._ignored_tool_call_ids.discard(tool_call_id)
@@ -517,6 +541,80 @@ class AGUIStreamNormalizer:
 
             self._pending_tool_call_ids.discard(tool_call_id)
             self._finished_tool_call_ids.add(tool_call_id)
+
+
+    def _is_subagent_task_result(self, msg: Any, tool_call_id: str, ns_label: str | None) -> bool:
+        """Whether a ToolMessage is the result of a `task` (sub-agent) call."""
+        if tool_call_id in self._emitted_subagent_task_ids:
+            return True
+        # Unannounced id: only the orchestrator's own `task` tool counts, and
+        # never a call this stream deliberately left unannounced (non-dict args)
+        # or a regular tool it opened itself.
+        return (
+            getattr(msg, "name", None) == "task"
+            and ns_label is None
+            and tool_call_id not in self._ignored_tool_call_ids
+            and tool_call_id not in self._pending_tool_call_ids
+        )
+
+
+    def _subagent_completed(self, task_id: str, is_error: bool, ns_label: str | None) -> bytes | None:
+        """SUBAGENT_COMPLETED for a returned `task`, with the sub-agent's bound
+        namespace (when known) so the UI can match it by either id."""
+        bound_namespace = next(
+            (ns for ns, label in self._namespace_task_labels.items() if label == task_id),
+            None,
+        )
+        started_at = _THREAD_TASK_STARTED_AT.get(self.thread_id, {}).get(task_id)
+        return self.emitter.subagent_completed(
+            task_id=task_id,
+            status="error" if is_error else "completed",
+            subagent_namespace=self._namespace_path(bound_namespace) if bound_namespace else None,
+            started_at=started_at,
+            ended_at=_now_ms(),
+            namespace=ns_label,
+        )
+
+
+    def seed_pending_tasks(self, messages: Any) -> None:
+        """Re-learn the `task` calls still awaiting their result, from the
+        paused checkpoint's messages, before a /resume stream starts.
+
+        The /resume normalizer is fresh: the `task` calls were announced on the
+        previous stream, so without this a sub-agent spawned after its gated
+        `task` call is approved finds no pending task to bind to. Its events
+        would then carry the namespace-derived id instead of the `task` call
+        id (a second card in the UI), and its result would not be recognised.
+        Calls already bound to a namespace (rehydrated) are not re-queued.
+        """
+        try:
+            items = self._unwrap_messages_list(messages)
+        except Exception:
+            return
+        answered: set[str] = set()
+        calls: list[dict[str, Any]] = []
+        for msg in items:
+            kind = self._msg_kind(msg)
+            if kind == "tool":
+                tool_call_id = getattr(msg, "tool_call_id", None)
+                if tool_call_id:
+                    answered.add(str(tool_call_id))
+            elif kind == "ai":
+                calls.extend(tc for tc in self._iter_tool_calls(msg) if tc.get("name") == "task")
+        bound = set(self._namespace_task_labels.values())
+        for tc in calls:
+            tc_id = str(tc["id"])
+            if tc_id in answered:
+                continue
+            self._emitted_subagent_task_ids.add(tc_id)
+            self._ignored_tool_call_ids.add(tc_id)
+            if tc_id in bound or tc_id in self._pending_tasks:
+                continue
+            args = tc.get("args") if isinstance(tc.get("args"), dict) else {}
+            self._pending_tasks[tc_id] = {
+                "description": str(args.get("description", "")),
+                "subagent_type": str(args.get("subagent_type", "")),
+            }
 
 
     def _tool_usage(self, msg: Any, tool_call_id: str, ns_label: str | None) -> bytes | None:
@@ -674,6 +772,7 @@ class AGUIStreamNormalizer:
             self._pending_tasks.pop(task_id, None)
             if self.thread_id:
                 _THREAD_NAMESPACE_BINDINGS.setdefault(self.thread_id, {})[namespace] = task_str
+                _THREAD_TASK_STARTED_AT.setdefault(self.thread_id, {}).setdefault(task_str, _now_ms())
             return task_str
 
         return None

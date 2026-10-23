@@ -7,6 +7,7 @@ import type {
   ContentBlock,
   MessageOut,
   SubagentBlock,
+  SubagentRunStatus,
   ThinkingBlock,
   TimelineBlock,
   TimelineTerminalStatus,
@@ -26,6 +27,9 @@ export type BlockRenderContext = {
   runId: string;
   subagentIndex: number;
   isLiveActive: boolean;
+  // A sub-agent block's status as its card shows it (`subagentRunStatus`):
+  // computed from the whole run (live or not, pending approvals), not the block.
+  subagentStatus?: SubagentRunStatus | null;
   doneStatus?: TimelineTerminalStatus;
   fallbackDurationSeconds?: number | null;
   open: boolean;
@@ -78,6 +82,7 @@ export const BLOCK_REGISTRY: Record<
     <SubagentCard
       subagent={subagentBlockToItem(block as SubagentBlock)}
       index={ctx.subagentIndex}
+      status={ctx.subagentStatus}
     />
   ),
   thinking: (block, ctx) => (

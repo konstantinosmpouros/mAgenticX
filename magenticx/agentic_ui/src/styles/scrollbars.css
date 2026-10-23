@@ -133,3 +133,31 @@
   background-color: hsl(var(--muted-foreground) / 0.35);
   background-clip: padding-box;
 }
+
+/* A slim scrollbar with no arrow buttons, for scrolling bodies inside dialogs
+   (the report dialog). WebKit/Blink use the pseudo-elements (setting the
+   standard scrollbar-width or scrollbar-color would switch them off there);
+   Firefox uses the standard properties. */
+.slim-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.slim-scrollbar::-webkit-scrollbar-button {
+  display: none;
+}
+.slim-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.slim-scrollbar::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--muted-foreground) / 0.3);
+  border-radius: 9999px;
+}
+.slim-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: hsl(var(--muted-foreground) / 0.45);
+}
+@supports not selector(::-webkit-scrollbar) {
+  .slim-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.3) transparent;
+  }
+}

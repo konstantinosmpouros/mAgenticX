@@ -1,0 +1,454 @@
+/* The AI orb (shared/ui/orb.tsx): the artwork floating over a blurred ring of
+   its own colours, animated per state. The sphere never spins, so its wave stays
+   readable; it floats, tilts a few degrees and breathes. Transform, opacity and
+   filter only, so it all runs on the compositor.
+
+   Smooth state changes: no animation is ever swapped or re-timed (that restarts
+   or jumps it). Every layer runs all the time at a fixed tempo; a state only
+   changes HOW MUCH each one moves — amplitudes held in registered custom
+   properties, which transition — and which extra layers are visible (their
+   opacity transitions). So listening -> speaking eases over in ~0.7s.
+
+   The halo's colours are the image's (blue, violet, pink), not theme tokens:
+   they belong to this artwork and change with it.
+
+   Markup: .orb (sized by the caller; data-state) >
+     .orb-aura > .orb-aura-breathe > .orb-aura-spin   the halo, breathing and turning
+               + .orb-aura-swirl                      thinking: a faster turning glow
+               + .orb-aura-pulse                      listening: a ring pulsing out
+               + .orb-aura-voice                      speaking: the glow in the speech rhythm
+     + .orb-orbit                                     thinking: a highlight circling the sphere
+     + .orb-body (state scale, dimming) > .orb-float > .orb-listen > .orb-speak > img + .orb-sheen
+   No `display` here: a caller's `hidden` on short windows must win, and this
+   file loads after the utilities. */
+
+@property --orb-float {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+@property --orb-tilt {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+@property --orb-breathe {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+@property --orb-listen {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+@property --orb-speak {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+@property --orb-aura-amp {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+
+.orb {
+  /* Idle: a float of 7% of the size (~8px on the greeting's 112px orb) over
+     5.5s, a tilt of +-3.5deg, a breath of 4% in scale; the glow swells 10%. */
+  --orb-float: 7;
+  --orb-tilt: 3.5;
+  --orb-breathe: 0.04;
+  --orb-listen: 0;
+  --orb-speak: 0;
+  --orb-aura-amp: 0.1;
+  --orb-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  position: relative;
+  flex-shrink: 0;
+  /* Lengths inside scale with the orb (cqw), whatever sizes it. */
+  container-type: size;
+  transition:
+    --orb-float 0.7s var(--orb-ease),
+    --orb-tilt 0.7s var(--orb-ease),
+    --orb-breathe 0.7s var(--orb-ease),
+    --orb-listen 0.7s var(--orb-ease),
+    --orb-speak 0.7s var(--orb-ease),
+    --orb-aura-amp 0.7s var(--orb-ease);
+}
+
+.orb[data-state="listening"] {
+  --orb-float: 3;
+  --orb-tilt: 2;
+  --orb-breathe: 0.02;
+  --orb-listen: 0.05;
+  --orb-aura-amp: 0.14;
+}
+
+.orb[data-state="thinking"] {
+  --orb-float: 4;
+  --orb-tilt: 2;
+  --orb-breathe: 0.02;
+  --orb-aura-amp: 0.12;
+}
+
+.orb[data-state="speaking"] {
+  --orb-float: 2.5;
+  --orb-tilt: 1.5;
+  --orb-breathe: 0.02;
+  --orb-speak: 0.07;
+  --orb-aura-amp: 0.1;
+}
+
+.orb[data-state="asleep"] {
+  --orb-float: 2;
+  --orb-tilt: 1;
+  --orb-breathe: 0.015;
+  --orb-aura-amp: 0.04;
+}
+
+/* Every layer fills the orb's box. */
+.orb > *,
+.orb-aura > *,
+.orb-aura-breathe > *,
+.orb-body > *,
+.orb-float > *,
+.orb-listen > * {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* ---- The halo ------------------------------------------------------------ */
+
+.orb-aura {
+  opacity: 0.8;
+  transition: opacity 0.7s var(--orb-ease);
+}
+.orb[data-state="listening"] .orb-aura {
+  opacity: 0.95;
+}
+.orb[data-state="thinking"] .orb-aura {
+  opacity: 0.85;
+}
+.orb[data-state="speaking"] .orb-aura {
+  opacity: 1;
+}
+.orb[data-state="asleep"] .orb-aura {
+  opacity: 0.25;
+}
+
+.orb-aura-breathe {
+  animation: orb-aura-breathe 5.5s ease-in-out infinite;
+}
+
+.orb-aura-spin,
+.orb-aura-swirl,
+.orb-aura-pulse,
+.orb-aura-voice {
+  border-radius: 9999px;
+}
+
+/* The blue -> violet -> pink ring turning slowly around the sphere. */
+.orb-aura-spin {
+  inset: -4%;
+  background: conic-gradient(
+    from 0deg,
+    rgb(56 132 255),
+    rgb(124 77 255),
+    rgb(236 92 214),
+    rgb(124 77 255),
+    rgb(56 132 255)
+  );
+  filter: blur(12cqw);
+  animation: orb-turn 16s linear infinite;
+}
+
+/* Thinking: brighter arcs turning fast. */
+.orb-aura-swirl {
+  inset: 2%;
+  background: conic-gradient(
+    from 90deg,
+    rgb(56 132 255 / 0) 0deg,
+    rgb(56 132 255) 60deg,
+    rgb(124 77 255 / 0) 130deg,
+    rgb(124 77 255 / 0) 180deg,
+    rgb(236 92 214) 240deg,
+    rgb(236 92 214 / 0) 310deg
+  );
+  filter: blur(9cqw);
+  opacity: 0;
+  transition: opacity 0.7s var(--orb-ease);
+  animation: orb-turn 2.4s linear infinite;
+}
+.orb[data-state="thinking"] .orb-aura-swirl {
+  opacity: 0.9;
+}
+
+/* Listening: a soft ring breathing outwards, steady as attention. */
+.orb-aura-pulse {
+  inset: 8%;
+  background: radial-gradient(
+    circle,
+    rgb(124 77 255 / 0) 52%,
+    rgb(96 120 255 / 0.85) 64%,
+    rgb(236 92 214 / 0) 74%
+  );
+  opacity: 0;
+  transition: opacity 0.7s var(--orb-ease);
+  animation: orb-pulse 1.6s ease-out infinite;
+}
+.orb[data-state="listening"] .orb-aura-pulse {
+  opacity: 0.8;
+}
+
+/* Speaking: the glow swelling in the same rhythm as the sphere. */
+.orb-aura-voice {
+  inset: 4%;
+  background: radial-gradient(circle, rgb(150 110 255 / 0.9) 30%, rgb(236 92 214 / 0) 70%);
+  filter: blur(8cqw);
+  opacity: 0;
+  transition: opacity 0.7s var(--orb-ease);
+  animation: orb-voice-glow 1.4s ease-in-out infinite;
+}
+.orb[data-state="speaking"] .orb-aura-voice {
+  opacity: 0.9;
+}
+
+/* Thinking: a highlight circling the sphere. */
+.orb-orbit {
+  inset: -3%;
+  opacity: 0;
+  transition: opacity 0.7s var(--orb-ease);
+  animation: orb-turn 1.8s linear infinite;
+}
+.orb-orbit::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 16%;
+  height: 16%;
+  translate: -50% 0;
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle,
+    rgb(255 255 255 / 0.95),
+    rgb(190 150 255 / 0.5) 45%,
+    rgb(190 150 255 / 0) 70%
+  );
+}
+.orb[data-state="thinking"] .orb-orbit {
+  opacity: 1;
+}
+
+/* ---- The sphere ---------------------------------------------------------- */
+
+.orb-body {
+  transform: scale(1);
+  transition:
+    transform 0.7s var(--orb-ease),
+    opacity 0.7s var(--orb-ease),
+    filter 0.7s var(--orb-ease);
+}
+.orb[data-state="listening"] .orb-body {
+  transform: scale(1.06);
+}
+.orb[data-state="speaking"] .orb-body {
+  transform: scale(1.04);
+}
+.orb[data-state="asleep"] .orb-body {
+  transform: scale(0.94);
+  opacity: 0.6;
+  filter: grayscale(0.6);
+}
+
+.orb-float {
+  animation: orb-float 5.5s ease-in-out infinite;
+}
+.orb-listen {
+  animation: orb-listen 1.6s ease-in-out infinite;
+}
+.orb-speak {
+  animation: orb-speak 1.4s ease-in-out infinite;
+}
+
+.orb-image {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+}
+
+/* A soft light sweeping across the glass every few seconds, clipped to the
+   sphere. */
+.orb-sheen {
+  position: absolute;
+  inset: 9%;
+  border-radius: 9999px;
+  overflow: hidden;
+}
+.orb-sheen::before {
+  content: "";
+  position: absolute;
+  top: -10%;
+  bottom: -10%;
+  left: 0;
+  width: 45%;
+  background: linear-gradient(
+    90deg,
+    rgb(255 255 255 / 0),
+    rgb(255 255 255 / 0.55),
+    rgb(255 255 255 / 0)
+  );
+  transform: translateX(-120%) skewX(-18deg);
+  animation: orb-sheen 7s ease-in-out infinite;
+}
+.orb[data-state="asleep"] .orb-sheen {
+  opacity: 0;
+}
+
+/* ---- Keyframes ----------------------------------------------------------- */
+
+/* Rise, tilt and breathe together; the glow swells with the rise (same tempo). */
+@keyframes orb-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(calc(var(--orb-tilt) * -1deg)) scale(1);
+  }
+  25% {
+    transform: translateY(calc(var(--orb-float) * -0.6%)) rotate(0deg)
+      scale(calc(1 + var(--orb-breathe) * 0.6));
+  }
+  50% {
+    transform: translateY(calc(var(--orb-float) * -1%)) rotate(calc(var(--orb-tilt) * 1deg))
+      scale(calc(1 + var(--orb-breathe)));
+  }
+  75% {
+    transform: translateY(calc(var(--orb-float) * -0.4%)) rotate(0deg)
+      scale(calc(1 + var(--orb-breathe) * 0.4));
+  }
+}
+
+@keyframes orb-aura-breathe {
+  0%,
+  100% {
+    transform: scale(calc(1 - var(--orb-aura-amp) * 0.5));
+    opacity: 0.7;
+  }
+  50% {
+    transform: scale(calc(1 + var(--orb-aura-amp)));
+    opacity: 1;
+  }
+}
+
+@keyframes orb-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes orb-listen {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(calc(1 + var(--orb-listen)));
+  }
+}
+
+/* Syllable-like: uneven peaks, so it reads as speech rather than a metronome. */
+@keyframes orb-speak {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  12% {
+    transform: scale(calc(1 + var(--orb-speak) * 0.8));
+  }
+  24% {
+    transform: scale(calc(1 + var(--orb-speak) * 0.25));
+  }
+  38% {
+    transform: scale(calc(1 + var(--orb-speak)));
+  }
+  52% {
+    transform: scale(calc(1 + var(--orb-speak) * 0.35));
+  }
+  64% {
+    transform: scale(calc(1 + var(--orb-speak) * 0.75));
+  }
+  80% {
+    transform: scale(calc(1 + var(--orb-speak) * 0.15));
+  }
+}
+
+@keyframes orb-voice-glow {
+  0%,
+  100% {
+    transform: scale(0.95);
+    opacity: 0.55;
+  }
+  12% {
+    transform: scale(1.1);
+    opacity: 0.9;
+  }
+  24% {
+    transform: scale(1);
+    opacity: 0.65;
+  }
+  38% {
+    transform: scale(1.14);
+    opacity: 1;
+  }
+  52% {
+    transform: scale(1.02);
+    opacity: 0.7;
+  }
+  64% {
+    transform: scale(1.1);
+    opacity: 0.9;
+  }
+  80% {
+    transform: scale(0.98);
+    opacity: 0.6;
+  }
+}
+
+@keyframes orb-pulse {
+  from {
+    transform: scale(0.92);
+    opacity: 1;
+  }
+  to {
+    transform: scale(1.3);
+    opacity: 0;
+  }
+}
+
+/* Off the sphere for most of the cycle, then one unhurried pass. */
+@keyframes orb-sheen {
+  0%,
+  55% {
+    transform: translateX(-120%) skewX(-18deg);
+  }
+  85%,
+  100% {
+    transform: translateX(260%) skewX(-18deg);
+  }
+}
+
+/* Reduced motion: the orb holds still. The states stay apart by their glow
+   (brightness, the swirl and the orbiting highlight shown still), scale and
+   dimming, which change at once. */
+@media (prefers-reduced-motion: reduce) {
+  .orb,
+  .orb * {
+    animation: none !important;
+    transition: none !important;
+  }
+  .orb-sheen {
+    opacity: 0;
+  }
+}

@@ -120,7 +120,7 @@ export default function ReportConversationDialog({
 
           {/* The only scroll area — `min-h-0` so it can shrink inside the flex
               column instead of forcing the card past its max-height. */}
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 md:px-7">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 slim-scrollbar md:px-7">
             {conversationTitle ? (
               <div className="mb-4 rounded-2xl border border-white/[0.12] bg-white/[0.045] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
                 <div className="mb-1 text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-white/45">

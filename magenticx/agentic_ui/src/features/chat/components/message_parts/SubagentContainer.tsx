@@ -1,14 +1,33 @@
 import * as React from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Bot, Check, Copy, Hand, MessageSquareText, Wrench } from "lucide-react";
+import {
+  Bot,
+  Check,
+  ChevronRight,
+  CircleAlert,
+  CircleDashed,
+  CircleSlash,
+  Clock,
+  Copy,
+  Hand,
+  Loader2,
+  MessageSquareText,
+  Wrench,
+} from "lucide-react";
 
 import { Button } from "@/shared/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { cn } from "@/shared/lib/utils";
+import { HitlRequestSummary } from "./HitlActionSummary";
 
-import type { SubagentInterrupt, SubagentItem, SubagentTool } from "@/shared/lib/types";
+import type {
+  SubagentInterrupt,
+  SubagentItem,
+  SubagentRunStatus,
+  SubagentTool,
+} from "@/shared/lib/types";
 
-export type { SubagentInterrupt, SubagentItem, SubagentTool };
+export type { SubagentInterrupt, SubagentItem, SubagentRunStatus, SubagentTool };
 
 function SmoothCollapse({
   open,
@@ -38,17 +57,6 @@ function SmoothCollapse({
       ) : null}
     </AnimatePresence>
   );
-}
-
-function toDisplayText(value: unknown): string {
-  if (typeof value === "string") return value;
-  if (value === null || value === undefined) return "";
-
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
 }
 
 function SectionLabel({ icon, title }: { icon: React.ReactNode; title: string }) {
@@ -81,20 +89,17 @@ function InterruptList({ interrupts }: { interrupts: SubagentInterrupt[] }) {
     <div className="space-y-3 pl-5">
       {interrupts.map((interrupt, index) => (
         <div key={`${interrupt.threadId}-${index}`} className="relative pl-7">
-          <span className="absolute left-0 top-1 h-2.5 w-2.5 rounded-full bg-amber-500 shadow-[0_0_0_6px_hsl(var(--background))]" />
-          <div className="absolute left-[5px] top-4 bottom-[-12px] w-px bg-gradient-to-b from-amber-500/35 to-transparent last:hidden" />
+          <span className="absolute left-0 top-1 h-2.5 w-2.5 rounded-full bg-warning shadow-[0_0_0_6px_hsl(var(--background))]" />
+          <div className="absolute left-[5px] top-4 bottom-[-12px] w-px bg-gradient-to-b from-warning/35 to-transparent last:hidden" />
 
           <div className="mb-1.5 flex items-center gap-2">
-            <span className="rounded-full bg-amber-500/[0.12] px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.16em] text-amber-500">
-              Interrupt
+            <span className="rounded-full bg-warning/[0.12] px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.16em] text-warning">
+              Approval requested
             </span>
-            <span className="text-[11px] text-muted-foreground">thread {interrupt.threadId}</span>
           </div>
-          <CopyableContentBox content={toDisplayText(interrupt.content)} tone="code" size="md">
-            <pre className="whitespace-pre-wrap [overflow-wrap:anywhere] font-mono text-[11px] leading-6 text-white">
-              {toDisplayText(interrupt.content)}
-            </pre>
-          </CopyableContentBox>
+          {/* The same summary the approval card shows — what was asked, never the
+              raw request payload. */}
+          <HitlRequestSummary content={interrupt.content} />
         </div>
       ))}
     </div>
@@ -252,8 +257,8 @@ function ToolCallItem({
               toolCall.status === "error"
                 ? "bg-destructive/[0.12] text-destructive"
                 : toolCall.status === "completed"
-                  ? "bg-emerald-500/[0.12] text-emerald-500"
-                  : "bg-sky-500/[0.12] text-sky-500",
+                  ? "bg-success/[0.12] text-success"
+                  : "bg-[hsl(var(--subagent-active)/0.12)] text-[hsl(var(--subagent-active))]",
             )}
           >
             {toolCall.status === "error"
@@ -316,17 +321,77 @@ function ToolCallItem({
   );
 }
 
+const STATUS_META: Record<
+  SubagentRunStatus,
+  { label: string; chip: string; icon: React.ReactNode }
+> = {
+  pending: {
+    label: "Starting",
+    chip: "bg-muted text-muted-foreground",
+    icon: <CircleDashed className="h-3 w-3" aria-hidden="true" />,
+  },
+  running: {
+    label: "Running",
+    chip: "bg-[hsl(var(--subagent-active)/0.12)] text-[hsl(var(--subagent-active))]",
+    icon: <Loader2 className="h-3 w-3 motion-safe:animate-spin" aria-hidden="true" />,
+  },
+  awaiting_approval: {
+    label: "Awaiting approval",
+    chip: "bg-warning/15 text-warning",
+    icon: <Clock className="h-3 w-3" aria-hidden="true" />,
+  },
+  done: {
+    label: "Done",
+    chip: "bg-success/15 text-success",
+    icon: <Check className="h-3 w-3" aria-hidden="true" />,
+  },
+  failed: {
+    label: "Failed",
+    chip: "bg-destructive/[0.12] text-destructive",
+    icon: <CircleAlert className="h-3 w-3" aria-hidden="true" />,
+  },
+  cancelled: {
+    label: "Cancelled",
+    chip: "bg-muted text-muted-foreground",
+    icon: <CircleSlash className="h-3 w-3" aria-hidden="true" />,
+  },
+};
+
+/** "<1s", "42s", "3m 05s" — how long a settled sub-agent worked. */
+function formatSubagentDuration(startedAt?: number, endedAt?: number): string | null {
+  if (typeof startedAt !== "number" || typeof endedAt !== "number" || endedAt < startedAt) {
+    return null;
+  }
+  const seconds = Math.round((endedAt - startedAt) / 1000);
+  if (seconds < 1) return "<1s";
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}m ${String(seconds % 60).padStart(2, "0")}s`;
+}
+
+const normalizeName = (value: string) => value.toLowerCase().replace(/[-_\s]+/g, "");
+
 export type SubagentCardProps = {
   subagent: SubagentItem;
   index?: number;
+  /** Where it is in its work (`subagentRunStatus`); no chip and no ring when absent. */
+  status?: SubagentRunStatus | null;
   // Side-panel mode: expanding the card reveals the section headers only;
   // each section (and each tool) opens on demand instead of all at once.
   defaultCollapsedSections?: boolean;
 };
 
+/**
+ * One delegated sub-agent. Collapsed it is one compact row — title, what it was
+ * asked, tool count, duration once settled, status, chevron — and while it
+ * works a light runs round its border (styles/subagent.css). Expanded it shows
+ * the full task prompt, its streamed response, its tool activity (copyable
+ * args/results) and any approvals it raised.
+ */
 export function SubagentCard({
   subagent,
   index = 0,
+  status = null,
   defaultCollapsedSections = false,
 }: SubagentCardProps) {
   const transcript = getSubagentTranscript(subagent);
@@ -336,6 +401,11 @@ export function SubagentCard({
   const hasTranscript = Boolean(transcript);
   const hasTools = tools.length > 0;
   const hasInterrupts = interrupts.length > 0;
+  const meta = status ? STATUS_META[status] : null;
+  const active = status === "running";
+  const settled = status === "done" || status === "failed" || status === "cancelled";
+  const duration = settled ? formatSubagentDuration(subagent.startedAt, subagent.endedAt) : null;
+  const showType = Boolean(subagent.type && normalizeName(subagent.type) !== normalizeName(title));
   const [cardExpanded, setCardExpanded] = React.useState(false);
   const [textExpanded, setTextExpanded] = React.useState(!defaultCollapsedSections);
   const [toolsExpanded, setToolsExpanded] = React.useState(!defaultCollapsedSections);
@@ -372,173 +442,181 @@ export function SubagentCard({
 
   return (
     <div
-      className={cn(
-        "relative overflow-hidden rounded-[30px] border border-border/70 bg-[linear-gradient(180deg,hsl(var(--background))_0%,hsl(var(--secondary)/0.42)_100%)] shadow-card transition-[padding,colors] duration-300",
-        cardExpanded ? "px-5 py-5" : "px-3 py-2.5",
-      )}
+      className="subagent-card rounded-[22px]"
+      data-active={active ? "true" : "false"}
+      data-status={status ?? undefined}
+      aria-busy={active || undefined}
     >
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-primary/[0.05] via-primary/[0.02] to-transparent" />
-      <AnimatePresence initial={false}>
-        {cardExpanded ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1, transition: { duration: 0.3, delay: 0.15 } }}
-            exit={{ opacity: 0, transition: { duration: 0.15 } }}
-            className="pointer-events-none absolute left-9 top-[4rem] bottom-8 w-px bg-[linear-gradient(180deg,hsl(var(--primary)/0.28)_0%,hsl(var(--border)/0.88)_72%,hsl(var(--border)/0.72)_88%,transparent_100%)]"
-          />
-        ) : null}
-      </AnimatePresence>
-
-      <DisclosureButton
-        title={`Toggle ${title}`}
-        expanded={cardExpanded}
-        onClick={() => setCardExpanded((current) => !current)}
-        className={cn("relative -ml-1", cardExpanded ? "mb-1" : "mb-0")}
+      <div
+        className={cn(
+          "relative overflow-hidden rounded-[22px] border bg-[linear-gradient(180deg,hsl(var(--background))_0%,hsl(var(--secondary)/0.45)_100%)] shadow-card transition-colors",
+          active ? "border-transparent" : "border-border/70",
+        )}
       >
-        <div className="min-w-0 flex-1 pr-4">
-          <div
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-primary/[0.05] to-transparent" />
+        <button
+          type="button"
+          onClick={() => setCardExpanded((current) => !current)}
+          aria-expanded={cardExpanded}
+          aria-label={`${title}${meta ? `, ${meta.label}` : ""}`}
+          className="relative flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+        >
+          <span
             className={cn(
-              "flex min-w-0 flex-wrap items-center gap-2",
-              cardExpanded ? "mb-1" : "mb-0",
+              "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full",
+              active
+                ? "bg-[hsl(var(--subagent-active)/0.12)] text-[hsl(var(--subagent-active))]"
+                : "bg-primary/[0.1] text-primary",
             )}
           >
-            <div
-              className={cn(
-                "flex items-center justify-center rounded-full bg-primary/[0.1] text-primary transition-[height,width] duration-300",
-                cardExpanded ? "h-10 w-10" : "h-7 w-7",
-              )}
-            >
-              <Bot
-                className={cn(
-                  "transition-[height,width] duration-300",
-                  cardExpanded ? "h-4 w-4" : "h-3.5 w-3.5",
-                )}
-              />
-            </div>
-            <h4
-              className={cn(
-                "min-w-0 break-words font-semibold text-foreground transition-[font-size] duration-300",
-                cardExpanded ? "text-base" : "text-[13px]",
-              )}
-            >
-              {title}
-            </h4>
-            {subagent.type ? (
-              <span
-                className={cn(
-                  "rounded-full bg-primary/[0.08] font-medium uppercase tracking-[0.16em] text-primary transition-[padding,font-size] duration-300",
-                  cardExpanded ? "px-2.5 py-1 text-[10px]" : "px-2 py-0.5 text-[9px]",
-                )}
-              >
-                {subagent.type}
+            <Bot className="h-4 w-4" aria-hidden="true" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="min-w-0 truncate text-[13.5px] font-semibold text-foreground">
+                {title}
+              </span>
+              {showType ? (
+                <span className="hidden flex-shrink-0 rounded-full bg-primary/[0.08] px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.16em] text-primary sm:inline">
+                  {subagent.type}
+                </span>
+              ) : null}
+            </span>
+            {!cardExpanded ? (
+              <span className="block truncate text-[12px] leading-[1.15rem] text-muted-foreground">
+                {promptText}
               </span>
             ) : null}
-          </div>
-
-          {!cardExpanded ? (
-            <p className="max-h-[2.3rem] max-w-3xl overflow-hidden pl-5 text-[12px] leading-[1.15rem] text-muted-foreground">
-              {promptText}
-            </p>
-          ) : null}
-        </div>
-      </DisclosureButton>
-
-      {/* The task description lives outside the header button so the
-          Show more toggle isn't a button nested inside a button. */}
-      {cardExpanded ? (
-        <div className="relative mb-5 max-w-3xl pl-8 pr-4">
-          <motion.div
-            className="overflow-hidden"
-            initial={false}
-            animate={{ maxHeight: promptExpanded ? promptFullHeight + 16 : promptClampHeight }}
-            transition={reduceMotion ? { duration: 0 } : { duration: 0.3, ease: "easeOut" }}
-          >
-            <p ref={promptRef} className="text-sm leading-6 text-muted-foreground">
-              {promptText}
-            </p>
-          </motion.div>
-          {promptClampable ? (
-            <button
-              type="button"
-              onClick={() => setPromptExpanded((current) => !current)}
-              className="mt-1 text-xs font-medium text-primary transition-colors hover:text-primary/80"
-            >
-              {promptExpanded ? "Show less" : "Show more"}
-            </button>
-          ) : null}
-        </div>
-      ) : null}
-
-      <SmoothCollapse open={cardExpanded}>
-        <div className="relative flex flex-col gap-6 pl-8 pr-4 pt-2">
-          {hasTranscript ? (
-            <section>
-              <DisclosureButton
-                title="Toggle streamed text"
-                expanded={textExpanded}
-                onClick={() => setTextExpanded((current) => !current)}
-                className="mb-3"
-              >
-                <SectionLabel
-                  icon={<MessageSquareText className="h-3.5 w-3.5" />}
-                  title="Response"
-                />
-              </DisclosureButton>
-              <SmoothCollapse open={textExpanded}>
-                <CopyableContentBox content={transcript} size="xl">
-                  <p className="whitespace-pre-wrap [overflow-wrap:anywhere] text-[14px] leading-7 text-zinc-100">
-                    {transcript}
-                  </p>
-                </CopyableContentBox>
-              </SmoothCollapse>
-            </section>
-          ) : null}
-
+          </span>
           {hasTools ? (
-            <section>
-              <DisclosureButton
-                title="Toggle tool activity"
-                expanded={toolsExpanded}
-                onClick={() => setToolsExpanded((current) => !current)}
-                className="mb-3"
-              >
-                <SectionLabel icon={<Wrench className="h-3.5 w-3.5" />} title="Tool Activity" />
-              </DisclosureButton>
-              <SmoothCollapse open={toolsExpanded}>
-                <div className="space-y-4 pl-5">
-                  {tools.map((toolCall, toolIndex) => (
-                    <div key={toolCall.id} className="relative">
-                      {toolIndex < tools.length - 1 ? (
-                        <span className="absolute left-[5px] top-4 bottom-[-16px] w-px bg-gradient-to-b from-primary/35 via-border/80 to-transparent" />
-                      ) : null}
-                      <ToolCallItem
-                        toolCall={toolCall}
-                        defaultExpanded={!defaultCollapsedSections}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </SmoothCollapse>
-            </section>
+            <span
+              className="hidden flex-shrink-0 items-center gap-1 text-xs text-muted-foreground sm:flex"
+              title={`${tools.length} tool call${tools.length === 1 ? "" : "s"}`}
+            >
+              <Wrench className="h-3 w-3" aria-hidden="true" />
+              {tools.length}
+            </span>
           ) : null}
+          {duration ? (
+            <span className="hidden flex-shrink-0 text-xs tabular-nums text-muted-foreground sm:inline">
+              {duration}
+            </span>
+          ) : null}
+          {meta ? (
+            <span
+              className={cn(
+                "flex flex-shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium",
+                meta.chip,
+              )}
+            >
+              {meta.icon}
+              {meta.label}
+            </span>
+          ) : null}
+          <ChevronRight
+            aria-hidden="true"
+            className={cn(
+              "h-4 w-4 flex-shrink-0 text-muted-foreground transition-transform",
+              cardExpanded && "rotate-90",
+            )}
+          />
+        </button>
 
-          {hasInterrupts ? (
-            <section>
-              <DisclosureButton
-                title="Toggle HITL interrupts"
-                expanded={interruptsExpanded}
-                onClick={() => setInterruptsExpanded((current) => !current)}
-                className="mb-3"
+        <SmoothCollapse open={cardExpanded}>
+          <div className="relative flex flex-col gap-6 border-t border-border/60 px-4 pb-5 pt-3 sm:px-5">
+            {/* The task prompt sits outside the header button so the Show more
+                toggle isn't a button nested inside a button. */}
+            <div className="max-w-3xl">
+              <motion.div
+                className="overflow-hidden"
+                initial={false}
+                animate={{ maxHeight: promptExpanded ? promptFullHeight + 16 : promptClampHeight }}
+                transition={reduceMotion ? { duration: 0 } : { duration: 0.3, ease: "easeOut" }}
               >
-                <SectionLabel icon={<Hand className="h-3.5 w-3.5" />} title="HITL Interrupts" />
-              </DisclosureButton>
-              <SmoothCollapse open={interruptsExpanded}>
-                <InterruptList interrupts={interrupts} />
-              </SmoothCollapse>
-            </section>
-          ) : null}
-        </div>
-      </SmoothCollapse>
+                <p ref={promptRef} className="text-sm leading-6 text-muted-foreground">
+                  {promptText}
+                </p>
+              </motion.div>
+              {promptClampable ? (
+                <button
+                  type="button"
+                  onClick={() => setPromptExpanded((current) => !current)}
+                  className="mt-1 text-xs font-medium text-primary transition-colors hover:text-primary/80"
+                >
+                  {promptExpanded ? "Show less" : "Show more"}
+                </button>
+              ) : null}
+            </div>
+
+            {hasTranscript ? (
+              <section>
+                <DisclosureButton
+                  title="Toggle streamed text"
+                  expanded={textExpanded}
+                  onClick={() => setTextExpanded((current) => !current)}
+                  className="mb-3"
+                >
+                  <SectionLabel
+                    icon={<MessageSquareText className="h-3.5 w-3.5" />}
+                    title="Response"
+                  />
+                </DisclosureButton>
+                <SmoothCollapse open={textExpanded}>
+                  <CopyableContentBox content={transcript} size="xl">
+                    <p className="whitespace-pre-wrap [overflow-wrap:anywhere] text-[14px] leading-7 text-zinc-100">
+                      {transcript}
+                    </p>
+                  </CopyableContentBox>
+                </SmoothCollapse>
+              </section>
+            ) : null}
+
+            {hasTools ? (
+              <section>
+                <DisclosureButton
+                  title="Toggle tool activity"
+                  expanded={toolsExpanded}
+                  onClick={() => setToolsExpanded((current) => !current)}
+                  className="mb-3"
+                >
+                  <SectionLabel icon={<Wrench className="h-3.5 w-3.5" />} title="Tool Activity" />
+                </DisclosureButton>
+                <SmoothCollapse open={toolsExpanded}>
+                  <div className="space-y-4 pl-5">
+                    {tools.map((toolCall, toolIndex) => (
+                      <div key={toolCall.id} className="relative">
+                        {toolIndex < tools.length - 1 ? (
+                          <span className="absolute left-[5px] top-4 bottom-[-16px] w-px bg-gradient-to-b from-primary/35 via-border/80 to-transparent" />
+                        ) : null}
+                        <ToolCallItem
+                          toolCall={toolCall}
+                          defaultExpanded={!defaultCollapsedSections}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </SmoothCollapse>
+              </section>
+            ) : null}
+
+            {hasInterrupts ? (
+              <section>
+                <DisclosureButton
+                  title="Toggle HITL interrupts"
+                  expanded={interruptsExpanded}
+                  onClick={() => setInterruptsExpanded((current) => !current)}
+                  className="mb-3"
+                >
+                  <SectionLabel icon={<Hand className="h-3.5 w-3.5" />} title="HITL Interrupts" />
+                </DisclosureButton>
+                <SmoothCollapse open={interruptsExpanded}>
+                  <InterruptList interrupts={interrupts} />
+                </SmoothCollapse>
+              </section>
+            ) : null}
+          </div>
+        </SmoothCollapse>
+      </div>
     </div>
   );
 }

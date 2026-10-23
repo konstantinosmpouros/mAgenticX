@@ -33,6 +33,7 @@ import {
   parseNumberedFile,
   parsePastChats,
   parsePathList,
+  toDiff,
   type ToolArgs,
   undoDoubleEscaping,
 } from "@/features/chat/lib/toolPresentation";
@@ -42,7 +43,7 @@ import { McpResultView } from "./McpToolViews";
 // whole row amber, and that must not bleed into the content panes.
 const PANE = cn("min-w-0 rounded-md bg-muted/50 text-foreground text-xs", PAYLOAD_PANE);
 // Markdown inside a tool pane is a preview, not a page: keep headings small.
-const COMPACT_MARKDOWN =
+export const COMPACT_MARKDOWN =
   "text-xs [&_h1]:text-sm [&_h2]:text-sm [&_h3]:text-xs [&_h4]:text-xs [&_:is(h1,h2,h3,h4)]:font-semibold [&_:is(h1,h2,h3,h4)]:mb-1 [&_:is(h1,h2,h3,h4)]:mt-2";
 const CODE = "[&_pre]:whitespace-pre-wrap [&_pre]:break-words";
 
@@ -63,7 +64,7 @@ const Note = ({ children, tone = "muted" }: { children: string; tone?: "muted" |
 const TruncatedNote = ({ show }: { show?: boolean }) =>
   show ? <Note>Result truncated for display — the agent saw the full output.</Note> : null;
 
-const CodePane = ({ code, language }: { code: string; language: BundledLanguage }) => (
+export const CodePane = ({ code, language }: { code: string; language: BundledLanguage }) => (
   <div className={PANE}>
     <CodeBlock className={CODE} code={code} language={language} />
   </div>
@@ -85,13 +86,6 @@ const PathList = ({ paths }: { paths: string[] }) => (
     })}
   </ul>
 );
-
-/** `- old` / `+ new` lines, highlighted by the diff grammar. */
-const toDiff = (oldText: string, newText: string): string =>
-  [
-    ...oldText.split("\n").map((line) => `- ${line}`),
-    ...newText.split("\n").map((line) => `+ ${line}`),
-  ].join("\n");
 
 /** Whether this step should render through the generic JSON components. */
 const isGenericStep = (tool: TimelineToolExecution, args: ToolArgs | null): boolean =>
@@ -140,6 +134,17 @@ export const ToolCallArgsView = ({
 
     case "execute":
       return text(a, "command") ? <CodePane code={text(a, "command")} language="bash" /> : null;
+
+    // The title names the sub-agent; the brief it is handed reads as Markdown.
+    case "task":
+      return text(a, "description") ? (
+        <div className={cn(PANE, "p-3")}>
+          <MarkdownRenderer
+            className={COMPACT_MARKDOWN}
+            content={undoDoubleEscaping(text(a, "description"))}
+          />
+        </div>
+      ) : null;
 
     case "remember":
       return (

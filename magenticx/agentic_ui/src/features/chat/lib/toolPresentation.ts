@@ -76,13 +76,49 @@ const TITLES: Record<string, (args: ToolArgs | null) => string | null> = {
     str(a, "query") ? `Searched past chats for "${clip(str(a, "query"), 50)}"` : null,
   view_image: (a) => (str(a, "path") ? `View ${basename(str(a, "path"))}` : null),
   create_skill: (a) => (str(a, "name") ? `Created skill "${str(a, "name")}"` : null),
+  task: (a) =>
+    str(a, "subagent_type")
+      ? `Hand off to the ${subagentName(str(a, "subagent_type"))} sub-agent`
+      : null,
 };
+
+/**
+ * `general-purpose` → `general-purpose`, `research_agent` → `research`: the
+ * sub-agent's name as it reads inside "the … sub-agent", without a trailing
+ * "agent" that would say it twice.
+ */
+export const subagentName = (type: string): string =>
+  type
+    .replace(/[_\s]+/g, " ")
+    .replace(/[-\s]?(sub[-\s]?)?agent$/i, "")
+    .trim() || type;
+
+/** A title built from the call's arguments, for the tools we know; else null. */
+export const titleFromArgs = (name: string, args: unknown): string | null =>
+  TITLES[name]?.(asToolArgs(args)) || null;
 
 /** The step's title: built from its arguments where we know the tool. */
 export const toolTitle = (name: string, args: unknown, serverId?: string): string => {
   if (isMcpTool(name, serverId)) return mcpToolTitle(name, serverId);
-  return TITLES[name]?.(asToolArgs(args)) || toolLabel(name);
+  return titleFromArgs(name, args) || toolLabel(name);
 };
+
+/** `fetch_weather` → `Fetch weather`, `maxResults` → `Max results`. */
+export const humaniseName = (name: string): string => {
+  const words = name
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[-_./]+/g, " ")
+    .trim()
+    .toLowerCase();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : name;
+};
+
+/** `- old` / `+ new` lines, highlighted by the diff grammar. */
+export const toDiff = (oldText: string, newText: string): string =>
+  [
+    ...oldText.split("\n").map((line) => `- ${line}`),
+    ...newText.split("\n").map((line) => `+ ${line}`),
+  ].join("\n");
 
 /** Full path (or pattern) for the title's hover text, where it was shortened. */
 export const toolTitleHint = (name: string, args: unknown): string | undefined => {

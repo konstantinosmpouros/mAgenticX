@@ -1,0 +1,121 @@
+/* The message composer (and the voice bar that takes its place): a solid card
+   in the active theme (no glass, no blur over it), edged with a hairline of the
+   brand colours that slowly travels around it, over a soft halo of the same
+   colours. Both come up while the user writes, and the light moves faster while
+   the agent works. Colours come from the theme tokens only, so the light is
+   M's primary in every theme.
+
+   Markup: .composer-shell (focus, busy and private state) > .composer-glow (the
+   halo, behind) + .composer-surface (the card; its ::before is the hairline). */
+
+/* The angle the light has travelled; registered so it can be animated. */
+@property --composer-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes composer-orbit {
+  to {
+    --composer-angle: 360deg;
+  }
+}
+
+.composer-shell {
+  --composer-orbit-duration: 6s;
+  position: relative;
+}
+
+.composer-shell[data-busy="true"] {
+  --composer-orbit-duration: 2.5s;
+}
+
+/* Two arcs of light (glow into primary) on opposite sides of a faint rim.
+   Declared on the two elements that animate the angle, not on the shell: a
+   custom property is resolved where it is declared, so on the shell it would
+   freeze at 0deg and the light would never move. */
+.composer-surface::before,
+.composer-glow {
+  --composer-light: conic-gradient(
+    from var(--composer-angle),
+    hsl(var(--primary) / 0.22) 0deg,
+    hsl(var(--primary-glow)) 40deg,
+    hsl(var(--primary)) 75deg,
+    hsl(var(--primary) / 0.22) 115deg,
+    hsl(var(--primary) / 0.22) 180deg,
+    hsl(var(--primary-glow)) 220deg,
+    hsl(var(--primary)) 255deg,
+    hsl(var(--primary) / 0.22) 295deg,
+    hsl(var(--primary) / 0.22) 360deg
+  );
+}
+
+.composer-surface {
+  position: relative;
+  border-radius: 1.75rem;
+  background: hsl(var(--card));
+  box-shadow: 0 1px 2px hsl(var(--foreground) / 0.05);
+}
+
+/* Private mode keeps its primary ring. Here rather than as a `ring-*` utility:
+   this file loads after the utilities, so the card's own box-shadow above
+   would override the ring. */
+.composer-shell[data-private="true"] .composer-surface {
+  box-shadow:
+    0 0 0 2px hsl(var(--primary) / 0.5),
+    0 1px 2px hsl(var(--foreground) / 0.05);
+}
+
+/* The travelling hairline: a 1px ring cut out of the moving gradient with a
+   mask, so the card itself stays solid. */
+.composer-surface::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  background: var(--composer-light);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0.8;
+  pointer-events: none;
+  animation: composer-orbit var(--composer-orbit-duration) linear infinite;
+  transition: opacity 0.3s ease;
+}
+
+/* The halo behind the card, moving with the hairline. */
+.composer-glow {
+  position: absolute;
+  inset: 10px 18px 0;
+  z-index: -1;
+  border-radius: 1.75rem;
+  background: var(--composer-light);
+  filter: blur(22px);
+  opacity: 0.4;
+  pointer-events: none;
+  animation: composer-orbit var(--composer-orbit-duration) linear infinite;
+  transition: opacity 0.3s ease;
+}
+
+.composer-shell:focus-within .composer-surface::before,
+.composer-shell[data-busy="true"] .composer-surface::before {
+  opacity: 1;
+}
+
+.composer-shell:focus-within .composer-glow,
+.composer-shell[data-busy="true"] .composer-glow {
+  opacity: 0.6;
+}
+
+/* Reduced motion: the composer's light holds still; focus and busy still
+   brighten it. */
+@media (prefers-reduced-motion: reduce) {
+  .composer-surface::before,
+  .composer-glow {
+    animation: none;
+    transition: none;
+  }
+}

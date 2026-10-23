@@ -1,6 +1,6 @@
-import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react";
 import type { Agent } from "@/shared/lib/types";
-import type { CSSProperties, RefObject } from "react";
+import type { RefObject } from "react";
 
 // ---------------------------------------------------------------------------
 // Ensure that a default agent is selected effect
@@ -133,7 +133,12 @@ type CenteredComposerLayoutArgs = {
 const DEFAULT_TEXTAREA_MAX = 280;
 const FLOATING_MAX_RATIO = 0.68;
 const MIN_TEXTAREA_HEIGHT = 48;
-const FLOATING_ANCHOR_RATIO = 0.35;
+// The empty screen's group (greeting, composer, disclaimer, suggestions) is
+// centered with this share of the free height above it (a little above the
+// middle) ...
+const GROUP_ANCHOR_RATIO = 0.42;
+// ... and never closer than this to the top of the area.
+const GROUP_MIN_MARGIN = 12;
 const MOBILE_TEXTAREA_MAX_RATIO = 0.42;
 const DESKTOP_TEXTAREA_MAX_RATIO = 0.5;
 const DESKTOP_TEXTAREA_MIN_WIDTH = 768;
@@ -144,10 +149,14 @@ export function useCenteredComposerLayout({
   currentMessage,
   attachmentsCount,
 }: CenteredComposerLayoutArgs) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const [centerAnchorOffset, setCenterAnchorOffset] = useState<number | null>(null);
+  // A callback ref held in state: the composer mounts after this hook does (once
+  // the session is known), and the measurement must start when it appears.
+  const [containerEl, setContainerEl] = useState<HTMLDivElement | null>(null);
   const [floatingMaxHeight, setFloatingMaxHeight] = useState<number>(DEFAULT_TEXTAREA_MAX);
   const [viewportMaxHeight, setViewportMaxHeight] = useState<number>(DEFAULT_TEXTAREA_MAX);
+  // How far the composer is lifted from its place at the bottom to sit in the
+  // middle of the empty screen; null when there are messages (no lift).
+  const [liftY, setLiftY] = useState<number | null>(null);
 
   const textareaMaxHeight = isMessagesEmpty ? floatingMaxHeight : DEFAULT_TEXTAREA_MAX;
   const effectiveTextareaMax = Math.max(
@@ -155,87 +164,74 @@ export function useCenteredComposerLayout({
     MIN_TEXTAREA_HEIGHT,
   );
 
-  const emptyWrapperStyle = useMemo<CSSProperties | undefined>(() => {
-    if (!isMessagesEmpty || centerAnchorOffset === null) return undefined;
-    const anchorPercent = FLOATING_ANCHOR_RATIO * 100;
-    return {
-      transform: "translateX(-50%)",
-      top: `calc(${anchorPercent}% - ${centerAnchorOffset}px)`,
-    };
-  }, [isMessagesEmpty, centerAnchorOffset]);
-
-  // Track whether the composer is at rest (nothing typed / attached). While at
-  // rest, the centered anchor stays synced to the measured height via a
-  // ResizeObserver below, so the empty composer lands in the SAME centered spot
-  // whether it mounted on a hard refresh or via a client-side "New chat"
-  // transition. (The old one-shot getBoundingClientRect ran once, before the
-  // new-chat transition had settled, so it measured a shorter height and the box
-  // sat too low — refresh measured the full height and sat correctly.) Once the
-  // user starts typing we stop updating, freezing the top so the box only ever
-  // grows downward.
+  // The composer never changes how it is positioned: it always sits at the
+  // bottom of the chat area (above the disclaimer, which stays at the very
+  // bottom), and the empty screen lifts it with a vertical offset. Moving
+  // between a conversation and a new chat is then one animated offset, never a
+  // switch of layout (absolute <-> sticky) that cannot be animated.
+  //
+  // While the composer is at rest (nothing typed or attached) its target top
+  // follows the measured heights: the greeting above it (marked
+  // `data-composer-above`) and the container's own content (composer, starter
+  // suggestions) are centered together in the space above the disclaimer, so
+  // they never overlap at any window size — and the same spot is reached
+  // whether the screen mounted on a hard refresh or through "New chat". Once
+  // the user types, that top is frozen, so the box only ever grows downward.
   const composerRestingRef = useRef(true);
   composerRestingRef.current = currentMessage.trim() === "" && attachmentsCount === 0;
+  const targetTopRef = useRef<number | null>(null);
 
   useLayoutEffect(() => {
     if (!isMessagesEmpty) {
-      setCenterAnchorOffset(null);
-      return;
-    }
-    const el = containerRef.current;
-    if (!el) return;
-
-    const measure = () => {
-      // Frozen while the user is composing — don't re-center as the box grows.
-      if (!composerRestingRef.current) return;
-      const height = el.getBoundingClientRect().height;
-      if (height <= 0) return;
-      const next = height / 2;
-      setCenterAnchorOffset((prev) => (prev !== null && Math.abs(prev - next) < 0.5 ? prev : next));
-    };
-
-    measure();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [isMessagesEmpty]);
-
-  useEffect(() => {
-    if (!isMessagesEmpty) {
+      targetTopRef.current = null;
+      setLiftY(null);
       setFloatingMaxHeight(DEFAULT_TEXTAREA_MAX);
       return;
     }
-    if (typeof window === "undefined") return;
-    const el = containerRef.current;
-    if (!el) return;
+    const el = containerEl;
+    const area = el?.parentElement;
+    if (!el || !area) return;
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => measure());
 
-    const computeMaxHeight = () => {
-      const rect = el.getBoundingClientRect();
-      const availableSpace = window.innerHeight - rect.bottom;
-      if (availableSpace > 0) {
-        const target = availableSpace * FLOATING_MAX_RATIO;
-        setFloatingMaxHeight(target > 0 ? target : DEFAULT_TEXTAREA_MAX);
-      } else {
-        setFloatingMaxHeight(DEFAULT_TEXTAREA_MAX);
+    const measure = () => {
+      // Layout sizes, not getBoundingClientRect: the lift is a transform.
+      const height = el.offsetHeight;
+      // The box's place at rest: its offset in the area (the area is its
+      // offset parent), above whatever follows it there.
+      const restTop = el.offsetTop;
+      const slotBottom = restTop + height;
+      if (slotBottom <= 0 || height <= 0) return;
+      // The greeting and the composer box sit inside the container's padding.
+      const style = getComputedStyle(el);
+      const padTop = parseFloat(style.paddingTop) || 0;
+      const padBottom = parseFloat(style.paddingBottom) || 0;
+      const above = el.querySelector<HTMLElement>("[data-composer-above]");
+      if (above) observer?.observe(above);
+      const greeting = above?.offsetHeight ?? 0;
+      if (composerRestingRef.current || targetTopRef.current === null) {
+        const group = greeting + (height - padTop - padBottom);
+        const groupTop = Math.max(GROUP_MIN_MARGIN, (slotBottom - group) * GROUP_ANCHOR_RATIO);
+        // The composer itself never drops below its place at rest.
+        targetTopRef.current = Math.min(groupTop + greeting - padTop, restTop);
       }
+      const targetTop = targetTopRef.current;
+      const next = Math.round(targetTop - restTop);
+      setLiftY((prev) => (prev === next ? prev : next));
+      const spaceBelow = slotBottom - (targetTop + height);
+      setFloatingMaxHeight(spaceBelow > 0 ? spaceBelow * FLOATING_MAX_RATIO : DEFAULT_TEXTAREA_MAX);
     };
 
-    computeMaxHeight();
-
-    const handleResize = () => computeMaxHeight();
-    window.addEventListener("resize", handleResize);
-
-    let resizeObserver: ResizeObserver | null = null;
-    if (typeof ResizeObserver !== "undefined") {
-      resizeObserver = new ResizeObserver(() => computeMaxHeight());
-      resizeObserver.observe(el);
+    measure();
+    if (!observer) return;
+    observer.observe(el);
+    observer.observe(area);
+    // What follows the box (the disclaimer) moves its place at rest when it
+    // rewraps, without the box or the area changing size.
+    for (const sibling of Array.from(area.children)) {
+      if (sibling !== el) observer.observe(sibling);
     }
-
-    return () => {
-      window.removeEventListener("resize", handleResize);
-      resizeObserver?.disconnect();
-    };
-  }, [isMessagesEmpty]);
+    return () => observer.disconnect();
+  }, [isMessagesEmpty, containerEl]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -268,8 +264,8 @@ export function useCenteredComposerLayout({
   }, [textareaRef, currentMessage, attachmentsCount, effectiveTextareaMax, isMessagesEmpty]);
 
   return {
-    containerRef,
-    emptyWrapperStyle,
+    containerRef: setContainerEl,
+    liftY,
     textareaMaxHeight: effectiveTextareaMax,
   };
 }

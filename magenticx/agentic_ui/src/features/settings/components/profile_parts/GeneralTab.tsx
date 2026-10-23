@@ -3,32 +3,16 @@ import { MoonStar, Sparkles } from "lucide-react";
 
 import { cn } from "@/shared/lib/utils";
 import type { UserPreferences } from "@/shared/lib/types";
+import { THEMES, themeFor } from "@/styles/theme/themes";
 import { InfoCard, PrefToggleRow, SoftPanel } from "./shared";
 import { ComingSoonRow } from "./ComingSoon";
 
 /**
  * GeneralTab — the workspace-wide basics, mirroring ChatGPT's "General"
  * section: appearance/theme first, then the chat-experience toggles, then the
- * fields we mirror from ChatGPT but have not built yet (stub rows).
+ * fields we mirror from ChatGPT but have not built yet (stub rows). The theme
+ * cards come from the theme registry (src/styles/theme/themes.ts).
  */
-const themeOptions = [
-  {
-    name: "Light",
-    value: "light",
-    icon: Sparkles,
-    previewClassName:
-      "bg-[linear-gradient(135deg,hsl(0_0%_100%)_0%,hsl(240_4.8%_95.9%)_52%,hsl(216_50%_92%)_100%)]",
-    cardClassName: "border-white/70 bg-white/80",
-  },
-  {
-    name: "Dark",
-    value: "dark",
-    icon: MoonStar,
-    previewClassName:
-      "bg-[linear-gradient(135deg,hsl(240_6%_6%)_0%,hsl(240_8%_10%)_55%,hsl(216_100%_8%)_100%)]",
-    cardClassName: "border-white/10 bg-black/20",
-  },
-] as const;
 
 type GeneralTabProps = {
   userPreferences: UserPreferences;
@@ -43,8 +27,10 @@ export default function GeneralTab({
   onToggleSuggestionsEnabled,
   onToggleMessageTokenUsage,
 }: GeneralTabProps) {
-  const { theme, setTheme } = useTheme();
-  const currentTheme = theme === "dark" ? "dark" : "light";
+  // resolvedTheme, not theme: with "system" stored, the card that is actually
+  // on screen is the one marked as applied.
+  const { resolvedTheme, setTheme } = useTheme();
+  const currentTheme = themeFor(resolvedTheme).id;
 
   const suggestionsEnabled = userPreferences?.suggestionsEnabled !== false;
   const showMessageTokenUsage = userPreferences?.showMessageTokenUsage === true;
@@ -57,26 +43,31 @@ export default function GeneralTab({
         description="Choose how the workspace looks. The setting applies immediately and persists on this device."
       >
         <div className="grid gap-4 md:grid-cols-2">
-          {themeOptions.map((themeOption) => {
-            const Icon = themeOption.icon;
-            const isActive = currentTheme === themeOption.value;
+          {THEMES.map((themeOption) => {
+            const Icon = themeOption.mode === "dark" ? MoonStar : Sparkles;
+            const isActive = currentTheme === themeOption.id;
 
             return (
               <button
-                key={themeOption.value}
+                key={themeOption.id}
                 type="button"
-                onClick={() => setTheme(themeOption.value)}
+                onClick={() => setTheme(themeOption.id)}
                 className={cn(
                   "rounded-[1.5rem] p-4 text-left transition-colors",
                   isActive ? "bg-primary/10" : "bg-muted/30 hover:bg-muted/45",
                 )}
               >
-                <div className={cn("h-28 rounded-[1.2rem] p-4", themeOption.cardClassName)}>
+                <div
+                  className={cn(
+                    "h-28 rounded-[1.2rem] p-4",
+                    themeOption.mode === "dark"
+                      ? "border-white/10 bg-black/20"
+                      : "border-white/70 bg-white/80",
+                  )}
+                >
                   <div
-                    className={cn(
-                      "flex h-full flex-col justify-between",
-                      themeOption.previewClassName,
-                    )}
+                    className="flex h-full flex-col justify-between"
+                    style={{ background: themeOption.preview }}
                   >
                     <div className="flex items-center gap-2">
                       <div className="h-2.5 w-2.5 rounded-full bg-primary/70" />
@@ -91,7 +82,7 @@ export default function GeneralTab({
                 </div>
                 <div className="mt-4 flex items-start justify-between gap-4">
                   <div>
-                    <p className="text-sm font-semibold text-foreground">{themeOption.name}</p>
+                    <p className="text-sm font-semibold text-foreground">{themeOption.label}</p>
                     <p className="mt-1 text-sm text-muted-foreground">
                       {isActive ? "Currently applied" : "Switch workspace theme"}
                     </p>

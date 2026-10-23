@@ -1,5 +1,5 @@
 import React from "react";
-import { Mic, MicOff, PhoneOff, Plus, FileText, Check, X } from "lucide-react";
+import { Mic, MicOff, PhoneOff, Plus, FileText, Check, Sparkles, X } from "lucide-react";
 import { HiArrowUp } from "react-icons/hi";
 import { VscMicFilled } from "react-icons/vsc";
 import { FaStop } from "react-icons/fa6";
@@ -16,12 +16,12 @@ import SplitText from "@/shared/ui/react_bits/split_text";
 import StarBorder from "@/shared/ui/react_bits/star_border";
 import { useVoiceVisualizer, VoiceVisualizer } from "react-voice-visualizer";
 import { Loader } from "@/shared/ui/shadcn-io/loader";
-import { Suggestion, Suggestions } from "@/shared/ui/ai-elements/suggestion";
 
 import type { ContextCompactionControl, ConversationStats, DictationStatus, RunContextUsage } from "@/shared/lib/types";
 import { ContextMeter } from "@/features/chat/components/ContextMeter";
 import { DraftHighlight } from "@/features/chat/components/DraftHighlight";
 import { SlashCommandMenu } from "@/features/chat/components/SlashCommandMenu";
+import { Orb } from "@/shared/ui/orb";
 import type { SlashComposer } from "@/features/chat/hooks/useSlashCommands";
 import { INTERACTIVE_SURFACE } from "@/shared/lib/consts";
 export type { DictationStatus };
@@ -72,8 +72,13 @@ type ChatInputBarProps = {
   handleFileUpload: React.ChangeEventHandler<HTMLInputElement>;
   fileInputRef: React.RefObject<HTMLInputElement>;
   textareaRef: React.RefObject<HTMLTextAreaElement>;
-  containerRef: React.RefObject<HTMLDivElement>;
-  emptyWrapperStyle?: React.CSSProperties;
+  containerRef: React.Ref<HTMLDivElement>;
+  /**
+   * How far to lift the composer from its place at the bottom so it sits in the
+   * middle of the empty screen (null: no lift). Changes animate, so moving
+   * between a conversation and a new chat is one smooth slide.
+   */
+  liftY?: number | null;
   textareaMaxHeight: number;
 
   // UI bits you already import in the page
@@ -147,7 +152,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
     fileInputRef,
     textareaRef,
     containerRef,
-    emptyWrapperStyle,
+    liftY = null,
     textareaMaxHeight,
     Tooltip,
     TooltipTrigger,
@@ -551,50 +556,61 @@ export function ChatInputBar(props: ChatInputBarProps) {
     lastStatusRef.current = dictationStatus;
   }, [clearCanvas, dictationStatus, _setIsProcessingAudioOnComplete]);
 
+  // The dictation waveform is drawn on a canvas, which cannot resolve CSS
+  // variables, so its bars take the theme's foreground as a literal colour,
+  // read from the composer when a recording opens.
+  const composerSurfaceRef = React.useRef<HTMLDivElement>(null);
+  const [waveForeground, setWaveForeground] = React.useState("0 0% 100%");
+  React.useLayoutEffect(() => {
+    if (!isInDictationMode || !composerSurfaceRef.current) return;
+    const value = getComputedStyle(composerSurfaceRef.current).getPropertyValue("--foreground").trim();
+    if (value) setWaveForeground(value);
+  }, [isInDictationMode]);
+
   const isCancelDisabled = isDictationSubmitting;
   const confirmButtonDisabled = (!isRecordingInProgress && !recordedBlob) || isDictationSubmitting;
 
   const canSubmitVoiceText = currentMessage.trim().length > 0;
   const rm = prefersReducedMotion ?? false;
 
-  const isCenteredPosition = positionClass.includes("absolute");
-  // Only animate the wrapper's position when chat-bar is the active visible bar.
-  // For voice-mode transitions in an empty conversation the wrapper's positionClass
-  // also changes (sticky-bottom <-> centered), but the bar is empty during the
-  // staging gap and the voice-bar mounts AT its final sticky-bottom slot — we don't
-  // want Framer Motion to drag the wrapper from the centered position down to the
-  // bottom, because that visually pulls the voice-bar in from the middle of the
-  // page where the persona is.
-  const animateWrapperPosition = mode === "chat" && chatBarVisible;
+  // The lift animates only when the screen changes (conversation <-> new
+  // chat), and only while the chat bar is the visible bar: in an empty
+  // conversation voice mode moves the slot between the lifted spot and the
+  // bottom while the bar is empty (useVoiceBodyTransition), and the voice bar
+  // must appear in its place rather than slide in from the middle. Any other
+  // change (the window resizing, the box growing while the user types) applies
+  // at once, so the box never lags behind its own size.
+  const liftKey = isMessagesEmpty;
+  const lastLiftKeyRef = React.useRef(liftKey);
+  const [liftAnimating, setLiftAnimating] = React.useState(false);
+  if (lastLiftKeyRef.current !== liftKey) {
+    lastLiftKeyRef.current = liftKey;
+    if (!liftAnimating) setLiftAnimating(true);
+  }
+  React.useEffect(() => {
+    if (!liftAnimating) return;
+    const timer = window.setTimeout(() => setLiftAnimating(false), 600);
+    return () => window.clearTimeout(timer);
+  }, [liftAnimating, liftKey]);
+  const animateLift = liftAnimating && !rm && mode === "chat" && chatBarVisible;
+  const isLifted = liftY !== null;
+  // Starter chips belong to the chat bar: never under the voice bar or the
+  // approval takeover.
+  const showStarterSuggestions =
+    starterSuggestions.length > 0 && mode === "chat" && chatBarVisible && !hitlTakeover;
   return (
+    // Always in the same place (sticky at the bottom); the empty screen lifts it
+    // with a transform, so it stays mounted and glides between the two spots.
+    // The composer follows the active theme (styles/composer.css); the plan
+    // card and the approval takeover keep their always-dark scope below.
     <motion.div
-      ref={containerRef as React.Ref<HTMLDivElement>}
-      layout={animateWrapperPosition ? "position" : false}
-      transition={{ layout: { duration: rm ? 0 : 0.42, ease: [0.22, 1, 0.36, 1] } }}
-      transformTemplate={(_, generatedTransform) => {
-        // Centered (absolute top-[35%]) slot. Once the wrapper height has been
-        // measured, `emptyWrapperStyle` pins the TOP edge via
-        // `top: calc(35% - centerAnchorOffset)`, so we translate on X ONLY —
-        // a -50% on Y would anchor the box by its vertical center and make it
-        // expand both up and down as the textarea auto-grows. The box must
-        // only ever grow downward from a fixed top. Before that first
-        // measurement (emptyWrapperStyle undefined) we fall back to a full
-        // translate(-50%, -50%) so the initial paint is already centered at
-        // 35% — both branches land the box in the same spot, so the switch
-        // is jump-free. We compose translateX here (not in the className)
-        // because Framer Motion's layout animation writes to `transform` and
-        // would otherwise clobber a Tailwind translate mid-animation.
-        const centerOffset = isCenteredPosition
-          ? emptyWrapperStyle
-            ? "translateX(-50%)"
-            : "translate(-50%, -50%)"
-          : "";
-        const generated = generatedTransform || "";
-        return `${centerOffset} ${generated}`.trim();
+      ref={containerRef}
+      initial={false}
+      animate={{ y: liftY ?? 0 }}
+      transition={{
+        y: animateLift ? { duration: 0.45, ease: [0.22, 1, 0.36, 1] } : { duration: 0 },
       }}
-      /* Force dark token scope so the input stays dark even in light theme */
-      className={`${positionClass} dark`}
-      style={mode === "chat" ? emptyWrapperStyle : undefined}
+      className={positionClass}
     >
       <motion.div
         animate={{ height: measuredInnerHeight ?? "auto" }}
@@ -603,11 +619,11 @@ export function ChatInputBar(props: ChatInputBarProps) {
           width: "100%",
           display: "flex",
           flexDirection: "column",
-          // Sticky-bottom bar grows/shrinks from the bottom (flex-end) so the
-          // persona above it doesn't jump during the chat<->voice swap. The
-          // centered empty-state instead top-anchors (flex-start) so the
+          // At the bottom the bar grows/shrinks from the bottom (flex-end) so
+          // the persona above it doesn't jump during the chat<->voice swap.
+          // Lifted on the empty screen it top-anchors (flex-start) so the
           // height animation reveals new textarea lines DOWNWARD, never up.
-          justifyContent: isCenteredPosition ? "flex-start" : "flex-end",
+          justifyContent: isLifted ? "flex-start" : "flex-end",
         }}
       >
         <div ref={innerMeasureRef} style={{ width: "100%" }}>
@@ -630,7 +646,12 @@ export function ChatInputBar(props: ChatInputBarProps) {
                   style={{ transformOrigin: "center bottom" }}
                 >
                   <div className="relative mx-auto max-w-3xl pointer-events-auto">
-                    <div className="relative z-20 rounded-[2rem] border border-border/70 bg-background px-3 py-3 shadow-lg">
+                    <div
+                      className="composer-shell z-20"
+                      data-busy={voiceStatus === "thinking" || voiceStatus === "speaking"}
+                    >
+                    <div aria-hidden className="composer-glow" />
+                    <div className="composer-surface px-3 py-3">
                       <div className="flex items-center gap-2">
                         <Tooltip delayDuration={0}>
                           <TooltipTrigger asChild>
@@ -715,6 +736,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
                         </StarBorder>
                       </div>
                     </div>
+                    </div>
                   </div>
                 </motion.div>
               ) : null
@@ -730,7 +752,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
                 exit={{ opacity: 0, y: rm ? 0 : 5, transition: { duration: 0.18, ease: "easeIn" } }}
                 style={{ transformOrigin: "center bottom" }}
               >
-                <div className="relative mx-auto max-w-3xl pointer-events-auto">{hitlTakeover}</div>
+                <div className="dark relative mx-auto max-w-3xl pointer-events-auto">{hitlTakeover}</div>
               </motion.div>
             ) : chatBarVisible ? (
               <motion.div
@@ -743,56 +765,82 @@ export function ChatInputBar(props: ChatInputBarProps) {
                 }}
                 exit={{ opacity: 0, y: rm ? 0 : 5, transition: { duration: 0.18, ease: "easeIn" } }}
                 style={{ transformOrigin: "center bottom" }}
+                className="relative"
               >
-                {isMessagesEmpty && (
-                  <div className="text-center py-8 md:py-16 pointer-events-none">
-                    {/* Random welcome quote */}
-                    <div className="min-h-[2.75rem] md:min-h-[3rem]">
-                      <AnimatePresence mode="wait" initial={false}>
-                        <motion.div
-                          key={quoteIndex}
-                          variants={{
-                            exit: { opacity: 0, y: prefersReducedMotion ? 0 : -8 },
-                          }}
-                          exit="exit"
-                          transition={{ duration: 0.35, ease: "easeOut" }}
-                          initial={false}
-                          className="text-xl md:text-2xl font-bold mb-2 md:mb-3"
-                        >
-                          <SplitText
-                            text={welcomeQuote}
-                            tag="h2"
-                            useScrollTrigger={false}
-                            from={{ opacity: 0, y: prefersReducedMotion ? 0 : 8 }}
-                            to={{ opacity: 1, y: 0 }}
-                            duration={1}
-                            delay={25}
-                            splitType="chars"
-                          />
-                        </motion.div>
-                      </AnimatePresence>
-                    </div>
+                {/* The greeting floats above the composer instead of taking
+                    space, so it can fade in and out without moving the box.
+                    Its height is measured (data-composer-above) to center it
+                    with the composer; on short windows the orb, then the
+                    description, step aside so nothing overlaps. */}
+                <AnimatePresence>
+                  {isMessagesEmpty && (
+                    <motion.div
+                      key="greeting"
+                      data-composer-above
+                      className="pointer-events-none absolute inset-x-0 bottom-full pb-4 text-center md:pb-6"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1, transition: { duration: 0.3, delay: rm ? 0 : 0.2 } }}
+                      exit={{ opacity: 0, transition: { duration: 0.15 } }}
+                    >
+                      <Orb
+                        state={isStreaming || thinkingActive ? "thinking" : "idle"}
+                        className="mx-auto mb-1 size-20 md:size-28 [@media(max-height:680px)]:hidden"
+                      />
 
-                    {/* Optional: keep agent description as a softer subline if present */}
-                    {currentAgent?.description && (
-                      <p className="text-muted-foreground text-sm md:text-lg max-w-md mx-auto">
-                        {currentAgent.description}
-                      </p>
-                    )}
-                  </div>
-                )}
+                      {/* Random welcome quote: room for two lines, so a longer
+                          quote never changes the greeting's height. */}
+                      <div className="flex h-[4rem] flex-col justify-center md:h-[4.75rem]">
+                        <AnimatePresence mode="wait" initial={false}>
+                          <motion.div
+                            key={quoteIndex}
+                            variants={{
+                              exit: { opacity: 0, y: prefersReducedMotion ? 0 : -8 },
+                            }}
+                            exit="exit"
+                            transition={{ duration: 0.35, ease: "easeOut" }}
+                            initial={false}
+                            className="text-xl md:text-2xl font-bold mb-2 md:mb-3"
+                          >
+                            <SplitText
+                              text={welcomeQuote}
+                              tag="h2"
+                              useScrollTrigger={false}
+                              from={{ opacity: 0, y: prefersReducedMotion ? 0 : 8 }}
+                              to={{ opacity: 1, y: 0 }}
+                              duration={1}
+                              delay={25}
+                              splitType="chars"
+                            />
+                          </motion.div>
+                        </AnimatePresence>
+                      </div>
+
+                      {/* Optional: keep agent description as a softer subline if present */}
+                      {currentAgent?.description && (
+                        <p className="text-muted-foreground text-sm md:text-lg max-w-md mx-auto [@media(max-height:560px)]:hidden">
+                          {currentAgent.description}
+                        </p>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
                 <div className="relative mx-auto max-w-3xl pointer-events-auto">
-                  {topAccessory}
+                  {/* `contents`: the accessory still positions against this box. */}
+                  <div className="dark contents">{topAccessory}</div>
                   <AnimatePresence>
                     {slash?.open ? <SlashCommandMenu key="slash-menu" slash={slash} /> : null}
                   </AnimatePresence>
-                  {/* Floating Input Container */}
+                  {/* Floating Input Container: the shell carries the focus,
+                      busy and private states for the moving light
+                      (styles/composer.css). */}
                   <div
-                    className={`relative z-20 bg-background rounded-[2rem] shadow-lg px-3 pt-3 pb-1 ${
-                      isPrivateMode ? "border-2 border-primary/50" : "border"
-                    }`}
+                    className="composer-shell z-20"
+                    data-busy={Boolean(isStreaming || thinkingActive)}
+                    data-private={isPrivateMode}
                   >
+                  <div aria-hidden className="composer-glow" />
+                  <div ref={composerSurfaceRef} className="composer-surface px-3 pt-3 pb-1">
                     <div className="flex flex-col">
                       <div
                         className={`transition-all duration-200 overflow-hidden ${attachments.length ? "mb-4 opacity-100" : "mb-0 opacity-0"}`}
@@ -860,10 +908,10 @@ export function ChatInputBar(props: ChatInputBarProps) {
                               </div>
                             </div>
                             {attachmentFade.left && (
-                              <div className="pointer-events-none absolute inset-y-0 left-0 w-5 rounded-l-2xl bg-gradient-to-r from-background via-background/88 to-transparent" />
+                              <div className="pointer-events-none absolute inset-y-0 left-0 w-5 rounded-l-2xl bg-gradient-to-r from-card via-card/88 to-transparent" />
                             )}
                             {attachmentFade.right && (
-                              <div className="pointer-events-none absolute inset-y-0 right-0 w-5 rounded-r-2xl bg-gradient-to-l from-background via-background/88 to-transparent" />
+                              <div className="pointer-events-none absolute inset-y-0 right-0 w-5 rounded-r-2xl bg-gradient-to-l from-card via-card/88 to-transparent" />
                             )}
                           </div>
                         )}
@@ -929,8 +977,8 @@ export function ChatInputBar(props: ChatInputBarProps) {
                               isAudioProcessingTextShown={false}
                               height={49}
                               backgroundColor="transparent"
-                              mainBarColor="rgba(255,255,255,0.85)"
-                              secondaryBarColor="rgba(255,255,255,0.25)"
+                              mainBarColor={`hsl(${waveForeground} / 0.85)`}
+                              secondaryBarColor={`hsl(${waveForeground} / 0.25)`}
                               barWidth={1}
                               gap={2}
                               rounded={5}
@@ -954,7 +1002,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
                               >
                                 <Plus
                                   size={24}
-                                  className="text-muted-foreground active:text-white"
+                                  className="text-muted-foreground active:text-foreground"
                                 />
                               </button>
                             </TooltipTrigger>
@@ -978,7 +1026,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
                                 >
                                   <VscMicFilled
                                     size={21}
-                                    className="text-muted-foreground active:text-white"
+                                    className="text-muted-foreground active:text-foreground"
                                   />
                                 </button>
                               </TooltipTrigger>
@@ -1070,6 +1118,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
                       </div>
                     </div>
                   </div>
+                  </div>
 
                   <input
                     ref={fileInputRef}
@@ -1082,50 +1131,49 @@ export function ChatInputBar(props: ChatInputBarProps) {
                       e.currentTarget.value = "";
                     }}
                   />
-                  <AnimatePresence initial={false}>
-                    {starterSuggestions.length > 0 ? (
-                      <motion.div
-                        key="starter-suggestions"
-                        initial={{
-                          opacity: 0,
-                          y: prefersReducedMotion ? 0 : -4,
-                          filter: "blur(6px)",
-                        }}
-                        animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                        exit={{ opacity: 0, y: prefersReducedMotion ? 0 : -4, filter: "blur(6px)" }}
-                        transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
-                        className="absolute left-0 right-0 top-[calc(100%+0.75rem)] z-10"
-                      >
-                        <Suggestions wrap className="px-1">
-                          {starterSuggestions.map((suggestion, index) => (
-                            <motion.div
-                              key={suggestion}
-                              initial={{ opacity: 0, y: prefersReducedMotion ? 0 : 8, scale: 0.98 }}
-                              animate={{ opacity: 1, y: 0, scale: 1 }}
-                              exit={{ opacity: 0, y: prefersReducedMotion ? 0 : 6, scale: 0.98 }}
-                              transition={{
-                                duration: 0.36,
-                                delay: prefersReducedMotion ? 0 : index * 0.045,
-                                ease: [0.22, 1, 0.36, 1],
-                              }}
-                            >
-                              <Suggestion
-                                suggestion={suggestion}
-                                onClick={onStarterSuggestionSelect}
-                                className="border-border/60 bg-background/80 text-muted-foreground shadow-sm backdrop-blur transition-colors duration-200 hover:bg-[hsl(var(--hover-surface))] hover:text-foreground"
-                              />
-                            </motion.div>
-                          ))}
-                        </Suggestions>
-                      </motion.div>
-                    ) : null}
-                  </AnimatePresence>
                 </div>
               </motion.div>
             ) : null}
           </AnimatePresence>
         </div>
       </motion.div>
+
+      {/* Ready-to-send starter chips (the personalised suggestions, while the
+          preference allows them). In the flow rather than floating, so the
+          empty screen centers the composer together with them; the height
+          opens and closes so the composer glides instead of jumping when
+          they arrive after it. Hidden on very short windows. */}
+      <AnimatePresence initial={false}>
+        {showStarterSuggestions ? (
+          <motion.div
+            key="starter-suggestions"
+            role="group"
+            aria-label="Suggested messages"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: rm ? 0 : 0.32, ease: [0.22, 1, 0.36, 1] }}
+            className="mx-auto max-w-3xl overflow-hidden pointer-events-auto [@media(max-height:480px)]:hidden"
+          >
+            <div className="flex flex-wrap justify-center gap-2 px-1 pb-1 pt-4">
+              {starterSuggestions.map((suggestion, index) => (
+                <motion.button
+                  key={suggestion}
+                  type="button"
+                  onClick={() => onStarterSuggestionSelect?.(suggestion)}
+                  initial={rm ? { opacity: 0 } : { opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, delay: rm ? 0 : 0.04 * index, ease: [0.22, 1, 0.36, 1] }}
+                  className="inline-flex max-w-full items-center gap-2 rounded-full border border-border/70 bg-card/80 px-3.5 py-2 text-left text-sm text-muted-foreground shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70 supports-[hover:hover]:hover:border-primary/30 supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] supports-[hover:hover]:hover:text-foreground"
+                >
+                  <Sparkles className="size-4 shrink-0 text-primary" aria-hidden />
+                  <span className="truncate">{suggestion}</span>
+                </motion.button>
+              ))}
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </motion.div>
   );
 }

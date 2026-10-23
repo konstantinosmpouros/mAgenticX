@@ -90,6 +90,25 @@ export type ContentBlock = {
   text: string;
 };
 
+/**
+ * Where a sub-agent is in its work, folded from the run's events:
+ *   - `pending`: the orchestrator called `task`, nothing has run yet (never
+ *     spins — a rejected call stays here and is not shown once the run settles);
+ *   - `running`: its events are arriving;
+ *   - `awaiting_approval`: paused on a human approval (its own gated tool, or
+ *     the `task` call itself before it spawned);
+ *   - `done` / `failed`: SUBAGENT_COMPLETED arrived (the orchestrator got its
+ *     `task` result), or the run ended while it was running — `failed` and
+ *     `cancelled` follow the run's terminal status and stay distinct.
+ */
+export type SubagentRunStatus =
+  | "pending"
+  | "running"
+  | "awaiting_approval"
+  | "done"
+  | "failed"
+  | "cancelled";
+
 export type SubagentBlock = {
   kind: "subagent";
   id: string;
@@ -110,6 +129,13 @@ export type SubagentBlock = {
    * is a refused tool call, not a sub-agent.
    */
   spawned?: boolean;
+  /** Absent on blocks folded before statuses existed: read as pending/running. */
+  status?: SubagentRunStatus;
+  /** Set when the run's terminal status (not SUBAGENT_COMPLETED) ended it. */
+  endedByRun?: boolean;
+  /** Epoch ms: first event from inside the sub-agent / its completion. */
+  startedAt?: number;
+  endedAt?: number;
   blocks: (ThinkingBlock | ContentBlock)[];
 };
 
@@ -313,4 +339,6 @@ export type SubagentItem = {
   text?: string;
   tools?: SubagentTool[];
   interrupts?: SubagentInterrupt[];
+  startedAt?: number;
+  endedAt?: number;
 };

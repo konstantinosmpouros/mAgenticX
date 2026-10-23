@@ -122,7 +122,7 @@ export function useComposer({
 
   const {
     containerRef: composerContainerRef,
-    emptyWrapperStyle,
+    liftY,
     textareaMaxHeight,
   } = useCenteredComposerLayout({
     isMessagesEmpty,
@@ -154,7 +154,7 @@ export function useComposer({
     textareaRef,
     composerContainerRef,
     // layout
-    emptyWrapperStyle,
+    liftY,
     textareaMaxHeight,
     // dictation
     dictationStatus,

@@ -24,20 +24,23 @@
    interstitial. `@layer`-wrapped rules are hoisted to their directive by Tailwind
    and are position-independent, but the unlayered ones are not.
 
-   Within the domain imports, `tokens.light.css` precedes `tokens.dark.css` so the
-   `.dark` overrides win, and every file keeps the source order its rules had. */
+   The theme comes first (src/styles/theme: Light, the default, then every other
+   theme, so their overrides win), and every other file keeps the source order
+   its rules had. */
 
 @import "tailwindcss/base";
 @import "tailwindcss/components";
 @import "tailwindcss/utilities";
 
-@import "./styles/tokens.light.css";
-@import "./styles/tokens.dark.css";
+@import "./styles/theme/light.css";
+@import "./styles/theme/dark.css";
 @import "./styles/base.css";
 @import "./styles/voice-transitions.css";
-@import "./styles/voice-orb.css";
 @import "./styles/skeleton.css";
 @import "./styles/toast.css";
 @import "./styles/markdown.css";
 @import "./styles/scrollbars.css";
 @import "./styles/misc.css";
+@import "./styles/composer.css";
+@import "./styles/orb.css";
+@import "./styles/subagent.css";

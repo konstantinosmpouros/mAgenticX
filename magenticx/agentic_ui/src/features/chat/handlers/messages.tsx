@@ -1,5 +1,5 @@
 import { useMemo, useCallback } from "react";
-import type { FC, Dispatch, SetStateAction } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import type { MessageOut, ConversationDetail, ThinkingState } from "@/shared/lib/types";
 import {
   likeMessage as apiLikeMessage,
@@ -423,7 +423,7 @@ type AiTransitionHandlersCtx = {
 /**
  * Is `branchPath` the branch currently on screen (or a prefix of it)?
  *
- * Exported because the transition dot and the HITL takeover must agree: both
+ * Exported because the transition orb and the HITL takeover must agree: both
  * belong to the run, and a run lives on ONE branch. An empty/absent path means
  * "unknown", which passes — callers that know the run's path should supply it.
  */
@@ -431,7 +431,7 @@ export const isBranchPathVisible = (branchPath?: string[], activePath?: string[]
   if (!branchPath || branchPath.length === 0) return true;
   if (!activePath || activePath.length < branchPath.length) return false;
   for (let i = 0; i < branchPath.length; i += 1) {
-    // The transition dot should only appear on the branch currently rendered in the body.
+    // The transition orb should only appear on the branch currently rendered in the body.
     if (branchPath[i] !== activePath[i]) {
       return false;
     }
@@ -441,25 +441,12 @@ export const isBranchPathVisible = (branchPath?: string[], activePath?: string[]
 
 export function createAiTransitionHandlers(ctx: AiTransitionHandlersCtx) {
   const { showAiTransition, thinkingState, activeBranchPath, runBranchPath } = ctx;
-
-  const AiTransitionIndicator: FC = () => {
-    // Prefer the thinking state's path (it is the more specific signal once the
-    // agent has started), then fall back to the run's own.
-    const branchPath = thinkingState?.branchPath ?? runBranchPath;
-    const branchVisible = isBranchPathVisible(branchPath, activeBranchPath);
-    // Hide the bridge dot once real thinking starts or once the user is looking at a different branch.
-    if (!showAiTransition || thinkingState?.isActive || !branchVisible) {
-      return null;
-    }
-
-    return (
-      <div className="flex justify-start pl-2">
-        {/* Semantic token, not bg-white: foreground is dark in light mode (visible) and
-            light in dark mode (visible) — a hardcoded white dot vanished on light backgrounds. */}
-        <div className="size-3 rounded-full bg-foreground/90 shadow-sm transform-gpu motion-safe:animate-pulse-scale" />
-      </div>
-    );
-  };
-
-  return { AiTransitionIndicator };
+  // Prefer the thinking state's path (it is the more specific signal once the
+  // agent has started), then fall back to the run's own.
+  const branchPath = thinkingState?.branchPath ?? runBranchPath;
+  const branchVisible = isBranchPathVisible(branchPath, activeBranchPath);
+  // The bridge orb (AiTransitionIndicator) goes once real thinking starts, or
+  // while the user is looking at a different branch.
+  const showAiTransitionIndicator = showAiTransition && !thinkingState?.isActive && branchVisible;
+  return { showAiTransitionIndicator };
 }

@@ -2,6 +2,7 @@ import { useTheme } from "next-themes";
 import { Toaster as SonnerToaster } from "sonner";
 
 import { useIsMobile } from "@/shared/hooks/use-mobile";
+import { themeFor } from "@/styles/theme/themes";
 
 type ToasterProps = React.ComponentProps<typeof SonnerToaster>;
 
@@ -15,12 +16,13 @@ type ToasterProps = React.ComponentProps<typeof SonnerToaster>;
  * the dismiss timer, and the ARIA live region.
  */
 export function Toaster(props: ToasterProps) {
-  const { theme = "system" } = useTheme();
+  const { resolvedTheme } = useTheme();
   const isMobile = useIsMobile();
 
   return (
     <SonnerToaster
-      theme={theme as ToasterProps["theme"]}
+      // Sonner only knows light and dark: hand it the active theme's mode.
+      theme={themeFor(resolvedTheme).mode}
       position={isMobile ? "top-center" : "bottom-right"}
       expand={false}
       visibleToasts={3}
