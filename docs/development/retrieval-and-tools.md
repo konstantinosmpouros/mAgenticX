@@ -1,6 +1,6 @@
 # Retrieval and Tools
 
-The platform exposes two kinds of external capability to agents: **retrieval** (semantic search over a vector store and SQL queries over uploaded spreadsheets) and **tools** (arbitrary actions provided by MCP servers). Both are accessed through the same request path — the agent is loaded, MCP tools are attached, and the agent decides at runtime which tools to call. The RAG service is a separate FastAPI process that agents reach through a dedicated endpoint; it never talks to the dialogue bridge directly.
+The platform exposes two kinds of external capability to agents: **retrieval** (semantic search over a vector store and SQL queries over uploaded spreadsheets) and **tools** (arbitrary actions provided by MCP servers). Both are accessed through the same request path — the agent is loaded, MCP tools are attached, and the agent decides at runtime which tools to call. MCP is an **opt-in add-on**: with `MCP_GATEWAY_URL` unset (the default) or a gateway that can't be reached, no MCP tools are attached and the run goes ahead with the agent's own tools. The RAG service is a separate FastAPI process that agents reach through a dedicated endpoint; it never talks to the dialogue bridge directly.
 
 ---
 
@@ -16,8 +16,8 @@ flowchart LR
     Duck["DuckDB\n(in-memory)"]
 
     Bridge -->|"POST /agents/{slug}/stream"| Agents
-    Agents -->|"SSE list_tools"| MCP
-    Agents -->|"call_tool RPC"| MCP
+    Agents -.->|"SSE list_tools (MCP on only)"| MCP
+    Agents -.->|"call_tool RPC"| MCP
     MCP -->|"POST /retrieve/{collection}"| RAG
     MCP -->|"POST /excel/{table}/query/sql"| RAG
     RAG --> Chroma
@@ -46,8 +46,10 @@ sequenceDiagram
     Bridge->>Bridge: serialize message history with images
     Bridge->>Agents: POST /agents/{slug}/stream {messages, config}
 
-    Agents->>MCP: SSE: initialize + list_tools
-    MCP-->>Agents: [Tool definitions]
+    opt MCP on and gateway reachable (else no MCP tools)
+        Agents->>MCP: SSE: initialize + list_tools
+        MCP-->>Agents: [Tool definitions]
+    end
     Agents->>Agents: filter live tools to the agent's resolved set\n(agent.yaml declared − tool_prefs.json disabled), attach
 
     Agents->>Agents: agent.astream() — LangGraph execution
@@ -70,7 +72,7 @@ sequenceDiagram
 
 ## Phase 1 — Tool Discovery and the Manifest Cache
 
-The agents service maintains an in-memory manifest cache (`_MCP_TOOL_MANIFEST_CACHE`) populated by calling `GET /tools` on the MCP gateway via an SSE client. The cache key format is `"{server_id}/{tool_name}"` for named servers and `"{tool_name}"` for tools with no explicit server identity.
+The agents service maintains an in-memory manifest cache (`_MCP_TOOL_MANIFEST_CACHE`) populated by an SSE `list_tools()` call to the MCP gateway (never touched when MCP is off). The cache key format is `"{server_id}/{tool_name}"` for named servers and `"{tool_name}"` for tools with no explicit server identity.
 
 **Server ID overrides** are hardcoded in `mcp_tools.py` for known multi-tool servers. A tool named `tavily-search` is automatically assigned `server_id="tavily"`, and `download_paper` is assigned `server_id="arxiv"` — these overrides ensure clean keys even when the MCP server does not declare a server_id in tool metadata:
 
@@ -87,12 +89,14 @@ _TOOL_SERVER_OVERRIDES: dict[str, str] = {
 }
 ```
 
-`list_mcp_tools()` is called from two places:
+`list_mcp_tools()` is called from two places — both discovery, never a run (`event_stream()` loads its live LangChain tools through its own session, Phase 2):
 
 - The `GET /tools` endpoint in the agents service (serves the UI tool catalog)
-- The `event_stream()` generator on every inference request (loads live LangChain tool objects)
+- The agent-tools endpoint (`router/agent_tools.py`), which warms the cache before listing an agent's tools — only when MCP is on
 
 When `MCP_MANIFEST_CACHE_ENABLED=true` and the cache is already populated, a `GET /tools` request logs `tools_cache_hit` and returns the cached list without hitting the gateway. A `force_refresh=True` call always fetches fresh data.
+
+With MCP off, `list_mcp_tools()` returns `[]` and `GET /tools` answers `[]` with 200 (`tools_mcp_disabled`) without calling anything. With MCP on, a fetch connects and finishes the handshake within `MCP_CONNECT_TIMEOUT_SECONDS`; a failed fetch is remembered for 30 s, during which fetches fail fast (`mcp_tools_fetch_skipped`), and `GET /tools` returns 502.
 
 `ToolManifest` fields exposed to the UI:
 
@@ -107,23 +111,25 @@ When `MCP_MANIFEST_CACHE_ENABLED=true` and the cache is already populated, a `GE
 
 ## Phase 2 — Per-Request MCP Session and Tool Attachment
 
-Every inference stream request opens a fresh MCP session, but **which** tools attach is decided by the agent itself, not by the request. The old model — where the client computed an `enabledTools` list and the bridge forwarded it as `config["tools"]` — is retired. `BaseAgent.__init__` no longer seeds its tool filter from the request config; `config_tools` / `config_tool_names` default empty. Instead:
+Every inference stream (and resume) request tries to open a fresh MCP session via `optional_mcp_session()` — which yields `None` when MCP is off, the gateway is unreachable, or the connect + handshake misses `MCP_CONNECT_TIMEOUT_SECONDS`, and the run then attaches no MCP tools rather than failing. **Which** tools attach is decided by the agent itself, not by the request. The old model — where the client computed an `enabledTools` list and the bridge forwarded it as `config["tools"]` — is retired. `BaseAgent.__init__` no longer seeds its tool filter from the request config; `config_tools` / `config_tool_names` default empty. Instead:
 
 - A **deep agent declares its tools per agent** in its `agent.yaml` `tools:` list (native + MCP). A `YamlDeepAgent` resolves that declared set from its spec at build time.
 - A user **disables specific tools per (user, agent)** in Settings → Agents. That disabled set is persisted server-side in a `tool_prefs.json` at the agent's root (`harness/filesystem/tool_prefs.py`). The agent's **effective tool set = declared − disabled** (`_apply_tool_disables`).
 
 ```mermaid
 flowchart TD
-    A["event_stream() starts"] --> B["mcp_session_context()"]
-    B --> C["SSE client connects to MCP gateway"]
+    A["event_stream() starts"] --> B["optional_mcp_session()"]
+    B -->|"session"| C["SSE client connected + initialized"]
+    B -->|"None: MCP off / unreachable / timeout"| N["live_tools = []"]
+    N --> F
     C --> D["await load_mcp_tools(session)"]
     D --> E["Returns LangChain tool objects\n(distinct from manifest-only cache)"]
     E --> F["agent.attach_tools(live_tools)"]
     F --> G["Filter to the agent's resolved set:\nagent.yaml declared − tool_prefs.json disabled"]
-    G --> H["Missing tools logged at WARNING"]
+    G --> H["Missing tools logged at WARNING\n(MCP off: one INFO agent_tools_mcp_disabled)"]
     H --> I["agent.tools populated, agent.tools_names populated"]
     I --> J["agent.astream() starts"]
-    J --> K["mcp_session_context() closes on exit"]
+    J --> K["optional_mcp_session() closes on exit"]
 ```
 
 `agent.attach_tools()` filters the live tool list down to the agent's resolved tool set. Tools outside that set are silently dropped: the MCP gateway may expose 50 tools but the agent sees only the ones its `agent.yaml` declares and its owner has not disabled. Because the client sends no tool list, an empty request config never widens or narrows what the agent can call.
@@ -331,9 +337,9 @@ This is the only point in the pipeline where blob storage is accessed for infere
 
 ## Sharp Edges and Behavioral Notes
 
-- **The MCP session lives for exactly one inference request.** A new SSE connection is opened and closed for every call to `event_stream()`. There is no connection pool or shared session. If the MCP gateway is unreachable, the inference request fails immediately.
+- **The MCP session lives for exactly one inference request.** A new SSE connection is opened and closed for every call to `event_stream()`. There is no connection pool or shared session. If MCP is off or the gateway is unreachable, the run does **not** fail: it waits at most `MCP_CONNECT_TIMEOUT_SECONDS` (default 10), logs `mcp_session_unavailable`, and runs with the agent's own tools. Each run retries the gateway itself, so one that comes back is picked up by the next chat.
 
-- **Tool attachment is a filter, not a lookup — and the filter source is the agent, not the request.** `attach_tools()` receives the full list of live tools from the MCP gateway and keeps only those in the agent's resolved set (`agent.yaml` declared − `tool_prefs.json` disabled). If a declared tool matches no live tool, the mismatch is logged at WARNING and the agent runs without it — it does not error. The client no longer supplies a tool list, so `config_tools` / `config_tool_names` are empty.
+- **Tool attachment is a filter, not a lookup — and the filter source is the agent, not the request.** `attach_tools()` receives the full list of live tools from the MCP gateway and keeps only those in the agent's resolved set (`agent.yaml` declared − `tool_prefs.json` disabled). If a declared tool matches no live tool, the mismatch is logged at WARNING (`agent_tools_missing`) and the agent runs without it — it does not error. With MCP off, the filter returns nothing and logs one INFO `agent_tools_mcp_disabled` instead. The client no longer supplies a tool list, so `config_tools` / `config_tool_names` are empty.
 
 - **The DuckDB instance is per-process and in-memory.** Restarting the RAG service reloads all Excel files from disk into a fresh DuckDB instance. Any query sent between the process restart and the first workbook load will 404. The `TABLES` global is only populated after `_lifespan()` completes.
 
@@ -366,7 +372,7 @@ This is the only point in the pipeline where blob storage is accessed for infere
 | RAG service settings | [magenticx/rag_service/core/settings.py](../../magenticx/rag_service/core/settings.py) | `RagSettings`, `ApiKeysSettings`, `ProxySettings` |
 | RAG error handling | [magenticx/rag_service/core/error_handling.py](../../magenticx/rag_service/core/error_handling.py) | `RagOperationErrorHandler`, `register_exception_handlers` |
 | MCP tool cache & manifest | [magenticx/agents/utils/mcp_tools.py](../../magenticx/agents/utils/mcp_tools.py) | `_MCP_TOOL_MANIFEST_CACHE`, `list_mcp_tools()`, `_prime_manifest_cache()` |
-| MCP session per request | [magenticx/agents/utils/mcp_tools.py](../../magenticx/agents/utils/mcp_tools.py) | `mcp_session_context()`, `load_mcp_tools()` |
+| MCP session per request | [magenticx/agents/utils/mcp_tools.py](../../magenticx/agents/utils/mcp_tools.py) | `optional_mcp_session()`, `_gateway_session()`, `load_mcp_tools()` |
 | Tool server ID overrides | [magenticx/agents/utils/mcp_tools.py](../../magenticx/agents/utils/mcp_tools.py) | `_TOOL_SERVER_OVERRIDES` |
 | Agent base (tool filtering) | [magenticx/agents/harness/abstractions/base_agent.py](../../magenticx/agents/harness/abstractions/base_agent.py) | `attach_tools()`; `config_tools`/`config_tool_names` now default empty (no longer seeded from the request config) |
 | Per-(user, agent) tool disables | [magenticx/dialogue_bridge/utils/agent_tool_prefs.py](../../magenticx/dialogue_bridge/utils/agent_tool_prefs.py) | `tool_prefs.json` load/save, `_apply_tool_disables()` (declared − disabled) |

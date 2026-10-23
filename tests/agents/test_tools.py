@@ -57,3 +57,19 @@ async def test_tools_route_returns_502_when_gateway_fails(client, agents_service
 
     assert response.status_code == 502
     assert response.json()["detail"] == "Tool catalog is temporarily unavailable."
+
+
+async def test_tools_route_serves_an_empty_catalog_when_mcp_is_off(client, agents_service, internal_headers, monkeypatch):
+    # MCP off is a normal state, not an outage: 200 and an empty list, and the
+    # gateway is never asked.
+    monkeypatch.setattr(agents_service.settings_module.settings.mcp, "mcp_gateway_url", "")
+
+    async def must_not_refresh():
+        raise AssertionError("no gateway call when MCP is off")
+
+    monkeypatch.setattr(agents_service.router_catalog, "list_mcp_tools", must_not_refresh)
+
+    response = await client.get("/tools", headers=internal_headers)
+
+    assert response.status_code == 200
+    assert response.json() == []

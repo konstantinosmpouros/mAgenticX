@@ -180,6 +180,7 @@ def _restore_settings(captured: list[tuple[object, dict, set]]) -> None:
 _DICT_CACHES = (
     ("utils.agents", "_USER_AGENT_CACHE"),
     ("utils.mcp_tools", "_MCP_TOOL_MANIFEST_CACHE"),
+    ("utils.mcp_tools", "_FETCH_FAILED_UNTIL"),
 )
 
 

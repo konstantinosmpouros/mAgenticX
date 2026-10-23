@@ -157,7 +157,7 @@ export function useAuthRehydrateEffect(params: {
         setConversationsLoading?.(true);
 
         let hasSnapshotAgents = false;
-        let needsTools = Boolean(setAvailableTools);
+        const needsTools = Boolean(setAvailableTools);
         let needsPreferences = Boolean(setUserPreferences);
         let needsConversations = true;
 
@@ -183,9 +183,10 @@ export function useAuthRehydrateEffect(params: {
             if (setUserPreferences) setUserPreferences(snapshot.userPreferences ?? null);
             setConversations(snapshot.conversations ?? []);
 
-            needsTools =
-              Boolean(setAvailableTools) &&
-              !(snapshot.availableTools && snapshot.availableTools.length > 0);
+            // Tools are always refetched, like agents: the snapshot only paints
+            // the first frame. Skipping the fetch when the snapshot had tools
+            // kept a catalog that no longer exists (MCP turned off, a server
+            // removed) on screen across reloads until the next sign-in.
             needsPreferences = Boolean(setUserPreferences) && !snapshot.userPreferences;
             needsConversations = true;
           }

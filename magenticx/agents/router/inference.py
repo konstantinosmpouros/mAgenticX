@@ -27,7 +27,7 @@ from schema import (
     UndoCompactionRequest,
     UndoCompactionResponse,
 )
-from utils import emit_checkpoint_committed, mcp_session_context, release_checkpoint_unless_paused
+from utils import emit_checkpoint_committed, optional_mcp_session, release_checkpoint_unless_paused
 from utils.agents import resolve_agent_definition
 from utils.compaction import compact_agent_thread, undo_agent_compaction
 
@@ -107,10 +107,11 @@ async def stream_agent(agent_slug: str, req: Request):
     async def event_stream():
         try:
             agent_logger.info("agent_stream_started", "Agent stream execution started", context=request_context)
-            async with mcp_session_context() as session:
-                agent_logger.info("mcp_session_connected", "MCP session connected for agent stream", context=request_context)
-                live_tools = await load_mcp_tools(session)
-                agent_logger.info("mcp_tools_loaded", "Loaded live MCP tools for agent stream", context=request_context, live_tool_count=len(live_tools))
+            # MCP is optional: no gateway (off, or unreachable) means a run with
+            # the agent's own tools only, never a failed run.
+            async with optional_mcp_session() as session:
+                live_tools = await load_mcp_tools(session) if session is not None else []
+                agent_logger.info("mcp_tools_loaded", "Loaded live MCP tools for agent stream", context=request_context, live_tool_count=len(live_tools), mcp_available=session is not None)
                 agent.attach_tools(live_tools)
                 agent_logger.info("agent_tools_attached", "Agent tools attached for stream", context=request_context, attached_tool_count=len(getattr(agent, "tools_names", [])))
                 if isinstance(fork_from, dict) and stream_thread_id:
@@ -332,8 +333,8 @@ async def resume_agent(agent_slug: str, req: AgentResumeRequest):
     async def event_stream():
         try:
             agent_logger.info("agent_resume_started", "Agent resume execution started", context=request_context)
-            async with mcp_session_context() as session:
-                live_tools = await load_mcp_tools(session)
+            async with optional_mcp_session() as session:
+                live_tools = await load_mcp_tools(session) if session is not None else []
                 agent.attach_tools(live_tools)
                 async for chunk in agent.astream(payload={"messages": []}, command=resume_command):
                     yield chunk

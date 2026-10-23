@@ -10,15 +10,15 @@ The platform supports two agent patterns: **LangGraph agents** (explicit graph-b
 flowchart LR
     Registry["AGENT_REGISTRY\n(populated at startup)"]
     Stream["POST /agents/{slug}/stream"]
-    MCP["MCP Gateway"]
+    MCP["MCP Gateway (optional)"]
     Agent["Agent instance\n(LangGraph or Deep)"]
     Norm["AGUIStreamNormalizer"]
     Bridge["dialogue_bridge"]
 
     Registry -->|"definition.cls(config)"| Agent
     Stream --> Registry
-    Stream -->|"load_mcp_tools(session)"| MCP
-    MCP -->|"live LangChain tools"| Agent
+    Stream -.->|"load_mcp_tools(session), when MCP is on"| MCP
+    MCP -.->|"live LangChain tools"| Agent
     Agent -->|"raw LangGraph chunks"| Norm
     Norm -->|"AG-UI SSE bytes"| Bridge
 ```
@@ -42,9 +42,13 @@ sequenceDiagram
     EP->>EP: agent = cls(config=config)
     Note over EP,Agent: _validate_config: tools, run_config, context
 
-    EP->>MCP: mcp_session_context() → SSE session
-    EP->>MCP: load_mcp_tools(session)
-    MCP-->>EP: live LangChain tool objects
+    EP->>MCP: optional_mcp_session() → SSE session or None
+    alt session (MCP on, gateway reachable)
+        EP->>MCP: load_mcp_tools(session)
+        MCP-->>EP: live LangChain tool objects
+    else None (MCP off / unreachable / handshake timeout)
+        Note over EP: live_tools = [] — the run goes on with the agent's own tools
+    end
     EP->>Agent: attach_tools(live_tools)
     Note over Agent: filter by config_tool_names, exclude reserved
 
@@ -97,9 +101,9 @@ self.context            # {"user_id": "...", "conversation_id": "..."}
 
 ### Tool Attachment
 
-`attach_tools(live_tools)` is called once per request after the MCP session loads tools:
+`attach_tools(live_tools)` is called once per request after the MCP session loads tools (an empty list when MCP is off or the gateway can't be reached — `optional_mcp_session()` yields `None` and the run is never failed for lack of MCP):
 
-1. `_filter_live_tools(live_tools)` — keeps only tools whose cache key is in `self.config_tool_names`. Logs a WARNING for any configured key that has no matching live tool.
+1. `_filter_live_tools(live_tools)` — keeps only tools whose cache key is in `self.config_tool_names`. Logs a WARNING (`agent_tools_missing`) for any configured key that has no matching live tool — unless MCP is off on the deployment, where it returns `[]` with one INFO `agent_tools_mcp_disabled` instead.
 2. `_apply_live_tools(filtered)` — extends `self.tools` and updates `self.tools_names`.
 
 After `attach_tools()`, `self.tools` is the list of LangChain tool objects to pass to LLMs or agent factories.
@@ -573,7 +577,9 @@ tools:
 
 `YamlDeepAgent` seeds these into `self.config_tool_names` via `_build_tool_key_from_config()` (cache keys like `"tavily/tavily-search"`, `"arxiv/download_paper"`) — the base `BaseAgent` leaves them empty, since nothing tool-related rides on the request anymore.
 
-At stream time, the MCP gateway provides live LangChain tool objects. `attach_tools()` keeps only the ones whose cache key matches an entry in `self.config_tool_names`, then a deep agent's `_apply_tool_disables()` subtracts the per-(user, agent) disabled set (Settings → Agents, stored in `tool_prefs.json`).
+At stream time, the MCP gateway provides live LangChain tool objects. `attach_tools()` keeps only the ones whose cache key is in `(config_tool_names ∪ user-enabled) − user-disabled` (`_filter_live_tools`; the user's choices come from Settings → Agents on the run config).
+
+MCP is an **opt-in add-on** (`MCP_GATEWAY_URL` empty by default). With MCP off, or a gateway that can't be reached within `MCP_CONNECT_TIMEOUT_SECONDS`, the run gets no MCP tools and goes ahead with the agent's native and framework tools — so write instructions that still make sense without the MCP tools. Declared MCP refs stay in `agent.yaml`; the Agents tab lists them as unavailable ("MCP is not enabled on this deployment").
 
 ### Tool Cache Key Format
 
@@ -892,7 +898,7 @@ Each lifecycle hook runs exactly once per instance. Exceptions in `register_agen
 | Checkpointer settings | [magenticx/agents/core/settings.py](../../magenticx/agents/core/settings.py) | `CheckpointerSettings` — `AGENT_RUNTIME_DATABASE_URL`, `LANGGRAPH_STRICT_MSGPACK`, `LANGGRAPH_AES_KEY_FILE` |
 | Namespace-cache release | [magenticx/agents/utils/checkpointer.py](../../magenticx/agents/utils/checkpointer.py) | `release_checkpoint_unless_paused()` (RAM cache only; never deletes Postgres) |
 | Agent discovery | [magenticx/agents/utils/agents.py](../../magenticx/agents/utils/agents.py) | `_discover_agents()`, `AGENT_REGISTRY`, `AgentDefinition` |
-| Tool cache key logic | [magenticx/agents/utils/mcp_tools.py](../../magenticx/agents/utils/mcp_tools.py) | `build_tool_cache_key()`, `_TOOL_SERVER_OVERRIDES`, `mcp_session_context()` |
+| Tool cache key logic | [magenticx/agents/utils/mcp_tools.py](../../magenticx/agents/utils/mcp_tools.py) | `build_tool_cache_key()`, `_TOOL_SERVER_OVERRIDES`, `optional_mcp_session()`, `_gateway_session()` |
 | AG-UI event emitter | [magenticx/agents/harness/agui/emitter.py](../../magenticx/agents/harness/agui/emitter.py) | `AGUIEmitter` — all emit methods |
 | AG-UI normalizer | [magenticx/agents/harness/agui/normalizer.py](../../magenticx/agents/harness/agui/normalizer.py) | `AGUIStreamNormalizer.handle_chunk()` |
 | Custom event types | [magenticx/agents/harness/agui/events.py](../../magenticx/agents/harness/agui/events.py) | `PlanItem`, `PlanSnapshot`, `TaskSubAgentEvent`, `HITLInterruptEvent` |

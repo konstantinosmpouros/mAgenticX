@@ -7,7 +7,9 @@ Two kinds of tool, one row shape:
   ``create_deep_agent`` where we cannot reach them, and the native ones are
   governed by the Personalization prefs. Their approval *is* configurable.
 * **mcp** — declared in ``agent.yaml`` or available from the gateway. Both axes
-  configurable.
+  configurable. With MCP off on the deployment (``settings.mcp.enabled``) there
+  is no gateway to offer tools, and the declared ones are listed unavailable —
+  the same ``available``/``unavailableReason`` a builtin without its sandbox gets.
 
 This service reports the **baseline**: what exists, what the agent declares, and
 what it gates before any user choice. The user's own choices live in ``chat_db``
@@ -95,14 +97,21 @@ def _builtin_rows(gates: Set[str], *, use_memory: bool, search_past_convs: bool)
     return rows
 
 
+#: Why a declared MCP tool is unavailable when the deployment runs without MCP.
+MCP_DISABLED_REASON = "MCP is not enabled on this deployment"
+
+
 def _mcp_rows(definition, gates: Set[str]) -> List[AgentToolRow]:
     """Declared MCP tools first, then everything else the gateway exposes.
 
     A cold manifest cache simply yields no available rows; the declared ones
-    still list.
+    still list. With MCP off there is no gateway catalog at all, and declared
+    tools stay listed — the agent keeps them, for a deployment that has MCP —
+    but unavailable, so nobody mistakes them for tools this run will get.
     """
+    mcp_enabled = settings.mcp.enabled
     rows: Dict[str, AgentToolRow] = {}
-    manifests = get_cached_tool_manifests_map()
+    manifests = get_cached_tool_manifests_map() if mcp_enabled else {}
 
     spec = getattr(definition, "spec", None)
     for ref in getattr(spec, "tools", None) or []:
@@ -118,8 +127,8 @@ def _mcp_rows(definition, gates: Set[str]) -> List[AgentToolRow]:
             kind="mcp",
             group=ref.server_id or "mcp",
             declared=True,
-            available=True,
-            unavailableReason=None,
+            available=mcp_enabled,
+            unavailableReason=None if mcp_enabled else MCP_DISABLED_REASON,
             enabled=True,
             approval=name in gates,
             approvalLocked=False,

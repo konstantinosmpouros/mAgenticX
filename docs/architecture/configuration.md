@@ -314,8 +314,9 @@ LangGraph + DeepAgents runtime. Configuration splits into runtime infra, the dur
 | `RAG_BASE_URL` | `https://rag_service:8001` | rag_service base URL. |
 | `RAG_REQUEST_TIMEOUT_SECONDS` | `30` | Read timeout for rag calls. |
 | `RAG_CONNECT_TIMEOUT_SECONDS` | `15` | Connect timeout for rag calls. |
-| `MCP_GATEWAY_URL` | `http://mcp_gateway:8005/sse` | MCP gateway SSE endpoint (plaintext — the dind gateway can't terminate TLS). |
-| `MCP_MANIFEST_CACHE_ENABLED` | `true` | Cache the MCP tool manifest instead of refetching per run. |
+| `MCP_GATEWAY_URL` | `""` (MCP off) | MCP gateway SSE endpoint (plaintext — the dind gateway can't terminate TLS). **Empty = MCP off**: runs use the agent's own tools only, `GET /tools` returns `[]`, and declared MCP tools list as unavailable. Set it (e.g. `http://mcp_gateway:8005/sse`, with `docker-compose-mcp.yaml` up) to opt in. Local compose passes `${MCP_GATEWAY_URL-}`, so it is off unless `magenticx/.env` sets it. |
+| `MCP_CONNECT_TIMEOUT_SECONDS` | `10` | Deadline (0 < x ≤ 120) for connecting to the gateway **plus** the MCP handshake, for both run sessions and catalog fetches. A run whose gateway misses it carries on without MCP tools (`mcp_session_unavailable`); a failed catalog fetch is not retried for 30 s. The deadline is lifted once the session is up. |
+| `MCP_MANIFEST_CACHE_ENABLED` | `true` | Cache the MCP tool manifest for the catalog / Agents tab instead of refetching it per listing. Runs never use it — each run loads the live tools from its own session. |
 
 ### Internal TLS client
 

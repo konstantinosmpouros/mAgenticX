@@ -37,7 +37,7 @@ flowchart LR
     BRIDGE --> PG[(Postgres)]
     BRIDGE --> AGENTS[agents service]
     AGENTS --> RAG[rag_service]
-    AGENTS --> MCP[MCP Gateway]
+    AGENTS -.->|optional| MCP[MCP Gateway]
 ```
 
 ## 3. Service Responsibilities
@@ -58,7 +58,7 @@ flowchart LR
 ### 3.3 Capability proxying
 
 - caches active agent manifests from the `agents` service
-- proxies MCP tool catalog requests through the bridge
+- proxies MCP tool catalog requests through the bridge (an empty list when MCP — an opt-in add-on on the agents service — is off)
 - proxies dictation uploads to the `agents` speech-to-text endpoint
 - owns detached inference runs and exposes WebSocket observer streams to the browser (with a deprecated SSE endpoint kept for one release cycle)
 

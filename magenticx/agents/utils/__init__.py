@@ -11,7 +11,7 @@ from utils.mcp_tools import (
     build_cache_key_from_tool_name,
     get_tool_cache_key,
     list_mcp_tools,
-    mcp_session_context,
+    optional_mcp_session,
 )
 
 __all__ = [
@@ -27,8 +27,8 @@ __all__ = [
     "get_tool_cache_key",
     "list_mcp_tools",
     "make_merge_with_template",
-    "mcp_session_context",
     "normalise_user_input",
     "normalize_realtime_voice",
+    "optional_mcp_session",
     "release_checkpoint_unless_paused",
 ]

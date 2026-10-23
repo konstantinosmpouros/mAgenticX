@@ -1,6 +1,6 @@
 # Catalog
 
-The catalog is the discovery layer that tells the frontend which agents and tools are available at any given moment. `dialogue_bridge` exposes three endpoints under `/v1/catalog`: one for agents (backed by an in-memory cache synced from the agents service), one for tools (always fetched fresh from the agents service, which aggregates them from the MCP gateway), and one that generates personalized conversation starter suggestions via an LLM call. On page load the frontend fetches both lists in parallel, merges them with any previously cached snapshot from IndexedDB, and uses the result to populate the agent selector and the **read-only** MCP Servers browse tab. The catalog is purely informational for tools: an inference request carries only the selected agent UUID — it does **not** carry a tool list. Tool enablement is owned by the agents service (declared per agent in `agent.yaml`, disabled per (user, agent) in Settings → Agents), not computed from the catalog and sent per request. See [user-preferences.md § Tool control moved to the Agents tab](user-preferences.md#tool-control-moved-to-the-agents-tab).
+The catalog is the discovery layer that tells the frontend which agents and tools are available at any given moment. `dialogue_bridge` exposes three endpoints under `/v1/catalog`: one for agents (backed by an in-memory cache synced from the agents service), one for tools (proxied per request to the agents service, which serves them from its cached MCP gateway manifest — or an empty list when MCP is off, since the gateway is an opt-in add-on), and one that generates personalized conversation starter suggestions via an LLM call. On page load the frontend fetches both lists in parallel, merges them with any previously cached snapshot from IndexedDB, and uses the result to populate the agent selector and the **read-only** MCP Servers browse tab. The catalog is purely informational for tools: an inference request carries only the selected agent UUID — it does **not** carry a tool list. Tool enablement is owned by the agents service (declared per agent in `agent.yaml`, disabled per (user, agent) in Settings → Agents), not computed from the catalog and sent per request. See [user-preferences.md § Tool control moved to the Agents tab](user-preferences.md#tool-control-moved-to-the-agents-tab).
 
 ---
 
@@ -12,7 +12,7 @@ flowchart LR
     nginx --> bridge["dialogue_bridge :8002"]
     bridge -->|"GET /agents (cached)"| agents["agents service :8003"]
     bridge -->|"GET /tools (per-request)"| agents
-    agents -->|"SSE tool manifest"| mcp["mcp_gateway :8005"]
+    agents -.->|"SSE tool manifest\n(only when MCP is on)"| mcp["mcp_gateway :8005\n(optional add-on)"]
     mcp --> servers["MCP Servers\n(tavily, arxiv, ...)"]
     bridge --- pg[("chat_postgres\nagents table")]
 ```
@@ -46,10 +46,16 @@ sequenceDiagram
         B->>B: setAgents(fresh) — overrides snapshot
     and
         B->>D: GET /v1/catalog/tools
-        D->>A: GET /tools (no cache)
-        A->>M: SSE connect → fetch tool manifest
-        M-->>A: ToolManifest[]
-        A-->>D: ToolManifest[]
+        D->>A: GET /tools (no bridge cache)
+        alt MCP off (MCP_GATEWAY_URL empty)
+            A-->>D: [] (200, no gateway call)
+        else manifest cache warm
+            A-->>D: cached ToolManifest[]
+        else cache cold
+            A->>M: SSE connect → fetch tool manifest
+            M-->>A: ToolManifest[]
+            A-->>D: ToolManifest[] (or 502 if the gateway is down)
+        end
         D-->>B: ToolManifest[]
         B->>B: setAvailableTools(fresh)
     end
@@ -128,13 +134,21 @@ type Agent = {
 
 ## Phase 2 — Tool Catalog
 
-### Backend: no cache, always fresh
+### Backend: bridge proxies, agents caches
 
-`GET /v1/catalog/tools` proxies directly to the agents service on every request. There is no server-side caching.
+`GET /v1/catalog/tools` proxies directly to the agents service on every request. The bridge caches nothing and forwards the result as-is (a bare list).
 
-The agents service opens an SSE connection to the MCP gateway on each tool fetch, reads the full tool manifest, closes the connection, and returns the list. The dialogue_bridge forwards the result as-is.
+The agents service (`router/catalog.py` `GET /tools`) answers in one of three ways:
 
-**Why no cache?** MCP servers can come online or go offline at any time. A stale tool cache would show tools that are currently unavailable, causing inference failures when the agent tries to call them.
+| State | Response | Gateway call |
+| --- | --- | --- |
+| **MCP off** — `MCP_GATEWAY_URL` empty (the default) | `[]` with **200**, logged `tools_mcp_disabled` | none |
+| MCP on, manifest cache warm | the cached manifests (`tools_cache_hit`) | none |
+| MCP on, cache cold | opens an SSE session (connect + handshake within `MCP_CONNECT_TIMEOUT_SECONDS`), reads the full manifest, primes the cache, returns it; a gateway that is down → **502** "Tool catalog is temporarily unavailable." | one |
+
+The manifest cache (`_MCP_TOOL_MANIFEST_CACHE`, `MCP_MANIFEST_CACHE_ENABLED`) has no TTL — once primed it is served until the process restarts. A failed fetch is remembered per gateway URL for 30 s (`mcp_tools_fetch_skipped`): fetches inside that window fail fast instead of each waiting out the connect timeout, and the next success clears it. Runs never read this cache — each run loads the live tools from its own MCP session — so a stale catalog cannot hand a run a tool the gateway no longer serves.
+
+MCP off is a normal state, not an outage: the UI already renders an empty catalog (empty MCP Servers tab, nothing "available to add" in the Agents tab).
 
 **Response shape:**
 
@@ -307,7 +321,7 @@ Edit, retry, and shared conversation continuation use the same `/start` endpoint
 | Data | Backend cache | Frontend cache | Refresh trigger |
 | --- | --- | --- | --- |
 | Agents | In-memory `_AGENT_CACHE` (no TTL) | IndexedDB snapshot | Process restart; empty cache on first request |
-| Tools | None | IndexedDB snapshot | Every page load if not in snapshot |
+| Tools | agents: in-memory manifest cache (no TTL; failed fetch remembered 30 s). Bridge: none. MCP off → always `[]` | IndexedDB snapshot | Every page load if not in snapshot |
 | Suggestions | None | None | Every new-chat open |
 | Selected agent | — | IndexedDB `selectedAgent` (UUID) | On agent change |
 
@@ -323,11 +337,11 @@ Edit, retry, and shared conversation continuation use the same `/start` endpoint
 
 - **Tool search is entirely client-side.** There is no `GET /catalog/tools/search` endpoint. The full tool list is always loaded, and filtering is a local substring match. For deployments with very large MCP tool catalogs, this could become slow.
 
-- **Tools are fetched on every load, agents are not.** This asymmetry is intentional: agent availability changes infrequently (requires a service redeploy), while MCP tool availability changes with server uptime. Accepting stale agent data for a session is acceptable; stale tool data would silently fail inference calls.
+- **Tools are fetched on every load, agents are not.** The bridge asks the agents service for tools on every load, but the agents service answers from its manifest cache once warm, so a gateway that gains or loses a server is not reflected until the agents process restarts. This is display-only: runs load live tools from their own session, never from the catalog.
 
 - **If the agents service is down, the catalog 503s and the UI shows no agents.** If the IndexedDB snapshot has a stale agent list, the UI will briefly show it and then overwrite it with an empty list when the fresh fetch fails. There is no "use stale data on error" fallback for the agents fetch.
 
-- **Tool enablement is not in the request path at all.** No `enabledTools` list is computed by the frontend or sent to the bridge; the agents service resolves an agent's tools from its `agent.yaml` declaration minus the per-(user, agent) disabled set. If a declared tool's MCP server is currently offline, the agent still tries to call it and gets a tool execution error — the catalog is not a pre-flight availability check.
+- **Tool enablement is not in the request path at all.** No `enabledTools` list is computed by the frontend or sent to the bridge; the agents service resolves an agent's tools from its `agent.yaml` declaration minus the per-(user, agent) disabled set. Each run filters the declared tools against the live gateway manifest of its own session: a declared tool the gateway does not serve is dropped (`agent_tools_missing`), and with MCP off or the gateway unreachable the run gets no MCP tools at all and carries on with the agent's own tools — never a failed run. The catalog is not a pre-flight availability check.
 
 - **A conversation is permanently bound to an agent UUID.** The `agentId` is written to the `conversations` table at creation time and never changes. If the agent is later removed from the service and deactivated, the conversation record still references it. The inference flow will fail for that conversation until a different agent is selected.
 

@@ -513,7 +513,7 @@ def _resume_env(agents_service, monkeypatch, agent_cls=_FakeResumeAgent, has_cp=
         agent_cls = _NoInterruptResumeAgent
     registry = {"omni": agents_service.schemas.AgentDefinition(slug="omni", cls=agent_cls, manifest={})}
     _patch_agent_resolver(agents_service, monkeypatch, registry)
-    monkeypatch.setattr(agents_service.router_inference, "mcp_session_context", lambda: _FakeSessionContext())
+    monkeypatch.setattr(agents_service.router_inference, "optional_mcp_session", lambda: _FakeSessionContext())
 
     async def fake_load_mcp_tools(session):
         return [{"name": "sql_query"}]

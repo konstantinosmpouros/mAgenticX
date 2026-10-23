@@ -207,6 +207,7 @@ Labels can differ slightly between Portainer versions. If GitOps updates offers 
 - **Cloudflare sits in front of both calls** — the webhook (`portainer.magenticx.com`) and the smoke check (`agents.magenticx.com`) go through Cloudflare. If Bot Fight Mode or "Under Attack" is ever enabled, GitHub's runners get challenged and the job fails; add a WAF skip rule for the webhook path rather than turning the protection off.
 - **A leaked webhook URL** can only redeploy what `main` already holds. Still: regenerate it in Portainer (stack → GitOps → webhook) and update the repository secret.
 - **Still manual** — mTLS entrypoint scripts (bind-mounted files, staged rollout in CLAUDE.md § Internal mTLS), the MCP gateway (plain Docker Compose with dind, not Swarm), and creating or rotating Swarm secrets.
+- **MCP is on in production by explicit setting** — MCP is an opt-in add-on (`MCP_GATEWAY_URL` defaults to empty = off), and `docker-compose-denis.yaml` sets `MCP_GATEWAY_URL=http://mcp_gateway:8005/sse`, so production keeps it. If the gateway is down, chats still run — each run waits up to `MCP_CONNECT_TIMEOUT_SECONDS` (default 10) and continues without MCP tools (`mcp_session_unavailable` in the agents logs) — while the tool catalog returns 502.
 - **Package name collisions** — GHCR packages live in the account namespace. The images are prefixed `magenticx_` so they cannot clash with OrthodoxAI's same-named services. A pre-existing package of the same name linked to a different repository makes the push fail with `denied` (never an overwrite).
 
 ---

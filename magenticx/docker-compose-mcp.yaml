@@ -1,3 +1,7 @@
+# Optional add-on: the MCP gateway (Tavily, arXiv). Start the core stack first
+# (docker-compose.yaml creates mcp_net), then this file.
+name: magenticx-mcp
+
 services:
 
   mcp_gateway: # 8005
@@ -31,3 +35,4 @@ services:
 networks:
   mcp_net:
     name: mcp_net
+    external: true

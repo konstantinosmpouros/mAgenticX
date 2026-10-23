@@ -4,7 +4,7 @@ The `agents` service is the inference and orchestration layer for the project. I
 
 - discovers all registered agent templates at startup
 - streams agent execution as AG-UI compatible Server-Sent Events (SSE)
-- loads MCP tools on demand for each run
+- loads MCP tools on demand for each run, when the optional MCP gateway is enabled (`MCP_GATEWAY_URL`; off by default)
 - delegates retrieval and SQL execution to the RAG service
 - provides utility endpoints for speech-to-text and conversation title generation
 
@@ -28,7 +28,7 @@ flowchart LR
     UI[agentic_ui] --> BFF[dialogue_bridge]
     BFF --> AGENTS[agents service]
     AGENTS --> OPENAI[OpenAI models]
-    AGENTS --> MCP[MCP Gateway SSE]
+    AGENTS -.->|optional| MCP[MCP Gateway SSE]
     AGENTS --> RAG[RAG Service]
     RAG --> VECTOR[Vector DB / Chroma]
 ```
@@ -38,7 +38,7 @@ flowchart LR
 ### Inference and streaming
 
 - `POST /agents/{agent_slug}/stream` is the main entrypoint.
-- The service instantiates the requested agent class, opens an MCP session, loads live tools, attaches the allowed tool subset, and streams normalized AG-UI events over SSE.
+- The service instantiates the requested agent class, opens an MCP session (when MCP is on), loads live tools, attaches the allowed tool subset, and streams normalized AG-UI events over SSE. With MCP off, or a gateway that can't be reached within `MCP_CONNECT_TIMEOUT_SECONDS`, the run goes ahead with the agent's own tools — it never fails for lack of MCP.
 
 ### Agent discovery
 
@@ -49,7 +49,8 @@ flowchart LR
 ### Tool catalog exposure
 
 - `GET /tools` queries the MCP gateway and returns a UI-friendly catalog of available tools.
-- Manifests are cached in-process when `MCP_MANIFEST_CACHE_ENABLED=true`.
+- Manifests are cached in-process when `MCP_MANIFEST_CACHE_ENABLED=true`; a failed fetch is remembered for 30 s so later fetches fail fast.
+- MCP off → `GET /tools` returns `[]` with 200 and never calls the gateway; MCP on with the gateway down → 502.
 
 ### Adjacent utility APIs
 
@@ -116,8 +117,10 @@ sequenceDiagram
     Client->>FastAPI: POST /agents/{slug}/stream
     FastAPI->>Registry: resolve slug
     FastAPI->>Agent: instantiate agent with config
-    FastAPI->>MCP: open SSE session
-    FastAPI->>MCP: list/load live tools
+    opt MCP on and gateway reachable (else no MCP tools, run continues)
+        FastAPI->>MCP: open SSE session
+        FastAPI->>MCP: list/load live tools
+    end
     FastAPI->>Agent: attach configured tool subset
     FastAPI->>Agent: astream({messages})
     Agent-->>AGUI: LangGraph / DeepAgent chunks
@@ -133,7 +136,7 @@ sequenceDiagram
 ### 4.4 Important runtime behavior
 
 - If `config.run_config.configurable.thread_id` is missing, a UUID is generated automatically.
-- MCP tools are not attached by default. They are attached only if `config.tools` is provided and matches live tool identities.
+- MCP tools are attached only when MCP is on and the agent declares them in `agent.yaml` (or the user enabled them in Settings → Agents) and they match live tool identities. The request carries no tool list.
 - Deep agents additionally filter out tool names reserved by the deep-agent runtime such as `task`, `write_todos`, `ls`, `read_file`, and `execute`.
 - LangGraph checkpointing uses in-memory savers only. No persistent checkpoint store is configured in this service.
 - Stream failures are converted into a `RUN_ERROR` SSE payload instead of a partially broken HTTP response.
@@ -374,7 +377,9 @@ Implementation notes:
 
 ```mermaid
 flowchart LR
-    A[GET /tools or /stream request] --> B[mcp_session_context]
+    A[GET /tools or /stream request] --> Z{MCP_GATEWAY_URL set?}
+    Z -->|no| X[no MCP tools: empty catalog, run uses own tools]
+    Z -->|yes| B[optional_mcp_session / catalog fetch]
     B --> C[MCP gateway SSE session]
     C --> D[list_tools / load_mcp_tools]
     D --> E[server_id + tool_name normalization]
@@ -392,6 +397,8 @@ flowchart LR
   - `description`
   - `parameter_count`
 - `POST /agents/{slug}/stream` loads live tools again for the actual run, instead of reusing only the cached manifest list.
+- Connecting plus the MCP handshake share one deadline, `MCP_CONNECT_TIMEOUT_SECONDS` (`_gateway_session()`). A run whose gateway misses it, refuses, or is unknown logs `mcp_session_unavailable` and continues without MCP tools.
+- With MCP off, the Agents tab lists an agent's declared MCP tools as unavailable ("MCP is not enabled on this deployment") and offers no gateway tools to add.
 
 ## 10. Observability and Request Context
 
@@ -446,7 +453,8 @@ Configuration is loaded from environment variables in `core/settings.py` (pydant
 | `OPENAI_API_KEY` | none | Required for title generation, dictation, and most workflows |
 | `ANTHROPIC_API_KEY` | none | Optional alternate model provider support |
 | `RAG_BASE_URL` | `http://rag_service:8001` | Base URL for retrieval and SQL endpoints |
-| `MCP_GATEWAY_URL` | `http://mcp_gateway:8005/sse` | MCP gateway SSE endpoint |
+| `MCP_GATEWAY_URL` | empty (MCP off) | MCP gateway SSE endpoint, e.g. `http://mcp_gateway:8005/sse`. Empty = MCP off: runs use the agent's own tools, `/tools` returns `[]` |
+| `MCP_CONNECT_TIMEOUT_SECONDS` | `10` | Deadline (0 < x ≤ 120) for connect + MCP handshake; past it a run continues without MCP tools |
 | `MCP_MANIFEST_CACHE_ENABLED` | `true` | Enables in-process caching for `/tools` |
 | `DISABLED_AGENT_SLUGS` | empty | Comma-separated slugs to exclude from registry |
 
@@ -525,6 +533,7 @@ pip install -r requirements.txt
 
 export OPENAI_API_KEY=sk-...
 export RAG_BASE_URL=http://localhost:8001
+# optional — leave unset to run with MCP off
 export MCP_GATEWAY_URL=http://localhost:8005/sse
 
 uvicorn main:app --host 0.0.0.0 --port 8003 --reload
@@ -533,12 +542,13 @@ uvicorn main:app --host 0.0.0.0 --port 8003 --reload
 Recommended companion services during development:
 
 - `rag_service`
-- `mcp_gateway`
+- `mcp_gateway` (optional — only if `MCP_GATEWAY_URL` is set)
 
 Without them:
 
 - retrieval-heavy agents will fail when they try to call the RAG API
-- `/tools` and MCP-backed tool runs will fail when they try to open the gateway SSE session
+- with `MCP_GATEWAY_URL` unset, MCP is simply off: `/tools` returns `[]` and runs use the agent's own tools
+- with `MCP_GATEWAY_URL` set but the gateway down, `/tools` returns 502 and each run waits up to `MCP_CONNECT_TIMEOUT_SECONDS`, then continues without MCP tools
 
 ## 14. Docker and Compose
 
@@ -562,14 +572,17 @@ From `magenticx/docker-compose.yaml`:
 - it is configured with:
   - `OPENAI_API_KEY`
   - `RAG_BASE_URL=http://rag_service:8001`
-  - `MCP_GATEWAY_URL=http://mcp_gateway:8005/sse`
+  - `MCP_GATEWAY_URL=${MCP_GATEWAY_URL-}` — MCP off unless `magenticx/.env` sets it (e.g. `http://mcp_gateway:8005/sse`)
   - `DISABLED_AGENT_SLUGS`
+- `docker-compose.yaml` creates the `mcp_net` network itself, so the core stack starts without the gateway
 
-From `magenticx/docker-compose-mcp.yaml`:
+From `magenticx/docker-compose-mcp.yaml` (optional add-on, project `magenticx-mcp`; start it after the core stack):
 
 - the MCP gateway is exposed on `8005`
 - it runs in SSE mode
+- it joins `mcp_net` as an external network
 - it serves configured MCP servers such as Tavily and Arxiv
+- see [`mcp_gateway/README.md`](../mcp_gateway/README.md) for turning it on
 
 ## 15. Known Operational Characteristics
 
@@ -578,6 +591,7 @@ These are implementation facts worth knowing before extending the service:
 - There is a lightweight unauthenticated `/health` endpoint (returns `{"status": "ok"}`); it is excluded from the request access log and exists only for the container healthcheck.
 - Agent registry discovery happens at import time, not lazily per request.
 - `/tools` caches manifests, but live tool instances are still loaded for each stream request.
+- MCP is optional: a missing or unreachable gateway costs a run its MCP tools, never the run.
 - LangGraph and deep-agent checkpoints are in memory only.
 - The service itself does not persist conversations or user sessions.
 - Per-agent prompts and routing behavior are domain-specific and hardcoded in each workflow package.

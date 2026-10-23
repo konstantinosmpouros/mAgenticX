@@ -16,7 +16,7 @@ flowchart LR
     BFF -->|"per-inference"| AGENTS["agents"]
     AGENTS -->|"checkpointer pool\nBOOT (fail-fast)"| PG_RT[("chat_postgres\nagent_runtime")]
     AGENTS -->|"per-run, lazy"| RAG["rag_service"]
-    AGENTS -->|"per-run, lazy"| MCP["mcp_gateway"]
+    AGENTS -.->|"per-run, lazy, optional"| MCP["mcp_gateway"]
     RAG -->|"per-retrieval, lazy"| CHROMA[("vectordb")]
 ```
 
@@ -74,7 +74,7 @@ The LangGraph + DeepAgents runtime. Smaller config surface, but it has a **hard 
 | TLS cert/key (+ CA for mTLS) | 🔒 | `REQUIRE_TLS`/`REQUIRE_MTLS` default `true`; the entrypoint refuses to start without readable certs. The checkpointer URL also auto-appends `sslmode=verify-full` when `INTERNAL_CA_CERT_PATH` is set. | [Deploy-time safety toggles](configuration.md#deploy-time-safety-toggles-cross-service) |
 | `OPENAI_API_KEY` | 🟢* | **Not** a startup raise — the field tolerates empty. But every agent run, title, suggestion, and voice call needs it, so it is *functionally* required. Treat as mandatory in any real deployment. | [App, API keys, RAG, MCP](configuration.md#app-api-keys-rag-mcp) |
 | **rag_service** reachable | 🟢 | Only the HR/Orthodox/Retail workflow agents call it, per-run. | [App, API keys, RAG, MCP](configuration.md#app-api-keys-rag-mcp) |
-| **mcp_gateway** reachable | 🟢 | Connected per-run to load live MCP tools; the manifest cache means it's not hit every time. Agents without MCP tools run fine if it's down. | [App, API keys, RAG, MCP](configuration.md#app-api-keys-rag-mcp) |
+| **mcp_gateway** reachable | 🟢 | Optional add-on — not needed at all unless `MCP_GATEWAY_URL` is set (empty = MCP off, the default). When set, each run connects to load live MCP tools; a gateway that is down or misses `MCP_CONNECT_TIMEOUT_SECONDS` costs the run its MCP tools, never the run (`mcp_session_unavailable`). The tool catalog (`GET /tools`) is served from the manifest cache once warm, and 502s on a cold cache with the gateway down. | [App, API keys, RAG, MCP](configuration.md#app-api-keys-rag-mcp) |
 
 **Minimum to boot (prod):** `TRUSTED_PROXY_SECRET`, a reachable `agent_runtime` DB (+ its password secret), and valid TLS material. `OPENAI_API_KEY` isn't boot-enforced but nothing useful runs without it.
 
@@ -120,7 +120,7 @@ The single most common "service won't boot" cause after secrets is TLS. The `mag
 - **`TRUSTED_PROXY_SECRET` is the universal gate.** All three Python services raise immediately without it — it's the first thing to check when a service won't boot after a secret rename.
 - **"Dev mode" relaxes three of the bridge's four hard gates.** With `APP_ENV` unset or `development`/`test`, `SESSION_TOKEN_SECRET` is not required (an auto-fallback kicks in), the dev file signer is allowed, and the TLS entrypoints aren't used — but `TRUSTED_PROXY_SECRET`, `DATABASE_URL`, Entra and a signing key are *always* required. **Unset means `development`**, so the production compose sets `APP_ENV=production` explicitly; it went unset for a long time, silently disabling the production-only checks.
 - **agents fails fast on its own DB, by design.** Unlike a lazily-connected store, the checkpointer is opened in the lifespan and the comment is explicit: *fail fast and loud if `agent_runtime` is unreachable.* This is intentional — a running agents service with no checkpointer would lose every conversation on the first turn, so it refuses to serve at all.
-- **rag_service starts without Chroma; agents starts without the MCP gateway; the bridge starts without KMS/Redis.** These are all 🟢 lazy — the service boots green and only the dependent feature 500s. Don't diagnose a down vectordb by looking at whether rag_service started; look at whether `/retrieve` calls fail.
+- **rag_service starts without Chroma; agents starts without the MCP gateway; the bridge starts without KMS/Redis.** These are all 🟢 lazy — the service boots green and only the dependent feature 500s. MCP goes further: it is optional, so a missing gateway does not even fail the run — the agent just runs without its MCP tools. Don't diagnose a down vectordb by looking at whether rag_service started; look at whether `/retrieve` calls fail.
 - **Swarm ignores `depends_on`.** Boot order is not guaranteed. The whole design leans on fail-fast + restart loops: bring up Postgres and the dependent services stop crash-looping on their own. There is no orchestrated "wait for X."
 - **Two databases, one instance.** The bridge migrates `chat_db`; agents owns `agent_runtime` on the *same* Postgres. Either can independently block its owner's boot. See [configuration.md → agents reads two databases](configuration.md#sharp-edges-and-behavioral-notes).
 - **`*_FILE` unreadable is fail-loud; unset is a silent fallback** to the plain env var (what local `.env` relies on). A permission slip on a mounted secret raises at startup — it does not quietly skip.

@@ -1,3 +1,6 @@
+import asyncio
+import time
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Dict, List, Sequence
 
@@ -16,6 +19,13 @@ class MCPToolsClientError(RuntimeError):
 
 
 _MCP_TOOL_MANIFEST_CACHE: Dict[str, ToolManifest] = {}
+#: After a failed catalog fetch, fetches fail fast for this long (seconds).
+#: Runs never consult it: each run tries the gateway itself, so a gateway that
+#: comes back is picked up by the next chat at once.
+_FETCH_RETRY_AFTER_SECONDS = 30.0
+#: endpoint -> ``time.monotonic()`` until which a fetch is not retried. Keyed by
+#: endpoint so a changed gateway URL is tried straight away.
+_FETCH_FAILED_UNTIL: dict[str, float] = {}
 _TOOL_SERVER_OVERRIDES: dict[str, str] = {
     # Tavily MCP Server tools
     "tavily-crawl": "tavily",
@@ -148,30 +158,41 @@ def get_tool_cache_key(tool: types.Tool) -> str:
     return _make_cache_key(server_id, tool_name)
 
 
-async def _fetch_tools_from_gateway() -> List[types.Tool]:
-    """Call the MCP gateway and return the raw tools list (for manifest building)."""
+async def _fetch_tools_from_gateway() -> list[types.Tool]:
+    """Ask the gateway for its raw tools list (for the manifest cache).
+
+    Opens through ``_gateway_session``, so a gateway that is down or never
+    finishes its handshake costs at most the connect timeout — and only once per
+    ``_FETCH_RETRY_AFTER_SECONDS``: a failure is remembered, and fetches inside
+    that window fail fast with the same error instead of each waiting it out
+    again (a cold cache would otherwise stall every Agents-page call).
+    """
     endpoint = settings.mcp.mcp_gateway_url
-    if not endpoint:
-        raise MCPToolsClientError("MCP tools endpoint is not configured.")
+    if time.monotonic() < _FETCH_FAILED_UNTIL.get(endpoint, 0.0):
+        logger.info("mcp_tools_fetch_skipped", "MCP gateway failed recently; not retrying yet", upstream_service="mcp_gateway", endpoint=endpoint)
+        raise MCPToolsClientError("MCP gateway failed recently; not retrying yet.")
 
     try:
         logger.info("mcp_tools_fetch_started", "MCP tools fetch started", upstream_service="mcp_gateway", endpoint=endpoint)
-        async with sse_client(url=endpoint) as (read_stream, write_stream):
-            async with mcp.ClientSession(read_stream, write_stream) as session:
-                await session.initialize()
-                result = await session.list_tools()
-                tools = list(result.tools)
-                logger.info("mcp_tools_fetch_completed", "MCP tools fetch completed", upstream_service="mcp_gateway", tool_count=len(tools))
-                return tools
-    except Exception as exc:  # pragma: no cover - defensive guardrail
+        async with _gateway_session(endpoint) as session:
+            result = await session.list_tools()
+    except Exception as exc:
+        _FETCH_FAILED_UNTIL[endpoint] = time.monotonic() + _FETCH_RETRY_AFTER_SECONDS
         logger.warning(
             "mcp_tools_fetch_failed",
             "Failed to fetch tools from MCP gateway",
             exc_info=True,
             upstream_service="mcp_gateway",
             failure_reason="gateway_error",
+            exception_type=type(exc).__name__,
+            retry_after_seconds=_FETCH_RETRY_AFTER_SECONDS,
         )
         raise MCPToolsClientError("Failed to list tools from MCP server.") from exc
+
+    _FETCH_FAILED_UNTIL.pop(endpoint, None)
+    tools = list(result.tools)
+    logger.info("mcp_tools_fetch_completed", "MCP tools fetch completed", upstream_service="mcp_gateway", tool_count=len(tools))
+    return tools
 
 
 async def list_mcp_tools(*, force_refresh: bool = False) -> List[types.Tool]:
@@ -179,6 +200,8 @@ async def list_mcp_tools(*, force_refresh: bool = False) -> List[types.Tool]:
     Return MCP tools for discovery. Cache manifests for UI; return tools for
     callers that need raw definitions (not callable LangChain tools).
     """
+    if not settings.mcp.enabled:
+        return []  # MCP turned off: an empty catalog, not an error
     if settings.mcp.manifest_cache_enabled and _MCP_TOOL_MANIFEST_CACHE and not force_refresh:
         logger.info("mcp_tools_cache_hit", "Using cached MCP tool manifests", tool_count=len(_MCP_TOOL_MANIFEST_CACHE))
         return []
@@ -192,18 +215,66 @@ async def list_mcp_tools(*, force_refresh: bool = False) -> List[types.Tool]:
 
 
 @asynccontextmanager
-async def mcp_session_context():
-    """Yield an initialized MCP session, keeping the connection open for the caller."""
-    endpoint = settings.mcp.mcp_gateway_url
-    if not endpoint:
-        raise MCPToolsClientError("MCP tools endpoint is not configured.")
+async def _gateway_session(endpoint: str) -> AsyncIterator[mcp.ClientSession]:
+    """Connect to the gateway and finish the MCP handshake within the connect timeout.
 
-    logger.info("mcp_session_starting", "Opening MCP session", upstream_service="mcp_gateway", endpoint=endpoint)
-    async with sse_client(url=endpoint) as (read_stream, write_stream):
-        async with mcp.ClientSession(read_stream, write_stream) as session:
+    The one place the connect deadline lives — the catalog fetch and every run's
+    session open through here. Connecting plus ``initialize()`` get
+    ``connect_timeout_seconds`` between them; then the deadline is lifted, so
+    whatever the caller does with the live session is never cut short by it.
+    A refused connection raises as is; a missed deadline raises ``TimeoutError``.
+    """
+    timeout_seconds = settings.mcp.connect_timeout_seconds
+    async with asyncio.timeout(timeout_seconds) as deadline:
+        async with (
+            sse_client(url=endpoint, timeout=timeout_seconds) as (read_stream, write_stream),
+            mcp.ClientSession(read_stream, write_stream) as session,
+        ):
             await session.initialize()
+            deadline.reschedule(None)  # connected: the caller's work has no deadline
+            yield session
+
+
+@asynccontextmanager
+async def optional_mcp_session():
+    """Yield an initialized MCP session, or ``None`` when MCP is not available.
+
+    MCP is optional (``McpSettings``). With no gateway URL configured this yields
+    ``None`` without touching the network; with one configured, a gateway that is
+    down, unknown, or slow to finish its handshake also yields ``None`` — logged
+    as ``mcp_session_unavailable`` — so the run goes ahead with the agent's own
+    tools instead of failing. A missing MCP server costs its tools, not the chat.
+
+    Only connecting and the handshake are covered (``_gateway_session``): anything
+    raised by the caller's own work inside the block propagates unchanged — it is
+    never mistaken for a gateway outage.
+    """
+    if not settings.mcp.enabled:
+        logger.info("mcp_disabled", "MCP gateway not configured; running without MCP tools")
+        yield None
+        return
+
+    endpoint = settings.mcp.mcp_gateway_url
+    ready = False
+    try:
+        logger.info("mcp_session_starting", "Opening MCP session", upstream_service="mcp_gateway", endpoint=endpoint)
+        async with _gateway_session(endpoint) as session:
+            ready = True
             logger.info("mcp_session_ready", "MCP session initialized", upstream_service="mcp_gateway")
             try:
                 yield session
             finally:
                 logger.info("mcp_session_closed", "MCP session closed", upstream_service="mcp_gateway")
+    except Exception as exc:
+        if ready:
+            raise  # the caller's work (or closing a live session) failed — not ours to swallow
+        logger.warning(
+            "mcp_session_unavailable",
+            "MCP gateway unavailable; running without MCP tools",
+            upstream_service="mcp_gateway",
+            endpoint=endpoint,
+            exception_type=type(exc).__name__,
+            timeout_seconds=settings.mcp.connect_timeout_seconds,
+        )
+    if not ready:
+        yield None

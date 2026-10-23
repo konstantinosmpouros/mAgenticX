@@ -39,7 +39,7 @@ The agents service is an **internal** microservice. The browser never talks to i
 
 1. **Agent registry & runtime selection** — discovers agent templates at import, instantiates one per request.
 2. **Per-request orchestration & SSE streaming** — runs the agent graph and streams AG-UI events.
-3. **Tool discovery & MCP session management** — loads MCP tools per run from the gateway.
+3. **Tool discovery & MCP session management** — loads MCP tools per run from the gateway, when MCP is on (an opt-in add-on; off by default).
 4. **Adjacent utility inference** — title/suggestion generation, dictation (STT), read-aloud (TTS), realtime voice, embeddings (proxied for the bridge), and the skills/memory management surface.
 
 It does **not** own auth, chat persistence, rate limiting, or CSRF — those live in `dialogue_bridge`.
@@ -49,7 +49,7 @@ flowchart LR
     UI[agentic_ui] --> BFF[dialogue_bridge]
     BFF -->|mTLS + proxy secret| AGENTS[agents service :8003]
     AGENTS --> OPENAI[OpenAI models]
-    AGENTS -->|plaintext SSE| MCP[MCP Gateway :8005]
+    AGENTS -.->|plaintext SSE, optional| MCP[MCP Gateway :8005]
     AGENTS -->|mTLS| RAG[rag_service :8001]
     AGENTS -->|durable checkpoints| PG[(agent_runtime DB)]
     AGENTS -->|reverse: memory search| BFF
@@ -198,7 +198,7 @@ Settings groups (env alias → default):
 - **AppSettings** — `LOG_SERVICE_NAME`→`agents`, `APP_ENV`/`ENV`→`development`, `APP_VERSION`/`IMAGE_TAG`→`unknown`.
 - **ApiKeysSettings** — `OPENAI_API_KEY` (SecretStr, file-backed), `ANTHROPIC_API_KEY` (optional).
 - **RagSettings** — `RAG_BASE_URL`→`https://rag_service:8001`, `RAG_REQUEST_TIMEOUT_SECONDS`→30, `RAG_CONNECT_TIMEOUT_SECONDS`→15; methods `retrieve_url`, `excel_schema_url`, `excel_query_url`.
-- **McpSettings** — `MCP_GATEWAY_URL`→`http://mcp_gateway:8005/sse`, `MCP_MANIFEST_CACHE_ENABLED`→True.
+- **McpSettings** — `MCP_GATEWAY_URL`→`""` (**empty = MCP off**; set e.g. `http://mcp_gateway:8005/sse` to opt in), `MCP_MANIFEST_CACHE_ENABLED`→True, `MCP_CONNECT_TIMEOUT_SECONDS`→10 (0 < x ≤ 120; connect + MCP handshake). Property `enabled` (`bool(mcp_gateway_url.strip())`) is the one "is MCP on" check.
 - **TlsSettings** — `INTERNAL_CA_CERT_PATH` (str), `INTERNAL_CLIENT_CERT_PATH`/`INTERNAL_CLIENT_KEY_PATH` (**SecretStr** — paths hidden from repr).
 - **CheckpointerSettings** — `AGENT_RUNTIME_DATABASE_URL`→`postgresql://admin:admin@chat_postgres:5432/agent_runtime` (**raw psycopg conninfo**, NOT `+asyncpg`), pool min/max/idle/timeout (2/20/300/30.0), `AGENT_RUNTIME_SETUP_ON_STARTUP`→True, `LANGGRAPH_STRICT_MSGPACK`→True (CVE-2025-64439 mitigation — leave on), `LANGGRAPH_AES_KEY` (SecretStr, empty=off). Validator `_inject_password_and_tls` splices a file-backed password into a password-less URL and appends `sslmode=verify-full&sslrootcert=<ca>` when `INTERNAL_CA_CERT_PATH` set.
 - **ProxySettings** — `TRUSTED_PROXY_HEADER_NAME`→`X-Internal-Proxy-Secret`, `TRUSTED_PROXY_SECRET` (SecretStr, file-backed).
@@ -260,7 +260,7 @@ Every endpoint below carries `dependencies=[Depends(require_internal_caller)]` (
 
 **Selected behaviors:**
 - **`GET /agents`** — reads `definition.manifest` for each `AGENT_REGISTRY` entry (built once at import), sorted by name.
-- **`GET /tools`** — returns the warm manifest cache, else fetches live from the gateway (502 on gateway failure).
+- **`GET /tools`** — MCP off → `[]` with 200 and no gateway call (`tools_mcp_disabled`); otherwise returns the warm manifest cache, else fetches live from the gateway (502 on gateway failure). Shape is a bare list either way.
 - **`POST /embed`** — the bridge has no OpenAI key, so it proxies embedding here (used by its pgvector conversation-embedding sweeper). Cached `OpenAIEmbeddings`; order preserved; 503 if no key; 502 on provider failure.
 - **`/titles/generate`, `/suggestions/generate`** — LCEL chain: `RunnableLambda(make_merge_with_template) | init_chat_model(...).with_structured_output(...)`; normalize/trim/dedupe/cap; 502 if too few usable candidates.
 - **`/agents/{slug}/stream` and slash commands** — `context.command = {name, args}` is checked by `harness.commands.resolve_invocation` (422 with the reason when refused) and the last user message is rewritten by `apply_command`; `BaseAgent.command_spec` feeds `command_permissions` (read-only) into the deep-agent build.
@@ -281,8 +281,8 @@ Every endpoint below carries `dependencies=[Depends(require_internal_caller)]` (
 **Pre-flight:** `set_context(...)` for logging → `AGENT_REGISTRY.get(slug)` (404 if unknown) → `agent = definition.cls(config=req.config)` (400 on config-validation error).
 
 **Streaming generator `event_stream()`:**
-1. `async with mcp_session_context() as session:` opens an SSE MCP client to the gateway, kept open for the whole run.
-2. `live_tools = await load_mcp_tools(session)` (langchain-mcp-adapters) → callable LangChain tools.
+1. `async with optional_mcp_session() as session:` opens an SSE MCP client to the gateway, kept open for the whole run — or yields `None` when MCP is off (`mcp_disabled`) or the gateway is unreachable / misses the connect-plus-handshake deadline (`mcp_session_unavailable`). **A run never fails for lack of MCP.**
+2. `live_tools = await load_mcp_tools(session) if session is not None else []` (langchain-mcp-adapters) → callable LangChain tools; `mcp_tools_loaded` carries `mcp_available`.
 3. `agent.attach_tools(live_tools)` → filter the live tools down to the agent's resolved set (a deep agent's `agent.yaml`-declared tools minus its `tool_prefs.json` disables — no longer a client-supplied list); DeepAgent additionally strips reserved deepagents tool names.
 4. **Fork** (if `fork_from`): `await agent.ensure_built()` then `seed_thread_from_checkpoint(...)` copies the parent branch's state at the fork point into the new thread.
 5. `async for chunk in agent.astream(payload={"messages": req.messages}): yield chunk` — each chunk is an AG-UI SSE byte frame (LangGraph agents emit via a `custom` StreamWriter; deep agents' raw chunks pass through `AGUIStreamNormalizer`).
@@ -293,7 +293,7 @@ Every endpoint below carries `dependencies=[Depends(require_internal_caller)]` (
 - Any other `Exception` → `agent._encode_run_error(exc)` yields **one** frame: `data: {"type":"RUN_ERROR","message":"..."}\n\n`. **HTTP stays 200** — errors ride inside the SSE body.
 - `finally`: `release_checkpoint_unless_paused(agent, run_id)` drops the in-RAM sub-agent namespace cache **unless** parked on a HITL interrupt. The durable Postgres checkpoint is **never** deleted here.
 
-**`POST /agents/{agent_slug}/resume`** (`inference.py:130-339`) — HITL approval/rejection. Body `AgentResumeRequest` (`thread_id`, `decision`, `reason?`, `value?`, `interrupt_id?`, `decisions?`). Forces `thread_id` onto `run_config` → `ensure_built()` → reads `snapshot.interrupts`. Guards: 503 if saver not ready, 404 unknown agent, 409 no pending interrupt, 409 stale `interrupt_id`, 422 `decisions` count mismatch. Builds `Command(resume={"decisions":[...]})` (`approve`→`{"type":"approve"}`, `reject`→`{"type":"reject","message":reason}`), then `agent.astream(payload={"messages": []}, command=resume_command)`. Works across a service restart because the checkpoint is durable.
+**`POST /agents/{agent_slug}/resume`** (`inference.py:130-339`) — HITL approval/rejection. Body `AgentResumeRequest` (`thread_id`, `decision`, `reason?`, `value?`, `interrupt_id?`, `decisions?`). Forces `thread_id` onto `run_config` → `ensure_built()` → reads `snapshot.interrupts`. Guards: 503 if saver not ready, 404 unknown agent, 409 no pending interrupt, 409 stale `interrupt_id`, 422 `decisions` count mismatch. Builds `Command(resume={"decisions":[...]})` (`approve`→`{"type":"approve"}`, `reject`→`{"type":"reject","message":reason}`), then `agent.astream(payload={"messages": []}, command=resume_command)`. Works across a service restart because the checkpoint is durable. Resume opens its MCP session the same optional way as `/stream`; a run paused on an MCP tool's approval and resumed without MCP gets an error `ToolMessage` for that call, which the model reads and carries on from.
 
 ---
 
@@ -427,9 +427,11 @@ flowchart TD
 
 - `_MCP_TOOL_MANIFEST_CACHE` — process-global, keyed `server_id/tool_name`. `_TOOL_SERVER_OVERRIDES` maps bare tool names → server id (the gateway doesn't prefix names): tavily-* → `tavily`, arxiv tools → `arxiv`.
 - Cache-key semantics: `_make_cache_key(server, name)` → `"{server}/{name}"` or bare `name`. `build_tool_cache_key`/`get_tool_cache_key` are what `BaseAgent` uses to match the agent's resolved (declared − disabled) tools against the live ones.
-- `_fetch_tools_from_gateway()` — `sse_client` → `mcp.ClientSession` → `initialize()` → `list_tools()`.
-- `list_mcp_tools(force_refresh=False)` — **returns `[]` on a cache hit** (only the manifest matters for `/tools`); otherwise fetches + primes the cache + returns raw tools.
-- `mcp_session_context()` — yields an open, initialized session for the per-run `/stream`.
+- `_gateway_session(endpoint)` — `sse_client` → `mcp.ClientSession` → `initialize()` under one `asyncio.timeout(MCP_CONNECT_TIMEOUT_SECONDS)`; the **one place the connect deadline lives**. The deadline is lifted once initialized, so the caller's work on the live session is never cut short.
+- `_fetch_tools_from_gateway()` — `_gateway_session` → `list_tools()`. A failure is remembered per endpoint for 30 s (`_FETCH_FAILED_UNTIL`): fetches inside that window fail fast (`mcp_tools_fetch_skipped`) instead of each waiting out the timeout; a success clears it. Runs never consult it.
+- `list_mcp_tools(force_refresh=False)` — `[]` when MCP is off; **returns `[]` on a cache hit** (only the manifest matters for `/tools`); otherwise fetches + primes the cache + returns raw tools.
+- `optional_mcp_session()` — yields an open, initialized session for the per-run `/stream` and `/resume`, or `None` (MCP off / unreachable / handshake timeout). Only connect + handshake failures are swallowed; an exception from the caller's own work inside the block propagates unchanged. (Replaced `mcp_session_context()`, which raised.)
+- **MCP off elsewhere:** `router/agent_tools.py` warms the manifest cache only when enabled; `utils/agent_tools._mcp_rows` adds no catalog rows and lists declared MCP refs with `available=false`, `unavailableReason=MCP_DISABLED_REASON` ("MCP is not enabled on this deployment"); `BaseAgent._filter_live_tools` returns `[]` with one INFO `agent_tools_mcp_disabled` instead of the `agent_tools_missing` WARNING.
 
 **Attachment path:** `/stream` opens the session → `load_mcp_tools(session)` (langchain-mcp-adapters) → `attach_tools` → `_filter_live_tools` keeps only the agent's resolved keys (declared in `agent.yaml` − disabled in `tool_prefs.json`; not a client list) → `_apply_live_tools` (deep agents drop reserved names) → `self.tools` fed into the graph.
 
@@ -553,7 +555,7 @@ Structured, async, per-request-context logging.
 - **`.dockerignore`** — excludes secrets/TLS/venvs; **keeps** `*.md`, `skills_registry/`, and the shim (all runtime-needed).
 - **`load-secrets-and-exec.sh`** — reads each `/run/secrets/*` into an uppercased env var, then `exec "$@"`. Needed because the OpenAI SDK / `init_chat_model` read `OPENAI_API_KEY` from `os.environ` directly, bypassing Pydantic.
 - **TLS is a prod-only compose override** (`docker-compose-denis.yaml`): `entrypoint: [load-secrets-and-exec.sh, /bin/sh, /app/tls/entrypoint-tls.sh]` + bind-mounted certs + `INTERNAL_CA/CLIENT_CERT/KEY_PATH` env. `REQUIRE_TLS`/`REQUIRE_MTLS` default `true` (fail-closed). **Local compose runs the baked plain-uvicorn CMD** (plaintext, no certs).
-- **Local run:** `uvicorn main:app --host 0.0.0.0 --port 8003 --reload` with `OPENAI_API_KEY`, `RAG_BASE_URL`, `MCP_GATEWAY_URL`, `TRUSTED_PROXY_SECRET`, `AGENT_RUNTIME_DATABASE_URL` set; companions `rag_service` + `mcp_gateway` + a reachable `agent_runtime` Postgres.
+- **Local run:** `uvicorn main:app --host 0.0.0.0 --port 8003 --reload` with `OPENAI_API_KEY`, `RAG_BASE_URL`, `TRUSTED_PROXY_SECRET`, `AGENT_RUNTIME_DATABASE_URL` set (plus `MCP_GATEWAY_URL` only to opt in to MCP); companions `rag_service` + a reachable `agent_runtime` Postgres, and `mcp_gateway` only if MCP is on. Local compose passes `MCP_GATEWAY_URL=${MCP_GATEWAY_URL-}` — off unless `magenticx/.env` sets it.
 
 > **deepagents version:** requirements pin `0.6.10`; the *host* has `0.4.11`, so `tests/agents/` fail at import on the host — validate via `py_compile` + Docker.
 
@@ -569,7 +571,7 @@ Structured, async, per-request-context logging.
 
 **To stand up a replica:**
 1. Copy the whole `magenticx/agents/` tree.
-2. Provision `TRUSTED_PROXY_SECRET` (mandatory — won't boot without it), `OPENAI_API_KEY`, `AGENT_RUNTIME_DATABASE_URL` (a reachable Postgres — the service creates the DB but not the server), and `MCP_GATEWAY_URL`/`RAG_BASE_URL` if you keep those integrations.
+2. Provision `TRUSTED_PROXY_SECRET` (mandatory — won't boot without it), `OPENAI_API_KEY`, `AGENT_RUNTIME_DATABASE_URL` (a reachable Postgres — the service creates the DB but not the server), and `RAG_BASE_URL` / `MCP_GATEWAY_URL` if you keep those integrations (MCP is off when `MCP_GATEWAY_URL` is unset).
 3. Keep the `load-secrets-and-exec.sh` shim if secrets are file-mounted (OpenAI SDK reads env directly).
 4. For a fresh agent: subclass `LangGraphAgent`/`DeepAgent`, set identity attrs, re-export from the package `__init__.py`, restart.
 5. Keep `LANGGRAPH_STRICT_MSGPACK=true`.
@@ -587,6 +589,7 @@ Structured, async, per-request-context logging.
 - **`_encode_run_error` emits a raw `RUN_ERROR` frame, not an AG-UI event** — the consumer must handle both.
 - **`list_mcp_tools` returns `[]` on a cache hit**, not the tools (only the manifest matters there).
 - **The MCP hop is plaintext** (no proxy secret, no mTLS); rag/bridge hops require both.
+- **MCP is optional, and degrades rather than fails.** Unset `MCP_GATEWAY_URL` = off; a configured but dead gateway costs each run up to `MCP_CONNECT_TIMEOUT_SECONDS` before it proceeds without MCP tools (logged `mcp_session_unavailable`). `GET /tools` distinguishes the two: off → `[]`/200, on-but-down → 502. Don't reintroduce a hard dependency by opening sessions outside `optional_mcp_session()`/`_gateway_session()`.
 - **The durable checkpoint is never deleted on run end** — only the RAM namespace cache is released (and only when not paused); deletion happens exclusively via the reap endpoint.
 - **`tools/charts.py` and `tools/__init__.py` are empty placeholders** — no chart tooling exists yet.
 - **Doc drift** — ignore the checked-in `README.md` where it says in-memory checkpointing, `runtime/protocols/agui/`, 4 endpoints, or co-located deep-agent `AGENT.md`/`skills/` files. This document reflects the shipped code.

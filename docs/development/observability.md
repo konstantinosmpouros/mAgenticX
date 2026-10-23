@@ -138,7 +138,14 @@ Every event name below is a stable string emitted via `EventLogger`. The `http_r
 | `agent_initialization_started` / `_completed` / `_failed` | INFO/WARN | per-run agent build |
 | `agent_stream_started` / `agent_stream_completed` | INFO | run lifecycle |
 | `agent_stream_failed` | ERROR | traceback |
-| `mcp_session_connected`, `mcp_tools_loaded`, `agent_tools_attached` | INFO | tool wiring, `attached_tool_count` |
+| `mcp_session_starting` / `mcp_session_ready` / `mcp_session_closed`, `mcp_tools_loaded`, `agent_tools_attached` | INFO | tool wiring: `live_tool_count`, `mcp_available` (false = run went ahead without MCP), `attached_tool_count` |
+| `mcp_disabled` | INFO | MCP is off (`MCP_GATEWAY_URL` empty) — the run uses the agent's own tools; expected on deployments without the add-on |
+| `mcp_session_unavailable` | WARN | MCP is on but the gateway refused, was unknown, or missed the connect + handshake deadline: `endpoint`, `exception_type`, `timeout_seconds`. The run continues **without** MCP tools — sustained bursts mean the gateway is down |
+| `agent_tools_mcp_disabled` | INFO | MCP off, so the agent's declared/enabled MCP tools are skipped (`skipped_tools`) — replaces the `agent_tools_missing` WARN in that case |
+| `agent_tools_missing` | WARN | MCP on, but declared tools are absent from the live gateway manifest: `missing_tools` |
+| `tools_mcp_disabled` | INFO | `GET /tools` served an empty catalog because MCP is off (200, no gateway call) |
+| `tools_refresh_failed`, `agent_tools_catalog_warm_failed` | WARN | MCP on, gateway unavailable for the catalog (`GET /tools` → 502; Agents tab lists no gateway tools) |
+| `mcp_tools_fetch_failed` / `mcp_tools_fetch_skipped` | WARN / INFO | a catalog fetch failed (`exception_type`, `retry_after_seconds`=30); fetches within the next 30 s are skipped and fail fast |
 | `checkpoint_committed` | INFO | durable LangGraph head (`thread_id`, `checkpoint_id`) |
 | `checkpoint_commit_emit_failed`, `checkpoint_interrupt_probe_failed`, `checkpoint_release_failed` | WARN | checkpointer edge cases |
 | `tool_call_error` | WARN | tool raised → encoded as `ToolMessage(status=error)`, `exception_type` |

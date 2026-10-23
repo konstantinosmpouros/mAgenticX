@@ -187,8 +187,9 @@ async def test_fetch_tools_from_gateway_success(agents_service, monkeypatch):
             return SimpleNamespace(tools=sample_tools)
 
     @asynccontextmanager
-    async def fake_sse_client(url):
+    async def fake_sse_client(url, timeout):
         assert url
+        assert timeout == m.settings.mcp.connect_timeout_seconds  # the shared connect deadline
         yield ("read", "write")
 
     @asynccontextmanager
@@ -203,18 +204,11 @@ async def test_fetch_tools_from_gateway_success(agents_service, monkeypatch):
     assert tools == sample_tools
 
 
-async def test_fetch_tools_from_gateway_unconfigured(agents_service, monkeypatch):
-    m = agents_service.mcp_tools
-    monkeypatch.setattr(m.settings.mcp, "mcp_gateway_url", "")
-    with pytest.raises(m.MCPToolsClientError, match="not configured"):
-        await m._fetch_tools_from_gateway()
-
-
 async def test_fetch_tools_from_gateway_wraps_errors(agents_service, monkeypatch):
     m = agents_service.mcp_tools
 
     @asynccontextmanager
-    async def boom_sse_client(url):
+    async def boom_sse_client(url, timeout):
         raise RuntimeError("gateway down")
         yield  # pragma: no cover
 
@@ -286,8 +280,9 @@ async def test_list_mcp_tools_cache_disabled_skips_priming(agents_service, monke
     assert m.get_cached_tool_manifests_map() == {}
 
 
-async def test_mcp_session_context_yields_initialized_session(agents_service, monkeypatch):
+async def test_optional_mcp_session_yields_initialized_session(agents_service, monkeypatch):
     m = agents_service.mcp_tools
+    monkeypatch.setattr(m.settings.mcp, "mcp_gateway_url", "http://mcp_gateway:8005/sse")
 
     initialized = {"called": False}
 
@@ -296,7 +291,7 @@ async def test_mcp_session_context_yields_initialized_session(agents_service, mo
             initialized["called"] = True
 
     @asynccontextmanager
-    async def fake_sse_client(url):
+    async def fake_sse_client(url, timeout):
         yield ("r", "w")
 
     @asynccontextmanager
@@ -306,17 +301,16 @@ async def test_mcp_session_context_yields_initialized_session(agents_service, mo
     monkeypatch.setattr(m, "sse_client", fake_sse_client)
     monkeypatch.setattr(m, "mcp", SimpleNamespace(ClientSession=fake_client_session))
 
-    async with m.mcp_session_context() as session:
+    async with m.optional_mcp_session() as session:
         assert isinstance(session, _FakeSession)
     assert initialized["called"] is True
 
 
-async def test_mcp_session_context_unconfigured(agents_service, monkeypatch):
+async def test_optional_mcp_session_unconfigured_yields_none(agents_service, monkeypatch):
     m = agents_service.mcp_tools
     monkeypatch.setattr(m.settings.mcp, "mcp_gateway_url", "")
-    with pytest.raises(m.MCPToolsClientError, match="not configured"):
-        async with m.mcp_session_context():
-            pass  # pragma: no cover
+    async with m.optional_mcp_session() as session:
+        assert session is None
 
 
 # ===========================================================================

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from core.security.internal_trust import require_internal_caller
 from core.logging import get_logger
+from core.settings import settings
 from schema import AgentManifest, ToolManifest
 from utils import MCPToolsClientError, get_cached_tool_manifests, list_mcp_tools
 from utils.agents import AGENT_REGISTRY
@@ -34,7 +35,15 @@ async def get_available_agents() -> List[AgentManifest]:
     dependencies=[Depends(require_internal_caller)],
 )
 async def get_available_tools() -> List[ToolManifest]:
-    """Return the live tool catalog exposed by the MCP server."""
+    """Return the live tool catalog exposed by the MCP gateway.
+
+    MCP off is a normal state — an empty catalog with 200, and no gateway
+    call — while MCP on with the gateway down is an outage (502).
+    """
+    if not settings.mcp.enabled:
+        logger.info("tools_mcp_disabled", "MCP is not enabled; served an empty tool catalog")
+        return []
+
     cached_manifests = get_cached_tool_manifests()
     if cached_manifests:
         logger.info("tools_cache_hit", "Served tools from cache", count=len(cached_manifests))

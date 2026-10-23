@@ -119,8 +119,20 @@ class RagSettings(BaseSettings):
 class McpSettings(BaseSettings):
     model_config = _BASE_MODEL_CONFIG
 
-    mcp_gateway_url: str = Field("http://mcp_gateway:8005/sse", validation_alias="MCP_GATEWAY_URL")
+    # MCP is an opt-in add-on, off by default: with MCP_GATEWAY_URL empty, runs
+    # use the agent's own tools only and the tool catalog reports MCP disabled.
+    # Set it (e.g. http://mcp_gateway:8005/sse, with docker-compose-mcp.yaml up)
+    # to turn MCP on. A configured gateway that cannot be reached within
+    # `connect_timeout_seconds` degrades a run the same way (logged) instead of
+    # failing it — see utils/mcp_tools.optional_mcp_session.
+    mcp_gateway_url: str = Field("", validation_alias="MCP_GATEWAY_URL")
     manifest_cache_enabled: bool = Field(True, validation_alias="MCP_MANIFEST_CACHE_ENABLED")
+    connect_timeout_seconds: float = Field(10.0, gt=0, le=120, validation_alias="MCP_CONNECT_TIMEOUT_SECONDS")
+
+    @property
+    def enabled(self) -> bool:
+        """True when a gateway URL is configured — the one "is MCP on" check."""
+        return bool(self.mcp_gateway_url.strip())
 
 
 class TlsSettings(BaseSettings):

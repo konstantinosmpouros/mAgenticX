@@ -131,7 +131,7 @@ async def test_stream_route_forwards_chunks_from_agent_runtime(
         )
     }
     _patch_agent_resolver(agents_service, monkeypatch, registry)
-    monkeypatch.setattr(agents_service.router_inference, "mcp_session_context", lambda: _FakeSessionContext())
+    monkeypatch.setattr(agents_service.router_inference, "optional_mcp_session", lambda: _FakeSessionContext())
     async def fake_load_mcp_tools(session):
         return [{"name": "sql_query"}]
 
@@ -190,7 +190,7 @@ async def test_stream_route_encodes_runtime_errors(
         )
     }
     _patch_agent_resolver(agents_service, monkeypatch, registry)
-    monkeypatch.setattr(agents_service.router_inference, "mcp_session_context", lambda: _FakeSessionContext())
+    monkeypatch.setattr(agents_service.router_inference, "optional_mcp_session", lambda: _FakeSessionContext())
 
     async def fake_load_mcp_tools(session):
         return []

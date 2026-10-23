@@ -60,7 +60,10 @@ services:
       # Reverse hop for the memory-search tool (agent → bridge). HTTP in local
       # dev (the bridge serves plaintext here); prod uses https (see denis compose).
       - DIALOGUE_BRIDGE_URL=http://dialogue_bridge:8002
-      - MCP_GATEWAY_URL=http://mcp_gateway:8005/sse
+      # MCP is an opt-in add-on (docker-compose-mcp.yaml): off unless .env sets
+      # MCP_GATEWAY_URL=http://mcp_gateway:8005/sse. A configured but unreachable
+      # gateway only costs its tools — runs carry on without them.
+      - MCP_GATEWAY_URL=${MCP_GATEWAY_URL-}
       - TRUSTED_PROXY_SECRET=${TRUSTED_PROXY_SECRET}
       - LOG_FORMAT=${LOG_FORMAT:-console}   # json for the local monitoring add-on
       # Both planes of the agents filesystem live on the magenticx_data volume.
@@ -204,8 +207,10 @@ networks:
   backend:
     internal: true
   frontend:
+  # Owned here, so the core stack starts on its own; the optional MCP gateway
+  # (docker-compose-mcp.yaml) joins it.
   mcp_net:
-    external: true
+    name: mcp_net
 
 
 

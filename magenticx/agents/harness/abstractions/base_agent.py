@@ -8,6 +8,7 @@ from langgraph.types import Command
 
 from core.error_handling import agent_stream_error_handler
 from core.logging import get_logger
+from core.settings import settings
 from harness.checkpointer import get_checkpointer
 from harness.commands import CommandSpec, lookup_command
 from harness.tools.gates import approval_map, key_set
@@ -194,6 +195,12 @@ class BaseAgent:
         """
         desired = (set(self.config_tool_names) | self.tool_config.enabled) - self.tool_config.disabled
         if not desired:
+            return []
+        if not settings.mcp.enabled:
+            # MCP is off on this deployment, so the agent's MCP tools are absent
+            # by design — not "missing" (that warning is for a gateway that should
+            # have them). One line per run says what it runs without.
+            logger.info("agent_tools_mcp_disabled", "MCP is not enabled; running without the agent's MCP tools", agent_slug=self.name, skipped_tools=sorted(desired))
             return []
 
         resolved: list[Any] = []

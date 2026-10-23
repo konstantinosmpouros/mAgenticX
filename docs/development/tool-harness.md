@@ -67,7 +67,7 @@ flowchart TD
 
 ## Phase 2 — MCP injection at stream time
 
-The inference request carries **no tool list**. On every `/stream` (and `/resume`), the router opens an MCP session, pulls the **entire** live gateway manifest, and hands it to `attach_tools()`. The agent keeps only the tools whose canonical cache key it declared — for a `YamlDeepAgent`, those keys are seeded in `__init__` from its `agent.yaml`. This is identical across the send / edit / retry / resume flows; the mode only changes which history and checkpoint are fed, never the tools.
+The inference request carries **no tool list**. On every `/stream` (and `/resume`), the router opens an MCP session (`optional_mcp_session()`), pulls the **entire** live gateway manifest, and hands it to `attach_tools()`. MCP is an opt-in add-on: when it is off (`MCP_GATEWAY_URL` empty) or the gateway is unreachable / misses `MCP_CONNECT_TIMEOUT_SECONDS`, the session is `None`, `attach_tools([])` runs, and the agent proceeds with its native and framework tools — the run never fails for lack of MCP. A run paused on an MCP tool's approval and resumed without MCP gets an error `ToolMessage` for that call, which the model reads. The agent keeps only the tools whose canonical cache key it declared — for a `YamlDeepAgent`, those keys are seeded in `__init__` from its `agent.yaml`. This is identical across the send / edit / retry / resume flows; the mode only changes which history and checkpoint are fed, never the tools.
 
 ```mermaid
 flowchart LR
@@ -82,7 +82,7 @@ flowchart LR
 
 | Key fact | Value / detail |
 | --- | --- |
-| Manifest source | `load_mcp_tools(session)` — unfiltered, every server the gateway exposes |
+| Manifest source | `load_mcp_tools(session)` — unfiltered, every server the gateway exposes; `[]` when MCP is off or the gateway can't be reached |
 | Filter key | `config_tool_names` (spec-derived for YAML agents; empty for base/LangGraph) |
 | Base agent default | `BaseAgent.__init__` leaves `config_tools` / `config_tool_names` empty — nothing tool-related rides on the request |
 
@@ -294,6 +294,7 @@ See [database-schema](../architecture/database-schema.md#agent_runtime-tables) f
 - **`present_artifact` is always on; native builtins can't be disabled here.** The Agents tab lists MCP tools only. `toggle_agent_tool` ignores native keys and `_apply_tool_disables` subtracts native keys from the disabled set — so even a legacy pre-model disable of a native is neutralized. `remember` / `search_past_conversations` are turned on/off via the Personalization prefs, not this tab.
 - **Framework builtins are un-disable-able.** They enter through `create_deep_agent`, downstream of `_apply_tool_disables`. Neither the Agents tab nor an override row can touch `write_todos`, `read_file`, etc. Native builtins are additionally subtracted from the disabled set inside `_apply_tool_disables`, so even a legacy row naming one is inert.
 - **The available catalog needs a warm manifest cache.** `list_agent_tools` reads the cached MCP manifest map (primed only by `list_mcp_tools()`, not the per-stream loader); the tools endpoint calls it before listing. If the gateway is down, the *available* list is empty but declared tools still show.
+- **MCP off: declared MCP tools list as unavailable.** With `MCP_GATEWAY_URL` empty the tools endpoint skips the warm-up, `_mcp_rows` adds no gateway rows, and each declared MCP ref is listed with `available=false`, `unavailableReason="MCP is not enabled on this deployment"` (`MCP_DISABLED_REASON`) — the same fields a builtin without its sandbox gets. At run time `_filter_live_tools` returns `[]` with one INFO `agent_tools_mcp_disabled` rather than the `agent_tools_missing` WARNING.
 - **Overrides are fail-open.** A run config that carries no override fields, or junk in them, coerces to two empty sets (`_key_set`) — never a silently emptied tool set. The safe default is the agent's declared baseline.
 - **One UI boolean means two opposite things.** For a tool the agent *declares* (on by default) "off" is a stored row and "on" is the absence of one; for an undeclared gateway tool it is mirrored. Writing back-to-default as a deleted row is what keeps the table proportional to real choices instead of accumulating rows meaning "normal".
 - **`tool_prefs.json` is gone.** No file, no reader, no migration path. `list_agent_tools` reports the **baseline only** — declared MCP tools on, everything else off — and the bridge overlays the user's rows. The agents service holds no opinion about what the user chose, so there is no second copy to disagree with.
@@ -319,7 +320,7 @@ See [database-schema](../architecture/database-schema.md#agent_runtime-tables) f
 | YAML → spec tools (native + MCP) | [magenticx/agents/harness/abstractions/yaml_agent.py](../../magenticx/agents/harness/abstractions/yaml_agent.py) | `config_tool_names` seed, `_resolve_native_tools` |
 | Per-(user, agent) override store | [magenticx/dialogue_bridge/utils/agent_tool_prefs.py](../../magenticx/dialogue_bridge/utils/agent_tool_prefs.py) | `read_pair`, `apply_toggle`, `adopt_pair`, `apply_to_rows` |
 | Agents-tab list / toggle | [magenticx/agents/utils/agent_tools.py](../../magenticx/agents/utils/agent_tools.py) · [router/agent_tools.py](../../magenticx/agents/router/agent_tools.py) | `list_agent_tools`, `toggle_agent_tool` |
-| Live MCP manifest load | [magenticx/agents/utils/mcp_tools.py](../../magenticx/agents/utils/mcp_tools.py) · [router/inference.py](../../magenticx/agents/router/inference.py) | `load_mcp_tools`, `mcp_session_context`, `attach_tools` call |
+| Live MCP manifest load | [magenticx/agents/utils/mcp_tools.py](../../magenticx/agents/utils/mcp_tools.py) · [router/inference.py](../../magenticx/agents/router/inference.py) | `load_mcp_tools`, `optional_mcp_session`, `attach_tools` call |
 | Bridge proxy | [magenticx/dialogue_bridge/router/agent_tools.py](../../magenticx/dialogue_bridge/router/agent_tools.py) | GET list + POST toggle (CSRF) |
 | User-agent spec validation (tool refs, HITL floor, quotas) | [magenticx/agents/harness/abstractions/user_agents.py](../../magenticx/agents/harness/abstractions/user_agents.py) | `validate_write`, `_HITL_FLOOR`, `_ALLOWED_EXTENSIONS` |
 | Ownership-aware resolution | [magenticx/agents/utils/agents.py](../../magenticx/agents/utils/agents.py) | `resolve_agent_definition`, `_load_user_agent`, `_USER_AGENT_CACHE` |

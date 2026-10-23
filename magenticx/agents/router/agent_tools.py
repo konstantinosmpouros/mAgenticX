@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from core.security.internal_trust import require_internal_caller
 from core.logging import get_logger
+from core.settings import settings
 from schema import AgentToolsResponse
 from utils.agent_tools import list_agent_tools
 from utils.mcp_tools import MCPToolsClientError, list_mcp_tools
@@ -35,19 +36,21 @@ async def get_agent_tools(
     The two preference flags are passed by the bridge, which owns them: they
     decide whether the memory builtins are present for this user.
     """
-    # Warm the MCP manifest cache first: list_agent_tools reads the cached
-    # manifest map for the "available to add" catalog, and that cache is primed
-    # only by this discovery path (the per-stream loader never touches it). Cheap
-    # when already warm (internal cache-hit, no gateway call); a gateway outage
-    # just leaves the catalog empty, declared tools still list.
-    try:
-        await list_mcp_tools()
-    except MCPToolsClientError:
-        logger.warning(
-            "agent_tools_catalog_warm_failed",
-            "MCP gateway unavailable while listing agent tools; catalog will be empty",
-            agent_slug=agent_slug,
-        )
+    if settings.mcp.enabled:
+        # Warm the MCP manifest cache first: list_agent_tools reads the cached
+        # manifest map for the "available to add" catalog, and that cache is
+        # primed only by this discovery path (the per-stream loader never touches
+        # it). Cheap when already warm (internal cache-hit, no gateway call); a
+        # gateway outage just leaves the catalog empty, declared tools still list.
+        # MCP off: nothing to warm, and no gateway to ask.
+        try:
+            await list_mcp_tools()
+        except MCPToolsClientError:
+            logger.warning(
+                "agent_tools_catalog_warm_failed",
+                "MCP gateway unavailable while listing agent tools; catalog will be empty",
+                agent_slug=agent_slug,
+            )
     rows = await list_agent_tools(
         user_id,
         agent_slug,
