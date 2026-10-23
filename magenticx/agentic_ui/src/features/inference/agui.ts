@@ -97,6 +97,10 @@ export const TokenUsagePayloadSchema = z.object({
   context_tokens: z.number().nullish(),
   context_percent: z.number().nullish(),
   compaction_percent: z.number().nullish(),
+  // Why the provider ended the call; `truncated` when it hit the output-token
+  // ceiling (the reply is cut off, though nothing failed).
+  finish_reason: z.string().nullish(),
+  truncated: z.boolean().nullish(),
   // "compaction" on the summary call of an automatic compaction (plan 34).
   purpose: z.string().nullish(),
 });

@@ -45,7 +45,9 @@ export const BLOCK_REGISTRY: Record<
   TimelineBlock["kind"],
   (block: TimelineBlock, ctx: BlockRenderContext) => ReactNode
 > = {
-  content: (block) => <ContentBlockView block={block as ContentBlock} />,
+  content: (block, ctx) => (
+    <ContentBlockView block={block as ContentBlock} streaming={ctx.isLiveActive} />
+  ),
   chart: (block) => <ChartCard block={block as ChartBlock} />,
   compaction: (block, ctx) => {
     const compaction = block as CompactionBlock;

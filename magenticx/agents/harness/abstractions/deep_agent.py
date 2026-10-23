@@ -16,6 +16,7 @@ from harness.tools.gates import resolve_interrupt_on, strip_reserved_names, trus
 from harness.tools.registry import NativeToolContext, build_auto_attach_tools
 from harness.middlewares import (
     ConfigurableSummarizationMiddleware,
+    RetryOnRateLimitMiddleware,
     ToolErrorMiddleware,
     UsageMetricsMiddleware,
     build_summarization_middleware,
@@ -102,6 +103,7 @@ class DeepAgent(BaseAgent, ABC):
     summarization_middleware = ConfigurableSummarizationMiddleware
     build_summarization_middleware = staticmethod(build_summarization_middleware)
     usage_metrics_middleware = UsageMetricsMiddleware
+    rate_limit_middleware = RetryOnRateLimitMiddleware
 
     # The main agent's own summarizer once built (None when its stack carries
     # none) — what a manual compaction of this agent's thread runs (plan 34).
@@ -319,6 +321,21 @@ class DeepAgent(BaseAgent, ABC):
 
 
     @staticmethod
+    def _ensure_rate_limit_middleware(stack: Optional[Sequence[Any]]) -> list[Any]:
+        """Return ``stack`` with ``RetryOnRateLimitMiddleware`` guaranteed (first,
+        never duplicated), so a provider rate limit pauses the main agent or a
+        sub-agent instead of failing the run.
+
+        First means outermost: ``UsageMetricsMiddleware`` (appended last) sits
+        inside it and times only the attempt that answered, never the wait.
+        """
+        items = list(stack or [])
+        if not any(isinstance(m, RetryOnRateLimitMiddleware) for m in items):
+            items.insert(0, RetryOnRateLimitMiddleware())
+        return items
+
+
+    @staticmethod
     def _ensure_usage_metrics_middleware(stack: Optional[Sequence[Any]]) -> list[Any]:
         """Return ``stack`` with ``UsageMetricsMiddleware`` guaranteed (appended if
         missing, never duplicated), so every model call — main agent and every
@@ -414,6 +431,7 @@ class DeepAgent(BaseAgent, ABC):
         backend = self._build_composite_backend()
         stack = middleware if middleware is not None else self.default_middleware(model, backend)
         stack = self._ensure_tool_error_middleware(stack)  # guarantee on the main agent
+        stack = self._ensure_rate_limit_middleware(stack)
         stack = self._ensure_usage_metrics_middleware(stack)
         self.summarizer = find_summarizer(stack)
         exclude_stock_summarization(model if isinstance(model, str) else "")
@@ -441,7 +459,9 @@ class DeepAgent(BaseAgent, ABC):
                 {
                     **spec,
                     "middleware": self._ensure_usage_metrics_middleware(
-                        self._ensure_tool_error_middleware(spec.get("middleware"))
+                        self._ensure_rate_limit_middleware(
+                            self._ensure_tool_error_middleware(spec.get("middleware"))
+                        )
                     ),
                 }
                 if isinstance(spec, dict) and "runnable" not in spec

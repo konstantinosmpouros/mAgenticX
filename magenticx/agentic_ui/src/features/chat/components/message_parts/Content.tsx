@@ -4,12 +4,15 @@ import { Textarea } from "@/shared/ui/textarea";
 import type { ContentBlock, MessageOut } from "@/shared/lib/types";
 import { normalizeBulletMarkdown } from "@/shared/lib/utils";
 
-// ContentBlockView — a timeline content block rendered as markdown.
-export const ContentBlockView = memo(({ block }: { block: ContentBlock }) => {
-  const normalized = normalizeBulletMarkdown(block.text);
-  if (!normalized.trim()) return null;
-  return <Response>{normalized}</Response>;
-});
+// ContentBlockView — a timeline content block rendered as markdown. `streaming`
+// while it is the live run's last block, i.e. text may still be arriving in it.
+export const ContentBlockView = memo(
+  ({ block, streaming = false }: { block: ContentBlock; streaming?: boolean }) => {
+    const normalized = normalizeBulletMarkdown(block.text);
+    if (!normalized.trim()) return null;
+    return <Response streaming={streaming}>{normalized}</Response>;
+  },
+);
 ContentBlockView.displayName = "ContentBlockView";
 
 type MessageContentProps = {
@@ -42,7 +45,7 @@ export function MessageContent({
   onCancelEdit,
   onSubmitEdit,
 }: MessageContentProps) {
-  const commandName = message.sender === "user" ? message.command?.name ?? null : null;
+  const commandName = message.sender === "user" ? (message.command?.name ?? null) : null;
   const normalizedContent = useMemo(
     () => markCommand(normalizeBulletMarkdown(message.content ?? ""), commandName),
     [message.content, commandName],

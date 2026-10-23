@@ -102,6 +102,10 @@ class TokenUsageEvent(BaseModel):
     context_tokens: Optional[int] = None
     context_percent: Optional[float] = None
     compaction_percent: Optional[float] = None
+    # Why the provider ended the call; ``truncated`` when it stopped at the
+    # output-token ceiling (the reply is cut off, though nothing failed).
+    finish_reason: Optional[str] = None
+    truncated: Optional[bool] = None
     # "compaction" for the summary call of an automatic compaction — booked
     # under its own usage scope, never the conversation's context reading.
     purpose: Optional[Literal["compaction"]] = None

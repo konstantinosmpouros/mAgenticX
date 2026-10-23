@@ -620,6 +620,23 @@ class SummarizationSettings(BaseSettings):
     manual_min_fraction: float = Field(0.05, ge=0, lt=1, validation_alias="SUMMARIZATION_MANUAL_MIN_FRACTION")
 
 
+class RateLimitRetrySettings(BaseSettings):
+    """Waiting out a provider rate limit (HTTP 429) instead of failing the run.
+
+    The OpenAI client already retries a 429 a couple of times with a short
+    backoff. A per-minute token quota needs longer than that to clear, so
+    ``RetryOnRateLimitMiddleware`` waits ``delay_seconds`` (or the provider's
+    ``Retry-After`` when larger, up to ``max_delay_seconds``) and re-issues the
+    call, up to ``max_attempts`` attempts in all. A 429 is refused before any
+    token streams, so re-issuing never duplicates output.
+    """
+    model_config = _BASE_MODEL_CONFIG
+
+    max_attempts: int = Field(4, ge=1, le=10, validation_alias="INFERENCE_RATE_LIMIT_MAX_ATTEMPTS")
+    delay_seconds: float = Field(15.0, ge=0, validation_alias="INFERENCE_RATE_LIMIT_DELAY_SECONDS")
+    max_delay_seconds: float = Field(120.0, ge=0, validation_alias="INFERENCE_RATE_LIMIT_MAX_DELAY_SECONDS")
+
+
 class AguiSettings(BaseSettings):
     """Bounds on what the AG-UI event stream carries.
 
@@ -680,6 +697,7 @@ class Settings(BaseSettings):
     filesystem: FilesystemSettings = Field(default_factory=FilesystemSettings)
     remote_skills: RemoteSkillsSettings = Field(default_factory=RemoteSkillsSettings)
     summarization: SummarizationSettings = Field(default_factory=SummarizationSettings)
+    rate_limit_retry: RateLimitRetrySettings = Field(default_factory=RateLimitRetrySettings)
     agui: AguiSettings = Field(default_factory=AguiSettings)
 
     @model_validator(mode="after")

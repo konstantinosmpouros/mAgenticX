@@ -1,12 +1,18 @@
 "use client";
 
+import { prepareStreamingMarkdown } from "@/shared/lib/streaming-markdown";
 import { cn } from "@/shared/lib/utils";
 import { type ComponentProps, memo, useState } from "react";
 import { Streamdown, type MermaidConfig } from "streamdown";
 
+import { MarkdownTable } from "./markdown-table";
 import { MermaidExportLayer } from "./mermaid-export";
 
-type ResponseProps = ComponentProps<typeof Streamdown>;
+type ResponseProps = ComponentProps<typeof Streamdown> & {
+  /** The answer is still arriving: an unfinished ```mermaid block is held back
+   * (see `prepareStreamingMarkdown`) instead of rendering Mermaid's parse error. */
+  streaming?: boolean;
+};
 
 const defaultMermaidConfig: MermaidConfig = {
   theme: "base",
@@ -38,10 +44,19 @@ const defaultMermaidConfig: MermaidConfig = {
 /**
  * An answer rendered as Markdown. Mermaid diagrams get a "Download image (PNG)"
  * button beside Streamdown's own source-download and copy buttons, from
- * `MermaidExportLayer`.
+ * `MermaidExportLayer`. Tables render through `MarkdownTable` (a card frame,
+ * copy as a grid, CSV that Excel opens correctly). While `streaming`, a diagram
+ * still being written shows "Generating diagram…" instead of a parse error.
  */
 export const Response = memo(
-  ({ className, components, mermaidConfig, ...props }: ResponseProps) => {
+  ({
+    className,
+    components,
+    mermaidConfig,
+    streaming = false,
+    children,
+    ...props
+  }: ResponseProps) => {
     // `contents`: the wrapper only gives the diagram buttons a root to look in; it
     // adds no box, so the answer's layout is unchanged.
     const [root, setRoot] = useState<HTMLDivElement | null>(null);
@@ -93,15 +108,19 @@ export const Response = memo(
                 </a>
               );
             },
+            table: MarkdownTable,
             ...components,
           }}
           {...props}
-        />
+        >
+          {typeof children === "string" ? prepareStreamingMarkdown(children, streaming) : children}
+        </Streamdown>
         <MermaidExportLayer root={root} />
       </div>
     );
   },
-  (prevProps, nextProps) => prevProps.children === nextProps.children,
+  (prevProps, nextProps) =>
+    prevProps.children === nextProps.children && prevProps.streaming === nextProps.streaming,
 );
 
 Response.displayName = "Response";

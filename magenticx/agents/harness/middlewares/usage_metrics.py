@@ -18,6 +18,11 @@ payload, where the normalizer already reads ``usage_metadata``.
 whole prompt as the model saw it (system prompt, tools, history) — over the
 model's ``max_input_tokens``. That is the same window the summarizer measures
 against, so the gauge and the compaction trigger can never disagree.
+
+**Why the call ended** (``finish_reason``) rides along too, with ``truncated``
+set when the model stopped at its output-token ceiling. That stop is an HTTP 200
+with no exception — without the flag a cut-off answer is indistinguishable from
+a short one — so a truncated call is also logged as ``model_call_truncated``.
 """
 from __future__ import annotations
 
@@ -44,6 +49,23 @@ logger = get_logger(__name__)
 METRICS_KEY = "mx_usage_metrics"
 
 _DATED_SUFFIX = re.compile(r"-\d{4}-\d{2}-\d{2}$")
+
+#: Finish reasons meaning the model hit its output-token ceiling: Chat
+#: Completions' ``length``, Anthropic's ``max_tokens``, the Responses API's
+#: ``max_output_tokens``.
+TRUNCATION_FINISH_REASONS = frozenset({"length", "max_tokens", "max_output_tokens"})
+
+
+def finish_reason(response_metadata: Any) -> Optional[str]:
+    """Why the provider ended the call, whichever API shape reported it."""
+    if not isinstance(response_metadata, dict):
+        return None
+    reason = response_metadata.get("finish_reason") or response_metadata.get("stop_reason")
+    if not reason:
+        # Responses API: status "incomplete" with the cause in incomplete_details.
+        details = response_metadata.get("incomplete_details")
+        reason = details.get("reason") if isinstance(details, dict) else None
+    return str(reason)[:64] if reason else None
 
 
 def model_name(model: Any) -> Optional[str]:
@@ -131,6 +153,18 @@ class UsageMetricsMiddleware(AgentMiddleware):
                         metrics["context_percent"] = round(100 * prompt / window, 1)
                 if window and self.compaction_fraction:
                     metrics["compaction_percent"] = round(100 * self.compaction_fraction, 1)
+                reason = finish_reason(message.response_metadata)
+                if reason:
+                    metrics["finish_reason"] = reason
+                    metrics["truncated"] = reason in TRUNCATION_FINISH_REASONS
+                    if metrics["truncated"]:
+                        logger.warning(
+                            "model_call_truncated",
+                            "Model stopped at its output-token ceiling; the reply is cut off",
+                            model=name,
+                            finish_reason=reason,
+                            output_tokens=usage.get("output_tokens"),
+                        )
                 message.response_metadata = {**(message.response_metadata or {}), METRICS_KEY: metrics}
         except (AttributeError, TypeError, ValueError) as exc:
             logger.warning(

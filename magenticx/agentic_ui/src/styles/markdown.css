@@ -63,6 +63,77 @@
   table-layout: auto;
 }
 
+/* Table look (inside MarkdownTable's card frame): a soft header band, airy rows
+   that wrap at word boundaries (never mid-word), a quiet zebra and a hover tint.
+   Scoped with Streamdown's data attributes so it outranks its utility classes. */
+.chat-markdown [data-streamdown="table-header"] {
+  background: hsl(var(--muted) / 0.7);
+}
+
+.chat-markdown [data-streamdown="table-header-cell"] {
+  padding: 0.7rem 1rem;
+  border-bottom: 1px solid hsl(var(--border));
+  color: hsl(var(--muted-foreground));
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.chat-markdown [data-streamdown="table-body"] {
+  background: transparent;
+}
+
+.chat-markdown [data-streamdown="table-body"] [data-streamdown="table-row"] {
+  border-bottom: 1px solid hsl(var(--border) / 0.6);
+  transition: background-color 140ms ease;
+}
+
+.chat-markdown [data-streamdown="table-body"] [data-streamdown="table-row"]:last-child {
+  border-bottom: 0;
+}
+
+.chat-markdown [data-streamdown="table-body"] [data-streamdown="table-row"]:nth-child(even) {
+  background: hsl(var(--muted) / 0.25);
+}
+
+.chat-markdown [data-streamdown="table-body"] [data-streamdown="table-row"]:hover {
+  background: hsl(var(--primary) / 0.07);
+}
+
+.chat-markdown [data-streamdown="table-cell"] {
+  min-width: 7rem;
+  padding: 0.7rem 1rem;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  vertical-align: top;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: manual;
+}
+
+/* A short first column (#, rank) stays narrow. */
+.chat-markdown [data-streamdown="table-cell"]:first-child {
+  min-width: 0;
+  color: hsl(var(--muted-foreground));
+  font-variant-numeric: tabular-nums;
+}
+
+/* File names and codes inside a table read as text, not as a monospace chip that
+   breaks into pieces when the name wraps. */
+.chat-markdown [data-streamdown="table-cell"] code {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: hsl(var(--foreground));
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 600;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .chat-markdown h1,
 .chat-markdown h2,
 .chat-markdown h3,

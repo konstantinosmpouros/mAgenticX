@@ -1,3 +1,4 @@
+from harness.middlewares.rate_limit import RetryOnRateLimitMiddleware
 from harness.middlewares.summarization import (
     COMPACTION_KEY,
     EVENT_KEY,
@@ -17,6 +18,7 @@ __all__ = [
     "COMPACTION_KEY",
     "ConfigurableSummarizationMiddleware",
     "EVENT_KEY",
+    "RetryOnRateLimitMiddleware",
     "ToolErrorMiddleware",
     "UsageMetricsMiddleware",
     "build_summarization_middleware",

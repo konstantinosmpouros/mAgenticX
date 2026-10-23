@@ -351,6 +351,8 @@ class AGUIEmitter:
             context_tokens=metrics.get("context_tokens"),
             context_percent=metrics.get("context_percent"),
             compaction_percent=metrics.get("compaction_percent"),
+            finish_reason=metrics.get("finish_reason"),
+            truncated=metrics.get("truncated"),
             purpose="compaction" if purpose == "compaction" else None,
         )
         custom_event = CustomEvent(

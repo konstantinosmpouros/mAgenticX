@@ -30,6 +30,7 @@ from langchain_core.callbacks import AsyncCallbackHandler
 from langchain_core.outputs import LLMResult
 
 from core.logging import get_logger
+from harness.middlewares.usage_metrics import TRUNCATION_FINISH_REASONS, finish_reason
 
 logger = get_logger(__name__)
 
@@ -47,6 +48,18 @@ def _usage_from_token_usage(token_usage: dict[str, Any]) -> dict[str, Any]:
         "input_token_details": {"cache_read": cached},
         "output_token_details": {"reasoning": reasoning},
     }
+
+
+def finish_reason_from_result(response: LLMResult) -> Optional[str]:
+    """Why the provider ended the call: off the AIMessage, else the generation info."""
+    for generations in response.generations:
+        for generation in generations:
+            reason = finish_reason(getattr(getattr(generation, "message", None), "response_metadata", None))
+            if reason is None:
+                reason = finish_reason(getattr(generation, "generation_info", None))
+            if reason:
+                return reason
+    return None
 
 
 def usage_from_result(response: LLMResult) -> Optional[dict[str, Any]]:
@@ -97,6 +110,18 @@ class UsageMetricsCallback(AsyncCallbackHandler):
         metrics: dict[str, Any] = {"model": model}
         if started_at is not None:
             metrics["latency_ms"] = int((time.perf_counter() - started_at) * 1000)
+        reason = finish_reason_from_result(response)
+        if reason:
+            metrics["finish_reason"] = reason
+            metrics["truncated"] = reason in TRUNCATION_FINISH_REASONS
+            if metrics["truncated"]:
+                logger.warning(
+                    "model_call_truncated",
+                    "Model stopped at its output-token ceiling; the reply is cut off",
+                    model=model,
+                    finish_reason=reason,
+                    output_tokens=usage.get("output_tokens"),
+                )
         self._pending.append((usage, f"lg-{run_id}", metrics))
 
     async def on_llm_error(self, error: BaseException, *, run_id: UUID, **kwargs: Any) -> None:
