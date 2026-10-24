@@ -1,0 +1,283 @@
+/* The sign-in page (pages/Login.tsx): always night. A deep navy-to-black sky,
+   a faint nebula in the theme's orb hues (--orb-glow-1..3) drifting slowly
+   through it and a low glow on the horizon; over them the Milky Way, nebulae,
+   galaxies, stars and falling stars on two canvases
+   (features/auth/components/NightSky.tsx). The text that sits on the sky is
+   light in every theme (Login.tsx). The sign-in card is glass over the sky:
+   night-tinted, rimmed and lit in the theme's hues. Everything holds still
+   under reduced motion.
+
+   Markup: .login-sky > .login-nebula (x3) + .login-horizon + .login-stars
+           .login-shell > .login-card-glow + .login-card > .login-card-sheen
+           .login-logo > .login-logo-glow + the logo */
+
+.login-sky {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  background: linear-gradient(180deg, #0a1030 0%, #080b24 38%, #05071a 70%, #030410 100%);
+}
+
+/* Gradients rather than a blur filter: the same softness, no filter pass.
+   Only `transform` animates, so the drift stays on the compositor. */
+.login-nebula {
+  position: absolute;
+  border-radius: 9999px;
+  mix-blend-mode: screen;
+  will-change: transform;
+}
+
+.login-nebula-1 {
+  width: 70vmax;
+  height: 46vmax;
+  right: -18vmax;
+  top: -14vmax;
+  background: radial-gradient(closest-side, hsl(var(--orb-glow-2) / 0.2), transparent);
+  animation: login-drift-1 46s ease-in-out infinite alternate;
+}
+
+.login-nebula-2 {
+  width: 60vmax;
+  height: 40vmax;
+  left: -20vmax;
+  top: 30%;
+  background: radial-gradient(closest-side, hsl(var(--orb-glow-1) / 0.16), transparent);
+  animation: login-drift-2 54s ease-in-out infinite alternate;
+}
+
+.login-nebula-3 {
+  width: 44vmax;
+  height: 30vmax;
+  left: 30%;
+  top: 8%;
+  background: radial-gradient(closest-side, hsl(var(--orb-glow-3) / 0.1), transparent);
+  animation: login-drift-3 62s ease-in-out infinite alternate;
+}
+
+@keyframes login-drift-1 {
+  to {
+    transform: translate3d(-7vmax, 5vmax, 0) scale(1.06);
+  }
+}
+
+@keyframes login-drift-2 {
+  to {
+    transform: translate3d(8vmax, -4vmax, 0) scale(0.95);
+  }
+}
+
+@keyframes login-drift-3 {
+  to {
+    transform: translate3d(-5vmax, 6vmax, 0) scale(1.1);
+  }
+}
+
+/* The last light on the horizon, in the theme's first glow. */
+.login-horizon {
+  position: absolute;
+  inset: auto -10% -30% -10%;
+  height: 55%;
+  background: radial-gradient(
+    ellipse 60% 50% at 50% 100%,
+    hsl(var(--orb-glow-1) / 0.22),
+    transparent 70%
+  );
+}
+
+.login-stars {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* The logo on the sky, over a soft halo of the theme's glows. */
+.login-logo {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  isolation: isolate;
+}
+
+.login-logo-glow {
+  position: absolute;
+  inset: -45% -25%;
+  z-index: -1;
+  border-radius: 9999px;
+  background:
+    radial-gradient(closest-side, hsl(var(--orb-glow-2) / 0.35), transparent),
+    radial-gradient(closest-side at 35% 60%, hsl(var(--orb-glow-1) / 0.25), transparent);
+  animation: login-logo-breathe 7s ease-in-out infinite;
+}
+
+@keyframes login-logo-breathe {
+  0%,
+  100% {
+    opacity: 0.75;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.04);
+  }
+}
+
+/* The sign-in card. Behind it, a glow in the theme's three hues that breathes
+   slowly (faster while the browser is handed to Microsoft). On it, a 1px rim
+   in the same hues that catches the light at the top and fades down, a light
+   that now and then runs along the rim, and a sheen falling from the top. */
+.login-shell {
+  position: relative;
+  isolation: isolate;
+}
+
+.login-card-glow {
+  position: absolute;
+  inset: -6% -3%; /* within the 16px gutter on a phone */
+  z-index: -1;
+  border-radius: 3rem;
+  background:
+    radial-gradient(55% 50% at 25% 15%, hsl(var(--orb-glow-1) / 0.4), transparent 70%),
+    radial-gradient(55% 50% at 80% 30%, hsl(var(--orb-glow-2) / 0.35), transparent 70%),
+    radial-gradient(60% 50% at 60% 90%, hsl(var(--orb-glow-3) / 0.32), transparent 70%);
+  filter: blur(30px);
+  opacity: 0.45;
+  animation: login-breathe 9s ease-in-out infinite;
+}
+
+.login-shell[data-busy="true"] .login-card-glow {
+  animation-duration: 2.4s;
+}
+
+@keyframes login-breathe {
+  0%,
+  100% {
+    opacity: 0.32;
+    transform: scale(0.97);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(1.02);
+  }
+}
+
+.login-card {
+  position: relative;
+  border-radius: 1.75rem;
+  background: linear-gradient(180deg, hsl(var(--card) / 0.88), hsl(var(--card) / 0.82));
+  -webkit-backdrop-filter: blur(10px) saturate(1.5);
+  backdrop-filter: blur(10px) saturate(1.5);
+  box-shadow:
+    inset 0 1px 0 hsl(0 0% 100% / 0.55),
+    0 32px 80px -34px rgb(0 0 0 / 0.85);
+}
+
+/* The rim, and the light that runs along it: both a 1px ring cut out of a
+   gradient with a mask, so the glass itself stays clear. */
+.login-card::before,
+.login-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+.login-card::before {
+  background: linear-gradient(
+    180deg,
+    hsl(var(--orb-glow-2) / 0.95) 0%,
+    hsl(var(--orb-glow-1) / 0.55) 30%,
+    hsl(var(--orb-glow-3) / 0.2) 70%,
+    hsl(var(--orb-glow-3) / 0.08) 100%
+  );
+}
+
+.login-card::after {
+  background: linear-gradient(115deg, transparent 42%, hsl(0 0% 100% / 0.6) 50%, transparent 58%)
+    no-repeat;
+  background-size: 250% 100%;
+  background-position: 200% 0;
+  animation: login-rim-light 24s ease-in-out 4s infinite;
+}
+
+/* A quick pass left to right, then a long rest. */
+@keyframes login-rim-light {
+  0% {
+    background-position: 200% 0;
+  }
+  10%,
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+.login-card-sheen {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 10rem;
+  border-radius: 1.75rem 1.75rem 0 0;
+  background: radial-gradient(120% 100% at 50% 0%, hsl(var(--orb-glow-2) / 0.16), transparent 70%);
+  pointer-events: none;
+}
+
+/* Night glass: dark and clear, the stars soft through it. It carries the
+   `dark` class, so it takes Midnight's tokens (light text, the light-faced
+   Microsoft button); on a light theme it then takes back the theme's own hues
+   (`inherit` reads them from the page) and uses the theme's lighter swatch as
+   its accent, which reads on the dark glass. */
+:root:not(.dark) .login-glass-night {
+  --orb-glow-1: inherit;
+  --orb-glow-2: inherit;
+  --orb-glow-3: inherit;
+  --theme-glow: inherit;
+  --primary: var(--theme-glow);
+  --primary-glow: var(--theme-glow);
+}
+
+.login-glass-night .login-card {
+  background: linear-gradient(180deg, hsl(232 48% 17% / 0.6), hsl(234 55% 9% / 0.7));
+  -webkit-backdrop-filter: blur(7px) saturate(1.6);
+  backdrop-filter: blur(7px) saturate(1.6);
+  box-shadow:
+    inset 0 1px 0 hsl(0 0% 100% / 0.16),
+    inset 0 0 40px hsl(var(--orb-glow-2) / 0.06),
+    0 32px 80px -34px rgb(0 0 0 / 0.9);
+}
+
+/* Light glass on a light theme: the sky darkens the card a shade, so the
+   muted text steps darker to keep AA on it (same hue, the theme's line tint). */
+:root:not(.dark) .login-shell:not(.login-glass-night) .login-card {
+  --muted-foreground: var(--tint-line) 32%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-nebula,
+  .login-logo-glow,
+  .login-card-glow,
+  .login-card::after {
+    animation: none;
+  }
+}
+
+/* A phone on its side: brand and card side by side, so the sign-in button
+   stays on the first screen. */
+@media (orientation: landscape) and (max-height: 540px) and (min-width: 640px) {
+  .login-layout {
+    max-width: 54rem;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 24rem);
+    gap: 2.5rem;
+  }
+
+  .login-layout .login-card {
+    padding-block: 1.75rem;
+  }
+}

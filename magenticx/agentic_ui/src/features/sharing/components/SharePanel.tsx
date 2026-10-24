@@ -1,6 +1,7 @@
 import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
 import { ModalLayer } from "@/shared/ui/modal-layer";
+import { BrandLogo } from "@/shared/ui/brand-logo";
 import { CalendarDays, Check, Copy, Download, Link2, Loader2, LockKeyhole, X } from "lucide-react";
 import type { ConversationShareMode, MessageOut } from "@/shared/lib/types";
 import { MessageContent } from "@/features/chat/components/message_parts/Content";
@@ -226,10 +227,11 @@ function ShareConversationCard({
           </Button>
         </div>
 
-        <img
-          src="/logo2_white_magentaX.png"
-          alt="mAgenticX logo"
-          className="h-9 w-9 object-contain opacity-95 md:h-10 md:w-10"
+        {/* The card is dark in every theme. */}
+        <BrandLogo
+          on="dark"
+          label="mAgenticX logo"
+          className="h-9 w-9 opacity-95 md:h-10 md:w-10"
         />
       </div>
     </Card>

@@ -3,10 +3,12 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  BRAND_LOGOS,
   DEFAULT_LOGOS,
   THEME_ATTRIBUTE_VALUES,
   THEME_IDS,
   THEMES,
+  brandLogoFor,
   logoFor,
   markFor,
   orbFor,
@@ -88,6 +90,22 @@ describe("theme registry", () => {
     expect(orbFor("daylight")).toBe("/orbital-hub-transparent.webp");
     expect(orbFor("dark")).toBe("/orbital-hub-midnight.webp");
     for (const theme of THEMES) expect(orbFor(theme.id)).toMatch(/^\/orbital-hub-[a-z]+\.webp$/);
+  });
+
+  it("draws the mAgenticX logo from the one registry, in the ink for its background", () => {
+    // The theme's mode by default; `on` names a surface that keeps its own colour.
+    expect(brandLogoFor("mark", "sage")).toBe(BRAND_LOGOS.mark.light);
+    expect(brandLogoFor("mark", "midnight")).toBe(BRAND_LOGOS.mark.dark);
+    expect(brandLogoFor("mark", "daylight", "dark")).toBe(BRAND_LOGOS.mark.dark);
+    expect(brandLogoFor("full", "midnight", "light")).toBe(BRAND_LOGOS.full.light);
+    // The sidebar's logo and the slot's mark are the same artwork.
+    for (const theme of THEMES) expect(brandLogoFor("mark", theme.id)).toBe(logoFor(theme.id));
+    // Every path it names ships in public/.
+    for (const inks of Object.values(BRAND_LOGOS)) {
+      for (const file of Object.values(inks)) {
+        expect(() => readFileSync(path.join(UI, "public", file))).not.toThrow();
+      }
+    }
   });
 
   it("gives every theme its soft-node mark, shipped in public/", () => {

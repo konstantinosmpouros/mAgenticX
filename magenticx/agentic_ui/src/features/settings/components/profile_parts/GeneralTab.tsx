@@ -3,7 +3,8 @@ import { Check } from "lucide-react";
 
 import { cn } from "@/shared/lib/utils";
 import type { UserPreferences } from "@/shared/lib/types";
-import { THEMES, logoFor, themeFor } from "@/styles/theme/themes";
+import { THEMES, themeFor } from "@/styles/theme/themes";
+import { BrandLogo } from "@/shared/ui/brand-logo";
 import { InfoCard, PrefToggleRow, SoftPanel } from "./shared";
 import { ComingSoonRow } from "./ComingSoon";
 
@@ -19,7 +20,6 @@ type ThemeChoice = {
   label: string;
   description: string;
   dark: boolean;
-  logo: string;
   /** The card's preview: the theme's background lit by two of its swatches. */
   background: string;
   swatches: string[];
@@ -33,7 +33,6 @@ const THEME_CHOICES: ThemeChoice[] = THEMES.map((theme) => ({
   label: theme.label,
   description: theme.description,
   dark: theme.mode === "dark",
-  logo: logoFor(theme.id),
   background: [
     `radial-gradient(circle at 78% 22%, ${swatch(theme.id, 3, 0.35)}, transparent 55%)`,
     `radial-gradient(circle at 18% 88%, ${swatch(theme.id, 1, 0.28)}, transparent 50%)`,
@@ -92,11 +91,9 @@ export default function GeneralTab({
                   className="relative flex h-36 items-center justify-center overflow-hidden rounded-[1.2rem]"
                   style={{ background: choice.background }}
                 >
-                  <img
-                    src={choice.logo}
-                    alt=""
-                    draggable={false}
-                    className="h-14 w-auto max-w-[60%] object-contain transition-transform duration-300 motion-safe:supports-[hover:hover]:group-hover:scale-105"
+                  <BrandLogo
+                    theme={choice.id}
+                    className="h-14 w-auto max-w-[60%] transition-transform duration-300 motion-safe:supports-[hover:hover]:group-hover:scale-105"
                   />
                   <div
                     className={cn(

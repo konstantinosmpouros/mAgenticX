@@ -3,6 +3,7 @@ import { Card } from "@/shared/ui/card";
 import { Button } from "@/shared/ui/button";
 import { Textarea } from "@/shared/ui/textarea";
 import { ModalLayer } from "@/shared/ui/modal-layer";
+import { BrandLogo } from "@/shared/ui/brand-logo";
 import {
   AlertTriangle,
   Check,
@@ -233,10 +234,11 @@ export default function ReportConversationDialog({
             </Button>
           </div>
 
-          <img
-            src="/logo2_white_magentaX.png"
-            alt="mAgenticX logo"
-            className="h-9 w-9 object-contain opacity-95 md:h-10 md:w-10"
+          {/* The card is dark in every theme. */}
+          <BrandLogo
+            on="dark"
+            label="mAgenticX logo"
+            className="h-9 w-9 opacity-95 md:h-10 md:w-10"
           />
         </div>
       </Card>

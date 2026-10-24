@@ -4,6 +4,7 @@ import { Building2, CalendarDays, Home, Send, ShieldCheck, X } from "lucide-reac
 
 import { ImageLightbox } from "@/shared/ui/ImageLightbox";
 import { Button } from "@/shared/ui/button";
+import { BrandLogo } from "@/shared/ui/brand-logo";
 import { Textarea } from "@/shared/ui/textarea";
 import ChatBody from "@/features/chat/components/ChatBody";
 import { getSharedConversation, startInference } from "@/shared/lib/api";
@@ -192,11 +193,8 @@ export default function SharedConversationPage() {
         <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-4 px-4 md:px-6">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04]">
-              <img
-                src="/logo2_white_magentaX.png"
-                alt="mAgenticX"
-                className="h-6 w-6 object-contain"
-              />
+              {/* The header is the theme's background: the logo takes its ink. */}
+              <BrandLogo label="mAgenticX" className="h-6 w-6" />
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">

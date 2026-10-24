@@ -42,11 +42,34 @@ export type ThemeDefinition = {
   mark?: string;
 };
 
-/** The logo a theme without its own `logo` gets: one drawn for light, one for dark backgrounds. */
-export const DEFAULT_LOGOS: Record<ThemeMode, string> = {
-  light: "/logo2.png",
-  dark: "/logo2_white_magentaX.png",
+/**
+ * The mAgenticX logo: the ONE place its artwork is named. Every logo in the
+ * app (the sidebar, the sign-in page, the share and report panels, the
+ * settings rail, the shared-conversation header, the theme cards) draws it
+ * through `BrandLogo` (src/shared/ui/brand-logo.tsx), which reads it here.
+ *
+ * - `mark`: the symbol on its own (square-ish; the sidebar, small badges).
+ * - `full`: the symbol with the "mAgenticX" wordmark (headers, the sign-in page).
+ *
+ * Each comes in two inks: `light` is drawn for light backgrounds, `dark` for
+ * dark ones. The new logo goes in `public/brand/logos/magenticx/`:
+ *
+ *   mark-on-light.svg  mark-on-dark.svg  full-on-light.svg  full-on-dark.svg
+ *
+ * (SVG preferred; otherwise transparent WebP/PNG at 2x: the mark 512x512, the
+ * full logo about 1200x320.) Point the paths below at them; nothing else
+ * changes. Until then both variants are the current "MAX" logo, which has no
+ * wordmark of its own. The favicon is separate: index.html → /magenticx-favicon.svg.
+ */
+export type BrandLogoVariant = "mark" | "full";
+
+export const BRAND_LOGOS: Record<BrandLogoVariant, Record<ThemeMode, string>> = {
+  mark: { light: "/logo2.png", dark: "/logo2_white_magentaX.png" },
+  full: { light: "/logo2.png", dark: "/logo2_white_magentaX.png" },
 };
+
+/** The logo a theme without its own `logo` gets: the mark, in the ink for its mode. */
+export const DEFAULT_LOGOS: Record<ThemeMode, string> = BRAND_LOGOS.mark;
 
 /** The orb a theme without its own `orb` gets (the Daylight artwork). */
 export const DEFAULT_ORB = "/orbital-hub-transparent.webp";
@@ -149,6 +172,23 @@ export function themeFor(name: string | undefined | null): ThemeDefinition {
 export function logoFor(name: string | undefined | null): string {
   const theme = themeFor(name);
   return theme.logo ?? DEFAULT_LOGOS[theme.mode];
+}
+
+/**
+ * The mAgenticX logo to draw: a theme's own `logo` (it only overrides the
+ * mark), else the registry's artwork for the variant, in the ink for `on` —
+ * the background it sits on — or, without one, for the theme's mode.
+ */
+export function brandLogoFor(
+  variant: BrandLogoVariant,
+  name: string | undefined | null,
+  on?: ThemeMode,
+): string {
+  const theme = themeFor(name);
+  if (variant === "mark" && theme.logo && (on === undefined || on === theme.mode)) {
+    return theme.logo;
+  }
+  return BRAND_LOGOS[variant][on ?? theme.mode];
 }
 
 /** The orb artwork for a theme name: its own, or the default. */

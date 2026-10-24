@@ -27,7 +27,6 @@ import { PiWaveformBold } from "react-icons/pi";
 import { MdOutlineSchedule } from "react-icons/md";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { useTheme } from "next-themes";
 import { Loader } from "@/shared/ui/shadcn-io/loader";
 
 import type { AccountSummary, ConversationSummary, UserProfile } from "@/shared/lib/types";
@@ -51,7 +50,7 @@ import {
 import { Skeleton } from "@/shared/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { NewChatIcon } from "@/shared/ui/new-chat-icon";
-import { logoFor } from "@/styles/theme/themes";
+import { BrandLogo } from "@/shared/ui/brand-logo";
 import { INTERACTIVE_SURFACE } from "@/shared/lib/consts";
 import { useTouchMenuTrigger } from "@/features/chat/hooks/useTouchMenuTrigger";
 import { loadSidebarSectionOpen, saveSidebarSectionOpen } from "@/shared/lib/sidebarStorage";
@@ -247,7 +246,6 @@ export default function ChatSidebar({
   sidebarInteractionHook,
 }: ChatSidebarProps) {
   const { isMobile, setOpenMobile, state, toggleSidebar } = useSidebar();
-  const { resolvedTheme } = useTheme();
   const isCollapsed = !isMobile && state === "collapsed";
   const contentRef = React.useRef<HTMLDivElement | null>(null);
   const reduceMotion = useReducedMotion();
@@ -286,7 +284,6 @@ export default function ChatSidebar({
   const [isSubmittingRename, setIsSubmittingRename] = React.useState(false);
   const renameInputRef = React.useRef<HTMLTextAreaElement | null>(null);
   const renameContainerRef = React.useRef<HTMLDivElement | null>(null);
-  const logoSrc = logoFor(resolvedTheme);
 
   const handleConversationSelect = React.useCallback(
     (conversation: ConversationSummary) => {
@@ -852,11 +849,10 @@ export default function ChatSidebar({
               )}
             >
               <div className="relative flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg transition bg-transparent">
-                <img
-                  src={logoSrc}
-                  alt="mAgenticX logo"
+                <BrandLogo
+                  label="mAgenticX logo"
                   className={cn(
-                    "h-full w-full object-contain transition-opacity",
+                    "h-full w-full transition-opacity",
                     isCollapsed && isLogoHovered ? "opacity-0" : "opacity-100",
                   )}
                 />

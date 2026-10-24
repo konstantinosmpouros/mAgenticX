@@ -20,6 +20,7 @@ import {
 import { ScrollArea } from "@/shared/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { cn } from "@/shared/lib/utils";
+import { BrandLogo } from "@/shared/ui/brand-logo";
 import {
   MCP_VARIANTS,
   MOBILE_PROFILE_NAV_BREAKPOINT,
@@ -272,10 +273,11 @@ export default function ProfileSidebar({ normalizedActiveTab, setActiveTab }: Pr
                 centered when the rail collapses; only the text fades out. */}
       <div className="mb-3 flex shrink-0 items-center gap-3 pl-0.5 max-[639px]:hidden">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/15 bg-gradient-to-br from-white/10 via-transparent to-transparent">
-          <img
-            src="/logo2_white_magentaX.png"
-            alt="mAgenticX mark"
-            className="h-7 w-7 object-contain drop-shadow-[0_4px_12px_rgba(255,0,123,0.45)]"
+          {/* The settings shell is dark in every theme (PremiumModalShell). */}
+          <BrandLogo
+            on="dark"
+            label="mAgenticX mark"
+            className="h-7 w-7 drop-shadow-[0_4px_12px_rgba(255,0,123,0.45)]"
           />
         </div>
         <div
