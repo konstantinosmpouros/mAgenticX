@@ -1,5 +1,6 @@
 import { type ReactNode } from "react";
-import { Outlet, useLocation } from "react-router-dom";
+import { AnimatePresence, motion } from "framer-motion";
+import { useLocation, useOutlet } from "react-router-dom";
 
 import { useChatWorkspace, type ChatWorkspaceOptions } from "@/app/useChatWorkspace";
 import { useIncognitoCard } from "@/app/useIncognitoCard";
@@ -31,6 +32,10 @@ import { SidebarProvider, SidebarInset } from "@/shared/ui/sidebar";
 import { TooltipProvider } from "@/shared/ui/tooltip";
 
 type WorkspaceShellProps = ChatWorkspaceOptions & { children?: ReactNode };
+
+/** How long the leaving view stays for the swap: the chat holds under the
+ *  Schedules page until it has fully faded in (TasksView's PAGE). */
+const ROUTE_SWAP_HOLD_S = 0.42;
 
 /**
  * The persistent workspace shell — sidebar, search, profile/dialog modals, and
@@ -165,6 +170,7 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
   // chat routes only: the private flag can outlive a visit to /tasks.
   const isPrivateMode = useWorkspaceStore((s) => s.isPrivateMode);
   const { pathname } = useLocation();
+  const outlet = useOutlet();
   const incognitoClass = useIncognitoCard(isPrivateMode && !pathname.startsWith("/tasks"));
   // Main Chat Interface
   if (!authResolved) {
@@ -289,7 +295,23 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
                   or `children` when ChatShell is used directly (shared conversation).
                   The chat surface + tasks page now live in pages/ChatView and
                   pages/TasksView. */}
-                <ChatWorkspaceProvider value={ws}>{children ?? <Outlet />}</ChatWorkspaceProvider>
+                <ChatWorkspaceProvider value={ws}>
+                  {children ?? (
+                    // Chat <-> Schedules: the view that leaves stays mounted for
+                    // its exit (TasksView's own; the chat simply holds under the
+                    // page sliding in), keyed by surface so moving between chats
+                    // never remounts. `contents`: the wrapper adds no box.
+                    <AnimatePresence initial={false}>
+                      <motion.div
+                        key={pathname === "/tasks" ? "tasks" : "chat"}
+                        className="contents"
+                        exit={{ opacity: 1, transition: { duration: ROUTE_SWAP_HOLD_S } }}
+                      >
+                        {outlet}
+                      </motion.div>
+                    </AnimatePresence>
+                  )}
+                </ChatWorkspaceProvider>
 
                 <AccountLimitDialog
                   open={accountSwitching.accountLimitOpen}

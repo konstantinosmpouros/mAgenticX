@@ -362,6 +362,11 @@ class InferenceRunRuntime:
             return ("main", "", model)
         return ("subagent", self._subagent_label(task_id), model)
 
+    def _register_subagent_type(self, value: Any) -> None:
+        """Remember a TASK_SUBAGENT's type under its `task` call id."""
+        if isinstance(value, dict) and value.get("task_id") and value.get("subagent_type"):
+            self._subagent_types[str(value["task_id"])] = str(value["subagent_type"])[:200]
+
     def _subagent_label(self, task_id: Any) -> str:
         subagent_type = self._subagent_types.get(str(task_id)) if task_id is not None else None
         return subagent_type or "sub-agent"
@@ -588,6 +593,11 @@ class InferenceRunRuntime:
                             self._accumulate_tool_usage(
                                 inner.get("value"), main_agent=False, task_id=value.get("task_id")
                             )
+                        elif inner_name == "TASK_SUBAGENT":
+                            # A sub-agent that delegates in turn: its `task` call
+                            # arrives inside its own envelope, while the nested
+                            # sub-agent's usage arrives under that call's id.
+                            self._register_subagent_type(inner.get("value"))
             elif name == "HITL_INTERRUPT":
                 self.register_interrupt(value)
             elif name == "TOKEN_USAGE":
@@ -595,8 +605,7 @@ class InferenceRunRuntime:
             elif name == "TOOL_USAGE":
                 self._accumulate_tool_usage(value, main_agent=True)
             elif name == "TASK_SUBAGENT":
-                if isinstance(value, dict) and value.get("task_id") and value.get("subagent_type"):
-                    self._subagent_types[str(value["task_id"])] = str(value["subagent_type"])[:200]
+                self._register_subagent_type(value)
             elif name == "PRESENT_ARTIFACT":
                 # Capture the deliverable for the finalize fetch, but let the
                 # event flow into raw_events unchanged — the UI renders it as a

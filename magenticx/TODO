@@ -18,7 +18,6 @@
 
 ## Agents
 
-- Make all the filesystems live in postgress and the workspace of the users in order never to overload the volume.
 - Add a QnA tool in order for the agent to ask the user questions as a build in tool for all deep agents.
 - Update the retrieval process and the whole RAG pipelines so that it will be like an mcp tool calling. Migrate the chromadb also in the mcp gateway service and add auth and authorization to it. The agents will be able to call the mcp gateway and then the mcp gateway will call the vectordb service and return the results to the agents. Also try to enhance the authorization with the mcp gateway service.
 - Ship sandboxed execution safely. The workspace lockdown is **done** (write-deny surfaces incl. the agent's own definition, fail-closed `SANDBOX_EXECUTION_ENABLED` guard, input/output TTL retention, container hardening). **Remaining:** the `sandbox_runner` service — dind + gVisor `runsc` (Dennis A1 has no /dev/kvm, so Firecracker/Kata are out), ephemeral sandbox per execute (read-only `input/`, `nosuid,nodev,noexec` `output/`, no network, dropped caps, non-root, hard CPU/mem/pids/wall-clock quotas, clean env), HITL per call, audit log — plus the escape-test checklist (net, host fs, /proc, fork bomb, disk fill, symlink-out) before the flag is ever flipped. Remote-skill scripts must run only inside the sandbox.

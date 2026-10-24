@@ -1,15 +1,32 @@
 import { useEffect } from "react";
-import { motion } from "framer-motion";
+import { motion, type Variants } from "framer-motion";
 
 import ScheduledTasksPage from "@/features/tasks/components/ScheduledTasksPage";
 
 import { useChatWorkspaceContext } from "@/app/workspaceContext";
 import { useWorkspaceStore } from "@/shared/stores/workspaceStore";
 
+const EASE = [0.22, 1, 0.36, 1] as const;
+
+// Over the chat, which holds still underneath (WorkspaceShell): in, it rises
+// and settles from a touch smaller while it fades in; out, it sinks a little
+// and fades, quicker, revealing the chat. Reduced motion: a plain fade.
+const PAGE: Variants = {
+  hidden: { opacity: 0, y: 18, scale: 0.985 },
+  shown: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.42, ease: EASE } },
+  exit: { opacity: 0, y: 12, scale: 0.99, transition: { duration: 0.26, ease: "easeIn" } },
+};
+const PAGE_FADE: Variants = {
+  hidden: { opacity: 0 },
+  shown: { opacity: 1, transition: { duration: 0.15 } },
+  exit: { opacity: 0, transition: { duration: 0.12 } },
+};
+
 /**
  * The scheduled-tasks page for the "/tasks" route. Fills the shell's content
- * area (the sidebar stays); fades in on mount. All data/actions come from the
- * workspace context built by ChatShell; navigation drives open/close.
+ * area (the sidebar stays) and slides in over the chat, and out again (PAGE).
+ * All data/actions come from the workspace context built by ChatShell;
+ * navigation drives open/close.
  */
 export default function TasksView() {
   const { reduceMotion, navigate, scheduledTasks } = useChatWorkspaceContext();
@@ -35,10 +52,11 @@ export default function TasksView() {
       // open sidebar — on mobile the toggle looked like it did nothing. Anything
       // that must sit above this (profile modal, dialogs) renders after it or
       // portals out.
-      className="absolute inset-0 z-30 bg-background"
-      initial={reduceMotion ? false : { opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.2, ease: "easeOut" }}
+      className="absolute inset-0 z-30 origin-top bg-background"
+      variants={reduceMotion ? PAGE_FADE : PAGE}
+      initial="hidden"
+      animate="shown"
+      exit="exit"
     >
       <ScheduledTasksPage
         onClose={() => navigate("/")}

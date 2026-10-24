@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   createScheduledTask,
@@ -31,12 +31,19 @@ type UseScheduledTasksArgs = { userId: string | null | undefined; active: boolea
 
 export function useScheduledTasks({ userId, active }: UseScheduledTasksArgs) {
   const [tasks, setTasks] = useState<ScheduledTask[]>([]);
+  // `loading` is the first load only: a background poll must not swap the page
+  // for skeletons (that remounted the empty state's animated mark every 8s).
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const loadedRef = useRef(false);
+
+  useEffect(() => {
+    loadedRef.current = false;
+  }, [userId]);
 
   const refresh = useCallback(async () => {
     if (!userId) return;
-    setLoading(true);
+    if (!loadedRef.current) setLoading(true);
     try {
       const next = await listScheduledTasks(userId);
       setTasks(next);
@@ -45,6 +52,7 @@ export function useScheduledTasks({ userId, active }: UseScheduledTasksArgs) {
       if (import.meta.env.DEV) console.error("Failed to load scheduled tasks:", err);
       setError("Could not load scheduled tasks.");
     } finally {
+      loadedRef.current = true;
       setLoading(false);
     }
   }, [userId]);

@@ -84,6 +84,11 @@ class AGUIStreamNormalizer:
 
         # --- sub-agent namespace mapping ---
         self._pending_tasks: Dict[str, Dict[str, str]] = {}
+        # The namespace each pending `task` was called from (None: the
+        # orchestrator). A sub-agent spawned by that call runs one namespace
+        # level below it, which is what keeps a nested sub-agent from binding
+        # to a sibling's call that has not started yet.
+        self._pending_task_callers: Dict[str, Optional[tuple]] = {}
         # Rehydrate bindings established on earlier streams of this run so a HITL
         # resume (incl. a subagent's own gated tool) keeps mapping the subagent's
         # namespace to its original `task` tool_call_id instead of orphaning it.
@@ -419,6 +424,7 @@ class AGUIStreamNormalizer:
                                 "description": description,
                                 "subagent_type": subagent_type,
                             }
+                            self._pending_task_callers[tc_id] = namespace or None
                         self._ignored_tool_call_ids.add(tc_id)  # ignore ToolMessage if it appears later
                         continue
 
@@ -510,6 +516,7 @@ class AGUIStreamNormalizer:
         if self._is_subagent_task_result(msg, tool_call_id, ns_label):
             self._ignored_tool_call_ids.discard(tool_call_id)
             self._pending_tasks.pop(tool_call_id, None)  # rejected → never binds
+            self._pending_task_callers.pop(tool_call_id, None)
             if tool_call_id not in self._completed_subagent_task_ids:
                 self._completed_subagent_task_ids.add(tool_call_id)
                 self._push(out, self._subagent_completed(str(tool_call_id), is_error, ns_label))
@@ -766,10 +773,21 @@ class AGUIStreamNormalizer:
         if namespace in self._namespace_task_labels:
             return self._namespace_task_labels[namespace]
 
-        for task_id in list(self._pending_tasks.keys()):
+        # A sub-agent runs one namespace level below the agent that called its
+        # `task`: prefer the calls made from there, so a nested sub-agent never
+        # takes a sibling's call that is still waiting to start. A call whose
+        # caller is unknown (seeded on /resume) is the orchestrator's.
+        caller = tuple(namespace[:-1]) or None
+        candidates = [
+            task_id
+            for task_id in self._pending_tasks
+            if self._pending_task_callers.get(task_id) == caller
+        ] or list(self._pending_tasks.keys())
+        for task_id in candidates:
             task_str = str(task_id)
             self._namespace_task_labels[namespace] = task_str
             self._pending_tasks.pop(task_id, None)
+            self._pending_task_callers.pop(task_id, None)
             if self.thread_id:
                 _THREAD_NAMESPACE_BINDINGS.setdefault(self.thread_id, {})[namespace] = task_str
                 _THREAD_TASK_STARTED_AT.setdefault(self.thread_id, {}).setdefault(task_str, _now_ms())

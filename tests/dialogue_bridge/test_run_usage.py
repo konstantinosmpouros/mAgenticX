@@ -123,6 +123,22 @@ def test_a_call_seen_bare_then_wrapped_moves_to_its_subagent_without_double_coun
     assert list(runtime.usage_groups) == [("subagent", "critic", "gpt-5-mini")]
 
 
+def test_a_nested_subagent_is_booked_under_its_own_type():
+    """A sub-agent that delegates: its `task` call arrives wrapped in its own
+    envelope, and the nested sub-agent's calls arrive under that call's id."""
+    runtime = InferenceRunRuntime()
+    runtime.apply_event(_task("call-research", "researcher"))
+    runtime.apply_event(_subagent(_model_usage("r1", "gpt-4.1", inp=100, out=10), "call-research"))
+    runtime.apply_event(_subagent(_task("call-check", "checker"), "call-research"))
+    runtime.apply_event(_subagent(_model_usage("c1", "gpt-4.1", inp=30, out=3), "call-check"))
+    runtime.apply_event(_subagent({"type": "CUSTOM", "name": "TOOL_USAGE",
+                                   "value": {"tool_call_id": "t1", "tool_name": "search"}}, "call-check"))
+
+    assert set(runtime.usage_groups) == {("subagent", "researcher", "gpt-4.1"), ("subagent", "checker", "gpt-4.1")}
+    assert runtime.usage_groups[("subagent", "checker", "gpt-4.1")]["input_tokens"] == 30
+    assert list(runtime.tool_groups) == [("subagent", "checker", "search")]
+
+
 def test_activity_counts_model_and_tool_calls_like_the_ui():
     events = [
         _usage("m1", inp=1, out=1),

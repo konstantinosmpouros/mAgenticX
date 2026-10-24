@@ -52,8 +52,13 @@ export const ORB_MOTION: MotionPreset = {
   scale: 0.95,
 };
 
-/** The soft-node brand mark: a calm flow, a light passing, a third of a turn now and then. */
-export const MARK_MOTION: MotionPreset = { ...STILL, period: 15, flow: 0.014, sweep: 0.22, turn: true };
+/**
+ * The soft-node brand mark: a calm flow and a light passing. No turns: the
+ * artwork is not three-fold symmetric (wider than tall, its hole below the
+ * centre, its light drawn in), so a third of a turn showed a different,
+ * lopsided shape instead of the same knot.
+ */
+export const MARK_MOTION: MotionPreset = { ...STILL, period: 15, flow: 0.014, sweep: 0.22 };
 
 /** While the AI works (thinking, speaking): faster, livelier, a gentle pulse. */
 export const ACTIVE_BOOST = { speed: 2.2, flow: 1.5, breath: 0.035 };

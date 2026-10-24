@@ -944,6 +944,10 @@ function applyNestedTask(block: SubagentBlock, fold: TimelineFoldIndexes, key: s
  *     arrive as top-level `SUBAGENT_EVENT`s (one envelope, its namespace one
  *     level deeper), so they open a block of their own; here the call only
  *     records what it was asked and by whom, for that block to pick up.
+ *   - `SUBAGENT_COMPLETED` is the same case: the nested `task` call's result is
+ *     a message of the delegating sub-agent's graph, so its completion arrives
+ *     inside that sub-agent's envelope. It settles the nested block (its own
+ *     block, by call id or namespace), never a step of the envelope's owner.
  * Add a new event type to BOTH unless it falls into one of those groups.
  */
 function applySubagentInnerEvent(session: Session, key: string, inner: RawEvent): void {
@@ -1006,6 +1010,11 @@ function applySubagentInnerEvent(session: Session, key: string, inner: RawEvent)
     if (nestedIndex !== undefined) {
       applyNestedTask(blockForWrite<SubagentBlock>(session, nestedIndex), fold, parsed.data.task_id);
     }
+    return;
+  }
+
+  if (type === "CUSTOM" && inner.name === SUBAGENT_COMPLETED_EVENT_TYPE) {
+    applySubagentCompleted(session, inner);
     return;
   }
 
