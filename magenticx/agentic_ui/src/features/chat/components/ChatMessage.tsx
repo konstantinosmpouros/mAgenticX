@@ -285,6 +285,7 @@ export function ChatMessage({
       {planForPanel ? (
         <PlanSidePanel
           plan={planForPanel}
+          timings={timeline?.planTimings}
           open={openRunPanel === "plan"}
           onOpenChange={(open) => setOpenRunPanel(open ? "plan" : null)}
         />

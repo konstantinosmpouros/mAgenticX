@@ -1,5 +1,5 @@
 import * as React from "react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { ChevronRight, History } from "lucide-react";
 
 import { cn } from "@/shared/lib/utils";
@@ -12,6 +12,7 @@ import {
   type AgentMapNode,
 } from "@/features/chat/lib/agentMap";
 import { AgentNodeCard } from "./AgentNodeCard";
+import { Collapse } from "../Collapse";
 
 // The agent map's tree view: the main agent, one branch per answer that used
 // sub-agents ("Q3 · …"), and under each its sub-agents with theirs nested
@@ -51,33 +52,6 @@ function visibleItems(answers: AgentMapAnswer[], collapsed: Set<string>): Visibl
     if (!collapsed.has(id)) visitNodes(answer.nodes, id);
   }
   return items;
-}
-
-function Collapse({ open, children }: { open: boolean; children: React.ReactNode }) {
-  const reduceMotion = useReducedMotion();
-  // Clipped only while the height animates: at rest a running card's light and
-  // glow (styles/subagent.css) reach past its edges and must not be cut off.
-  const [animating, setAnimating] = React.useState(false);
-  return (
-    <AnimatePresence initial={false}>
-      {open ? (
-        <motion.div
-          initial={reduceMotion ? { opacity: 0 } : { height: 0, opacity: 0 }}
-          animate={{ height: "auto", opacity: 1, transition: { duration: 0.28, ease: EASE } }}
-          exit={
-            reduceMotion
-              ? { opacity: 0, transition: { duration: 0.1 } }
-              : { height: 0, opacity: 0, transition: { duration: 0.2, ease: "easeIn" } }
-          }
-          onAnimationStart={() => setAnimating(true)}
-          onAnimationComplete={() => setAnimating(false)}
-          style={{ overflow: animating ? "hidden" : "visible" }}
-        >
-          {children}
-        </motion.div>
-      ) : null}
-    </AnimatePresence>
-  );
 }
 
 type AgentMapTreeProps = {

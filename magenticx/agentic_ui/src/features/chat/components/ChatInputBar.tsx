@@ -67,6 +67,8 @@ type ChatInputBarProps = {
   slash?: SlashComposer | null;
   /** The agent-map button, placed right of the context ring. */
   agentMapControl?: React.ReactNode;
+  /** The plan button, placed right of the agent-map button. */
+  planControl?: React.ReactNode;
   currentMessage: string;
   setCurrentMessage: (v: string) => void;
   handlePaste: React.ClipboardEventHandler<HTMLTextAreaElement>;
@@ -110,7 +112,6 @@ type ChatInputBarProps = {
   dictationStatus?: DictationStatus;
   dictationRequestSignal?: number;
   dictationCancelSignal?: number;
-  topAccessory?: React.ReactNode;
   // When set, replaces the chat composer inside the same AnimatePresence
   // swap (voice-bar precedent) — used for the pending-HITL approval surface
   // so the action lives at the bottom where the user is already looking.
@@ -152,6 +153,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
     compaction = null,
     slash = null,
     agentMapControl = null,
+    planControl = null,
     currentMessage,
     setCurrentMessage,
     handlePaste,
@@ -184,7 +186,6 @@ export function ChatInputBar(props: ChatInputBarProps) {
     dictationStatus = "idle",
     dictationRequestSignal,
     dictationCancelSignal,
-    topAccessory,
     hitlTakeover,
     hitlTakeoverThemed = false,
     starterSuggestions = [],
@@ -824,8 +825,6 @@ export function ChatInputBar(props: ChatInputBarProps) {
                 </AnimatePresence>
 
                 <div className="relative mx-auto max-w-3xl pointer-events-auto">
-                  {/* `contents`: the accessory still positions against this box. */}
-                  <div className="dark contents">{topAccessory}</div>
                   <AnimatePresence>
                     {slash?.open ? <SlashCommandMenu key="slash-menu" slash={slash} /> : null}
                   </AnimatePresence>
@@ -1010,6 +1009,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
                           </Tooltip>
                           <ContextMeter context={contextUsage ?? null} stats={conversationStats} compaction={compaction} />
                           {agentMapControl}
+                          {planControl}
                         </div>
 
                         {dictationStatus === "idle" ? (

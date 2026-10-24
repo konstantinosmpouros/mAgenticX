@@ -20,6 +20,7 @@ import {
   TokenUsagePayloadSchema,
 } from "./agui";
 import { askUserAnswers, askUserQuestions, isAskUserInterrupt, parseHitlInterrupt } from "./hitl";
+import { advancePlanTimings, planSnapshotTime } from "./planTiming";
 import type {
   ArtifactBlock,
   ChartBlock,
@@ -1137,7 +1138,16 @@ function applyEvent(session: Session, event: RawEvent): void {
 
     if (PLAN_EVENT_NAMES.has(name)) {
       const parsed = PlanSnapshotSchema.safeParse(event.value);
-      if (parsed.success) session.state.plan = parsed.data;
+      if (parsed.success) {
+        // Each step's start and finish, from the snapshots' own times (planTiming).
+        session.state.planTimings = advancePlanTimings(
+          session.state.plan,
+          session.state.planTimings,
+          parsed.data,
+          planSnapshotTime(parsed.data, event),
+        );
+        session.state.plan = parsed.data;
+      }
       return;
     }
 

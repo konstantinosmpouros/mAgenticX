@@ -1,0 +1,131 @@
+/* The agent's plan (features/chat/components/plan/).
+
+   The checklist: .plan-steps (an <ol>) > .plan-step (one step: its marker on
+   the rail, then the row). Each step draws the rail down to the next step's
+   marker (::before), under the markers, which are opaque. The rail behind a
+   done step is filled in the brand colour, so the line shows how far the plan
+   has come; from the step being worked on it fades from the sub-agent colour
+   into the plain line. The markers sit level with the row's first line. */
+
+.plan-steps {
+  --ps-col: 1.5rem;
+  --ps-marker: 1.25rem;
+  /* The row's top padding: the marker lines up with its first line of text. */
+  --ps-top: 0.625rem;
+  --ps-gap: 0.25rem;
+  --ps-line: hsl(var(--primary) / 0.2);
+  position: relative;
+}
+
+.plan-step {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--ps-col) minmax(0, 1fr);
+  column-gap: 0.5rem;
+}
+
+.plan-step + .plan-step {
+  margin-top: var(--ps-gap);
+}
+
+.plan-step::before {
+  content: "";
+  position: absolute;
+  left: calc(var(--ps-col) / 2 - 0.5px);
+  top: calc(var(--ps-top) + var(--ps-marker) / 2);
+  bottom: calc(-1 * (var(--ps-gap) + var(--ps-top) + var(--ps-marker) / 2));
+  width: 1px;
+  background: var(--ps-line);
+  pointer-events: none;
+  transition: background-color 0.5s ease;
+}
+
+.plan-step:last-child::before {
+  display: none;
+}
+
+.plan-step[data-state="done"]::before {
+  background: hsl(var(--primary) / 0.6);
+}
+
+.plan-step[data-state="active"]::before {
+  background: linear-gradient(to bottom, hsl(var(--subagent-active) / 0.85), var(--ps-line));
+}
+
+.plan-step-marker {
+  position: relative;
+  z-index: 1;
+  justify-self: center;
+  width: var(--ps-marker);
+  height: var(--ps-marker);
+  margin-top: var(--ps-top);
+}
+
+/* The marker of the step being worked on breathes in the sub-agent glow. */
+.plan-step-now {
+  box-shadow:
+    0 0 0 3px hsl(var(--subagent-active) / 0.14),
+    0 0 12px hsl(var(--subagent-active-glow) / 0.55);
+  animation: plan-breathe 2.4s ease-in-out infinite;
+}
+
+/* The composer's plan button, while a step is being worked on: a soft glow
+   behind its ring that swells and settles. */
+.plan-glow {
+  position: relative;
+  isolation: isolate;
+}
+
+.plan-glow[data-active="true"]::before {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  z-index: -1;
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle,
+    hsl(var(--subagent-active-glow) / 0.5) 0%,
+    hsl(var(--subagent-active) / 0.18) 55%,
+    transparent 72%
+  );
+  filter: blur(3px);
+  pointer-events: none;
+  animation: plan-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes plan-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.82);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
+}
+
+@keyframes plan-breathe {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 3px hsl(var(--subagent-active) / 0.14),
+      0 0 10px hsl(var(--subagent-active-glow) / 0.4);
+  }
+  50% {
+    box-shadow:
+      0 0 0 4px hsl(var(--subagent-active) / 0.2),
+      0 0 16px hsl(var(--subagent-active-glow) / 0.7);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plan-glow[data-active="true"]::before,
+  .plan-step-now {
+    animation: none;
+  }
+
+  .plan-glow[data-active="true"]::before {
+    opacity: 0.8;
+  }
+}

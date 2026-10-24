@@ -332,11 +332,23 @@ export type ContextCompactionControl = {
   compact: () => void;
 };
 
+/**
+ * When one plan step started and finished, read off the plan snapshots' own
+ * times (features/inference/planTiming). `undefined`: not reached yet; `null`:
+ * it happened, but no snapshot says when — shown as no time, never a guess.
+ */
+export type PlanStepTiming = {
+  startedAt?: number | null;
+  endedAt?: number | null;
+};
+
 export type RunTimeline = {
   blocks: TimelineBlock[];
   /** Latest main-agent context occupancy; absent until a call reports one. */
   context?: RunContextUsage | null;
   plan: PlanSnapshot | null;
+  /** One entry per `plan.items` step, in the same order; absent before a plan. */
+  planTimings?: PlanStepTiming[];
   interrupts: TimelineHitlApproval[];
   subagentCount: number;
   terminal: boolean;

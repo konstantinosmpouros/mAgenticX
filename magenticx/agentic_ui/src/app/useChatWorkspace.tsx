@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useRef, useEffect, useCallback, useMemo } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { useReducedMotion } from "framer-motion";
 import { Building2 } from "lucide-react";
@@ -18,6 +18,7 @@ import {
 } from "@/features/chat/lib/contextUsage";
 import { useConversationCompaction } from "@/features/chat/hooks/useConversationCompaction";
 import { useAgentMap } from "@/features/chat/hooks/useAgentMap";
+import { useConversationPlans } from "@/features/chat/hooks/useConversationPlans";
 import { useProfilePanel } from "@/features/settings/hooks/useProfilePanel";
 import { useSettingsPanels } from "@/features/settings/hooks/useSettingsPanels";
 import { useAttachmentPreview } from "@/features/attachments/hooks/useAttachmentPreview";
@@ -590,12 +591,6 @@ export function useChatWorkspace({
     () => selectConversationStats(conversationMessages ?? [], activeMessages),
     [conversationMessages, activeMessages],
   );
-
-  useEffect(() => {
-    setIsPlanExpanded(true);
-  }, [currentConversation?.id]);
-
-  const [isPlanExpanded, setIsPlanExpanded] = useState(true);
 
   // Memoized because it is threaded into the edit / retry / inference / feedback
   // factories below — an unstable identity here invalidates all of them.
@@ -1212,11 +1207,13 @@ export function useChatWorkspace({
     isCurrentConversationBusy ? (activeConversationRun?.timeline ?? null) : null,
   );
   const agentMapAgentName = currentAgent?.name ?? "Main agent";
-
-  const activePlan = activeConversationRun?.timeline?.plan?.items?.length
-    ? activeConversationRun.timeline.plan
-    : null;
-  const showPlanningCard = isCurrentConversationBusy && Boolean(activePlan);
+  // The composer's plan: the deep agent's checklist per answer on the visible
+  // branch, the streaming answer's from the live run's timeline.
+  const conversationPlans = useConversationPlans(
+    activeMessages,
+    isCurrentConversationBusy ? (activeConversationRun?.assistantMessageId ?? null) : null,
+    isCurrentConversationBusy ? (activeConversationRun?.timeline ?? null) : null,
+  );
   // Pending HITL approvals of the active run drive the input-bar takeover.
   // The timeline's own resolution state (BRIDGE_HITL_RESOLVED markers) is
   // overlaid with the client-side resolved set so the surface swaps back the
@@ -1393,8 +1390,6 @@ export function useChatWorkspace({
     overlayMenus,
     sharePanel,
     reportPanel,
-    isPlanExpanded,
-    setIsPlanExpanded,
     bodyTransition,
     voiceBarReady,
     chatBarReady,
@@ -1422,6 +1417,7 @@ export function useChatWorkspace({
     conversationCompaction,
     agentMap,
     agentMapAgentName,
+    conversationPlans,
     activeConversationRun,
     pendingRunInterrupts,
     activeHitlInterrupt,
@@ -1455,8 +1451,6 @@ export function useChatWorkspace({
     inputBarAgent,
     settledVoiceActive,
     isCurrentConversationBusy,
-    activePlan,
-    showPlanningCard,
     canShareFullConversation,
     canTogglePrivateMode,
     canShowStarterSuggestions,

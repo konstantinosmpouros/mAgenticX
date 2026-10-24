@@ -7,11 +7,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import ChatHeader from "@/features/chat/components/ChatHeader";
 import { ChatInputBar } from "@/features/chat/components/ChatInputBar";
 import { ChatDisclaimer } from "@/features/chat/components/ChatDisclaimer";
-import { PlanCard } from "@/features/chat/components/message_parts/PlanningContainer";
 import { HitlInputTakeover } from "@/features/chat/components/HitlInputTakeover";
 import { AskUserTakeover } from "@/features/chat/components/AskUserTakeover";
 import { isAskUserInterrupt } from "@/features/inference";
 import { AgentMapButton } from "@/features/chat/components/agent_map/AgentMapButton";
+import { PlanButton } from "@/features/chat/components/plan/PlanButton";
 import { createCommandActions } from "@/features/chat/handlers/commandActions";
 import { useSlashCommands } from "@/features/chat/hooks/useSlashCommands";
 import { Loader } from "@/shared/ui/shadcn-io/loader";
@@ -80,10 +80,6 @@ export default function ChatView() {
     triggerVoiceMode,
     toast,
     inputBarAgent,
-    isPlanExpanded,
-    setIsPlanExpanded,
-    activePlan,
-    showPlanningCard,
     activeHitlInterrupt,
     activeConversationRun,
     pendingRunInterrupts,
@@ -95,6 +91,7 @@ export default function ChatView() {
     conversationCompaction,
     agentMap,
     agentMapAgentName,
+    conversationPlans,
     userId,
     openProfilePanel,
     handleRenameConversation,
@@ -251,6 +248,13 @@ export default function ChatView() {
               visible={!composer.isMessagesEmpty}
             />
           }
+          planControl={
+            <PlanButton
+              plans={conversationPlans}
+              agentName={agentMapAgentName}
+              visible={!composer.isMessagesEmpty}
+            />
+          }
           currentMessage={composer.currentMessage}
           setCurrentMessage={composer.setCurrentMessage}
           handlePaste={composer.handlePaste}
@@ -284,17 +288,6 @@ export default function ChatView() {
           toast={toast}
           currentAgent={inputBarAgent ?? undefined}
           Textarea={Textarea}
-          topAccessory={
-            showPlanningCard && activePlan ? (
-              <PlanCard
-                plan={activePlan}
-                expanded={isPlanExpanded}
-                onToggle={() => setIsPlanExpanded((prev) => !prev)}
-                title="Deep agent execution plan"
-                className="absolute bottom-[calc(100%-1px)] left-1/2 z-10 w-[min(100%,39rem)] -translate-x-1/2"
-              />
-            ) : null
-          }
           hitlTakeoverThemed={activeHitlIsQuestion}
           hitlTakeover={
             activeHitlInterrupt && activeConversationRun && activeHitlIsQuestion ? (

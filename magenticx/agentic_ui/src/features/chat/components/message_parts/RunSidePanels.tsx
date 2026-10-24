@@ -1,25 +1,39 @@
 import { useMemo } from "react";
-import { Bot, ListTodo } from "lucide-react";
+import { Bot, ListChecks } from "lucide-react";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/shared/ui/sheet";
-import { PlanItems } from "./PlanningContainer";
 import { SubagentCard } from "./SubagentContainer";
+import { PlanChecklist } from "../plan/PlanChecklist";
+import { PlanProgressRing } from "../plan/PlanProgressRing";
 import { subagentBlockToItem, subagentRunStatus } from "@/features/inference";
 import type { PlanSnapshot } from "@/features/inference/agui";
-import type { RunTimeline, SubagentBlock } from "@/shared/lib/types";
+import { buildPlanAnswer, planProgressLabel } from "@/features/chat/lib/conversationPlans";
+import type { PlanStepTiming, RunTimeline, SubagentBlock } from "@/shared/lib/types";
 
-// Post-run side panels behind two action-bar buttons: once a run terminates
-// the plan card leaves the message body for its panel; the sub-agent cards
+// Post-run side panels behind two action-bar buttons: one answer's plan (the
+// same checklist as the composer's plan panel), and its sub-agents — the cards
 // stay inline and the sub-agents panel lists them again, all together. Both
 // panels replay state derived from the same run timeline.
 
 type PlanSidePanelProps = {
   plan: PlanSnapshot;
+  /** The steps' start and finish times, when the timeline knows them. */
+  timings?: PlanStepTiming[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 };
 
-export function PlanSidePanel({ plan, open, onOpenChange }: PlanSidePanelProps) {
-  const completed = plan.items.filter((item) => item.status === "completed").length;
+export function PlanSidePanel({ plan, timings, open, onOpenChange }: PlanSidePanelProps) {
+  const answer = useMemo(
+    () =>
+      buildPlanAnswer({
+        messageId: "",
+        number: 1,
+        question: "",
+        plan: { plan, timings: timings ?? [] },
+        live: false,
+      }),
+    [plan, timings],
+  );
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
@@ -28,17 +42,21 @@ export function PlanSidePanel({ plan, open, onOpenChange }: PlanSidePanelProps) 
       >
         <SheetHeader className="border-b border-border/70 px-5 py-4 text-left">
           <SheetTitle className="flex items-center gap-2.5 text-base">
-            <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-secondary/55 text-primary">
-              <ListTodo className="h-4 w-4" />
-            </span>
-            Agent plan
+            <PlanProgressRing
+              completed={answer?.completed ?? 0}
+              total={answer?.total ?? 0}
+              size={34}
+              strokeWidth={3}
+              className="text-primary"
+            >
+              <ListChecks className="relative h-4 w-4" aria-hidden />
+            </PlanProgressRing>
+            Plan
           </SheetTitle>
-          <SheetDescription>
-            {completed} of {plan.items.length} steps completed
-          </SheetDescription>
+          <SheetDescription>{answer ? planProgressLabel(answer) : "No steps"}</SheetDescription>
         </SheetHeader>
         <div className="scrollbar-muted min-h-0 flex-1 overflow-y-auto px-4 py-3">
-          <PlanItems plan={plan} />
+          {answer ? <PlanChecklist steps={answer.steps} label="Plan" /> : null}
         </div>
       </SheetContent>
     </Sheet>

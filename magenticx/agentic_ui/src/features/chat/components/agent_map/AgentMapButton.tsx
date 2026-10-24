@@ -1,6 +1,6 @@
 import * as React from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Network } from "lucide-react";
+import { Route } from "lucide-react";
 
 import { cn } from "@/shared/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
@@ -16,9 +16,9 @@ type AgentMapButtonProps = {
 
 /**
  * The composer's agent-map button, right of the context ring: the sub-agents
- * this conversation used, counted on a badge (lit while one works), and the
- * panel that maps them. Shown once the conversation has messages; muted, but
- * still opening the panel's empty state, until a sub-agent has run.
+ * the visible branch used, counted on a badge (lit while one works), and the
+ * panel that maps them. Shown only once a sub-agent has run on this branch,
+ * like the plan button waits for a plan.
  */
 export function AgentMapButton({ map, agentName, visible }: AgentMapButtonProps) {
   const [open, setOpen] = React.useState(false);
@@ -26,18 +26,17 @@ export function AgentMapButton({ map, agentName, visible }: AgentMapButtonProps)
   const reduceMotion = useReducedMotion();
   const count = map.subagentCount;
   const working = map.runningCount > 0;
-  const label = count
-    ? `Agent map, ${count} sub-agent${count === 1 ? "" : "s"}${working ? `, ${map.runningCount} working` : ""}`
-    : "Agent map, no sub-agents yet";
+  const shown = visible && count > 0;
+  const label = `Agent map, ${count} sub-agent${count === 1 ? "" : "s"}${working ? `, ${map.runningCount} working` : ""}`;
 
   React.useEffect(() => {
-    if (!visible) setOpen(false);
-  }, [visible]);
+    if (!shown) setOpen(false);
+  }, [shown]);
 
   return (
     <>
       <AnimatePresence initial={false}>
-        {visible ? (
+        {shown ? (
           <motion.span
             key="agent-map-button"
             className="inline-flex"
@@ -54,19 +53,13 @@ export function AgentMapButton({ map, agentName, visible }: AgentMapButtonProps)
                   aria-label={label}
                   aria-haspopup="dialog"
                   aria-expanded={open}
-                  data-empty={count ? undefined : "true"}
                   onClick={() => setOpen(true)}
                   className="group/map relative flex h-10 w-10 cursor-pointer items-center justify-center rounded-full transition-[background-color,transform] duration-150 hover:bg-[hsl(var(--hover-surface))] active:scale-[0.94] focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70 motion-reduce:active:scale-100"
                 >
-                  <Network
+                  <Route
                     size={20}
                     aria-hidden
-                    className={cn(
-                      "transition-[color,transform] duration-300 ease-out motion-safe:supports-[hover:hover]:group-hover/map:scale-110",
-                      count
-                        ? "text-muted-foreground group-hover/map:text-foreground"
-                        : "text-muted-foreground/45",
-                    )}
+                    className="text-muted-foreground transition-[color,transform] duration-300 ease-out group-hover/map:text-foreground motion-safe:supports-[hover:hover]:group-hover/map:scale-110"
                   />
                   <AnimatePresence initial={false}>
                     {count ? (
@@ -98,7 +91,7 @@ export function AgentMapButton({ map, agentName, visible }: AgentMapButtonProps)
         ) : null}
       </AnimatePresence>
       <AgentMapPanel
-        open={open && visible}
+        open={open && shown}
         onOpenChange={setOpen}
         map={map}
         agentName={agentName}
