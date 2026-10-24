@@ -58,8 +58,6 @@ from schema.inference import (
     ResumeActionDecisionIn,
 )
 from schema.internal_conversations import (
-    ExistingConversationsIn,
-    ExistingConversationsOut,
     InputFileOut,
     InputFilesOut,
 )
@@ -264,8 +262,6 @@ __all__ = [
     "UserSkill",
     "UserSkillDetail",
     "WorkspaceSearchResult",
-    "ExistingConversationsIn",
-    "ExistingConversationsOut",
     "InputFileOut",
     "InputFilesOut",
 ]

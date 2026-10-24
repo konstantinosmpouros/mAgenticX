@@ -26,7 +26,6 @@ from harness.middlewares import (
     find_summarizer,
 )
 from harness.conversation_files import ConversationFiles, ConversationFileStore
-from harness.conversation_files import legacy_volume
 from harness.filesystem import build_workspace_backend, workspace_write_deny
 from harness.memory import get_memory_pool
 from core.logging import get_logger
@@ -660,7 +659,6 @@ class DeepAgent(BaseAgent, ABC):
         if self.agent is not None:
             return
         logger.info("deep_agent_build_started", "Deep agent build started", agent_slug=self.name)
-        await self._import_legacy_files()
         if self.checkpointer is None:
             self.checkpointer = MemorySaver()
         self.skills_paths   = self.load_skills()
@@ -675,26 +673,6 @@ class DeepAgent(BaseAgent, ABC):
             agent_md_count=len(self.agent_md_paths),
             has_subagents=self.sub_agents is not None,
         )
-
-
-
-    async def _import_legacy_files(self) -> None:
-        """Bring this conversation's files over from the old volume before the
-        run reads them, in case the background move has not reached it yet.
-
-        Best-effort: a failure is logged and the run goes on — the files stay
-        on the volume and the background pass retries.
-        TODO(plan 43): remove once agents v1.21.20 has deployed.
-        """
-        ctx = self.context or {}
-        if not ctx.get("user_id") or not ctx.get("conversation_id"):
-            return
-        try:
-            await legacy_volume.import_conversation(ctx["user_id"], ctx["conversation_id"])
-        except Exception:
-            logger.warning("conversation_files_import_failed",
-                           "Could not import this conversation's files from the volume",
-                           exc_info=True, agent_slug=self.name)
 
 
 

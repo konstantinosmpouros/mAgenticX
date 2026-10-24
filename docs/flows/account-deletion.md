@@ -12,7 +12,6 @@ flowchart LR
     B -->|"account_deletions<br/>+ the user's rows"| PG[("chat_db")]
     B -->|"POST /users/{id}/purge/threads<br/>DELETE /users/{id}"| A["agents"]
     A --> AR[("agent_runtime<br/>rows + checkpoints")]
-    A --> V[("volume<br/>users/{id}/")]
 ```
 
 ---
@@ -89,7 +88,7 @@ Nothing is deleted; everything is **gated**, so a cancel restores the account ex
 | --- | --- | --- |
 | `sessions` | set the watermark again — the purge does not rely on the request having done it | — |
 | `agent_threads` | per page of conversations, the distinct `checkpoint_thread_id`s → agents `POST /users/{id}/purge/threads` | 200 ids / call |
-| `agent_runtime` | agents `DELETE /users/{id}`: memories, skill pool + files + assignments, custom agent definitions + files, every conversation file and its blobs (by `user_id`, plan 43), then the old `users/{id}/` volume folder while the one-off move into Postgres has not emptied it, and the per-user agent cache | one transaction per store |
+| `agent_runtime` | agents `DELETE /users/{id}`: memories, skill pool + files + assignments, custom agent definitions + files, every conversation file and its blobs (by `user_id`, plan 43), and the per-user agent cache | one transaction per store |
 | `conversations` | per 25 conversations: attachment blobs, remaining attachments, messages + embeddings + their `message_usage` rows, reports, shares, then the conversations | ≤ 20 blobs **and** ≤ 64 MiB per transaction, ≤ 32 MiB/s; 1000 messages per transaction |
 | `user` | **stop** if another user's conversation uses one of this user's custom agents; else preferences, tool prefs, tasks, reports, shares, the usage rollups (`usage_daily`, `usage_daily_groups` — they outlive deleted conversations by design, so only this step removes them), custom agents and the user row — with the step recorded in the same transaction | one transaction |
 

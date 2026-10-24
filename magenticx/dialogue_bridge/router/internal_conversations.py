@@ -12,14 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from core.logging import get_logger, set_context
 from core.security.internal_trust import require_internal_caller
-from schema import (
-    ExistingConversationsIn,
-    ExistingConversationsOut,
-    InputFilesOut,
-)
+from schema import InputFilesOut
 from utils.conversation_inputs import (
     conversation_is_owned,
-    existing_conversation_ids,
     list_input_files,
     read_input_file,
 )
@@ -61,18 +56,3 @@ async def readInputFile(
     if data is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Upload not found.")
     return Response(content=data, media_type="application/octet-stream")
-
-
-# TODO(plan 43): remove after the first deploy past dialogue_bridge v2.18.2 —
-# only the agents service's one-off move of its old volume trees calls it.
-@router.post(
-    "/existing",
-    response_model=ExistingConversationsOut,
-    summary="Internal: which of these conversations the user still has",
-)
-async def existingConversations(
-    body: ExistingConversationsIn, db: AsyncSession = Depends(get_db)
-) -> ExistingConversationsOut:
-    set_context(user_id=body.user_id)
-    found = await existing_conversation_ids(db, body.user_id, body.conversation_ids)
-    return ExistingConversationsOut(conversation_ids=found)

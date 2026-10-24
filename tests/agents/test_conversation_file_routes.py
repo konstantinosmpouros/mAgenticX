@@ -6,9 +6,7 @@ Keyed by user and conversation, never by agent. Pinned:
   upload, an offload or a traversal comes back in ``missing``;
 * a fork's copy and a deleted conversation's reap; a reap that could not
   finish answers 503, so the bridge's outbox keeps it;
-* everything is internal-only;
-* until the next release, a bridge from before plan 43 still gets a working
-  answer on its agent-scoped routes.
+* everything is internal-only.
 """
 from __future__ import annotations
 
@@ -107,17 +105,3 @@ async def test_the_routes_are_internal_only(client, files):
     assert (await client.get(FILES)).status_code == 403
     assert (await client.post(f"{FILES}/copy", json={"target_conversation_id": "x"})).status_code == 403
     assert (await client.post("/users/u1/conversations/c1/reap", json={})).status_code == 403
-
-
-async def test_a_bridge_from_before_plan_43_still_gets_answers(client, internal_headers, files):
-    """TODO(plan 43): remove with router/legacy_workspace.py."""
-    await files.create("u1", "c1", "/conversation/output/report.md", b"# Q3", agent_slug="omni")
-    old = "/agents/omni/users/u1/conversations/c1"
-
-    seed = await client.put(f"{old}/input-files", json={"files": []}, headers=internal_headers)
-    manifest = await client.get(f"{old}/output-files/manifest", headers=internal_headers)
-    read = await client.get(f"{old}/output-files", params={"paths": "/conversation/output/report.md"},
-                            headers=internal_headers)
-
-    assert seed.status_code == 200 and manifest.json() == {"files": []}
-    assert [f["filename"] for f in read.json()["files"]] == ["report.md"]

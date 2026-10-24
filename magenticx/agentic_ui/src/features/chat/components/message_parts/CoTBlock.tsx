@@ -108,6 +108,9 @@ const toolStepIcon = (tool: TimelineToolExecution, face: ToolApprovalFace) => {
   return RunningToolIcon;
 };
 
+/** Tools whose settled step is its title alone (see TimelineToolItem). */
+const TITLE_ONLY_TOOLS = new Set(["read_file"]);
+
 const TimelineToolItem = memo(
   ({ tool, runId, isLast }: { tool: TimelineToolExecution; runId: string; isLast: boolean }) => {
     const [open, setOpen] = useState(false);
@@ -140,6 +143,30 @@ const TimelineToolItem = memo(
       () => (approval ? presentApproval({ toolName: tool.name, args }, serverId) : null),
       [approval, tool.name, args, serverId],
     );
+
+    // A file read is told by its title ("Read report.pdf"); its content is the
+    // agent's to read, not the user's (a PDF comes back as base64), so a plain
+    // row with nothing to open. A failed or gated read still opens.
+    if (TITLE_ONLY_TOOLS.has(tool.name) && tool.state !== "output-error" && !approval) {
+      return (
+        <ChainOfThoughtStep
+          icon={toolStepIcon(tool, face)}
+          hideConnector={isLast}
+          className="text-sm"
+          label={
+            <span className="flex max-w-full items-center gap-2">
+              <span className="truncate font-medium" title={titleHint}>
+                {title}
+              </span>
+              {meta ? <span className="shrink-0 text-muted-foreground text-xs">{meta}</span> : null}
+              {duration ? (
+                <span className="shrink-0 text-muted-foreground text-xs tabular-nums">{duration}</span>
+              ) : null}
+            </span>
+          }
+        />
+      );
+    }
 
     return (
       <Collapsible open={open} onOpenChange={setOpen}>

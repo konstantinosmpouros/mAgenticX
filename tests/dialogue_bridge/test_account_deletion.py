@@ -50,7 +50,7 @@ from core.settings import AccountDeletionSettings, settings
 AGENT_COUNTS = {
     "agent_memories": 4, "skill_pool": 2, "skill_files": 3, "agent_skills": 1,
     "agent_definitions": 1, "agent_definition_files": 2,
-    "conversation_files": 5, "conversation_file_blobs": 3, "workspace_removed": True,
+    "conversation_files": 5, "conversation_file_blobs": 3,
 }
 
 

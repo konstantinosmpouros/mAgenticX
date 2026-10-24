@@ -5,7 +5,7 @@ Pins what the bridge relies on:
 * each store deletes **all** of a user's rows, scoped to that user only, and the
   skill pool is really deleted (not tombstoned) — conversation files and their
   blobs included, by user id alone;
-* the old workspace folder goes, and a malformed user id can never reach the disk;
+* a malformed user id is refused before anything is deleted;
 * checkpoint threads are deleted, and a failure surfaces (503) instead of being
   swallowed, so the bridge retries rather than recording success;
 * the routes are internal-only.
@@ -128,34 +128,23 @@ def purge(agents_service, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_purge_user_removes_rows_folder_and_cached_agents(purge, skills_fs, agents_service):
-    workspace = skills_fs.users_root / "u1"
-    (workspace / "agents" / "a" / "conversations" / "c1" / "output").mkdir(parents=True)
-    (workspace / "agents" / "a" / "conversations" / "c1" / "output" / "report.md").write_text("x")
-    other = skills_fs.users_root / "u2"
-    other.mkdir(parents=True)
+async def test_purge_user_removes_rows_and_cached_agents(purge, agents_service):
     cache = agents_service.agents_utils._USER_AGENT_CACHE
     cache[("u1", "mine")] = (None, object())
     cache[("u2", "theirs")] = (None, object())
     try:
         counts = await purge.purge_user("u1")
 
-        assert counts["workspace_removed"] is True
-        assert not workspace.exists()
-        assert other.exists()                                   # another user's folder is untouched
         assert ("u1", "mine") not in cache and ("u2", "theirs") in cache
         assert counts["agent_memories"] == 1 and counts["skill_pool"] == 1 and counts["agent_definitions"] == 1
         assert counts["conversation_files"] == 1 and counts["conversation_file_blobs"] == 1
-        # Idempotent: the second call finds nothing on disk and still succeeds.
-        again = await purge.purge_user("u1")
-        assert again["workspace_removed"] is False
     finally:
         cache.pop(("u2", "theirs"), None)
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("bad", ["../u2", "a/b", "..", ".hidden", ""])
-async def test_purge_user_refuses_an_id_that_could_leave_users_folder(purge, skills_fs, bad):
+async def test_purge_user_refuses_a_malformed_id(purge, bad):
     with pytest.raises(ValueError):
         await purge.purge_user(bad)
     assert purge.pool.calls == []                               # nothing deleted before the check
@@ -214,7 +203,7 @@ async def test_purge_routes_refuse_callers_without_the_internal_secret(client, p
 
 
 @pytest.mark.asyncio
-async def test_delete_route_reports_what_was_removed(client, internal_headers, purge, skills_fs):
+async def test_delete_route_reports_what_was_removed(client, internal_headers, purge):
     resp = await client.delete("/users/u1", headers=internal_headers)
 
     assert resp.status_code == 200
@@ -222,5 +211,5 @@ async def test_delete_route_reports_what_was_removed(client, internal_headers, p
     assert set(body) == {
         "agent_memories", "skill_pool", "skill_files", "agent_skills",
         "agent_definitions", "agent_definition_files",
-        "conversation_files", "conversation_file_blobs", "workspace_removed",
+        "conversation_files", "conversation_file_blobs",
     }

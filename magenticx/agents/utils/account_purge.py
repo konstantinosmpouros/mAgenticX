@@ -1,6 +1,6 @@
 """Account deletion (plan 32): remove everything this service holds for one user.
 
-Three kinds of state live here:
+Two kinds of state live here:
 
 * **Checkpoint threads** — LangGraph's durable agent state. They are keyed by
   thread id, not by user, so the bridge (which recorded the ids on its messages)
@@ -9,8 +9,6 @@ Three kinds of state live here:
   skill assignments, custom agent definitions and their files, and every
   conversation's files and their blobs. Each store deletes its own tables in
   its own transaction, by ``user_id`` — no conversation or agent lookup.
-* **The old workspace folder** ``users/<user_id>/`` on the volume, until the
-  one-off move into Postgres has emptied it (plan 43).
 
 Every function here is idempotent — the bridge retries a failed step, and a
 retry after a partial success finds less to delete, never an error. Failures
@@ -24,7 +22,7 @@ import psycopg
 from core.logging import get_logger
 from harness.agent_registry.store import AgentDefinitionStore
 from harness.checkpointer import get_checkpointer
-from harness.conversation_files import ConversationFileStore, legacy_volume
+from harness.conversation_files import ConversationFileStore
 from harness.filesystem import layout
 from harness.memory import AgentMemoryStore, get_memory_pool
 from harness.skill_registry.store import SkillStore
@@ -64,17 +62,17 @@ async def purge_threads(user_id: str, thread_ids: list[str]) -> int:
     return len(thread_ids)
 
 
-async def purge_user(user_id: str) -> dict[str, int | bool]:
-    """Delete the user's ``agent_runtime`` rows and old workspace folder.
+async def purge_user(user_id: str) -> dict[str, int]:
+    """Delete the user's ``agent_runtime`` rows.
 
     The id is validated as a single safe path segment *before* anything is
-    deleted (``ValueError`` → the router answers 400), so a malformed id can
-    neither reach the filesystem nor half-run the purge.
+    deleted (``ValueError`` → the router answers 400), so a malformed id
+    cannot half-run the purge.
     """
     layout.safe_segment(user_id)
     pool = get_memory_pool()
     try:
-        counts: dict[str, int | bool] = {
+        counts: dict[str, int] = {
             "agent_memories": await AgentMemoryStore(pool).purge_user(user_id)
         }
         counts.update(await SkillStore(pool).purge_user(user_id))
@@ -88,17 +86,6 @@ async def purge_user(user_id: str) -> dict[str, int | bool]:
             error_type=type(exc).__name__,
         )
         raise AccountPurgeError("agent_runtime") from exc
-    try:
-        # TODO(plan 43): remove once agents v1.21.20 has deployed.
-        counts["workspace_removed"] = await legacy_volume.delete_user_tree(user_id)
-    except OSError as exc:
-        logger.warning(
-            "account_purge_workspace_failed",
-            "Could not remove a user's workspace folder; the bridge will retry",
-            user_id=user_id,
-            error_type=type(exc).__name__,
-        )
-        raise AccountPurgeError("workspace") from exc
     forget_user_agents(user_id)
     logger.info("account_purge_agents_done", "Purged a user's agents-service data", user_id=user_id, **counts)
     return counts

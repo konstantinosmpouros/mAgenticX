@@ -369,8 +369,7 @@ async def _step_agent_threads(user_id: str, deletion_id: str, counts: dict[str, 
 
 
 async def _step_agent_runtime(user_id: str, deletion_id: str, counts: dict[str, Any]) -> None:
-    """Have the agents service delete its rows (conversation files included) and
-    the user's old workspace folder."""
+    """Have the agents service delete its rows (conversation files included)."""
     async with _agents_client() as client:
         resp = await client.delete(_agents_user_url(user_id), headers=internal_service_headers(None))
         resp.raise_for_status()
@@ -379,7 +378,6 @@ async def _step_agent_runtime(user_id: str, deletion_id: str, counts: dict[str, 
         raise ValueError("unexpected purge response from the agents service")
     for key in _AGENT_COUNT_KEYS:
         counts[key] = counts.get(key, 0) + int(body.get(key, 0))
-    counts["workspace_removed"] = bool(body.get("workspace_removed")) or bool(counts.get("workspace_removed"))
 
 
 def within_byte_budget(rows: list, budget: int) -> tuple[list[str], int]:

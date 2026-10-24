@@ -73,11 +73,6 @@ services:
       - CONVERSATION_FILE_MAX_BYTES=104857600
       # Uploads are read from the bridge on demand, cached by content hash.
       - CONVERSATION_INPUT_CACHE_BYTES=134217728
-      # TODO(plan 43): remove both once agents v1.21.20 has deployed.
-      # The one-off move of the old per-conversation trees into Postgres:
-      # import, verify, then delete each tree from the volume.
-      - MAGENTICX_WORKSPACES_ROOT=/var/magenticx/workspaces
-      - LEGACY_VOLUME_MIGRATION_ENABLED=true
       # Durable LangGraph checkpointer — separate DB on the same Postgres
       # instance. Dev is plaintext (no TLS, no encryption); prod wires TLS +
       # an AES key (see docker-compose-denis.yaml).
@@ -85,8 +80,7 @@ services:
       - LANGGRAPH_STRICT_MSGPACK=true
     volumes:
       # The agents filesystem's global plane (agent definitions + skills
-      # catalogue), plus the old per-user trees until the one-off move into
-      # Postgres has emptied them (plan 43). See harness/filesystem/layout.py.
+      # catalogue). See harness/filesystem/layout.py.
       - magenticx_data:/var/magenticx
     depends_on:
       - rag_service

@@ -12,8 +12,6 @@ is now rows, and lives exactly as long as the conversation:
   and ``/conversation_history/``.
 * ``paths`` — the one normaliser every path goes through; ``cipher`` — the
   checkpointer's AES key and cipher, reused for the bytes.
-
-``legacy_volume`` is temporary: it moves the old volume trees in once.
 """
 from harness.conversation_files.backend import ConversationFilesBackend
 from harness.conversation_files.files import ConversationFiles

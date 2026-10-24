@@ -486,13 +486,6 @@ class FilesystemSettings(BaseSettings):
         Path("/var/magenticx/global"),
         validation_alias="MAGENTICX_GLOBAL_ROOT",
     )
-    # Where the per-user conversation trees used to live. Read only by the
-    # one-off move into Postgres (harness/conversation_files/legacy_volume.py).
-    # TODO(plan 43): remove once agents v1.21.20 has deployed.
-    workspaces_root: Path = Field(
-        Path("/var/magenticx/workspaces"),
-        validation_alias="MAGENTICX_WORKSPACES_ROOT",
-    )
 
     # Ceiling on an image handed to the model by `view_image`. Unlike the stream
     # preview this is the *model's* copy, so the cap guards context cost and a
@@ -541,12 +534,6 @@ class ConversationFilesSettings(BaseSettings):
     # first read. Keyed by content hash, so an entry can never go stale.
     input_cache_bytes: int = Field(
         128 * 1024 * 1024, ge=0, validation_alias="CONVERSATION_INPUT_CACHE_BYTES"
-    )
-    # The one-off move of the old volume trees into Postgres, run in the
-    # background after boot (harness/conversation_files/legacy_volume.py).
-    # TODO(plan 43): remove once agents v1.21.20 has deployed.
-    legacy_volume_migration: bool = Field(
-        True, validation_alias="LEGACY_VOLUME_MIGRATION_ENABLED"
     )
 
 

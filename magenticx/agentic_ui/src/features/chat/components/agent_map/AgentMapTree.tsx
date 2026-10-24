@@ -55,6 +55,9 @@ function visibleItems(answers: AgentMapAnswer[], collapsed: Set<string>): Visibl
 
 function Collapse({ open, children }: { open: boolean; children: React.ReactNode }) {
   const reduceMotion = useReducedMotion();
+  // Clipped only while the height animates: at rest a running card's light and
+  // glow (styles/subagent.css) reach past its edges and must not be cut off.
+  const [animating, setAnimating] = React.useState(false);
   return (
     <AnimatePresence initial={false}>
       {open ? (
@@ -66,7 +69,9 @@ function Collapse({ open, children }: { open: boolean; children: React.ReactNode
               ? { opacity: 0, transition: { duration: 0.1 } }
               : { height: 0, opacity: 0, transition: { duration: 0.2, ease: "easeIn" } }
           }
-          className="overflow-hidden"
+          onAnimationStart={() => setAnimating(true)}
+          onAnimationComplete={() => setAnimating(false)}
+          style={{ overflow: animating ? "hidden" : "visible" }}
         >
           {children}
         </motion.div>
@@ -227,7 +232,8 @@ export function AgentMapTree({
   );
 
   return (
-    <div role="tree" aria-label="Agent map" onKeyDown={handleKeyDown} className="pb-2 pr-1">
+    // pt: room above the root's orb for its halo, which the scroll area clips.
+    <div role="tree" aria-label="Agent map" onKeyDown={handleKeyDown} className="pb-4 pr-1 pt-3">
       {/* The main agent: the root every branch hangs from. */}
       <div
         ref={setRef(ROOT_ID)}

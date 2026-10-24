@@ -107,8 +107,7 @@ magenticx/agents/
 │   │   ├── store.py            ConversationFileStore — path rows + encrypted, content-addressed blobs
 │   │   ├── backend.py          ConversationFilesBackend (BackendProtocol) for /conversation/ + the offload dirs
 │   │   ├── inputs.py           InputView — /conversation/input/ read from the bridge, LRU by hash
-│   │   ├── files.py · paths.py · cipher.py   per-run view · path normaliser · checkpointer AES cipher
-│   │   └── legacy_volume.py    TEMPORARY one-off move of the old volume trees
+│   │   └── files.py · paths.py · cipher.py   per-run view · path normaliser · checkpointer AES cipher
 │   ├── filesystem/
 │   │   ├── layout.py           global-plane path authority
 │   │   ├── workspace.py        deepagents CompositeBackend factory + WORKSPACE_WRITE_DENY + sandbox-execution guard
@@ -136,7 +135,6 @@ magenticx/agents/
 │   ├── generation.py           POST /titles/generate, POST /suggestions/generate
 │   ├── inference.py            POST /stream, POST /resume, compaction  ★ core
 │   ├── conversation_files.py   GET files (presented snapshot), POST files/copy (fork), POST reap
-│   ├── legacy_workspace.py     TEMPORARY shims for a pre-plan-43 bridge
 │   ├── memories.py             GET/GET/DELETE memories
 │   ├── skills.py               11 skill endpoints (catalogue search, sources, user pool, remote Add, per-agent enablement)
 │   └── voice.py                POST /dictate/transcribe, /speech/read-aloud, /realtime/session
@@ -163,10 +161,9 @@ magenticx/agents/
 1. Install the loop exception handler.
 2. `seed_global_agents()` then `refresh_registry()` — seed the built-in declarative agents onto the volume and re-scan so they join `AGENT_REGISTRY` (they are invisible at import, before the seed).
 3. `await init_durable_checkpointer(app)` (`harness/checkpointer/bootstrap.py`) — **fail fast/loud** if `agent_runtime` is unreachable.
-4. Spawn the **legacy-volume migration task** (`run_legacy_volume_migration`, `harness/conversation_files/legacy_volume.py`) — **temporary (plan 43)**: five minutes after boot it imports the old per-conversation volume trees into `agent_runtime`, verifies them and deletes them; retries every 10 min after a transient failure and returns once a pass completes; `LEGACY_VOLUME_MIGRATION_ENABLED=false` skips it. There is no retention task: conversation files live as long as their conversation. See [deployment.md](../architecture/deployment.md#one-off-move-of-conversation-files-into-postgres-plan-43).
-5. Spawn the **remote-skill sync task** (`run_remote_skill_sync_loop`, `harness/skill_registry/remote/sync.py`) — indexes the allowlisted skill sources into `agent_runtime` ~2 min after boot, then daily, under an advisory lock. Returns at once when `REMOTE_SKILLS_ENABLED=false`. See [remote-skills](../flows/remote-skills.md).
-6. `yield`.
-7. Shutdown: cancel both background tasks → `pool.close()` → restore loop handler → `shutdown_logging()`.
+4. Spawn the **remote-skill sync task** (`run_remote_skill_sync_loop`, `harness/skill_registry/remote/sync.py`) — indexes the allowlisted skill sources into `agent_runtime` ~2 min after boot, then daily, under an advisory lock. Returns at once when `REMOTE_SKILLS_ENABLED=false`. See [remote-skills](../flows/remote-skills.md).
+5. `yield`.
+6. Shutdown: cancel the remote-skill sync task → `pool.close()` → restore loop handler → `shutdown_logging()`.
 
 > **There is no workspace-sync task any more.** A 900-second pass used to
 > reconcile this volume against `chat_db` in both directions, because custom
@@ -253,7 +250,7 @@ Every endpoint below carries `dependencies=[Depends(require_internal_caller)]` (
 | 16 | GET | `/users/{uid}/skills/{skill_name}` | skills | — | `UserSkillDetail` | 200 |
 | 17a | GET | `/users/{uid}/export` | export | — | framed NDJSON stream (see [data-export](../flows/data-export.md)) | 200 |
 | 17b | POST | `/users/{uid}/purge/threads` | account | `PurgeThreadsRequest` (≤ 500 ids) | `PurgeThreadsResponse` — deletes those checkpoint threads (see [account-deletion](../flows/account-deletion.md)) | 200 (503 → the bridge retries) |
-| 17c | DELETE | `/users/{uid}` | account | — | `PurgeUserResponse` — the user's `agent_runtime` rows (conversation files and blobs included), the old `users/{uid}/` folder and the per-user agent cache | 200 (400 bad id / 503 → retry) |
+| 17c | DELETE | `/users/{uid}` | account | — | `PurgeUserResponse` — the user's `agent_runtime` rows (conversation files and blobs included) and the per-user agent cache | 200 (400 bad id / 503 → retry) |
 | 17 | POST | `/users/{uid}/skills/remote/{source_id}/{skill_id}` | skills | — | `SkillManifestEntry` | 201 (404 / 409 / 422 / 502 / 503) |
 | 18 | POST | `/users/{uid}/skills/custom` | skills | `CustomSkillCreate` | `SkillManifestEntry` | 201 |
 | 19 | DELETE | `/users/{uid}/skills/{skill_name}` | skills | — | — | 204 |
@@ -264,7 +261,6 @@ Every endpoint below carries `dependencies=[Depends(require_internal_caller)]` (
 | 24 | POST | `/speech/read-aloud` | voice | `ReadAloudRequest` | audio stream | 200 |
 | 25 | POST | `/realtime/session` | voice | `RealtimeSessionRequest` | `RealtimeSessionResponse` | 200 |
 | 26 | GET | `/commands/{uid}/{slug}` | commands | query `agent_owner_id`, `use_memory`, `search_past_convs` | `CommandListResponse` — every slash command, each with `available` / `unavailableReason` (see [slash-commands](../flows/slash-commands.md)) | 200 (404 unknown agent) |
-| 27 | * | `/agents/{slug}/users/{uid}/conversations/{cid}/{input-files,output-files,output-files/manifest,reap}` | legacy_workspace | — | **Temporary (plan 43):** answers a pre-plan-43 bridge during the rolling update (seed ignored, empty manifest, read and reap forwarded) | 200 / 204 |
 
 **Selected behaviors:**
 - **`GET /agents`** — reads `definition.manifest` for each `AGENT_REGISTRY` entry (built once at import), sorted by name.

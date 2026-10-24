@@ -87,8 +87,7 @@ the durable one.
 
 Since plan 43 nothing a conversation owns is on the volume and nothing expires:
 a file the agent wrote lives until its conversation (or account) is deleted,
-presented or not. The volume trees from before are moved in once by
-`harness/conversation_files/legacy_volume.py` (temporary).
+presented or not.
 
 ---
 

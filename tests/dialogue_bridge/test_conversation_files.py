@@ -252,16 +252,6 @@ async def test_uploads_are_served_to_internal_callers_and_the_owner_only(client,
     assert generated.status_code == 404  # the agent's own output is not an upload
 
 
-async def test_the_migration_asks_which_conversations_still_exist(client, session_factory, seeded_user,
-                                                                  seeded_agent, internal_headers):
-    conversation_id = await _conversation_with_branches(session_factory, seeded_user, seeded_agent)
-
-    response = await client.post("/v1/internal/conversations/existing", headers=internal_headers,
-                                 json={"user_id": seeded_user.id, "conversation_ids": [conversation_id, "gone"]})
-
-    assert response.status_code == 200 and response.json() == {"conversation_ids": [conversation_id]}
-
-
 # ---------------------------------------------------------------------------
 # The reap outbox
 # ---------------------------------------------------------------------------

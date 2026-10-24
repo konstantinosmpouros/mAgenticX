@@ -76,15 +76,3 @@ async def read_input_file(
         _owned_uploads(conversation_id, user_id, BlobTable.data).where(AttachmentTable.id == attachment_id)
     )
     return bytes(data) if data is not None else None
-
-
-async def existing_conversation_ids(db: AsyncSession, user_id: str, conversation_ids: list[str]) -> list[str]:
-    """Which of these conversations the user still has."""
-    if not conversation_ids:
-        return []
-    found = await db.scalars(
-        select(ConversationTable.id).where(
-            ConversationTable.user_id == user_id, ConversationTable.id.in_(conversation_ids)
-        )
-    )
-    return sorted(found)

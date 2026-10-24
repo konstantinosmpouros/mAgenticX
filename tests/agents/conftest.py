@@ -103,7 +103,6 @@ def _load_agents_service(monkeypatch):
         skill_store=importlib.import_module("harness.skill_registry.store"),
         definition_store=importlib.import_module("harness.agent_registry.store"),
         conversation_files=importlib.import_module("harness.conversation_files"),
-        legacy_volume=importlib.import_module("harness.conversation_files.legacy_volume"),
         # other utils
         suggestions=importlib.import_module("utils.suggestions"),
         speech=importlib.import_module("utils.speech"),
@@ -120,7 +119,7 @@ def _load_agents_service(monkeypatch):
 # once per session.
 #
 # The per-test reload was buying isolation, not just a namespace: tests and
-# fixtures write straight into settings sub-models (`fs.workspaces_root = tmp`)
+# fixtures write straight into settings sub-models (`fs.global_root = tmp`)
 # and into module-level caches, and the reload wiped that. The helpers below
 # give that isolation back explicitly, which is both far cheaper and states the
 # shared state a reader would otherwise have to infer.
@@ -579,8 +578,7 @@ def _write_global_skill(global_root: Path, category: str, name: str, description
 def skills_fs(agents_service, tmp_path):
     """Point the agents filesystem at an isolated tmp tree.
 
-    Redirects the global plane (``global_root``) and the old workspaces root
-    into tmp_path and seeds two skills into the *legacy* catalogue folder —
+    Redirects the global plane (``global_root``) into tmp_path and seeds two skills into the *legacy* catalogue folder —
     what an image before plan 30 left on the volume, which a ``global`` pool
     entry still reads from.
 
@@ -588,8 +586,6 @@ def skills_fs(agents_service, tmp_path):
 
     * ``global_root`` — the *catalogue* dir (``<plane>/skills``), so
       ``global_root / <category> / <skill>`` addresses a skill folder.
-    * ``users_root`` — where the old per-user conversation trees lived
-      (``<workspaces>/users``), read only by the one-off move into Postgres.
 
     There is deliberately no ``pool(user)``: a user's skills are rows in
     ``agent_runtime``, not a directory, so nothing on this tmp tree backs them.
@@ -598,7 +594,6 @@ def skills_fs(agents_service, tmp_path):
     layout = agents_service.filesystem_layout
 
     fs.global_root = tmp_path / "global"
-    fs.workspaces_root = tmp_path / "workspaces"
 
     catalogue = layout.global_skills_root()
     catalogue.mkdir(parents=True, exist_ok=True)
@@ -608,7 +603,6 @@ def skills_fs(agents_service, tmp_path):
 
     return SimpleNamespace(
         global_root=catalogue,
-        users_root=fs.workspaces_root / "users",
         service=agents_service,
     )
 
@@ -617,7 +611,7 @@ def skills_fs(agents_service, tmp_path):
 # A conversation's files (plan 43)
 # ---------------------------------------------------------------------------
 class MemoryFileStore:
-    """``ConversationFileStore`` in memory, for the backend and migration tests.
+    """``ConversationFileStore`` in memory, for the backend and route tests.
 
     The same contract as the Postgres store — content-addressed blobs per user,
     path rows naming them, no directory rows — and it is held to it: the

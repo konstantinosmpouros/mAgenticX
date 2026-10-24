@@ -169,8 +169,6 @@ Every event name below is a stable string emitted via `EventLogger`. The `http_r
 | `conversation_files_copied` / `conversation_files_reaped` / `conversation_files_purged` | INFO | a fork's rows (`files`); a deleted conversation (`files`, `bytes`); an account (`conversation_files`, `conversation_file_blobs`) |
 | `conversation_reap_failed` | WARN | a reap could not finish (`error_type`) → 503, the bridge's outbox retries |
 | `conversation_blob_gc_deferred` | WARN | blobs kept because concurrent writes kept re-referencing them (`blobs`); collected by a later delete |
-| `conversation_files_import` / `conversation_files_import_failed` | INFO / WARN | **temporary (plan 43):** a conversation's old volume tree imported — `mode` (`lazy` before a run, `bulk` in the pass), `files`, `bytes`, `skipped`, `unsettled`, `trees_deleted`, `trees_kept` |
-| `legacy_volume_migration_pass` / `_user_failed` / `_failed` / `_disabled` | INFO / WARN / ERROR / INFO | **temporary:** one pass of the volume move — `complete`, `files`, `bytes`, `skipped`, `unsettled`, `orphans`, `trees_deleted`, `trees_kept`; see [deployment](../architecture/deployment.md#one-off-move-of-conversation-files-into-postgres-plan-43) |
 | `agent_run_error` | ERROR | encoded as SSE `RUN_ERROR` frame |
 | `event_loop_exception` | ERROR | non-cancellation loop errors (uvloop noise suppressed) |
 

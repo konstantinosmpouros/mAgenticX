@@ -15,7 +15,7 @@ import psycopg
 from core.logging import get_logger
 from core.settings import settings
 from harness.checkpointer import get_checkpointer
-from harness.conversation_files import ConversationFileStore, legacy_volume
+from harness.conversation_files import ConversationFileStore
 from harness.conversation_files.paths import OUTPUT_PREFIX, InvalidPath, normalise
 from harness.memory import get_memory_pool
 
@@ -90,9 +90,7 @@ async def reap_conversation(user_id: str, conversation_id: str, thread_ids: list
         for thread_id in filter(None, thread_ids):
             await checkpointer.adelete_thread(thread_id)
         await _store().delete_conversation(user_id, conversation_id)
-        # TODO(plan 43): remove once agents v1.21.20 has deployed.
-        await legacy_volume.delete_conversation_trees(user_id, conversation_id)
-    except (RuntimeError, psycopg.Error, OSError) as exc:
+    except (RuntimeError, psycopg.Error) as exc:
         logger.warning("conversation_reap_failed", "Could not reap a deleted conversation; the bridge retries",
                        error_type=type(exc).__name__)
         raise ReapFailed from exc

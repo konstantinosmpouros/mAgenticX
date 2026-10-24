@@ -13,7 +13,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from harness.checkpointer import init_durable_checkpointer
-from harness.conversation_files.legacy_volume import run_legacy_volume_migration
 from core.logging import (
     RequestLoggingMiddleware,
     configure_logging,
@@ -32,7 +31,6 @@ from router.embeddings import router as embeddings_router
 from router.export import router as export_router
 from router.generation import router as generation_router
 from router.inference import router as inference_router
-from router.legacy_workspace import router as legacy_workspace_router
 from router.memories import router as memories_router
 from router.skills import router as skills_router
 from router.agent_tools import router as agent_tools_router
@@ -79,8 +77,6 @@ async def _lifespan(app: FastAPI):
     old = loop.get_exception_handler()
     loop.set_exception_handler(_make_loop_exception_handler(old))
     pool = None
-    # TODO(plan 43): remove once agents v1.21.20 has deployed.
-    legacy_volume_task: asyncio.Task | None = None
     remote_sync_task: asyncio.Task | None = None
     try:
         logger.info("service_startup", "Agents service startup initiated")
@@ -92,13 +88,6 @@ async def _lifespan(app: FastAPI):
         # unreachable; cross-turn resume depends on it.
         await init_durable_checkpointer(app)
         pool = app.state.checkpointer_pool
-        # The one-off move of the old per-conversation volume trees into
-        # agent_runtime: import, verify, then delete each tree. Background and
-        # best-effort — it logs and retries, never takes the service down.
-        # TODO(plan 43): remove once agents v1.21.20 has deployed.
-        legacy_volume_task = asyncio.create_task(
-            run_legacy_volume_migration(), name="legacy-volume-migration"
-        )
         # Plan 30: the skill catalogue is the remote sources, indexed daily.
         # Returns at once when REMOTE_SKILLS_ENABLED is false, so no request
         # ever leaves the service.
@@ -107,13 +96,11 @@ async def _lifespan(app: FastAPI):
         )
         yield
     finally:
-        for task in (legacy_volume_task, remote_sync_task):
-            if task is None:
-                continue
-            task.cancel()
+        if remote_sync_task is not None:
+            remote_sync_task.cancel()
             # Swallow only the cancellation we just requested.
             try:
-                await task
+                await remote_sync_task
             except asyncio.CancelledError:
                 pass
         if pool is not None:
@@ -141,8 +128,6 @@ app.include_router(embeddings_router)
 app.include_router(export_router)
 app.include_router(generation_router)
 app.include_router(inference_router)
-# TODO(plan 43): remove once agents v1.21.20 has deployed.
-app.include_router(legacy_workspace_router)
 app.include_router(memories_router)
 app.include_router(skills_router)
 app.include_router(agent_tools_router)
