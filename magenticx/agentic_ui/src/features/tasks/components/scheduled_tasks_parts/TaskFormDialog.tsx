@@ -5,6 +5,7 @@ import type { Agent, ScheduledTaskCreatePayload } from "@/shared/lib/types";
 import ScheduledTaskForm, {
   type ScheduledTaskFormInitial,
 } from "@/features/tasks/components/scheduled_tasks_parts/ScheduledTaskForm";
+import { RADIX_MOTION } from "@/shared/lib/motion/panels";
 
 type TaskFormDialogProps = {
   open: boolean;
@@ -44,7 +45,9 @@ export function TaskFormDialog({
       }}
     >
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-[92] bg-black/55 backdrop-blur-[2px] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 motion-reduce:!animate-none" />
+        <DialogPrimitive.Overlay
+          className={`fixed inset-0 z-[92] bg-black/55 backdrop-blur-[2px] ${RADIX_MOTION.backdrop}`}
+        />
         <DialogPrimitive.Content
           aria-describedby={undefined}
           onOpenAutoFocus={(event) => {
@@ -63,10 +66,11 @@ export function TaskFormDialog({
           className={[
             "fixed z-[92] flex flex-col overflow-hidden border border-border/60 bg-card text-card-foreground shadow-[0_28px_80px_-24px_rgba(0,0,0,0.45)] outline-none",
             // Phones: a full-height sheet that rises from the bottom.
-            "inset-x-0 bottom-0 h-[calc(100dvh-0.75rem)] rounded-t-[1.6rem] duration-300 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:slide-in-from-bottom data-[state=closed]:slide-out-to-bottom",
+            "inset-x-0 bottom-0 h-[calc(100dvh-0.75rem)] rounded-t-[1.6rem]",
             // Desktop: a centred card.
-            "sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:h-auto sm:max-h-[min(54rem,calc(100dvh-3rem))] sm:w-[min(40rem,calc(100vw-3rem))] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-[1.6rem] sm:duration-200 sm:data-[state=open]:slide-in-from-bottom-2 sm:data-[state=closed]:slide-out-to-bottom-2 sm:data-[state=open]:fade-in-0 sm:data-[state=closed]:fade-out-0 sm:data-[state=open]:zoom-in-[0.97] sm:data-[state=closed]:zoom-out-[0.97]",
-            "motion-reduce:!animate-none",
+            "sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:h-auto sm:max-h-[min(54rem,calc(100dvh-3rem))] sm:w-[min(40rem,calc(100vw-3rem))] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-[1.6rem]",
+            // Shared panel motion: rises as a sheet on phones, settles as a panel above.
+            RADIX_MOTION.sheetToPanel,
           ].join(" ")}
         >
           {/* Grab handle on the phone sheet. */}

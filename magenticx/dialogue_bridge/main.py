@@ -18,6 +18,7 @@ from utils.inference_runs import cleanup_orphaned_inference_runs
 from utils.scheduled_tasks import scheduler
 from utils.account_deletion import run_account_purger
 from utils.embeddings import run_embedding_sweeper
+from utils.runtime_reaps import drain_runtime_reaps
 from core.logging import (
     RequestLoggingMiddleware,
     configure_logging,
@@ -48,6 +49,7 @@ from router import (
     memories_router,
     scheduled_tasks_router,
     usage_router,
+    internal_conversations_router,
     internal_memory_router,
 )
 
@@ -145,11 +147,15 @@ async def lifespan(app: FastAPI):
     # at a time, in small batches; resumes any purge a restart interrupted.
     purger_stop_event = asyncio.Event()
     purger_task = asyncio.create_task(run_account_purger(purger_stop_event))
+    # Conversations deleted while the agents service could not be reached:
+    # their threads and files are reaped now (utils/runtime_reaps.py). In the
+    # background — the agents service may still be starting itself.
+    reap_task = asyncio.create_task(drain_runtime_reaps())
     yield
     embedding_stop_event.set()
     purger_stop_event.set()
     await scheduler.stop()
-    for task in (embedding_task, purger_task):
+    for task in (embedding_task, purger_task, reap_task):
         try:
             await asyncio.wait_for(task, timeout=10)
         except asyncio.TimeoutError:
@@ -308,6 +314,11 @@ app.include_router(
 # backend network. Backs the agent's search_past_conversations tool.
 app.include_router(
     internal_memory_router,
+    prefix="/v1/internal",
+    tags=["Internal"],
+)
+app.include_router(
+    internal_conversations_router,
     prefix="/v1/internal",
     tags=["Internal"],
 )

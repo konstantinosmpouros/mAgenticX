@@ -1,4 +1,5 @@
 import base64
+import hashlib
 from copy import deepcopy
 from datetime import UTC, datetime, timezone
 from typing import List, Optional
@@ -20,6 +21,7 @@ from core.database import (
 )
 from core.settings import settings
 from schema import AttachmentIn, MessageIn
+from utils.workspace_names import WorkspaceNames
 
 
 async def init_conv(
@@ -76,25 +78,32 @@ async def init_message(
 
     if payload.attachments:
         # Persist attachment rows (and blobs) tied to the new message id.
-        await init_attachments(db, msg.id, payload.attachments)
+        await init_attachments(db, conv.id, msg.id, payload.attachments)
 
     return msg
 
 
-async def init_attachments(db: AsyncSession, message_id: str, items: List[AttachmentIn]) -> None:
+async def init_attachments(
+    db: AsyncSession, conversation_id: str, message_id: str, items: List[AttachmentIn]
+) -> None:
+    """Store a message's uploads, each with its hash and its stable name in the
+    agent's ``/conversation/input/`` folder (utils/workspace_names.py)."""
+    names = await WorkspaceNames.load(db, conversation_id)
     for item in items:
         try:
             # Validate user data is real base64 before storing raw bytes.
             raw = base64.b64decode(item.dataB64, validate=True)
         except Exception:
             raise HTTPException(status_code=400, detail=f"Attachment '{item.name}' is not valid base64.")
-        blob = BlobTable(data=raw)
+        sha256 = hashlib.sha256(raw).hexdigest()
         attach = AttachmentTable(
             message_id=message_id,
             file_name=item.name,
             mime_type=item.mime,
             size_bytes=item.size if item.size is not None else len(raw),
-            blob=blob,
+            content_sha256=sha256,
+            workspace_name=names.assign(item.name, sha256),
+            blob=BlobTable(data=raw),
         )
         db.add(attach)
 
@@ -346,6 +355,9 @@ async def clone_branch_to_conversation(
                 summary=source_attachment.summary,
                 content_sha256=source_attachment.content_sha256,
                 presented=source_attachment.presented,
+                # The fork's history names its uploads by these, so they move
+                # with the file (the agent reads them in the fork too).
+                workspace_name=source_attachment.workspace_name,
                 blob=cloned_blob,
                 created_at=source_attachment.created_at,
                 updated_at=source_attachment.updated_at,

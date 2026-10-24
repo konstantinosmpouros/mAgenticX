@@ -100,13 +100,11 @@ const ToolImages = ({ images }: { images: ToolResultImage[] }) => {
           </div>
         );
       })}
-      {expanded && (
-        <ImageLightbox
-          src={expanded.src}
-          filename={expanded.name}
-          onClose={() => setExpanded(null)}
-        />
-      )}
+      <ImageLightbox
+        src={expanded?.src ?? null}
+        filename={expanded?.name}
+        onClose={() => setExpanded(null)}
+      />
     </div>
   );
 };

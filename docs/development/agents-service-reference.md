@@ -103,10 +103,15 @@ magenticx/agents/
 │   ├── checkpointer/
 │   │   ├── store.py            Process-wide AsyncPostgresSaver handle (set/get/has)
 │   │   └── fork.py             seed_thread_from_checkpoint (copy-on-fork for branches)
+│   ├── conversation_files/     a conversation's files in agent_runtime (plan 43)
+│   │   ├── store.py            ConversationFileStore — path rows + encrypted, content-addressed blobs
+│   │   ├── backend.py          ConversationFilesBackend (BackendProtocol) for /conversation/ + the offload dirs
+│   │   ├── inputs.py           InputView — /conversation/input/ read from the bridge, LRU by hash
+│   │   ├── files.py · paths.py · cipher.py   per-run view · path normaliser · checkpointer AES cipher
+│   │   └── legacy_volume.py    TEMPORARY one-off move of the old volume trees
 │   ├── filesystem/
-│   │   ├── provisioner.py      Framework-free path helpers + on-disk provisioning
+│   │   ├── layout.py           global-plane path authority
 │   │   ├── workspace.py        deepagents CompositeBackend factory + WORKSPACE_WRITE_DENY + sandbox-execution guard
-│   │   ├── retention.py        TTL sweeper for conversation input/output caches
 │   │   ├── memory.py           AGENTS.md index helpers (remember tool backing)
 │   │   └── agent_md_template.py  AGENTS_MD_TEMPLATE seed string
 │   └── skill_registry/
@@ -129,7 +134,9 @@ magenticx/agents/
 │   ├── catalog.py              GET /agents, GET /tools
 │   ├── embeddings.py           POST /embed
 │   ├── generation.py           POST /titles/generate, POST /suggestions/generate
-│   ├── inference.py            POST /stream, POST /resume, PUT input-files, POST reap  ★ core
+│   ├── inference.py            POST /stream, POST /resume, compaction  ★ core
+│   ├── conversation_files.py   GET files (presented snapshot), POST files/copy (fork), POST reap
+│   ├── legacy_workspace.py     TEMPORARY shims for a pre-plan-43 bridge
 │   ├── memories.py             GET/GET/DELETE memories
 │   ├── skills.py               11 skill endpoints (catalogue search, sources, user pool, remote Add, per-agent enablement)
 │   └── voice.py                POST /dictate/transcribe, /speech/read-aloud, /realtime/session
@@ -156,7 +163,7 @@ magenticx/agents/
 1. Install the loop exception handler.
 2. `seed_global_agents()` then `refresh_registry()` — seed the built-in declarative agents onto the volume and re-scan so they join `AGENT_REGISTRY` (they are invisible at import, before the seed).
 3. `await init_durable_checkpointer(app)` (`harness/checkpointer/bootstrap.py`) — **fail fast/loud** if `agent_runtime` is unreachable.
-4. Spawn the **workspace-retention task** (`run_workspace_retention_loop`, `harness/filesystem/retention.py`) — TTL-erases conversation `input/`/`output/` cache files (both are copies of DB attachment blobs: input is bridge-seeded per run, presented outputs are blob-persisted at finalize). Sweeps every `WORKSPACE_SWEEP_INTERVAL_MINUTES` (jittered) in a worker thread with hard per-pass budgets; symlinks are deleted-as-links and logged as security events; a conversation with writes in the last 30 min is skipped (in-flight run protection); best-effort — failures log and retry, never kill the service.
+4. Spawn the **legacy-volume migration task** (`run_legacy_volume_migration`, `harness/conversation_files/legacy_volume.py`) — **temporary (plan 43)**: five minutes after boot it imports the old per-conversation volume trees into `agent_runtime`, verifies them and deletes them; retries every 10 min after a transient failure and returns once a pass completes; `LEGACY_VOLUME_MIGRATION_ENABLED=false` skips it. There is no retention task: conversation files live as long as their conversation. See [deployment.md](../architecture/deployment.md#one-off-move-of-conversation-files-into-postgres-plan-43).
 5. Spawn the **remote-skill sync task** (`run_remote_skill_sync_loop`, `harness/skill_registry/remote/sync.py`) — indexes the allowlisted skill sources into `agent_runtime` ~2 min after boot, then daily, under an advisory lock. Returns at once when `REMOTE_SKILLS_ENABLED=false`. See [remote-skills](../flows/remote-skills.md).
 6. `yield`.
 7. Shutdown: cancel both background tasks → `pool.close()` → restore loop handler → `shutdown_logging()`.
@@ -234,8 +241,9 @@ Every endpoint below carries `dependencies=[Depends(require_internal_caller)]` (
 | 5 | POST | `/suggestions/generate` | generation | `SuggestionsRequest` | `ConversationSuggestions` | 200 |
 | 6 | POST | `/agents/{agent_slug}/stream` | inference | `Request` | SSE `text/event-stream` | 200 |
 | 7 | POST | `/agents/{agent_slug}/resume` | inference | `AgentResumeRequest` | SSE `text/event-stream` | 200 |
-| 8 | PUT | `/agents/{slug}/users/{uid}/conversations/{cid}/input-files` | inference | `SeedInputFilesRequest` | `SeedInputFilesResponse` | 200 |
-| 9 | POST | `/agents/{slug}/users/{uid}/conversations/{cid}/reap` | inference | `ReapConversationRequest` | — | 204 |
+| 8 | GET | `/users/{uid}/conversations/{cid}/files?paths=` | conversation_files | — | `ReadOutputFilesResponse` — presented `/conversation/output/` files, base64 (≤ `OUTPUT_MAX_FILES`, each ≤ `OUTPUT_MAX_FILE_BYTES`, else `missing`) | 200 (422 too many) |
+| 9 | POST | `/users/{uid}/conversations/{cid}/reap` | conversation_files | `ReapConversationRequest` | — the conversation's checkpoint threads and every file (by conversation id) | 204 (503 → the bridge's outbox retries) |
+| 9a | POST | `/users/{uid}/conversations/{cid}/files/copy` | conversation_files | `CopyConversationFilesRequest` | `CopyConversationFilesResponse` — a fork's file rows (no bytes copied) | 200 |
 | 10 | GET | `/agents/{slug}/users/{uid}/memories` | memories | — | `List[MemoryEntry]` | 200 |
 | 11 | GET | `/agents/{slug}/users/{uid}/memories/{name}` | memories | — | `MemoryDetail` | 200 |
 | 12 | DELETE | `/agents/{slug}/users/{uid}/memories/{name}` | memories | — | — | 204 |
@@ -245,7 +253,7 @@ Every endpoint below carries `dependencies=[Depends(require_internal_caller)]` (
 | 16 | GET | `/users/{uid}/skills/{skill_name}` | skills | — | `UserSkillDetail` | 200 |
 | 17a | GET | `/users/{uid}/export` | export | — | framed NDJSON stream (see [data-export](../flows/data-export.md)) | 200 |
 | 17b | POST | `/users/{uid}/purge/threads` | account | `PurgeThreadsRequest` (≤ 500 ids) | `PurgeThreadsResponse` — deletes those checkpoint threads (see [account-deletion](../flows/account-deletion.md)) | 200 (503 → the bridge retries) |
-| 17c | DELETE | `/users/{uid}` | account | — | `PurgeUserResponse` — the user's six `agent_runtime` tables, `users/{uid}/` and the per-user agent cache | 200 (400 bad id / 503 → retry) |
+| 17c | DELETE | `/users/{uid}` | account | — | `PurgeUserResponse` — the user's `agent_runtime` rows (conversation files and blobs included), the old `users/{uid}/` folder and the per-user agent cache | 200 (400 bad id / 503 → retry) |
 | 17 | POST | `/users/{uid}/skills/remote/{source_id}/{skill_id}` | skills | — | `SkillManifestEntry` | 201 (404 / 409 / 422 / 502 / 503) |
 | 18 | POST | `/users/{uid}/skills/custom` | skills | `CustomSkillCreate` | `SkillManifestEntry` | 201 |
 | 19 | DELETE | `/users/{uid}/skills/{skill_name}` | skills | — | — | 204 |
@@ -256,7 +264,7 @@ Every endpoint below carries `dependencies=[Depends(require_internal_caller)]` (
 | 24 | POST | `/speech/read-aloud` | voice | `ReadAloudRequest` | audio stream | 200 |
 | 25 | POST | `/realtime/session` | voice | `RealtimeSessionRequest` | `RealtimeSessionResponse` | 200 |
 | 26 | GET | `/commands/{uid}/{slug}` | commands | query `agent_owner_id`, `use_memory`, `search_past_convs` | `CommandListResponse` — every slash command, each with `available` / `unavailableReason` (see [slash-commands](../flows/slash-commands.md)) | 200 (404 unknown agent) |
-| 27 | GET | `…/conversations/{cid}/output-files/manifest` | inference | — | `OutputManifestResponse` — every file in `output/` (path, size, SHA-256; no bytes), for the bridge's run-end capture | 200 |
+| 27 | * | `/agents/{slug}/users/{uid}/conversations/{cid}/{input-files,output-files,output-files/manifest,reap}` | legacy_workspace | — | **Temporary (plan 43):** answers a pre-plan-43 bridge during the rolling update (seed ignored, empty manifest, read and reap forwarded) | 200 / 204 |
 
 **Selected behaviors:**
 - **`GET /agents`** — reads `definition.manifest` for each `AGENT_REGISTRY` entry (built once at import), sorted by name.
@@ -457,27 +465,24 @@ flowchart TD
 
 ## 13. Filesystem / workspace model
 
-Deep agents get a per-(user, agent, conversation) **virtual** filesystem via a deepagents `CompositeBackend`. **Most of it is not on disk.** Memory, skills and a user-authored agent's own definition are rows in `agent_runtime`, served as `StoreBackend` routes; the volume holds the platform's build-time content and this conversation's working files. On-disk paths all come from `harness/filesystem/layout.py`, the single path authority:
+Deep agents get a per-(user, agent, conversation) **virtual** filesystem via a deepagents `CompositeBackend`. **None of it is a directory a run writes to.** Memory, skills and a user-authored agent's own definition are rows in `agent_runtime`, served as `StoreBackend` routes; a conversation's files are rows too (plan 43), served by `ConversationFilesBackend`; the volume holds only the platform's build-time content (`harness/filesystem/layout.py`):
 ```
 agent_runtime (rows)                → mount
   agent_memories                    → /memories/         (AGENTS.md + entries/<name>.yml)
   skill_pool + skill_files          → /skills/           (tier 2, read-only)
                                     → /default_skills/   (tier 1, custom agents)
   agent_definition_files            → /reference/        (custom agents, read-only)
+  conversation_files + _blobs       → /conversation/     (this conversation's files, every agent of it)
+                                    → /large_tool_results/, /conversation_history/  (deepagents offloads)
+
+chat_db attachments (via the bridge) → /conversation/input/  (uploads, read-only, never copied)
 
 <global_root>/ (image, build-time)
   agents/<slug>/                    → /reference/        (platform agents, read-only)
   agents/<slug>/skills/             → /default_skills/   (tier 1, platform agents)
   skills/<category>/<skill>/          the catalogue (not mounted; resolved per read)
-
-<workspaces_root>/users/<user_id>/
-└── agents/<agent_slug>/
-    ├── tool_prefs.json              per-agent tool overrides (not mounted)
-    └── conversations/<conversation_id>/ → mount /conversation/
-        ├── input/             → /conversation/input/  (read-only uploads)
-        └── output/            → /conversation/output/ (agent artifacts)
 ```
-`build_workspace_backend(...)` returns a **factory** invoked per tool call (so `StateBackend` binds the live `ToolRuntime`). All routes are `FilesystemBackend(virtual_mode=True)` — the agent sees only virtual paths, never the host path, so it cannot escape its root; longer-prefix routes win; the default route is an ephemeral `StateBackend()`. `_safe_segment` rejects `/`, `\`, `..`, leading `.` on every user/agent/conversation/skill/file segment (path-traversal defense).
+`build_workspace_backend(...)` returns a **factory** invoked per tool call (so `StateBackend` binds the live `ToolRuntime`); the default route is an ephemeral `StateBackend()`. One `ConversationFiles` per run (`DeepAgent.conversation_files`) backs the three conversation routes, `view_image` and `present_artifact`. Every path goes through `harness/conversation_files/paths.normalise()` (absolute, NFC, no `.`/`..`/hidden segments, no backslashes or control characters) before it reaches SQL, and every statement is scoped to `(conversation_id, user_id)`. See [attachments.md](../flows/attachments.md#phase-7--attachments-and-the-agent-filesystem).
 
 **`/reference/` — the agent's own definition folder, read-only and optional.** Passed as `reference_dir` and supplied by `DeepAgent.reference_dir` (a policy hook returning `None` by default). `YamlDeepAgent` overrides it with its source directory, so material shipped beside `AGENT.md` — notes, checklists, examples — is readable **on demand** at `/reference/<path>` instead of being inlined into every turn. Agents defined in Python return `None`: their package directory holds source, which must never be readable from a run. Without the mount such a file is *inert* — the path matches no route, falls through to `StateBackend`, and reads "not found" with no error logged anywhere.
 
@@ -485,7 +490,7 @@ agent_runtime (rows)                → mount
 
 **Sandbox-execution guard (fail-closed):** deepagents surfaces its built-in `execute` tool exactly when the composite **default** backend implements `SandboxBackendProtocol` (`StateBackend` does not; `LocalShellBackend` — host-shell execution — does, and its import is test-banned from the whole service). While `SANDBOX_EXECUTION_ENABLED` is false the factory refuses to mint a sandbox-capable default (`RuntimeError`), so a refactor swapping the default class can never silently open a code-execution path. Pinned by `tests/agents/test_execute_lockdown.py`.
 
-**Workspace retention:** `retention.py` TTL-erases `input/` (default 72h) and `output/` (default 168h) cache files — safe because both are copies of DB blobs (input is bridge-seeded per run; presented outputs are persisted as generated attachments at finalize). `memory/`, loose `/conversation/` files, and the offload dirs are out of scope. Symlinks are deleted-as-links and logged as security events; swept dirs must realpath-resolve under the filesystem root; conversations with writes in the last 30 min are skipped.
+**No retention.** A conversation's files live exactly as long as the conversation: deleted by the reap or the account purge, never by a timer.
 
 ---
 

@@ -49,7 +49,8 @@ from core.settings import AccountDeletionSettings, settings
 
 AGENT_COUNTS = {
     "agent_memories": 4, "skill_pool": 2, "skill_files": 3, "agent_skills": 1,
-    "agent_definitions": 1, "agent_definition_files": 2, "workspace_removed": True,
+    "agent_definitions": 1, "agent_definition_files": 2,
+    "conversation_files": 5, "conversation_file_blobs": 3, "workspace_removed": True,
 }
 
 
@@ -240,6 +241,8 @@ async def test_a_purge_removes_everything_of_the_user_and_nothing_else(session_f
     assert row.counts["blobs"] == 3 and row.counts["blob_bytes"] == 3000
     assert row.counts["checkpoint_threads"] == len(ids["threads"])
     assert row.counts["agent_memories"] == 4 and row.counts["user"] == 1
+    # Every conversation file the agents service held, deleted by user id (plan 43).
+    assert row.counts["conversation_files"] == 5 and row.counts["conversation_file_blobs"] == 3
 
 
 @pytest.mark.asyncio

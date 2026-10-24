@@ -2,8 +2,8 @@
  * The themes the user can pick. One entry per theme; its colors live in
  * `<id>.css` in this folder, under `:root[data-theme="<id>"]` (see README.md).
  *
- * Read by the app (Settings → General, the sidebar logo, the orb, toasts,
- * anything that needs to know light from dark). `public/theme-init.js` runs
+ * Read by the app (Settings → General, the sidebar logo, the orb, the brand
+ * mark, toasts, anything that needs to know light from dark). `public/theme-init.js` runs
  * before the app loads and keeps its own copy of the ids, the dark ids, the
  * legacy aliases and the first-run choice (resolveStoredTheme): update it when
  * adding a theme.
@@ -34,6 +34,12 @@ export type ThemeDefinition = {
    * (its CSS file) to a new artwork's colours.
    */
   orb?: string;
+  /**
+   * The "soft node" brand mark for this theme (a square WebP under `public/`),
+   * drawn by `BrandMark` (src/shared/ui/brand-mark.tsx). Optional: without one
+   * the theme gets DEFAULT_MARK.
+   */
+  mark?: string;
 };
 
 /** The logo a theme without its own `logo` gets: one drawn for light, one for dark backgrounds. */
@@ -45,6 +51,9 @@ export const DEFAULT_LOGOS: Record<ThemeMode, string> = {
 /** The orb a theme without its own `orb` gets (the Daylight artwork). */
 export const DEFAULT_ORB = "/orbital-hub-transparent.webp";
 
+/** The brand mark a theme without its own `mark` gets (the Daylight artwork). */
+export const DEFAULT_MARK = "/brand/logos/soft-node/daylight-mark.webp";
+
 export const THEMES: readonly ThemeDefinition[] = [
   {
     id: "daylight",
@@ -53,6 +62,7 @@ export const THEMES: readonly ThemeDefinition[] = [
     mode: "light",
     preview: { background: "#f1f8fd", surface: "#dcebf7", accent: "#0277cd" },
     orb: "/orbital-hub-transparent.webp",
+    mark: "/brand/logos/soft-node/daylight-mark.webp",
   },
   {
     id: "midnight",
@@ -61,6 +71,7 @@ export const THEMES: readonly ThemeDefinition[] = [
     mode: "dark",
     preview: { background: "#081028", surface: "#111a36", accent: "#a576fa" },
     orb: "/orbital-hub-midnight.webp",
+    mark: "/brand/logos/soft-node/midnight-mark.webp",
   },
   {
     id: "aurora",
@@ -69,6 +80,7 @@ export const THEMES: readonly ThemeDefinition[] = [
     mode: "light",
     preview: { background: "#f0f6fd", surface: "#dde9f8", accent: "#8a45f6" },
     orb: "/orbital-hub-aurora.webp",
+    mark: "/brand/logos/soft-node/aurora-mark.webp",
   },
   {
     id: "sunset",
@@ -77,6 +89,7 @@ export const THEMES: readonly ThemeDefinition[] = [
     mode: "light",
     preview: { background: "#faf7f8", surface: "#f1e6ea", accent: "#dd0374" },
     orb: "/orbital-hub-sunset.webp",
+    mark: "/brand/logos/soft-node/sunset-mark.webp",
   },
   {
     id: "sage",
@@ -85,6 +98,7 @@ export const THEMES: readonly ThemeDefinition[] = [
     mode: "light",
     preview: { background: "#f1f9f9", surface: "#dcefef", accent: "#024d58" },
     orb: "/orbital-hub-sage.webp",
+    mark: "/brand/logos/soft-node/sage-mark.webp",
   },
   {
     id: "citrus",
@@ -93,6 +107,7 @@ export const THEMES: readonly ThemeDefinition[] = [
     mode: "light",
     preview: { background: "#f9f8f7", surface: "#efebe6", accent: "#c74b05" },
     orb: "/orbital-hub-citrus.webp",
+    mark: "/brand/logos/soft-node/citrus-mark.webp",
   },
 ];
 
@@ -139,6 +154,11 @@ export function logoFor(name: string | undefined | null): string {
 /** The orb artwork for a theme name: its own, or the default. */
 export function orbFor(name: string | undefined | null): string {
   return themeFor(name).orb ?? DEFAULT_ORB;
+}
+
+/** The soft-node brand mark for a theme name: its own, or the default. */
+export function markFor(name: string | undefined | null): string {
+  return themeFor(name).mark ?? DEFAULT_MARK;
 }
 
 /**

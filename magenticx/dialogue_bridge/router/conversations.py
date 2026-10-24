@@ -27,6 +27,7 @@ from schema import (
 )
 from core.auth.session import AuthUser, require_csrf_protection
 from core.security.rate_limit import compaction_rate_limit, export_pdf_rate_limit, share_create_rate_limit
+from utils.agents import copy_conversation_files
 from utils.attachments import encode_disposition
 from utils.share_export import conversation_pdf_filename, render_conversation_pdf, select_scoped_messages
 from utils import (
@@ -41,7 +42,6 @@ from utils import (
     get_share_for_owner,
     init_conv,
     list_owned_shares,
-    reap_conversation_runtime,
     resolve_conversation_title,
     save_private_conversation,
     set_conversation_archive_state,
@@ -51,6 +51,7 @@ from utils import (
     validate_userId,
 )
 from utils.compaction import compact_conversation, undo_conversation_compaction
+from utils.runtime_reaps import drain_runtime_reaps, enqueue_runtime_reap
 from utils.shared_conv import build_share_list_item, resolve_share_expires_at
 
 
@@ -165,6 +166,8 @@ async def forkConversation(
         )
         await db.commit()
         operation.add(forked_conversation_id=forked_conv.id)
+    # The agent's files come along — paths only; the agents service shares the bytes.
+    await copy_conversation_files(user_id, conversation_id, forked_conv.id)
 
     forked_full = await get_conversation_with_agent(db, forked_conv.id)
     logger.info("conversation_forked", "Conversation forked", **operation.snapshot())
@@ -440,13 +443,14 @@ async def deleteConversation(
 ):
     """Delete a conversation entirely (cascades to messages & attachments rows)."""
     set_context(user_id=user_id, conversation_id=conversation_id)
-    # Reap the agents-service runtime (durable checkpoint threads + per-agent
-    # filesystem dirs) BEFORE the rows are gone — it reads agent_id +
-    # checkpoint_thread_id off the AI messages. Best-effort; never blocks delete.
-    await reap_conversation_runtime(db, user_id, conversation_id)
+    # The agents service's threads and files go too: noted in this transaction
+    # (it reads the thread ids off the messages, so before they are gone), then
+    # sent once committed. A failed send is retried later; never blocks delete.
+    await enqueue_runtime_reap(db, user_id, conversation_id)
     await db.delete(current_conv)
     await db.commit()
     logger.info("conversation_deleted", "Conversation deleted", conversation_id=conversation_id, agent_id=current_conv.agent_id)
+    await drain_runtime_reaps()
     return
 
 

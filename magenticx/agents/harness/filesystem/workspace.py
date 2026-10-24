@@ -1,26 +1,24 @@
 """Deepagents workspace assembly for a deep agent's filesystem.
 
-This is the deepagents-*aware* layer on top of the framework-free
-``provisioner`` (which owns paths + on-disk provisioning). It assembles the two
-things a deep agent hands to ``create_deep_agent`` for its filesystem:
+It assembles the two things a deep agent hands to ``create_deep_agent`` for its
+filesystem:
 
 * the ``CompositeBackend`` factory — the map of virtual routes (``/memories/``,
-  ``/skills/``, ``/conversation/...``) onto the per-(user, agent, conversation)
-  physical roots the provisioner computes, and
+  ``/skills/``, ``/conversation/...``) onto the stores and image folders that
+  back them, and
 * ``WORKSPACE_WRITE_DENY`` — the write-deny permission ladder.
 
 These live together on purpose: each write-deny rule targets a mount route by
 path, and deepagents rejects a permission pointing at an unmounted route, so
 the routes and their permissions **must stay in sync**. Keeping both here (next
 to the route strings) removes the footgun of editing one without the other.
-``provisioner.py`` deliberately stays import-free of deepagents so it remains
-reusable by the rest of the agents service; the framework dependency enters
-only here.
 """
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any
 
 from deepagents import FilesystemPermission
 from deepagents.backends import (
@@ -33,15 +31,17 @@ from deepagents.backends.protocol import SandboxBackendProtocol
 
 from core.settings import settings
 from harness.agent_registry.store import AgentDefinitionStore
+from harness.conversation_files import ConversationFiles, ConversationFilesBackend
+from harness.conversation_files.paths import (
+    CONVERSATION_HISTORY_ROOT,
+    CONVERSATION_ROOT,
+    LARGE_TOOL_RESULTS_ROOT,
+)
 from harness.memory import AgentMemoryStore, get_memory_pool
 # Bound as a module, resolved at call time: the skill store imports
 # `harness.filesystem` (for the legacy catalogue path) while this package is
 # still initialising, so a `from ... import` of its names here is a cycle.
 import harness.skill_registry.store as skill_store
-from harness.filesystem.provisioner import (
-    conversation_root,
-    ensure_user_agent_filesystem,
-)
 
 
 # Write-deny rules over the built-in filesystem tools, shared by every deep agent.
@@ -98,43 +98,34 @@ def build_workspace_backend(
     *,
     user_id: str,
     agent_slug: str,
-    conversation_id: str,
+    files: ConversationFiles,
     use_memory: bool,
     reference_dir: Path | None = None,
     reference_namespace: tuple[str, ...] | None = None,
     default_skills_dir: Path | None = None,
     declared_skills: Sequence[str] = (),
 ) -> Callable[[Any], CompositeBackend]:
-    """Provision the tree and return a factory minting a fresh ``CompositeBackend``
-    per tool call.
+    """Return a factory minting a fresh ``CompositeBackend`` per tool call.
 
     The deepagents library accepts ``backend=callable(ToolRuntime) -> Backend``
     and invokes it on every tool call so ``StateBackend`` can bind to the live
-    runtime. FilesystemBackends are mounted at structurally disjoint roots so no
-    route can resolve into another's tree:
+    runtime. Nothing here is a directory a run can write to:
 
-        /memories/            → agent_runtime rows                  (AGENTS.md + entries/)
-        /skills/              → agent_runtime rows                  (user-enabled skills)
-        /conversation/input/  → <conv_id>/input/                     (user uploads, read-only)
-        /conversation/output/ → <conv_id>/output/                    (agent artifacts, read-write)
-        /conversation/        → <user_root>/agents/<slug>/conversations/<conv_id>/ (this chat only)
-        /default_skills/      → image folder OR agent_runtime rows   (read-only, optional)
-        /reference/           → image folder OR agent_runtime rows   (read-only, optional)
-        default               → StateBackend(rt)                     (ephemeral scratch)
+        /memories/              → agent_runtime rows        (AGENTS.md + entries/)
+        /skills/                → agent_runtime rows        (user-enabled skills)
+        /conversation/          → agent_runtime rows        (this chat's files)
+          /conversation/input/  → the bridge's attachments  (user uploads, read-only)
+        /large_tool_results/    → agent_runtime rows        (offloaded tool results)
+        /conversation_history/  → agent_runtime rows        (offloaded history)
+        /default_skills/        → image folder OR agent_runtime rows (read-only, optional)
+        /reference/             → image folder OR agent_runtime rows (read-only, optional)
+        default                 → StateBackend(rt)          (ephemeral scratch)
 
-    Only the ``/conversation/`` family is a real directory. Everything a *user*
-    authored is a virtual route over ``agent_runtime``; everything the platform
-    ships is a directory in the image.
-
-    Per-conversation isolation: ``/conversation/`` is rooted at a single
-    ``<conv_id>`` directory, so files written in one chat are not visible from
-    the next. Durable cross-conversation context lives in the per-(user, agent)
-    ``/memories/`` tree (the ``remember`` tool maintains ``AGENTS.md`` +
-    ``entries/``). ``input/`` holds user-uploaded files (bridge-seeded, the agent
-    reads them — write-denied); ``output/`` is where the agent writes artifacts.
-    Both are subdirs of ``<conv_id>`` so they also surface under
-    ``/conversation/``; the dedicated longer-prefix routes give the write-deny a
-    clean target.
+    Per-conversation isolation: ``files`` is bound to one conversation, so
+    files written in one chat are not visible from the next. Every agent of
+    the conversation sees the same files. Durable cross-conversation context
+    lives in the per-(user, agent) ``/memories/`` tree. ``output/`` is where
+    the agent writes deliverables; ``input/`` is write-denied.
 
     Memory is per-run: when ``use_memory`` is false the ``/memories/`` mount is
     dropped entirely so the agent can neither read nor write its AGENTS.md /
@@ -154,22 +145,11 @@ def build_workspace_backend(
     agent defined in code passes neither and the route is simply absent. Keep the
     write-deny in step via :func:`workspace_write_deny`.
     """
-    ensure_user_agent_filesystem(
-        user_id=user_id, agent_slug=agent_slug, conversation_id=conversation_id
-    )
-    conv_path = conversation_root(user_id, agent_slug, conversation_id)
-    # Per-conversation, on-disk homes for deepagents' offloaded artifacts.
-    # Created eagerly so `ls` works before the first offload write.
-    large_tool_results_path = conv_path / "large_tool_results"
-    conversation_history_path = conv_path / "conversation_history"
-    large_tool_results_path.mkdir(parents=True, exist_ok=True)
-    conversation_history_path.mkdir(parents=True, exist_ok=True)
-    # input/ (read-only uploads, bridge-seeded) + output/ (agent artifacts);
-    # subdirs of conv_path, with longer-prefix routes winning the overlap.
-    input_path = conv_path / "input"
-    output_path = conv_path / "output"
-    input_path.mkdir(parents=True, exist_ok=True)
-    output_path.mkdir(parents=True, exist_ok=True)
+    try:
+        # The conversation mounts bridge their sync methods onto this loop.
+        loop: asyncio.AbstractEventLoop | None = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
 
     def factory(rt: Any) -> CompositeBackend:
         # Sandbox-execution kill switch (fail-closed). deepagents exposes its
@@ -188,10 +168,8 @@ def build_workspace_backend(
                 "Workspace default backend is sandbox-capable but SANDBOX_EXECUTION_ENABLED "
                 "is false — refusing to expose an execution path."
             )
-        # Every other route is a real directory; this one is not. `/memories/`
-        # is a virtual view over the `agent_memories` table in agent_runtime, so
-        # the agent's read_file/write_file on it are queries. Nothing about how
-        # the agent *uses* memory changes — there is simply no disk to lose.
+        # `/memories/` is a virtual view over the `agent_memories` table in
+        # agent_runtime, so the agent's read_file/write_file on it are queries.
         routes: dict[str, Any] = {}
         if use_memory:
             routes["/memories/"] = StoreBackend(
@@ -211,23 +189,13 @@ def build_workspace_backend(
                 store=skill_store.SkillStore(get_memory_pool()),
                 namespace=lambda _rt: (user_id, agent_slug, skill_store.TIER_ASSIGNED),
             ),
-            "/conversation/input/": FilesystemBackend(
-                root_dir=str(input_path), virtual_mode=True
-            ),
-            "/conversation/output/": FilesystemBackend(
-                root_dir=str(output_path), virtual_mode=True
-            ),
-            "/conversation/": FilesystemBackend(
-                root_dir=str(conv_path), virtual_mode=True
-            ),
-            # deepagents' offload prefixes routed to per-conversation disk
-            # so they persist instead of the ephemeral StateBackend default.
-            "/large_tool_results/": FilesystemBackend(
-                root_dir=str(large_tool_results_path), virtual_mode=True
-            ),
-            "/conversation_history/": FilesystemBackend(
-                root_dir=str(conversation_history_path), virtual_mode=True
-            ),
+            # One route for the whole conversation (uploads included), so a
+            # grep from the root sees each file once.
+            "/conversation/": ConversationFilesBackend(files, CONVERSATION_ROOT, loop=loop),
+            # deepagents' offload prefixes: the conversation's too, kept out of
+            # /conversation/ so its write-deny cannot be sidestepped from there.
+            "/large_tool_results/": ConversationFilesBackend(files, LARGE_TOOL_RESULTS_ROOT, loop=loop),
+            "/conversation_history/": ConversationFilesBackend(files, CONVERSATION_HISTORY_ROOT, loop=loop),
         })
         if default_skills_dir is not None:
             # A platform agent's tier ① ships in its image folder, so it is

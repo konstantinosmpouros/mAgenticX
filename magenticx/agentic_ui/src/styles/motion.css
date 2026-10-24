@@ -1,0 +1,150 @@
+/* How panels appear and disappear, for Radix primitives (their data-state).
+   The presets, the reasons and the framer-motion side live in
+   src/shared/lib/motion/panels.ts — the durations and curves below mirror its
+   PANEL_TIMING / EASE_ENTER / EASE_EXIT (tests/agentic_ui/panel-motion.test.ts
+   checks they agree). Components take the classes from RADIX_MOTION there,
+   never these names directly.
+
+   The keyframes move the individual `scale` / `translate` properties, not
+   `transform`, so they compose with a component's own positioning transform
+   (a dialog centred with translate(-50%, -50%)) instead of replacing it.
+   `both` holds the closed frame until Radix unmounts on animationend. */
+
+:root {
+  --mx-ease-enter: cubic-bezier(0.22, 1, 0.36, 1);
+  --mx-ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --mx-panel-in: 280ms;
+  --mx-panel-out: 180ms;
+  --mx-sheet-in: 340ms;
+  --mx-sheet-out: 220ms;
+  --mx-popover-in: 160ms;
+  --mx-popover-out: 120ms;
+  --mx-fade-in: 160ms;
+  --mx-fade-out: 120ms;
+}
+
+@keyframes mx-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes mx-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes mx-panel-in {
+  from {
+    opacity: 0;
+    scale: 0.965;
+    translate: 0 10px;
+  }
+}
+@keyframes mx-panel-out {
+  to {
+    opacity: 0;
+    scale: 0.975;
+    translate: 0 6px;
+  }
+}
+@keyframes mx-popover-in {
+  from {
+    opacity: 0;
+    scale: 0.96;
+  }
+}
+@keyframes mx-popover-out {
+  to {
+    opacity: 0;
+    scale: 0.97;
+  }
+}
+@keyframes mx-sheet-in {
+  from {
+    translate: var(--mx-sheet-offset);
+  }
+}
+@keyframes mx-sheet-out {
+  to {
+    translate: var(--mx-sheet-offset);
+  }
+}
+
+/* Backdrop: fades with the panel or sheet it sits behind. */
+.mx-backdrop[data-state="open"] {
+  animation: mx-fade-in var(--mx-panel-in) var(--mx-ease-enter) both;
+}
+.mx-backdrop[data-state="closed"] {
+  animation: mx-fade-out var(--mx-panel-out) var(--mx-ease-exit) both;
+}
+
+/* Panel (dialog content). */
+.mx-panel[data-state="open"] {
+  animation: mx-panel-in var(--mx-panel-in) var(--mx-ease-enter) both;
+}
+.mx-panel[data-state="closed"] {
+  animation: mx-panel-out var(--mx-panel-out) var(--mx-ease-exit) both;
+}
+
+/* Sheet: slides in from its edge and back out to it. */
+.mx-sheet[data-state="open"] {
+  animation: mx-sheet-in var(--mx-sheet-in) var(--mx-ease-enter) both;
+}
+.mx-sheet[data-state="closed"] {
+  animation: mx-sheet-out var(--mx-sheet-out) var(--mx-ease-exit) both;
+}
+.mx-sheet-top {
+  --mx-sheet-offset: 0 -100%;
+}
+.mx-sheet-right {
+  --mx-sheet-offset: 100% 0;
+}
+.mx-sheet-bottom {
+  --mx-sheet-offset: 0 100%;
+}
+.mx-sheet-left {
+  --mx-sheet-offset: -100% 0;
+}
+
+/* A bottom sheet on phones that is a centred panel from 640px (Tailwind's sm)
+   up: the task form. */
+@media (min-width: 640px) {
+  .mx-sheet.mx-sheet-panel[data-state="open"] {
+    animation: mx-panel-in var(--mx-panel-in) var(--mx-ease-enter) both;
+  }
+  .mx-sheet.mx-sheet-panel[data-state="closed"] {
+    animation: mx-panel-out var(--mx-panel-out) var(--mx-ease-exit) both;
+  }
+}
+
+/* Popover: menus, selects, hover cards, tooltips (whose open states are
+   "delayed-open" / "instant-open", hence :not(closed)). Scales from the
+   trigger's side when the component sets transform-origin. */
+.mx-popover:not([data-state="closed"]) {
+  animation: mx-popover-in var(--mx-popover-in) var(--mx-ease-enter) both;
+}
+.mx-popover[data-state="closed"] {
+  animation: mx-popover-out var(--mx-popover-out) var(--mx-ease-exit) both;
+}
+
+/* Reduced motion: every preset only fades. */
+@media (prefers-reduced-motion: reduce) {
+  .mx-panel[data-state="open"],
+  .mx-sheet[data-state="open"],
+  .mx-sheet.mx-sheet-panel[data-state="open"],
+  .mx-popover:not([data-state="closed"]) {
+    animation: mx-fade-in var(--mx-fade-in) linear both;
+  }
+  .mx-backdrop[data-state="open"] {
+    animation-duration: var(--mx-fade-in);
+  }
+  .mx-panel[data-state="closed"],
+  .mx-sheet[data-state="closed"],
+  .mx-sheet.mx-sheet-panel[data-state="closed"],
+  .mx-popover[data-state="closed"] {
+    animation: mx-fade-out var(--mx-fade-out) linear both;
+  }
+  .mx-backdrop[data-state="closed"] {
+    animation-duration: var(--mx-fade-out);
+  }
+}

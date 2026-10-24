@@ -1,29 +1,21 @@
 import asyncio
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from langchain_mcp_adapters.tools import load_mcp_tools
 from langgraph.types import Command
 
 from core.security.internal_trust import require_internal_caller
 from core.logging import get_context, get_logger, set_context
-from harness.checkpointer import get_checkpointer, has_checkpointer_initialized
+from harness.checkpointer import has_checkpointer_initialized
 from harness.checkpointer.fork import seed_thread_from_checkpoint
 from harness.commands import AgentFacts, CommandRefused, apply_command, resolve_invocation
-from harness.filesystem import delete_conversation_files, list_output_manifest, read_output_files, seed_input_files
 from schema import (
     AgentResumeRequest,
     CompactRequest,
     CompactResponse,
-    OutputFileOut,
-    OutputManifestEntry,
-    OutputManifestResponse,
-    ReadOutputFilesResponse,
-    ReapConversationRequest,
     Request,
-    SeedInputFilesRequest,
-    SeedInputFilesResponse,
     UndoCompactionRequest,
     UndoCompactionResponse,
 )
@@ -394,123 +386,3 @@ async def compact_thread_endpoint(agent_slug: str, req: CompactRequest) -> Compa
 async def undo_compaction_endpoint(agent_slug: str, req: UndoCompactionRequest) -> UndoCompactionResponse:
     """Restore the state from before a manual compaction that is still the head."""
     return await undo_agent_compaction(agent_slug, req)
-
-
-# ------------------------------------------------------------------
-# Per-conversation input files (user uploads) + cleanup
-# ------------------------------------------------------------------
-@router.put(
-    "/agents/{agent_slug}/users/{user_id}/conversations/{conversation_id}/input-files",
-    response_model=SeedInputFilesResponse,
-    status_code=status.HTTP_200_OK,
-    dependencies=[Depends(require_internal_caller)],
-)
-async def seed_conversation_input_files(
-    agent_slug: str, user_id: str, conversation_id: str, payload: SeedInputFilesRequest
-) -> SeedInputFilesResponse:
-    """Persist user-uploaded files into the conversation's read-only ``input/``.
-
-    Called by the bridge before a deep-agent run when the new user turn carries
-    attachments. A name already taken by different content is suffixed rather
-    than overwritten; re-sending the same bytes is a no-op. 422 on a bad or
-    oversized file.
-    """
-    try:
-        written = seed_input_files(
-            user_id=user_id,
-            agent_slug=agent_slug,
-            conversation_id=conversation_id,
-            files=payload.files,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    return SeedInputFilesResponse(written=written)
-
-
-@router.get(
-    "/agents/{agent_slug}/users/{user_id}/conversations/{conversation_id}/output-files/manifest",
-    response_model=OutputManifestResponse,
-    status_code=status.HTTP_200_OK,
-    dependencies=[Depends(require_internal_caller)],
-)
-async def list_conversation_output_manifest(
-    agent_slug: str,
-    user_id: str,
-    conversation_id: str,
-) -> OutputManifestResponse:
-    """Every file in the conversation's ``output/`` — path, size and SHA-256, no bytes.
-
-    Called by the bridge at run end so it can store every file the agent wrote,
-    presented or not. Internal-only. Hashing reads files from disk, so it runs
-    off the event loop."""
-    try:
-        files = await asyncio.to_thread(
-            list_output_manifest, user_id=user_id, agent_slug=agent_slug, conversation_id=conversation_id
-        )
-    except ValueError as exc:  # an id that is not a safe path segment
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    return OutputManifestResponse(files=[OutputManifestEntry(**f) for f in files])
-
-
-@router.get(
-    "/agents/{agent_slug}/users/{user_id}/conversations/{conversation_id}/output-files",
-    response_model=ReadOutputFilesResponse,
-    status_code=status.HTTP_200_OK,
-    dependencies=[Depends(require_internal_caller)],
-)
-async def read_conversation_output_files(
-    agent_slug: str,
-    user_id: str,
-    conversation_id: str,
-    paths: list[str] = Query(default_factory=list),
-) -> ReadOutputFilesResponse:
-    """Read files from the conversation's ``output/`` dir by their exact paths.
-
-    Called by the bridge at run end with the new or changed paths from the
-    manifest, so it can persist them as generated attachments. Internal-only; every path is guarded to the output/ mount, and
-    absent/oversized/off-mount paths come back in ``missing`` (not an error) so a
-    partially-cleaned-up run still captures what it can. 422 only on a bad
-    request shape (e.g. too many paths)."""
-    try:
-        files, missing = read_output_files(
-            user_id=user_id,
-            agent_slug=agent_slug,
-            conversation_id=conversation_id,
-            paths=paths,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    return ReadOutputFilesResponse(
-        files=[OutputFileOut(**f) for f in files], missing=missing
-    )
-
-
-@router.post(
-    "/agents/{agent_slug}/users/{user_id}/conversations/{conversation_id}/reap",
-    status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_internal_caller)],
-)
-async def reap_conversation(
-    agent_slug: str, user_id: str, conversation_id: str, payload: ReapConversationRequest
-) -> None:
-    """Reap a conversation on delete: drop its durable checkpoint threads and
-    its per-(user, agent) filesystem dir (input/output/artifacts). Called
-    best-effort by the bridge, which owns the thread-id metadata. Idempotent —
-    unknown threads / missing dirs are no-ops."""
-    checkpointer = get_checkpointer()
-    for thread_id in payload.thread_ids:
-        if not thread_id:
-            continue
-        try:
-            await checkpointer.adelete_thread(thread_id)
-        except Exception:
-            logger.warning(
-                "checkpoint_thread_reap_failed",
-                "Failed to delete a checkpoint thread during conversation reap",
-                exc_info=True,
-                thread_id=thread_id,
-            )
-    try:
-        delete_conversation_files(user_id=user_id, agent_slug=agent_slug, conversation_id=conversation_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

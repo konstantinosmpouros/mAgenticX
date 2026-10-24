@@ -455,8 +455,15 @@ async def test_fork_conversation_clones_selected_branch(
     seeded_user,
     seeded_agent,
     db_session_factory,
+    monkeypatch,
 ):
     branch = await _seed_branch(db_session_factory, seeded_user, seeded_agent)
+    copies = []
+
+    async def copy_conversation_files(user_id, source_id, target_id):
+        copies.append((user_id, source_id, target_id))
+
+    monkeypatch.setattr(conversation_router, "copy_conversation_files", copy_conversation_files)
 
     response = await client.post(
         f"/v1/conversations/{seeded_user.id}/{branch['conversation_id']}/fork",
@@ -468,6 +475,8 @@ async def test_fork_conversation_clones_selected_branch(
     assert payload["forkedParentId"] == branch["conversation_id"]
     assert payload["forkedMessageId"] == branch["ai_message_id"]
     assert payload["lastMessage"] == "Final answer"
+    # The agent's files come along: the agents service copies paths, not bytes.
+    assert copies == [(seeded_user.id, branch["conversation_id"], payload["id"])]
 
     async with db_session_factory() as session:
         messages = (

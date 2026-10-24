@@ -92,7 +92,7 @@ sequenceDiagram
 | --- | --- | --- |
 | `agentic_ui` → `dialogue_bridge` | ✅ | `withSessionRequest` mints `X-Request-ID` (`crypto.randomUUID()`) on every API call; nginx forwards it (or generates `$request_id` at the edge if absent) |
 | `dialogue_bridge` main inference stream → `agents` | ✅ | the detached run inherits the request context (via `asyncio.create_task` copy); `_do_stream`/`_do_resume` pass `internal_service_headers(get_context().get("request_id"))` |
-| `dialogue_bridge` agent-sync / thread-reap → `agents` | ✅ | passes `get_context().get("request_id")` |
+| `dialogue_bridge` agent-sync / runtime reap / fork copy / presented-file read → `agents` | ✅ | passes `get_context().get("request_id")` |
 | `agents` retail-agent → `rag_service` | ✅ | passes `get_context().get("request_id")` |
 
 **Cross-service `session_id` AND `user_id` propagation** mirrors it, so a single `session_id="<uuid>"` (or `user_id="<uuid>"`) traces the whole flow too. The bridge resolves the session/user from the auth cookie and forwards them **raw** as `X-Session-Id` / `X-User-Id` headers (`bridge → agents → rag`); agents/rag set them in context at request start, so every line (access + business) carries both. The forwarding is automatic: `internal_service_headers()` auto-derives session + user from the current request context, so **every** internal hop carries them (inference, title generation, catalog/agent sync, tools/skills fetch, voice, suggestions, and the HR/orthodox/retail rag retrievals) — not just inference. **One exception:** the unauthenticated global skills catalog endpoint `GET /api/v1/skills` (`get_skills`) has no auth dependency, so it has no session/user in context and its `skills_listed`/`skills_list_cache_hit` lines log `no-session`/`anonymous`. These headers are honored **only** from callers that clear the internal-proxy-secret gate (`require_internal_caller`), and the ids are server-issued (JWT `sub`/`sid`, DB UUIDs) — so logging them verbatim is safe and joins straight to the database; they are correlation/audit context, never an authorization input. The bridge's own `http_request_started` line is the one exception (logged pre-auth → `no-session`); its paired `completed` line carries the session via `request.state`.
@@ -128,6 +128,11 @@ Every event name below is a stable string emitted via `EventLogger`. The `http_r
 | `upstream_request_retrying` | WARN | `UpstreamErrorHandler`, `upstream_service`, `operation`, `attempt`, `failure_reason` |
 | `blob_download_completed` / `_aborted` / `_error` | INFO/WARN | from `StreamMetrics`: `chunk_count`, `bytes_forwarded`, `first_byte_latency_ms`, `total_stream_duration_ms`, `served_bytes`, `partial` |
 | `logged_db_operation` success/failure events | INFO/ERROR | per-call `success_event`/`failure_event`, `duration_ms`, auto-rollback on failure |
+| `presented_files_captured` / `output_capture_batch_failed` | INFO / WARN | run-end snapshot of the files the agent presented: `captured`, `skipped`; a failed fetch: `files`, `error_type` (fail-open) |
+| `input_files_listed` | INFO | the agents service listed a conversation's uploads for `/conversation/input/`: `files` |
+| `conversation_reap_outbox_drained` / `conversation_reap_outbox_retry` | INFO / WARN | deleted conversations' agents-side state reaped (`count`); a reap still pending (`conversation_id`, `attempts`, `error_type`) — retried after the next delete and at startup. Rising `attempts` means the agents service keeps refusing |
+| `conversation_reap_outbox_failed` | WARN | the outbox itself could not be read or updated (`error_type`); rows stay for the next drain |
+| `conversation_files_copy_failed` | WARN | a fork could not be given its source's agent files (`error_type`); the fork works without them |
 
 ### agents
 
@@ -156,6 +161,16 @@ Every event name below is a stable string emitted via `EventLogger`. The `http_r
 | `first_token_skipped` | WARN | `FirstTokenCallback` could not read a streamed chunk; that call reports no `ttft_ms`: `error_type` |
 | `usage_callback_not_attached` | WARN | the run config carries a callback *manager*, so the usage / first-token callback was not added and that telemetry is not reported: `agent_slug`, `callback` |
 | `usage_callback_no_usage` | DEBUG | a LangGraph chat-model call reported no token usage (no `TOKEN_USAGE` for it) |
+| `conversation_file_written` / `conversation_file_edited` | DEBUG | `kind` (`output`/`work`/`tool_result`/`history`), `bytes` — never a path or content |
+| `conversation_file_write_refused` | INFO | `kind`, `reason` (`exists`, `is_directory`, `parent_is_file`, `read_only`, `path`, `file_cap`) |
+| `conversation_input_manifest_fetched` / `conversation_input_fetched` | INFO / DEBUG | uploads listed from the bridge (`files`, `duration_ms`); one read (`bytes`, `cache_hit`, `duration_ms`) |
+| `conversation_input_fetch_failed` / `conversation_input_manifest_unavailable` | WARN | the bridge could not list or serve an upload (`status`, `error_type`; `sha256_mismatch` = bytes did not match their hash); 404 = no endpoint or no such conversation. The run continues, the read says "temporarily unavailable" |
+| `conversation_grep_truncated` | INFO | a grep hit its budget (200 files / 64 MB): `files_scanned`, `files_matching_filters` |
+| `conversation_files_copied` / `conversation_files_reaped` / `conversation_files_purged` | INFO | a fork's rows (`files`); a deleted conversation (`files`, `bytes`); an account (`conversation_files`, `conversation_file_blobs`) |
+| `conversation_reap_failed` | WARN | a reap could not finish (`error_type`) → 503, the bridge's outbox retries |
+| `conversation_blob_gc_deferred` | WARN | blobs kept because concurrent writes kept re-referencing them (`blobs`); collected by a later delete |
+| `conversation_files_import` / `conversation_files_import_failed` | INFO / WARN | **temporary (plan 43):** a conversation's old volume tree imported — `mode` (`lazy` before a run, `bulk` in the pass), `files`, `bytes`, `skipped`, `unsettled`, `trees_deleted`, `trees_kept` |
+| `legacy_volume_migration_pass` / `_user_failed` / `_failed` / `_disabled` | INFO / WARN / ERROR / INFO | **temporary:** one pass of the volume move — `complete`, `files`, `bytes`, `skipped`, `unsettled`, `orphans`, `trees_deleted`, `trees_kept`; see [deployment](../architecture/deployment.md#one-off-move-of-conversation-files-into-postgres-plan-43) |
 | `agent_run_error` | ERROR | encoded as SSE `RUN_ERROR` frame |
 | `event_loop_exception` | ERROR | non-cancellation loop errors (uvloop noise suppressed) |
 

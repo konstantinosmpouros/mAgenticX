@@ -1,6 +1,6 @@
 """Single authority for every path on the agents filesystem.
 
-Two planes under one root — the consolidated layout from
+What is left on disk is the **global plane** — the consolidated layout from
 ``plans/18-workspace-filesystem-consolidation.md``::
 
     $MAGENTICX_GLOBAL_ROOT/                         ← platform-owned, shared
@@ -9,31 +9,15 @@ Two planes under one root — the consolidated layout from
             skills/<skill_name>/                    DEFAULT skills (tier ①)
         skills/<category>/<skill_name>/SKILL.md     browsable catalogue
 
-    $MAGENTICX_WORKSPACES_ROOT/users/<user_id>/     ← one user's everything
-        agents/<agent_slug>/
-            conversations/<conversation_id>/{input,output}
-
-Both planes are here because the split between them is the point: the global
-plane is **build-time** content — baked into the image, identical for every
-user, never written at runtime — while the user plane holds only what a run
-actually produces. Runtime content that used to sit in the user plane now lives
-in a database instead — per-agent tool choices in ``chat_db``
-(``user_agent_tool_prefs``), and in ``agent_runtime``: memory in ``agent_memories``, the skill pool,
-custom skill files and per-agent assignments in ``skill_pool`` / ``skill_files``
-/ ``agent_skills``, and user-authored agent definitions in
-``agent_definitions`` / ``agent_definition_files``. None of them has a path
-here, which is why the user tree is as thin as it looks — what remains is
-conversation scratch, and every byte of it is backed by a database blob.
-
-Why this module exists: the same user's data used to be split across three
-volumes with path construction scattered over the provisioner, the skill
-registry, the seeder and the retention sweeper. Every path now derives from
-exactly two settings, so a future re-shape (adding a workspace tier, an org
-tier) is one edit here rather than a hunt.
-
-``users/`` is an explicit segment under the workspaces root so that
-``workspaces/orgs/<org_id>/`` and per-workspace subtrees can be added later
-without moving user data.
+It is **build-time** content — baked into the image, identical for every
+user, never written at runtime — so a database would add nothing. Everything a
+user or a run produces lives in a database instead: per-agent tool choices in
+``chat_db`` (``user_agent_tool_prefs``), and in ``agent_runtime`` memory
+(``agent_memories``), the skill pool, custom skill files and assignments
+(``skill_pool`` / ``skill_files`` / ``agent_skills``), user-authored agent
+definitions (``agent_definitions`` / ``agent_definition_files``) and every
+conversation's files (``conversation_files``, plan 43). None of them has a path
+here.
 """
 from __future__ import annotations
 
@@ -41,22 +25,14 @@ from pathlib import Path
 
 from core.settings import settings
 
-# One conversation's working dir sits under this parent, making "is this a
-# conversation directory?" structural instead of a name denylist — the retention
-# sweeper used to skip `memory`/`skills` by name, which broke every time a new
-# sibling was added under the agent root.
-CONVERSATIONS_DIRNAME = "conversations"
-
 
 def safe_segment(value: str) -> str:
     """Reject IDs that could break out of their intended directory.
 
-    UUIDs from the bridge are safe by construction, but ``user_id`` /
-    ``agent_slug`` / ``conversation_id`` are inputs to a path operation —
-    validating them is cheap defense in depth against any future caller that
-    supplies a different ID shape. Matters more now that users are siblings
-    under one root: a traversal bug crosses a tenant boundary rather than
-    landing on a different volume.
+    UUIDs from the bridge are safe by construction, but an id or slug that
+    becomes a path component is an input to a path operation — validating it
+    is cheap defense in depth against any future caller that supplies a
+    different ID shape.
     """
     if (
         not value
@@ -98,63 +74,11 @@ def global_skills_root() -> Path:
     return global_root() / "skills"
 
 
-# ---------------------------------------------------------------------------
-# Per-user workspace
-# ---------------------------------------------------------------------------
-def users_root() -> Path:
-    """Parent of every user workspace. The retention sweeper's scan root."""
-    return settings.filesystem.workspaces_root / "users"
-
-
-def user_workspace(user_id: str) -> Path:
-    """One user's tree on disk — conversation working files only. The skill pool,
-    custom agents, memory and tool choices live in the databases instead."""
-    return users_root() / safe_segment(user_id)
-
-
-# ---------------------------------------------------------------------------
-# Per-(user, agent) state
-# ---------------------------------------------------------------------------
-def user_agents_root(user_id: str) -> Path:
-    return user_workspace(user_id) / "agents"
-
-
-def agent_root(user_id: str, agent_slug: str) -> Path:
-    """Parent of this (user, agent) pair's conversations.
-    Never itself mounted — the agent never sees this level."""
-    return user_agents_root(user_id) / safe_segment(agent_slug)
-
-
-def conversations_root(user_id: str, agent_slug: str) -> Path:
-    return agent_root(user_id, agent_slug) / CONVERSATIONS_DIRNAME
-
-
-def conversation_root(user_id: str, agent_slug: str, conversation_id: str) -> Path:
-    return conversations_root(user_id, agent_slug) / safe_segment(conversation_id)
-
-
-def conversation_input_root(user_id: str, agent_slug: str, conversation_id: str) -> Path:
-    return conversation_root(user_id, agent_slug, conversation_id) / "input"
-
-
-def conversation_output_root(user_id: str, agent_slug: str, conversation_id: str) -> Path:
-    return conversation_root(user_id, agent_slug, conversation_id) / "output"
-
-
 __all__ = [
-    "CONVERSATIONS_DIRNAME",
-    "agent_root",
-    "conversation_input_root",
-    "conversation_output_root",
-    "conversation_root",
-    "conversations_root",
     "global_agent_default_skills_root",
     "global_agent_dir",
     "global_agents_root",
     "global_root",
     "global_skills_root",
     "safe_segment",
-    "user_agents_root",
-    "user_workspace",
-    "users_root",
 ]

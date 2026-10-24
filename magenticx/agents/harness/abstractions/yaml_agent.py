@@ -183,12 +183,14 @@ class YamlDeepAgent(DeepAgent):
         user_id = (self.context or {}).get("user_id")
         if not user_id:
             return None
+        conversation_id = self.context.get("conversation_id")
         return NativeToolContext(
             user_id=user_id,
             agent_slug=self.name,
-            conversation_id=self.context.get("conversation_id"),
+            conversation_id=conversation_id,
             use_memory=self.use_memory,
             search_past_convs=bool(self.context.get("search_past_convs")),
+            files=self.conversation_files if conversation_id else None,
         )
 
     def _resolve_native_tools(self, refs: list[ToolRef]) -> list[Any]:

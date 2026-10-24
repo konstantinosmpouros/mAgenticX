@@ -279,10 +279,8 @@ def test_an_approval_before_the_first_text_leaves_first_token_unmeasured():
 # ---------------------------------------------------------------------------
 @pytest.fixture
 def patch_session_local(monkeypatch, session_factory):
-    """Route _finish_run's own SessionLocal() at the test database; the
-    background capture of written files is another feature's, not run here."""
+    """Route _finish_run's own SessionLocal() at the test database."""
     monkeypatch.setattr(ir, "SessionLocal", session_factory)
-    monkeypatch.setattr(ir, "schedule_remaining_capture", lambda *args, **kwargs: None)
     return session_factory
 
 

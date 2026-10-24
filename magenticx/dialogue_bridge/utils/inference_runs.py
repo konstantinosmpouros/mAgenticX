@@ -1,5 +1,4 @@
 import asyncio
-import base64
 import json
 import time
 from copy import deepcopy
@@ -31,7 +30,6 @@ from core.security.tls import get_httpx_client_cert, get_httpx_verify
 from core.logging import get_context, get_logger
 from schema import ConversationSummary, InferenceRunOut, MessageOut
 from utils.agents import (
-    build_agent_input_files_url,
     build_agent_resume_url,
     build_agent_stream_url,
     get_agent_by_id,
@@ -41,7 +39,7 @@ from utils.compaction_lock import compaction_locks
 from utils.conversations import _preview
 from utils.event_log import event_log
 from utils.model_pricing import call_cost_micros
-from utils.output_capture import capture_presented_files, schedule_remaining_capture
+from utils.output_capture import capture_presented_files
 from utils.run_activity import RunActivity, count_run_activity
 from utils.usage_rollups import add_answer_to_rollups
 from utils.inference import (
@@ -188,38 +186,6 @@ def _effective_personalization(prefs_row: UserPreferencesTable | None) -> dict[s
             payload["custom_instructions"] = fields
 
     return payload
-
-
-def _collect_input_files(message: MessageTable) -> list[dict[str, Any]]:
-    """Read a user message's attachment bytes into the seed-endpoint payload.
-
-    Must run while the DB session is open (accesses ``attachment.blob.data``).
-    Returns base64-encoded files for the agents-service input/ seeding endpoint.
-    """
-    files: list[dict[str, Any]] = []
-    for attachment in (getattr(message, "attachments", None) or []):
-        blob = getattr(attachment, "blob", None)
-        data = getattr(blob, "data", None) if blob is not None else None
-        if data is None:
-            continue
-        raw = data.tobytes() if isinstance(data, memoryview) else bytes(data)
-        files.append(
-            {
-                "filename": attachment.file_name,
-                "mime": attachment.mime_type or "",
-                "base64": base64.b64encode(raw).decode("ascii"),
-                "size": getattr(attachment, "size_bytes", None) or len(raw),
-            }
-        )
-    return files
-
-
-async def _seed_input_files(url: str, files: list[dict[str, Any]]) -> None:
-    """PUT the new turn's attachments into the deep agent's input/ before streaming."""
-    timeout = settings.http.inference_timeout
-    async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()) as client:
-        resp = await client.put(url, json={"files": files}, headers=internal_service_headers(get_context().get("request_id")))
-        resp.raise_for_status()
 
 
 def _parse_sse_bytes(buffer: str, chunk: bytes) -> tuple[str, list[dict[str, Any]]]:
@@ -888,19 +854,6 @@ class InferenceRunManager:
                     ]
                     sent_messages = 1
 
-                # Capture the new turn's attachments (bytes) while the session is
-                # open, to seed into the deep agent's input/ before streaming.
-                seed_files = (
-                    _collect_input_files(parent_user_message)
-                    if (is_deep_agent and parent_user_message is not None)
-                    else []
-                )
-                seed_url = (
-                    build_agent_input_files_url(agent, str(user_id), str(run.conversation_id))
-                    if seed_files
-                    else None
-                )
-
                 logger.info(
                     "inference_run_started",
                     "Detached inference run started",
@@ -978,25 +931,6 @@ class InferenceRunManager:
                     "messages": history,
                     "config": base_request_config,
                 }
-
-            # Deliver the new turn's attachments to the deep agent's input/ dir
-            # before streaming. Prior turns' files already persist on the volume,
-            # so only this message's files are seeded. A seed failure fails the
-            # run (the agent can't read files that aren't there).
-            if seed_url and seed_files:
-                try:
-                    await _seed_input_files(seed_url, seed_files)
-                except Exception:
-                    logger.error(
-                        "input_files_seed_failed",
-                        "Failed to seed attachment files to the agent filesystem",
-                        exc_info=True,
-                        run_id=run_id,
-                        file_count=len(seed_files),
-                    )
-                    await _mark_run_failed(run_id, runtime, "Failed to deliver attachments to the agent.")
-                    await self._publish_snapshot(run_id, "terminal")
-                    return
 
             cancel_waiter = asyncio.create_task(cancel_event.wait())
             # First leg: the initial /stream call. Subsequent legs (if any) come
@@ -1483,10 +1417,6 @@ async def _finish_run(run_id: str, runtime: InferenceRunRuntime, status_value: s
         await capture_presented_files(db, run, conversation, runtime.presented_artifacts)
 
         await db.commit()
-
-    # Every other file the agent wrote, after the commit and in the background:
-    # the UI's terminal frame never waits for it (utils/output_capture.py).
-    schedule_remaining_capture(str(run.conversation_id), run_id, runtime.presented_artifacts)
 
 
 async def _mark_run_completed(run_id: str, runtime: InferenceRunRuntime) -> None:

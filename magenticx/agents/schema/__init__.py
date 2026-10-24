@@ -1,7 +1,7 @@
 """Request/response schemas for the agents service.
 
 One module per concept/router — inference, embeddings, generation, voice,
-catalog, commands, skills, user_agents, memories, agent_tools. Re-exported so callers
+catalog, commands, skills, user_agents, memories, agent_tools, conversation_files. Re-exported so callers
 keep the stable ``from schema import ...`` import surface regardless of which
 module a DTO lives in.
 """
@@ -9,6 +9,13 @@ from schema.account import PurgeThreadsRequest, PurgeThreadsResponse, PurgeUserR
 from schema.agent_tools import AgentToolRow, AgentToolsResponse
 from schema.catalog import AgentDefinition, AgentManifest, ToolManifest
 from schema.commands import CommandListResponse, CommandOut
+from schema.conversation_files import (
+    CopyConversationFilesRequest,
+    CopyConversationFilesResponse,
+    OutputFileOut,
+    ReadOutputFilesResponse,
+    ReapConversationRequest,
+)
 from schema.embeddings import EmbedRequest, EmbedResponse
 from schema.generation import (
     ConversationSuggestions,
@@ -21,16 +28,8 @@ from schema.inference import (
     CompactionUsageOut,
     CompactRequest,
     CompactResponse,
-    InputFileIn,
-    OutputFileOut,
-    OutputManifestEntry,
-    OutputManifestResponse,
-    ReadOutputFilesResponse,
-    ReapConversationRequest,
     Request,
     ResumeActionDecision,
-    SeedInputFilesRequest,
-    SeedInputFilesResponse,
     UndoCompactionRequest,
     UndoCompactionResponse,
 )
@@ -77,19 +76,18 @@ __all__ = [
     "CompactRequest",
     "CompactResponse",
     "ConversationSuggestions",
+    "CopyConversationFilesRequest",
+    "CopyConversationFilesResponse",
     "ConversationTitle",
     "CustomAgentValidation",
     "CustomAgentWrite",
     "CustomSkillCreate",
     "EmbedRequest",
     "EmbedResponse",
-    "InputFileIn",
     "MemoryDetail",
     "MemoryEntry",
     "OutputFileOut",
     "ReadAloudRequest",
-    "OutputManifestEntry",
-    "OutputManifestResponse",
     "ReadOutputFilesResponse",
     "RealtimeSessionRequest",
     "RealtimeSessionResponse",
@@ -98,8 +96,6 @@ __all__ = [
     "RemoteSourceStatus",
     "Request",
     "ResumeActionDecision",
-    "SeedInputFilesRequest",
-    "SeedInputFilesResponse",
     "SkillFile",
     "SkillManifestEntry",
     "SuggestionsRequest",

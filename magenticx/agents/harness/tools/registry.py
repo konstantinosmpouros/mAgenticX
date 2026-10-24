@@ -23,6 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
+from harness.conversation_files import ConversationFiles
 from harness.tools.builtins import builtin_hitl_defaults
 from harness.tools.charts import build_render_chart_tool
 from harness.tools.create_skill import build_create_skill_tool
@@ -50,6 +51,9 @@ class NativeToolContext:
     run_id: Optional[str] = None
     thread_id: Optional[str] = None
     trust_level: str = "unknown"
+    # The run's conversation files (plan 43), shared with its filesystem
+    # mounts. None when the run has no conversation.
+    files: ConversationFiles | None = None
 
 
 @dataclass(frozen=True)
@@ -170,15 +174,7 @@ register_native_tool(
         name="view_image",
         description="Look at an image from the conversation's input/ or output/ folder.",
         auto_attach=True,
-        builder=lambda ctx: (
-            build_view_image_tool(
-                user_id=ctx.user_id,
-                agent_slug=ctx.agent_slug,
-                conversation_id=ctx.conversation_id,
-            )
-            if ctx.conversation_id
-            else None
-        ),
+        builder=lambda ctx: build_view_image_tool(files=ctx.files) if ctx.files else None,
     )
 )
 
@@ -187,15 +183,7 @@ register_native_tool(
         name="present_artifact",
         description="Hand a finished output/ file to the user as a document card in the reply.",
         auto_attach=True,
-        builder=lambda ctx: (
-            build_present_artifact_tool(
-                user_id=ctx.user_id,
-                agent_slug=ctx.agent_slug,
-                conversation_id=ctx.conversation_id,
-            )
-            if ctx.conversation_id
-            else None
-        ),
+        builder=lambda ctx: build_present_artifact_tool(files=ctx.files) if ctx.files else None,
     )
 )
 

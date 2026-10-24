@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from harness.checkpointer import init_durable_checkpointer
-from harness.filesystem import run_workspace_retention_loop
+from harness.conversation_files.legacy_volume import run_legacy_volume_migration
 from core.logging import (
     RequestLoggingMiddleware,
     configure_logging,
@@ -27,10 +27,12 @@ from utils.agents import refresh_registry
 from router.account import router as account_router
 from router.catalog import router as catalog_router
 from router.commands import router as commands_router
+from router.conversation_files import router as conversation_files_router
 from router.embeddings import router as embeddings_router
 from router.export import router as export_router
 from router.generation import router as generation_router
 from router.inference import router as inference_router
+from router.legacy_workspace import router as legacy_workspace_router
 from router.memories import router as memories_router
 from router.skills import router as skills_router
 from router.agent_tools import router as agent_tools_router
@@ -77,7 +79,8 @@ async def _lifespan(app: FastAPI):
     old = loop.get_exception_handler()
     loop.set_exception_handler(_make_loop_exception_handler(old))
     pool = None
-    retention_task: asyncio.Task | None = None
+    # TODO(plan 43): remove once agents v1.22.0 has deployed.
+    legacy_volume_task: asyncio.Task | None = None
     remote_sync_task: asyncio.Task | None = None
     try:
         logger.info("service_startup", "Agents service startup initiated")
@@ -89,11 +92,12 @@ async def _lifespan(app: FastAPI):
         # unreachable; cross-turn resume depends on it.
         await init_durable_checkpointer(app)
         pool = app.state.checkpointer_pool
-        # TTL retention for conversation input/output caches (blob-backed in
-        # the DB, so erasure is safe). Best-effort background loop — it logs
-        # and retries on failure, never takes the service down.
-        retention_task = asyncio.create_task(
-            run_workspace_retention_loop(), name="workspace-retention"
+        # The one-off move of the old per-conversation volume trees into
+        # agent_runtime: import, verify, then delete each tree. Background and
+        # best-effort — it logs and retries, never takes the service down.
+        # TODO(plan 43): remove once agents v1.22.0 has deployed.
+        legacy_volume_task = asyncio.create_task(
+            run_legacy_volume_migration(), name="legacy-volume-migration"
         )
         # Plan 30: the skill catalogue is the remote sources, indexed daily.
         # Returns at once when REMOTE_SKILLS_ENABLED is false, so no request
@@ -103,7 +107,7 @@ async def _lifespan(app: FastAPI):
         )
         yield
     finally:
-        for task in (retention_task, remote_sync_task):
+        for task in (legacy_volume_task, remote_sync_task):
             if task is None:
                 continue
             task.cancel()
@@ -132,10 +136,13 @@ async def health():
 app.include_router(account_router)
 app.include_router(catalog_router)
 app.include_router(commands_router)
+app.include_router(conversation_files_router)
 app.include_router(embeddings_router)
 app.include_router(export_router)
 app.include_router(generation_router)
 app.include_router(inference_router)
+# TODO(plan 43): remove once agents v1.22.0 has deployed.
+app.include_router(legacy_workspace_router)
 app.include_router(memories_router)
 app.include_router(skills_router)
 app.include_router(agent_tools_router)

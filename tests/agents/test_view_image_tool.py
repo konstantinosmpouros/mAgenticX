@@ -15,6 +15,7 @@ as readable error results.
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import importlib
 import io
@@ -59,52 +60,54 @@ def decoded_size(message):
         return img.size
 
 
+class _FolderFiles:
+    """The run's conversation files, as two folders: input/ and output/."""
+
+    agent_slug = "omni"
+    conversation_id = "c1"
+
+    def __init__(self, input_dir, output_dir):
+        self._roots = {"/conversation/input/": input_dir, "/conversation/output/": output_dir}
+
+    async def read_bytes(self, path):
+        for prefix, root in self._roots.items():
+            if path.startswith(prefix):
+                file = root / path[len(prefix):]
+                return file.read_bytes() if file.is_file() else None
+        return None
+
+
 @pytest.fixture
-def conversation(tmp_path, view_image, monkeypatch):
-    """Point the resolver at a real temp tree with an input/ and output/ dir."""
+def conversation(tmp_path):
+    """The two folders the tool reads from, as real temp dirs."""
     input_dir = tmp_path / "input"
     output_dir = tmp_path / "output"
     input_dir.mkdir()
     output_dir.mkdir()
-
-    def fake_resolve(*, user_id, agent_slug, conversation_id, virtual_path):
-        if virtual_path.startswith("/conversation/input/"):
-            return input_dir / virtual_path[len("/conversation/input/") :]
-        if virtual_path.startswith("/conversation/output/"):
-            return output_dir / virtual_path[len("/conversation/output/") :]
-        raise ValueError(f"Path must be under a conversation mount: {virtual_path!r}")
-
-    monkeypatch.setattr(view_image, "resolve_conversation_file", fake_resolve)
     return input_dir, output_dir
 
 
 @pytest.fixture
 def tool(view_image, conversation):
-    return view_image.build_view_image_tool(
-        user_id="u1", agent_slug="omni", conversation_id="c1"
-    )
+    return view_image.build_view_image_tool(files=_FolderFiles(*conversation))
 
 
 def view_image_module():
     return importlib.import_module("harness.tools.view_image.tool")
 
 
+def _run(tool, args, call_id):
+    """Drive the (async) tool the way LangChain does, so injection is exercised."""
+    return asyncio.run(tool.ainvoke({"name": "view_image", "args": args, "id": call_id, "type": "tool_call"}))
+
+
 def _invoke_region(tool, path, x, y, width, height, call_id="call-1"):
-    return tool.invoke(
-        {
-            "name": "view_image",
-            "args": {"path": path, "region": {"x": x, "y": y, "width": width, "height": height}},
-            "id": call_id,
-            "type": "tool_call",
-        }
-    )
+    region = {"x": x, "y": y, "width": width, "height": height}
+    return _run(tool, {"path": path, "region": region}, call_id)
 
 
 def _invoke(tool, path, call_id="call-1"):
-    """Drive the tool the way LangChain does, so injection is exercised."""
-    return tool.invoke(
-        {"name": "view_image", "args": {"path": path}, "id": call_id, "type": "tool_call"}
-    )
+    return _run(tool, {"path": path}, call_id)
 
 
 # ---------------------------------------------------------------------------
@@ -157,7 +160,7 @@ def test_a_path_outside_the_mounts_is_refused(tool):
     message = _invoke(tool, "/skills/secret.png")
 
     assert message.status == "error"
-    assert "conversation mount" in message.content
+    assert "must be under /conversation/input/" in message.content
 
 
 def test_a_non_image_is_refused_before_it_is_read(tool, conversation):

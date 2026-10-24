@@ -12,6 +12,7 @@ import { INTERACTIVE_SURFACE } from "@/shared/lib/consts";
 import { returnFocusOnlyForKeyboard } from "@/shared/lib/focus-return";
 import { NewChatIcon } from "@/shared/ui/new-chat-icon";
 import { IncognitoIcon } from "@/shared/ui/incognito-icon";
+import { RADIX_MOTION } from "@/shared/lib/motion/panels";
 
 const TAP_PULSE: TargetAndTransition = { scale: [1, 1.28, 1] };
 const TAP_PULSE_TRANSITION: Transition = { duration: 0.36, ease: [0.34, 1.56, 0.64, 1] };
@@ -387,7 +388,7 @@ export default function ChatHeader({
                       sideOffset={8}
                       align="end"
                       onCloseAutoFocus={returnFocusOnlyForKeyboard}
-                      className="z-50 w-48 rounded-xl border border-border bg-background text-foreground shadow-lg p-1.5 focus:outline-none focus-visible:outline-none origin-top-right data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95"
+                      className={`z-50 w-48 rounded-xl border border-border bg-background text-foreground shadow-lg p-1.5 focus:outline-none focus-visible:outline-none origin-[--radix-dropdown-menu-content-transform-origin] ${RADIX_MOTION.popover}`}
                     >
                       {showArchiveAction && (
                         <DropdownMenu.Item

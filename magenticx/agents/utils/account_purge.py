@@ -6,10 +6,11 @@ Three kinds of state live here:
   thread id, not by user, so the bridge (which recorded the ids on its messages)
   sends them in batches.
 * **``agent_runtime`` rows** — memories, the skill pool and its files, agent
-  skill assignments, custom agent definitions and their files. Each store
-  deletes its own tables in its own transaction.
-* **The workspace folder** ``users/<user_id>/`` on the volume — every
-  conversation's input/output files.
+  skill assignments, custom agent definitions and their files, and every
+  conversation's files and their blobs. Each store deletes its own tables in
+  its own transaction, by ``user_id`` — no conversation or agent lookup.
+* **The old workspace folder** ``users/<user_id>/`` on the volume, until the
+  one-off move into Postgres has emptied it (plan 43).
 
 Every function here is idempotent — the bridge retries a failed step, and a
 retry after a partial success finds less to delete, never an error. Failures
@@ -18,14 +19,13 @@ rather than a generic 500.
 """
 from __future__ import annotations
 
-import asyncio
-
 import psycopg
 
 from core.logging import get_logger
 from harness.agent_registry.store import AgentDefinitionStore
 from harness.checkpointer import get_checkpointer
-from harness.filesystem import delete_user_files, layout
+from harness.conversation_files import ConversationFileStore, legacy_volume
+from harness.filesystem import layout
 from harness.memory import AgentMemoryStore, get_memory_pool
 from harness.skill_registry.store import SkillStore
 from utils.agents import forget_user_agents
@@ -65,7 +65,7 @@ async def purge_threads(user_id: str, thread_ids: list[str]) -> int:
 
 
 async def purge_user(user_id: str) -> dict[str, int | bool]:
-    """Delete the user's ``agent_runtime`` rows and workspace folder.
+    """Delete the user's ``agent_runtime`` rows and old workspace folder.
 
     The id is validated as a single safe path segment *before* anything is
     deleted (``ValueError`` → the router answers 400), so a malformed id can
@@ -79,6 +79,7 @@ async def purge_user(user_id: str) -> dict[str, int | bool]:
         }
         counts.update(await SkillStore(pool).purge_user(user_id))
         counts.update(await AgentDefinitionStore(pool).purge_user(user_id))
+        counts.update(await ConversationFileStore(pool).purge_user(user_id))
     except psycopg.Error as exc:
         logger.warning(
             "account_purge_rows_failed",
@@ -88,8 +89,8 @@ async def purge_user(user_id: str) -> dict[str, int | bool]:
         )
         raise AccountPurgeError("agent_runtime") from exc
     try:
-        # rmtree can take a while on a large workspace: keep it off the loop.
-        counts["workspace_removed"] = await asyncio.to_thread(delete_user_files, user_id)
+        # TODO(plan 43): remove once agents v1.22.0 has deployed.
+        counts["workspace_removed"] = await legacy_volume.delete_user_tree(user_id)
     except OSError as exc:
         logger.warning(
             "account_purge_workspace_failed",

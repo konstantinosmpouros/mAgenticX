@@ -193,6 +193,35 @@ Labels can differ slightly between Portainer versions. If GitOps updates offers 
 
 ---
 
+## One-off move of conversation files into Postgres (plan 43)
+
+**Temporary — remove once agents `v1.22.0` / dialogue_bridge `v2.19.0` has deployed.** A conversation's files used to be folders on the `magenticx_data` volume (`workspaces/users/<user>/agents/<slug>/conversations/<id>/`); they are rows in `agent_runtime` now. The first deploy of that release moves them, by itself:
+
+| Step | What happens |
+| --- | --- |
+| Bridge start | Migration `0042` names every upload (`attachments.workspace_name`) and creates the reap outbox |
+| Agents start | `conversation_files` / `conversation_file_blobs` are created; five minutes later (the previous task may still write during a start-first update) the background pass starts |
+| The pass, per user | asks the bridge which of the user's conversations still exist; for each: **import** every file except `input/` (uploads are in `chat_db`), **verify** with a second walk that every file is in Postgres (same SHA-256, or a newer row the agent wrote since), and only then **delete** the tree; finally prune the folders left empty |
+| A run first | a conversation used before the pass reaches it is imported when its run starts (`conversation_files_import mode=lazy`) — never deleted there |
+| Failure | bridge or database unreachable → nothing is deleted for that user, the pass retries every 10 minutes until one completes |
+
+Read `legacy_volume_migration_pass` in the agents logs: `complete`, `files`, `bytes`, `trees_deleted`, `trees_kept`, `orphans`, `skipped`. **Kept on purpose:** trees of conversations the bridge no longer has (`orphans` — deleted before the reap was reliable) and trees holding a file that cannot be imported (`trees_kept`: a symlink, a hidden name, over `CONVERSATION_FILE_MAX_BYTES`). Both can be removed by hand, as can anything else under `users/` that is not a conversation tree (e.g. the empty memory templates of an older layout — never read, never moved). The global plane (`/var/magenticx/global`) is a different root and is never read. Output files the old 7-day sweep already deleted are not restored. Every step is idempotent: a pass killed midway resumes, a second one finds nothing to do.
+
+**Rollback:** once a tree is deleted, an older agents image no longer sees those files. Snapshot `magenticx_data` before the deploy, or deploy with `LEGACY_VOLUME_MIGRATION_ENABLED=false` first (runs still import lazily, nothing is deleted) and flip it to `true` once the release has baked.
+
+**Rolling update window (~1 min):** a previous bridge still calling the agent-scoped file routes gets answers from `router/legacy_workspace.py` (seed accepted and ignored, empty manifest, presented-file read and reap forwarded). A new bridge reaching a previous agents task loses at most that turn's upload visibility and presented-file snapshot; its reap stays in the outbox and is retried.
+
+**Remove in the next release** (every item carries `TODO(plan 43)`):
+
+- `magenticx/agents/harness/conversation_files/legacy_volume.py` and `tests/agents/test_legacy_volume.py`
+- the lifespan task in `magenticx/agents/main.py` and the `legacy_workspace_router` include; `magenticx/agents/router/legacy_workspace.py`
+- `DeepAgent._import_legacy_files()` (`harness/abstractions/deep_agent.py`)
+- the `legacy_volume` calls in `utils/conversation_files.py` (reap) and `utils/account_purge.py` (with `workspace_removed` in `PurgeUserResponse`)
+- settings `LEGACY_VOLUME_MIGRATION_ENABLED` and `MAGENTICX_WORKSPACES_ROOT` (`core/settings.py`, both compose files)
+- the bridge's `POST /v1/internal/conversations/existing` (only the pass calls it)
+
+---
+
 ## Sharp Edges and Behavioral Notes
 
 - **No tag bump, no release** — a code change without a tag bump is never built (the existing tag is skipped). A Run workflow then only redeploys what is already there. Bump the tag in the same change as the code.

@@ -1,6 +1,5 @@
 """Inference-run DTOs: the /stream and /resume payloads, manual compaction and
-its undo, plus the per-conversation filesystem lifecycle calls the bridge makes
-around a run (input seeding, output read-back, delete-time reap)."""
+its undo. A conversation's files have their own: ``schema/conversation_files.py``."""
 from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field
 
@@ -103,64 +102,3 @@ class UndoCompactionRequest(BaseModel):
 class UndoCompactionResponse(BaseModel):
     """The new head, with the compaction state from before it restored."""
     checkpoint_id: str
-
-
-class InputFileIn(BaseModel):
-    """One user-uploaded file to seed into a conversation's read-only input/."""
-    filename: str
-    mime: str = ""
-    base64: str
-    size: int = 0
-
-
-class SeedInputFilesRequest(BaseModel):
-    """Bridge → agents: persist these files into the conversation's input/ dir."""
-    files: List[InputFileIn]
-
-
-class SeedInputFilesResponse(BaseModel):
-    """Virtual paths the agent can read (``/conversation/input/<name>``)."""
-    written: List[str]
-
-
-class OutputFileOut(BaseModel):
-    """One agent-generated deliverable read back from ``/conversation/output/``.
-
-    Returned to the bridge (base64) so it can persist the file as a generated
-    attachment. ``path`` is the virtual path the agent presented, echoed back so
-    the bridge can rejoin it with the ``present_artifact`` event metadata."""
-    path: str
-    filename: str
-    mime: str = "application/octet-stream"
-    size: int = 0
-    base64: str
-
-
-class OutputManifestEntry(BaseModel):
-    """One file in the conversation's ``output/``, without its bytes."""
-    path: str
-    filename: str
-    mime: str = "application/octet-stream"
-    size: int = 0
-    sha256: str
-
-
-class OutputManifestResponse(BaseModel):
-    """Bridge ← agents: every file in ``output/``, so the bridge can store the
-    new or changed ones at run end (presented or not)."""
-    files: List[OutputManifestEntry]
-
-
-class ReadOutputFilesResponse(BaseModel):
-    """Bridge ← agents: the requested deliverables plus any paths that could not
-    be returned (absent, oversized, or off-mount) so the caller skips them."""
-    files: List[OutputFileOut]
-    missing: List[str] = []
-
-
-class ReapConversationRequest(BaseModel):
-    """Bridge → agents: reap a conversation's durable checkpoint threads and its
-    per-(user, agent) filesystem dir on conversation delete. ``thread_ids`` are
-    the distinct ``checkpoint_thread_id``s the bridge recorded for the
-    conversation's runs (it owns that relational metadata)."""
-    thread_ids: List[str] = []

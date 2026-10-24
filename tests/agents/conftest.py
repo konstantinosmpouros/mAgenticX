@@ -5,7 +5,7 @@ import importlib
 import os
 import sys
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -98,10 +98,12 @@ def _load_agents_service(monkeypatch):
         remote_fetch=importlib.import_module("harness.skill_registry.remote.fetch"),
         data_export=importlib.import_module("utils.data_export"),
         account_purge=importlib.import_module("utils.account_purge"),
+        conversation_files_utils=importlib.import_module("utils.conversation_files"),
         memory_store=importlib.import_module("harness.memory.store"),
         skill_store=importlib.import_module("harness.skill_registry.store"),
         definition_store=importlib.import_module("harness.agent_registry.store"),
-        provisioner=importlib.import_module("harness.filesystem.provisioner"),
+        conversation_files=importlib.import_module("harness.conversation_files"),
+        legacy_volume=importlib.import_module("harness.conversation_files.legacy_volume"),
         # other utils
         suggestions=importlib.import_module("utils.suggestions"),
         speech=importlib.import_module("utils.speech"),
@@ -179,6 +181,7 @@ def _restore_settings(captured: list[tuple[object, dict, set]]) -> None:
 # Process-global caches that a fresh import used to reset for us.
 _DICT_CACHES = (
     ("utils.agents", "_USER_AGENT_CACHE"),
+    ("harness.conversation_files.inputs", "_cache"),
     ("utils.mcp_tools", "_MCP_TOOL_MANIFEST_CACHE"),
     ("utils.mcp_tools", "_FETCH_FAILED_UNTIL"),
 )
@@ -216,8 +219,7 @@ def _service_is_live(service: SimpleNamespace) -> bool:
 
     `tests/rag_service/conftest.py` purges `magenticx/agents` out of `sys.modules` when
     it loads its own service, so a full-tree local run can evict what we cached.
-    Anything imported lazily afterwards (e.g. the retention module in
-    test_workspace_retention.py) would then bind a *second* copy of
+    Anything imported lazily afterwards would then bind a *second* copy of
     `core.settings`, leaving us to snapshot a settings object that the code under
     test no longer reads. Detect the eviction and reload rather than silently
     testing against a split-brain service.
@@ -577,40 +579,157 @@ def _write_global_skill(global_root: Path, category: str, name: str, description
 def skills_fs(agents_service, tmp_path):
     """Point the agents filesystem at an isolated tmp tree.
 
-    Redirects the two plane roots (``global_root`` / ``workspaces_root``) into
-    tmp_path and seeds two skills into the *legacy* catalogue folder — what an
-    image before plan 30 left on the volume, which a ``global`` pool entry still
-    reads from.
+    Redirects the global plane (``global_root``) and the old workspaces root
+    into tmp_path and seeds two skills into the *legacy* catalogue folder —
+    what an image before plan 30 left on the volume, which a ``global`` pool
+    entry still reads from.
 
-    Exposed attributes mirror the consolidated layout:
+    Exposed attributes:
 
     * ``global_root`` — the *catalogue* dir (``<plane>/skills``), so
       ``global_root / <category> / <skill>`` addresses a skill folder.
-    * ``workspace(user)`` / ``agent_dir(user, slug)`` — the per-user tree.
+    * ``users_root`` — where the old per-user conversation trees lived
+      (``<workspaces>/users``), read only by the one-off move into Postgres.
 
-    There is deliberately no ``pool(user)`` any more: a user's skills are rows
-    in ``agent_runtime``, not a directory, so nothing on this tmp tree backs
-    them. Only the legacy catalogue copy is still on disk.
+    There is deliberately no ``pool(user)``: a user's skills are rows in
+    ``agent_runtime``, not a directory, so nothing on this tmp tree backs them.
     """
     fs = agents_service.settings_module.settings.filesystem
     layout = agents_service.filesystem_layout
 
-    global_plane = tmp_path / "global"
-    workspaces = tmp_path / "workspaces"
-    fs.global_root = global_plane
-    fs.workspaces_root = workspaces
+    fs.global_root = tmp_path / "global"
+    fs.workspaces_root = tmp_path / "workspaces"
 
     catalogue = layout.global_skills_root()
     catalogue.mkdir(parents=True, exist_ok=True)
-    layout.users_root().mkdir(parents=True, exist_ok=True)
 
     _write_global_skill(catalogue, "research", "deep-research", "Run deep research", "Body for deep research.")
     _write_global_skill(catalogue, "frontend", "design-system", "Design system helper", "Body for design system.")
 
     return SimpleNamespace(
         global_root=catalogue,
-        users_root=layout.users_root(),
-        workspace=layout.user_workspace,
-        agent_dir=layout.agent_root,
+        users_root=fs.workspaces_root / "users",
         service=agents_service,
+    )
+
+
+# ---------------------------------------------------------------------------
+# A conversation's files (plan 43)
+# ---------------------------------------------------------------------------
+class MemoryFileStore:
+    """``ConversationFileStore`` in memory, for the backend and migration tests.
+
+    The same contract as the Postgres store — content-addressed blobs per user,
+    path rows naming them, no directory rows — and it is held to it: the
+    contract tests in ``test_conversation_file_store.py`` run against both.
+    """
+
+    def __init__(self) -> None:
+        store = importlib.import_module("harness.conversation_files.store")
+        self._paths = importlib.import_module("harness.conversation_files.paths")
+        self._entry = store.FileEntry
+        self.rows: dict[tuple[str, str], tuple[str, object]] = {}  # (conversation, path) → (user, entry)
+        self.blobs: dict[tuple[str, str], bytes] = {}             # (user, sha256) → bytes
+
+    def _scope(self, user_id, conversation_id):
+        return {path: entry for (conv, path), (user, entry) in self.rows.items()
+                if conv == conversation_id and user == user_id}
+
+    def _gc(self, user_id):
+        referenced = {(user, entry.sha256) for user, entry in self.rows.values()}
+        for key in [key for key in self.blobs if key[0] == user_id and key not in referenced]:
+            del self.blobs[key]
+
+    def _put(self, user_id, conversation_id, path, data, agent_slug, created=None):
+        import hashlib
+        sha256 = hashlib.sha256(data).hexdigest()
+        self.blobs[(user_id, sha256)] = bytes(data)
+        self.rows[(conversation_id, path)] = (
+            user_id, self._entry(path, len(data), sha256, agent_slug, datetime.now(UTC)),
+        )
+        self._gc(user_id)
+
+    def _conflict(self, user_id, conversation_id, path, allow_existing):
+        existing = self._scope(user_id, conversation_id)
+        if not allow_existing and path in existing:
+            return "exists"
+        if any(other.startswith(path + "/") for other in existing):
+            return "is_directory"
+        if any(ancestor in existing for ancestor in self._paths.ancestors(path)):
+            return "parent_is_file"
+        return None
+
+    async def list_files(self, user_id, conversation_id, directory="/"):
+        prefix = directory.rstrip("/") + "/"
+        return [entry for path, entry in sorted(self._scope(user_id, conversation_id).items())
+                if path == directory or path.startswith(prefix)]
+
+    async def stat(self, user_id, conversation_id, path):
+        return self._scope(user_id, conversation_id).get(path)
+
+    async def read(self, user_id, conversation_id, path):
+        return (await self.read_many(user_id, conversation_id, [path])).get(path)
+
+    async def read_many(self, user_id, conversation_id, file_paths):
+        rows = self._scope(user_id, conversation_id)
+        return {path: self.blobs[(user_id, rows[path].sha256)] for path in file_paths if path in rows}
+
+    async def create(self, user_id, conversation_id, path, data, *, agent_slug, run_id=None):
+        conflict = self._conflict(user_id, conversation_id, path, allow_existing=False)
+        if conflict is None:
+            self._put(user_id, conversation_id, path, data, agent_slug)
+        return conflict or "ok"
+
+    async def replace(self, user_id, conversation_id, path, data, *, agent_slug, run_id=None):
+        conflict = self._conflict(user_id, conversation_id, path, allow_existing=True)
+        if conflict is None:
+            self._put(user_id, conversation_id, path, data, agent_slug)
+        return conflict or "ok"
+
+    async def edit(self, user_id, conversation_id, path, transform, *, agent_slug, run_id=None):
+        current = await self.read(user_id, conversation_id, path)
+        if current is None:
+            return False
+        updated = transform(current)
+        if updated is not None and updated != current:
+            self._put(user_id, conversation_id, path, updated, agent_slug)
+        return True
+
+    async def copy_conversation(self, user_id, source_id, target_id):
+        copied = 0
+        for path, entry in self._scope(user_id, source_id).items():
+            if (target_id, path) not in self.rows:
+                self.rows[(target_id, path)] = (user_id, entry)
+                copied += 1
+        return copied
+
+    async def delete_conversation(self, user_id, conversation_id):
+        doomed = self._scope(user_id, conversation_id)
+        for path in doomed:
+            del self.rows[(conversation_id, path)]
+        self._gc(user_id)
+        return len(doomed), sum(entry.size for entry in doomed.values())
+
+    async def purge_user(self, user_id):
+        files = [key for key, (user, _) in self.rows.items() if user == user_id]
+        blobs = [key for key in self.blobs if key[0] == user_id]
+        for key in files:
+            del self.rows[key]
+        for key in blobs:
+            del self.blobs[key]
+        return {"conversation_files": len(files), "conversation_file_blobs": len(blobs)}
+
+
+@pytest.fixture
+def memory_file_store(agents_service):
+    return MemoryFileStore()
+
+
+@pytest.fixture
+def conversation_files(agents_service, memory_file_store):
+    """One run's conversation files over the in-memory store, with no uploads
+    (tests that need some set ``conversation_files.inputs``)."""
+    package = importlib.import_module("harness.conversation_files")
+    return package.ConversationFiles(
+        user_id="u1", conversation_id="c1", agent_slug="omni", store=memory_file_store, run_id="r1"
     )

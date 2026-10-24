@@ -22,8 +22,8 @@ reload silently reset any global a test scribbled on. `agents_service` now does
 that on purpose, around every test:
 
 - the whole `settings` tree is snapshotted and restored in place, so writing
-  `settings.filesystem.workspaces_root = tmp_path` (as `skills_fs` and the
-  retention helper do) cannot leak into the next test;
+  `settings.filesystem.global_root = tmp_path` (as `skills_fs` does) cannot
+  leak into the next test;
 - the service's process-global caches are cleared — the module-level ones listed
   in `_DICT_CACHES` / `_SINGLETON_CACHES` in `conftest.py`, plus every
   `functools.lru_cache` in the service, which are found automatically.

@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState, type ComponentType } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, Bell, HardDrive, Puzzle, Shield, type LucideProps } from "lucide-react";
 
 import { PanelHeaderContext, type PanelHeader } from "@/features/settings/panel-header-context";
 import { ScrollArea } from "@/shared/ui/scroll-area";
 import { PremiumModalShell } from "@/shared/ui/premium-modal-shell";
+import { usePanelMotion } from "@/shared/lib/motion/panels";
 import { normalizeCustomInstructions } from "@/shared/lib/utils";
 import {
   type PersonalityId,
@@ -279,7 +280,7 @@ export default function ProfilePanel({
   conversationId = null,
   conversationTitle = null,
 }: ProfilePanelProps) {
-  const reduceMotion = useReducedMotion();
+  const { swap } = usePanelMotion();
   // The custom-instructions editor is owned here (not by the tab) so it can
   // render as a SIBLING of the settings shell — PremiumModalShell doesn't
   // portal, and nesting one shell inside another traps the overlay in the
@@ -320,7 +321,7 @@ export default function ProfilePanel({
 
   const stub = STUB_SECTIONS[normalizedActiveTab];
 
-  if (!open) return null;
+  // No early return when closed: the shell plays its exit with the last content.
 
   return (
     <>
@@ -353,13 +354,7 @@ export default function ProfilePanel({
                 <AnimatePresence mode="wait" initial={false}>
                   <motion.div
                     key={`${normalizedActiveTab}:${headerTitle}`}
-                    initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -6 }}
-                    transition={{
-                      duration: reduceMotion ? 0.12 : 0.26,
-                      ease: [0.22, 1, 0.36, 1],
-                    }}
+                    {...swap}
                     className="min-w-0 space-y-1"
                   >
                     {panelHeader?.onBack ? (
@@ -394,17 +389,7 @@ export default function ProfilePanel({
                 <AnimatePresence mode="wait" initial={false}>
                   <motion.div
                     key={normalizedActiveTab}
-                    initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 10 }}
-                    animate={{
-                      opacity: 1,
-                      y: 0,
-                      transition: { duration: 0.22, ease: "easeOut" },
-                    }}
-                    exit={
-                      reduceMotion
-                        ? { opacity: 0, transition: { duration: 0.1 } }
-                        : { opacity: 0, y: -6, transition: { duration: 0.14, ease: "easeIn" } }
-                    }
+                    {...swap}
                     className="space-y-6 px-6 py-6 sm:px-8"
                   >
                     {normalizedActiveTab === "general" ? (

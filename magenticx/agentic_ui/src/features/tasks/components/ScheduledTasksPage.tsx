@@ -11,7 +11,7 @@ import type {
 import { cn } from "@/shared/lib/utils";
 import { useToast } from "@/shared/hooks/use-toast";
 import { toastError } from "@/shared/lib/toast";
-import { Orb } from "@/shared/ui/orb";
+import { BrandMark } from "@/shared/ui/brand-mark";
 import { ConfirmDialog } from "@/shared/ui/confirm-dialog";
 import { TooltipProvider } from "@/shared/ui/tooltip";
 import { SidebarTrigger } from "@/shared/ui/sidebar";
@@ -142,7 +142,7 @@ function PageTabs({
 function EmptyState({ onCreate, onBrowse }: { onCreate: () => void; onBrowse: () => void }) {
   return (
     <div className="flex min-h-[22rem] flex-col items-center justify-center gap-5 px-6 py-10 text-center">
-      <Orb size={72} state="idle" />
+      <BrandMark size={84} />
       <div className="max-w-sm space-y-1.5">
         <p className="text-base font-semibold text-foreground">No scheduled tasks yet</p>
         <p className="text-sm leading-6 text-muted-foreground">

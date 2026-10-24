@@ -55,6 +55,7 @@ import { logoFor } from "@/styles/theme/themes";
 import { INTERACTIVE_SURFACE } from "@/shared/lib/consts";
 import { useTouchMenuTrigger } from "@/features/chat/hooks/useTouchMenuTrigger";
 import { loadSidebarSectionOpen, saveSidebarSectionOpen } from "@/shared/lib/sidebarStorage";
+import { RADIX_MOTION } from "@/shared/lib/motion/panels";
 
 type ChatSidebarProps = {
   conversations: ConversationSummary[];
@@ -666,7 +667,7 @@ export default function ChatSidebar({
                   side="right"
                   sideOffset={8}
                   align="end"
-                  className="z-50 w-48 rounded-lg border border-border bg-background p-1.5 text-sm text-foreground shadow-lg focus:outline-none"
+                  className={`z-50 w-48 rounded-lg border border-border bg-background p-1.5 text-sm text-foreground shadow-lg focus:outline-none origin-[--radix-dropdown-menu-content-transform-origin] ${RADIX_MOTION.popover}`}
                   onCloseAutoFocus={(event) => event.preventDefault()}
                 >
                   <DropdownMenu.Item
@@ -1142,7 +1143,7 @@ export default function ChatSidebar({
                   align={isCollapsed ? "end" : "start"}
                   // Scroll rather than overflow: on mobile the account rows render
                   // inline (below), so the menu can outgrow a short screen.
-                  className="z-50 max-h-[var(--radix-dropdown-menu-content-available-height)] w-64 overflow-y-auto rounded-xl border border-border bg-background p-1.5 text-sm text-foreground shadow-xl focus:outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[side=top]:slide-in-from-bottom-2 data-[side=right]:slide-in-from-left-2"
+                  className={`z-50 max-h-[var(--radix-dropdown-menu-content-available-height)] w-64 overflow-y-auto rounded-xl border border-border bg-background p-1.5 text-sm text-foreground shadow-xl focus:outline-none origin-[--radix-dropdown-menu-content-transform-origin] ${RADIX_MOTION.popover}`}
                   onCloseAutoFocus={(event) => event.preventDefault()}
                 >
                   {/* Identity header. With other accounts available it becomes a
@@ -1182,7 +1183,7 @@ export default function ChatSidebar({
                       <DropdownMenu.Portal>
                         <DropdownMenu.SubContent
                           sideOffset={8}
-                          className="z-50 rounded-xl border border-border bg-background text-sm text-foreground shadow-xl focus:outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
+                          className={`z-50 rounded-xl border border-border bg-background text-sm text-foreground shadow-xl focus:outline-none origin-[--radix-dropdown-menu-content-transform-origin] ${RADIX_MOTION.popover}`}
                         >
                           <AccountMenu
                             accounts={accounts}
@@ -1319,7 +1320,7 @@ export default function ChatSidebar({
                       <DropdownMenu.Portal>
                         <DropdownMenu.SubContent
                           sideOffset={8}
-                          className="z-50 w-56 rounded-xl border border-border bg-background p-1.5 text-sm text-foreground shadow-xl focus:outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[side=right]:slide-in-from-left-2 data-[side=left]:slide-in-from-right-2"
+                          className={`z-50 w-56 rounded-xl border border-border bg-background p-1.5 text-sm text-foreground shadow-xl focus:outline-none origin-[--radix-dropdown-menu-content-transform-origin] ${RADIX_MOTION.popover}`}
                         >
                           {helpMenuItems}
                         </DropdownMenu.SubContent>
@@ -1382,7 +1383,7 @@ export default function ChatSidebar({
                       <DropdownMenu.Portal>
                         <DropdownMenu.SubContent
                           sideOffset={8}
-                          className="z-50 w-[19rem] rounded-xl border border-border bg-background p-1.5 text-sm text-foreground shadow-xl focus:outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
+                          className={`z-50 w-[19rem] rounded-xl border border-border bg-background p-1.5 text-sm text-foreground shadow-xl focus:outline-none origin-[--radix-dropdown-menu-content-transform-origin] ${RADIX_MOTION.popover}`}
                         >
                           {logoutAccountItems}
                         </DropdownMenu.SubContent>

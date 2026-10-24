@@ -88,6 +88,7 @@ STEPS = (STEP_SESSIONS, STEP_AGENT_THREADS, STEP_AGENT_RUNTIME, STEP_CONVERSATIO
 _AGENT_COUNT_KEYS = (
     "agent_memories", "skill_pool", "skill_files", "agent_skills",
     "agent_definitions", "agent_definition_files",
+    "conversation_files", "conversation_file_blobs",
 )
 
 
@@ -368,7 +369,8 @@ async def _step_agent_threads(user_id: str, deletion_id: str, counts: dict[str, 
 
 
 async def _step_agent_runtime(user_id: str, deletion_id: str, counts: dict[str, Any]) -> None:
-    """Have the agents service delete its rows and the user's workspace folder."""
+    """Have the agents service delete its rows (conversation files included) and
+    the user's old workspace folder."""
     async with _agents_client() as client:
         resp = await client.delete(_agents_user_url(user_id), headers=internal_service_headers(None))
         resp.raise_for_status()

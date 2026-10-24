@@ -5,6 +5,7 @@ import type { Variants } from "framer-motion";
 import { ArrowLeft, ChevronRight, Network, X } from "lucide-react";
 
 import { cn } from "@/shared/lib/utils";
+import { EASE_ENTER, PANEL_TIMING, RADIX_MOTION } from "@/shared/lib/motion/panels";
 import { Orb } from "@/shared/ui/orb";
 import { useIsMobile } from "@/shared/hooks/use-mobile";
 import { returnFocusOnlyForKeyboard } from "@/shared/lib/focus-return";
@@ -26,7 +27,6 @@ import { AgentMapDetail } from "./AgentMapDetail";
 // detail — with Esc and Back stepping out of the detail first. The tree's
 // open branches, focused row and scroll position are kept while away.
 
-const EASE = [0.22, 1, 0.36, 1] as const;
 const ANSWER_PAGE = 25;
 const PANEL_GAP = 12;
 const PANEL_MIN_HEIGHT = 300;
@@ -36,7 +36,7 @@ const HEADER_ROOM = 76;
 
 const SLIDE: Variants = {
   enter: (direction: number) => ({ x: direction * 44, opacity: 0 }),
-  center: { x: 0, opacity: 1, transition: { duration: 0.34, ease: EASE } },
+  center: { x: 0, opacity: 1, transition: { duration: 0.34, ease: EASE_ENTER } },
   exit: (direction: number) => ({
     x: direction * -44,
     opacity: 0,
@@ -144,11 +144,18 @@ export function AgentMapPanel({
   }, [open, isMobile, anchorRef]);
 
   // Closing resets to the tree; the open branches and scroll stay for next time.
+  // After the panel has left, so it keeps its view while it fades out.
   React.useEffect(() => {
     if (open) return;
-    setView({ kind: "tree" });
-    setDirection(1);
-    setRevealed(false);
+    const timer = window.setTimeout(
+      () => {
+        setView({ kind: "tree" });
+        setDirection(1);
+        setRevealed(false);
+      },
+      Math.max(PANEL_TIMING.panel.exit, PANEL_TIMING.sheet.exit) * 1000,
+    );
+    return () => window.clearTimeout(timer);
   }, [open]);
 
   // Each view, once it has slid in, takes the focus: the tree its active row,
@@ -226,152 +233,117 @@ export function AgentMapPanel({
 
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
-      <AnimatePresence>
-        {open ? (
-          <DialogPrimitive.Portal forceMount>
-            <DialogPrimitive.Overlay asChild forceMount>
-              <motion.div
-                className={cn(
-                  "fixed inset-0 z-[92]",
-                  isMobile ? "bg-black/45" : "bg-[hsl(var(--background)/0.35)] backdrop-blur-[2px]",
-                )}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1, transition: { duration: 0.2 } }}
-                exit={{ opacity: 0, transition: { duration: 0.18 } }}
-              />
-            </DialogPrimitive.Overlay>
-            <DialogPrimitive.Content
-              asChild
-              forceMount
-              aria-describedby={undefined}
-              onOpenAutoFocus={(event) => {
-                event.preventDefault();
-                window.requestAnimationFrame(focusView);
-              }}
-              onCloseAutoFocus={returnFocusOnlyForKeyboard}
-              onEscapeKeyDown={(event) => {
-                if (view.kind === "detail") {
-                  event.preventDefault();
-                  back();
-                }
-              }}
-            >
-              <motion.div
-                ref={contentRef}
-                style={desktopStyle}
-                className={cn(
-                  "fixed z-[92] flex flex-col overflow-hidden border border-border/70 bg-card text-card-foreground focus:outline-none",
-                  "shadow-[0_28px_70px_-24px_hsl(var(--foreground)/0.35),0_2px_8px_hsl(var(--foreground)/0.06)]",
-                  isMobile
-                    ? "inset-x-0 bottom-0 h-[85dvh] rounded-t-[1.5rem] border-b-0"
-                    : "rounded-[1.5rem]",
-                  !isMobile && !placement && "invisible",
-                )}
-                initial={
-                  reduceMotion
-                    ? { opacity: 0 }
-                    : isMobile
-                      ? { y: "100%" }
-                      : { opacity: 0, y: 18, scale: 0.97 }
-                }
-                animate={
-                  reduceMotion
-                    ? { opacity: 1 }
-                    : isMobile
-                      ? { y: 0, transition: { type: "spring", stiffness: 380, damping: 40 } }
-                      : {
-                          opacity: 1,
-                          y: 0,
-                          scale: 1,
-                          transition: { type: "spring", stiffness: 420, damping: 34 },
-                        }
-                }
-                exit={
-                  reduceMotion
-                    ? { opacity: 0, transition: { duration: 0.12 } }
-                    : isMobile
-                      ? { y: "100%", transition: { duration: 0.24, ease: "easeIn" } }
-                      : {
-                          opacity: 0,
-                          y: 14,
-                          scale: 0.98,
-                          transition: { duration: 0.18, ease: "easeIn" },
-                        }
-                }
-                onAnimationComplete={() => setRevealed(true)}
-              >
-                {/* A wash of the brand colour along the top edge. */}
-                <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-primary/[0.07] to-transparent" />
-                {isMobile ? (
-                  <div className="relative mx-auto mt-2.5 h-1 w-10 flex-shrink-0 rounded-full bg-muted-foreground/25" />
-                ) : null}
+      <DialogPrimitive.Portal>
+        {/* Appears and leaves with the shared panel motion (shared/lib/motion/panels):
+            a panel on a desktop, a bottom sheet on a phone. */}
+        <DialogPrimitive.Overlay
+          className={cn(
+            "fixed inset-0 z-[92]",
+            isMobile ? "bg-black/45" : "bg-[hsl(var(--background)/0.35)] backdrop-blur-[2px]",
+            RADIX_MOTION.backdrop,
+          )}
+        />
+        <DialogPrimitive.Content
+          ref={contentRef}
+          aria-describedby={undefined}
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+            window.requestAnimationFrame(focusView);
+          }}
+          onCloseAutoFocus={returnFocusOnlyForKeyboard}
+          onEscapeKeyDown={(event) => {
+            if (view.kind === "detail") {
+              event.preventDefault();
+              back();
+            }
+          }}
+          style={desktopStyle}
+          className={cn(
+            "fixed z-[92] flex flex-col overflow-hidden border border-border/70 bg-card text-card-foreground focus:outline-none",
+            "shadow-[0_28px_70px_-24px_hsl(var(--foreground)/0.35),0_2px_8px_hsl(var(--foreground)/0.06)]",
+            isMobile
+              ? cn(
+                  "inset-x-0 bottom-0 h-[85dvh] rounded-t-[1.5rem] border-b-0",
+                  RADIX_MOTION.sheet.bottom,
+                )
+              : cn("rounded-[1.5rem]", RADIX_MOTION.panel),
+            !isMobile && !placement && "invisible",
+          )}
+          // The tree's rows cascade in once the panel has settled (children's
+          // own animations bubble here too, hence the target check).
+          onAnimationEnd={(event) => {
+            if (event.target === event.currentTarget) setRevealed(true);
+          }}
+        >
+          {/* A wash of the brand colour along the top edge. */}
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-primary/[0.07] to-transparent" />
+          {isMobile ? (
+            <div className="relative mx-auto mt-2.5 h-1 w-10 flex-shrink-0 rounded-full bg-muted-foreground/25" />
+          ) : null}
 
-                <PanelHeader
-                  view={view}
-                  entry={showingDetail ? entry : null}
-                  map={map}
-                  nodes={nodes}
-                  onBack={back}
-                  onShowTree={showTree}
-                  onJump={jumpTo}
-                  onClose={() => onOpenChange(false)}
-                  reduceMotion={reduceMotion}
-                />
+          <PanelHeader
+            view={view}
+            entry={showingDetail ? entry : null}
+            map={map}
+            nodes={nodes}
+            onBack={back}
+            onShowTree={showTree}
+            onJump={jumpTo}
+            onClose={() => onOpenChange(false)}
+            reduceMotion={reduceMotion}
+          />
 
-                <div className="relative min-h-0 flex-1 overflow-hidden">
-                  <AnimatePresence initial={false} custom={direction}>
-                    {showingDetail && entry ? (
-                      <ScrollView
-                        key={`detail:${entry.node.id}`}
-                        variants={variants}
-                        direction={direction}
-                        onEntered={focusView}
-                      >
-                        <AgentMapDetail
-                          node={entry.node}
-                          answer={entry.answer}
-                          ancestors={entry.ancestors}
-                          agentName={agentName}
-                          onOpenNode={openNode}
-                          now={now}
-                        />
-                      </ScrollView>
-                    ) : (
-                      <ScrollView
-                        key="tree"
-                        variants={variants}
-                        direction={direction}
-                        initialScrollTop={treeScrollRef.current}
-                        onScrollTop={(top) => (treeScrollRef.current = top)}
-                        onEntered={focusView}
-                      >
-                        {map.answers.length ? (
-                          <AgentMapTree
-                            map={map}
-                            agentName={agentName}
-                            answers={shownAnswers}
-                            hiddenAnswers={map.answers.length - shownAnswers.length}
-                            onShowEarlier={() => setAnswerLimit((limit) => limit + ANSWER_PAGE)}
-                            collapsed={collapsed}
-                            onToggle={toggle}
-                            onOpenNode={openNode}
-                            focusedId={focusedId}
-                            onFocusChange={setFocusedId}
-                            reveal={!revealed}
-                            now={now}
-                          />
-                        ) : (
-                          <EmptyState agentName={agentName} />
-                        )}
-                      </ScrollView>
-                    )}
-                  </AnimatePresence>
-                </div>
-              </motion.div>
-            </DialogPrimitive.Content>
-          </DialogPrimitive.Portal>
-        ) : null}
-      </AnimatePresence>
+          <div className="relative min-h-0 flex-1 overflow-hidden">
+            <AnimatePresence initial={false} custom={direction}>
+              {showingDetail && entry ? (
+                <ScrollView
+                  key={`detail:${entry.node.id}`}
+                  variants={variants}
+                  direction={direction}
+                  onEntered={focusView}
+                >
+                  <AgentMapDetail
+                    node={entry.node}
+                    answer={entry.answer}
+                    ancestors={entry.ancestors}
+                    agentName={agentName}
+                    onOpenNode={openNode}
+                    now={now}
+                  />
+                </ScrollView>
+              ) : (
+                <ScrollView
+                  key="tree"
+                  variants={variants}
+                  direction={direction}
+                  initialScrollTop={treeScrollRef.current}
+                  onScrollTop={(top) => (treeScrollRef.current = top)}
+                  onEntered={focusView}
+                >
+                  {map.answers.length ? (
+                    <AgentMapTree
+                      map={map}
+                      agentName={agentName}
+                      answers={shownAnswers}
+                      hiddenAnswers={map.answers.length - shownAnswers.length}
+                      onShowEarlier={() => setAnswerLimit((limit) => limit + ANSWER_PAGE)}
+                      collapsed={collapsed}
+                      onToggle={toggle}
+                      onOpenNode={openNode}
+                      focusedId={focusedId}
+                      onFocusChange={setFocusedId}
+                      reveal={!revealed}
+                      now={now}
+                    />
+                  ) : (
+                    <EmptyState agentName={agentName} />
+                  )}
+                </ScrollView>
+              )}
+            </AnimatePresence>
+          </div>
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
   );
 }
@@ -451,7 +423,7 @@ function PanelHeader({
             key="detail"
             className="flex min-w-0 flex-1 items-center gap-2"
             initial={reduceMotion ? { opacity: 0 } : { opacity: 0, x: 16 }}
-            animate={{ opacity: 1, x: 0, transition: { duration: 0.28, ease: EASE } }}
+            animate={{ opacity: 1, x: 0, transition: { duration: 0.28, ease: EASE_ENTER } }}
             exit={{ opacity: 0, transition: { duration: 0.12 } }}
           >
             <button
@@ -516,7 +488,7 @@ function PanelHeader({
             key="tree"
             className="flex min-w-0 flex-1 items-center gap-3"
             initial={reduceMotion ? { opacity: 0 } : { opacity: 0, x: -16 }}
-            animate={{ opacity: 1, x: 0, transition: { duration: 0.28, ease: EASE } }}
+            animate={{ opacity: 1, x: 0, transition: { duration: 0.28, ease: EASE_ENTER } }}
             exit={{ opacity: 0, transition: { duration: 0.12 } }}
           >
             <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-border bg-secondary/55 text-primary">

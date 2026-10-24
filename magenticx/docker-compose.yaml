@@ -66,18 +66,27 @@ services:
       - MCP_GATEWAY_URL=${MCP_GATEWAY_URL-}
       - TRUSTED_PROXY_SECRET=${TRUSTED_PROXY_SECRET}
       - LOG_FORMAT=${LOG_FORMAT:-console}   # json for the local monitoring add-on
-      # Both planes of the agents filesystem live on the magenticx_data volume.
+      # The global plane (agent definitions, skills catalogue) is on the
+      # magenticx_data volume. A conversation's files are rows in agent_runtime
+      # (plan 43); the per-file cap is a technical safety limit, not a quota.
       - MAGENTICX_GLOBAL_ROOT=/var/magenticx/global
+      - CONVERSATION_FILE_MAX_BYTES=104857600
+      # Uploads are read from the bridge on demand, cached by content hash.
+      - CONVERSATION_INPUT_CACHE_BYTES=134217728
+      # TODO(plan 43): remove both once agents v1.22.0 has deployed.
+      # The one-off move of the old per-conversation trees into Postgres:
+      # import, verify, then delete each tree from the volume.
       - MAGENTICX_WORKSPACES_ROOT=/var/magenticx/workspaces
+      - LEGACY_VOLUME_MIGRATION_ENABLED=true
       # Durable LangGraph checkpointer — separate DB on the same Postgres
       # instance. Dev is plaintext (no TLS, no encryption); prod wires TLS +
       # an AES key (see docker-compose-denis.yaml).
       - AGENT_RUNTIME_DATABASE_URL=postgresql://admin:admin@chat_postgres:5432/agent_runtime
       - LANGGRAPH_STRICT_MSGPACK=true
     volumes:
-      # The whole agents filesystem: global plane (agent definitions + skills
-      # catalogue) and one workspace per user (pool, custom agents, per-agent
-      # memory, tool prefs, conversation files). See harness/filesystem/layout.py.
+      # The agents filesystem's global plane (agent definitions + skills
+      # catalogue), plus the old per-user trees until the one-off move into
+      # Postgres has emptied them (plan 43). See harness/filesystem/layout.py.
       - magenticx_data:/var/magenticx
     depends_on:
       - rag_service

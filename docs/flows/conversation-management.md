@@ -198,7 +198,7 @@ Archiving is a soft-delete — the conversation is hidden from the default list 
 
 `DELETE /{user_id}/{conversation_id}` — the foreign-key cascade removes the messages and their attachments, and the `trg_attachments_delete_blob` trigger (migration `0030`) removes each attachment's blob. The cascade alone never reached the blobs — the key points from the attachment to the blob — so until `0030` every deleted conversation left its files behind (see [database-schema](../architecture/database-schema.md), `blobs`). The bridge does not implement soft-delete for conversations: deletion is permanent and immediate.
 
-**Checkpoint reap.** Conversation delete is the *only* time durable checkpoint threads are reaped (there is no time-based sweep — threads otherwise persist indefinitely). Before/alongside the DB cascade, the bridge collects the distinct `checkpoint_thread_id` values across the conversation's AI messages and calls the agents endpoint `POST /agents/{slug}/users/{user_id}/conversations/{conversation_id}/reap` with `{thread_ids: [...]}`. The agents service `adelete_thread`s each thread from the `agent_runtime` checkpoint DB and `rmtree`s the conversation's filesystem directory (uploaded input files + agent output artifacts — see [attachments.md](attachments.md)). A failed reap of one thread is logged and does not block the rest.
+**Runtime reap (plan 43).** Conversation delete is the *only* time the agents service's state for a conversation goes — its durable checkpoint threads and its files (`agent_runtime.conversation_files`, see [attachments.md](attachments.md)); there is no time-based sweep. In the delete's own transaction the bridge writes a `pending_runtime_reaps` row (`utils/runtime_reaps.py`) with the distinct `checkpoint_thread_id`s of the conversation's messages; after the commit it sends `POST /users/{user_id}/conversations/{conversation_id}/reap {thread_ids}` — **by conversation id, no agent lookup**, so a deactivated or deleted agent can no longer leave orphans — and deletes the row once the agents service confirms. A failure (agents down → 503 or a connection error) keeps the row (`attempts`, `last_error`); the outbox is drained again after the next delete and when the bridge starts. The delete itself never waits on it.
 
 ### Report
 
@@ -229,7 +229,7 @@ flowchart TD
 
 `build_message_lineage()` walks the `parent_message_id` chain from the target message back to the root, collecting the branch. It validates that the target is an AI message and that the chain contains no cycles.
 
-`clone_branch_to_conversation()` deep-copies every message in the lineage with fresh UUIDs. Attachment and blob rows are also deep-copied — the fork is fully independent; deleting the original conversation does not affect the fork's files.
+`clone_branch_to_conversation()` deep-copies every message in the lineage with fresh UUIDs. Attachment and blob rows are also deep-copied (`workspace_name` included, so the fork's history still names its uploads). After the commit the bridge asks the agents service to copy the source's **agent files** (`POST /users/{uid}/conversations/{src}/files/copy`): only path rows are copied — they name the same encrypted blobs — so a fork costs no bytes, and deleting either conversation leaves the other's files intact. A failed copy is logged; the fork still works, without the files.
 
 The fork's `forked_parent_id` and `forked_message_id` columns record the origin for audit purposes but are not used for data access (SET NULL on parent deletion).
 
@@ -324,7 +324,7 @@ When a conversation reaches its first AI response, the bridge calls the agents s
 
 ## Sharp Edges and Behavioral Notes
 
-- **Conversation deletion is immediate and irreversible.** There is no trash or grace period. Deleting a conversation cascades through all messages, attachments, and blobs in a single transaction. If the user navigates away mid-delete, the cascade is complete — nothing is left. The DB cascade does not reach the agents-service durable checkpoints or filesystem; the bridge issues a separate `reap` call to the agents service for those (see Delete above).
+- **Conversation deletion is immediate and irreversible.** There is no trash or grace period. Deleting a conversation cascades through all messages, attachments, and blobs in a single transaction. If the user navigates away mid-delete, the cascade is complete — nothing is left. The DB cascade does not reach the agents-service checkpoints or files; the reap outbox does (see Delete above).
 
 - **Edit/retry never mutate the parent branch's checkpoint.** A fresh `checkpoint_thread_id` is minted and seeded copy-on-fork from the parent's committed checkpoint, so sibling branches have fully independent durable state — consistent with the append-only message tree.
 
@@ -342,7 +342,7 @@ When a conversation reaches its first AI response, the bridge calls the agents s
 
 - **Title generation is best-effort.** If the agents service is down, the conversation is created with a fallback title. There is no retry or deferred title generation — the title stays as the fallback until the user renames it manually.
 
-- **Fork deep-copies blobs.** Each forked message's attachments and their binary blob data are fully duplicated. Two forks of a conversation with a 25 MB image attachment consume 3× the blob storage. There is no content-addressable deduplication.
+- **Fork deep-copies attachment blobs.** Each forked message's attachments and their binary blob data are fully duplicated in `chat_db`: two forks of a conversation with a 25 MB image attachment consume 3× the blob storage. (The agent's own files are not duplicated — see Fork above.)
 
 - **`branchSelections` is in-memory UI state only.** The selected branch index per parent is not persisted. On page reload the UI defaults to the most recently created sibling (last `created_at ASC`). If the user was viewing an older branch, the view resets to the latest one. **Exception:** if the conversation has an active inference run, `deriveBranchSelectionsForActiveRun` pins the visible branch to the run's `messagePath` regardless of recency, so a HITL-paused run is always visible on entry.
 
@@ -362,7 +362,8 @@ When a conversation reaches its first AI response, the bridge calls the agents s
 | Pydantic schemas | [magenticx/dialogue_bridge/schema/](../../magenticx/dialogue_bridge/schema/) | `ConversationIn`, `ConversationDetail`, `ConversationSummary`, `MessageIn`, `MessageOut`, `ConversationShareResponse` |
 | Conversation ORM models | [magenticx/dialogue_bridge/core/database/models.py](../../magenticx/dialogue_bridge/core/database/models.py) | `ConversationTable`, `MessageTable` (incl. `checkpoint_thread_id` / `checkpoint_id`), `ConversationShareTable`, `ConversationReportTable` |
 | Checkpoint-thread allocation per mode | [magenticx/dialogue_bridge/utils/inference_runs.py](../../magenticx/dialogue_bridge/utils/inference_runs.py) | `create_inference_run_record(mode=...)`, `nearest_committed_ai()` |
-| Conversation reap (checkpoints + filesystem) | [magenticx/agents/main.py](../../magenticx/agents/main.py) | `reap_conversation()` route, `adelete_thread`, `delete_conversation_files` |
+| Runtime reap outbox (bridge) | [magenticx/dialogue_bridge/utils/runtime_reaps.py](../../magenticx/dialogue_bridge/utils/runtime_reaps.py) | `enqueue_runtime_reap()`, `drain_runtime_reaps()` |
+| Conversation reap / fork copy (agents) | [magenticx/agents/router/conversation_files.py](../../magenticx/agents/router/conversation_files.py) | `POST /users/{uid}/conversations/{cid}/reap`, `POST …/files/copy` |
 | Conversation API calls (frontend) | [magenticx/agentic_ui/src/shared/lib/api/](../../magenticx/agentic_ui/src/shared/lib/api/) | `createConversation`, `getConversations`, `deleteConversation`, `forkConversation`, `shareConversation`, `addMessageToConversation` |
 | Conversation action handlers | [magenticx/agentic_ui/src/features/chat/handlers/conversations.ts](../../magenticx/agentic_ui/src/features/chat/handlers/conversations.ts) | `handleConversationSelect`, `handleForkConversation`, `handleDeleteConversation`, `clearChatAndStopThinking` |
 | Send message flow | [magenticx/agentic_ui/src/features/inference/inference.ts](../../magenticx/agentic_ui/src/features/inference/inference.ts) | `handleSendMessage()` — new, existing, edit, retry, shared continuation start modes |

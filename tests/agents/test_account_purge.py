@@ -3,8 +3,9 @@
 Pins what the bridge relies on:
 
 * each store deletes **all** of a user's rows, scoped to that user only, and the
-  skill pool is really deleted (not tombstoned);
-* the workspace folder goes, and a malformed user id can never reach the disk;
+  skill pool is really deleted (not tombstoned) — conversation files and their
+  blobs included, by user id alone;
+* the old workspace folder goes, and a malformed user id can never reach the disk;
 * checkpoint threads are deleted, and a failure surfaces (503) instead of being
   swallowed, so the bridge retries rather than recording success;
 * the routes are internal-only.
@@ -100,6 +101,19 @@ async def test_memory_store_purge_deletes_every_memory_of_that_user(agents_servi
     assert pool.calls == [("DELETE FROM agent_memories WHERE user_id = %s", ("u1",))]
 
 
+@pytest.mark.asyncio
+async def test_conversation_file_store_purge_deletes_every_file_and_blob_of_that_user(agents_service):
+    pool = FakePool(rowcount=4)
+    counts = await agents_service.conversation_files.ConversationFileStore(pool).purge_user("u1")
+
+    assert counts == {"conversation_files": 4, "conversation_file_blobs": 4}
+    assert pool.transactions == 1
+    assert pool.calls == [
+        ("DELETE FROM conversation_files WHERE user_id = %s", ("u1",)),
+        ("DELETE FROM conversation_file_blobs WHERE user_id = %s", ("u1",)),
+    ]
+
+
 # -- purge_user: rows, folder, cache ---------------------------------------------
 
 
@@ -115,10 +129,10 @@ def purge(agents_service, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_purge_user_removes_rows_folder_and_cached_agents(purge, skills_fs, agents_service):
-    workspace = skills_fs.workspace("u1")
+    workspace = skills_fs.users_root / "u1"
     (workspace / "agents" / "a" / "conversations" / "c1" / "output").mkdir(parents=True)
     (workspace / "agents" / "a" / "conversations" / "c1" / "output" / "report.md").write_text("x")
-    other = skills_fs.workspace("u2")
+    other = skills_fs.users_root / "u2"
     other.mkdir(parents=True)
     cache = agents_service.agents_utils._USER_AGENT_CACHE
     cache[("u1", "mine")] = (None, object())
@@ -131,6 +145,7 @@ async def test_purge_user_removes_rows_folder_and_cached_agents(purge, skills_fs
         assert other.exists()                                   # another user's folder is untouched
         assert ("u1", "mine") not in cache and ("u2", "theirs") in cache
         assert counts["agent_memories"] == 1 and counts["skill_pool"] == 1 and counts["agent_definitions"] == 1
+        assert counts["conversation_files"] == 1 and counts["conversation_file_blobs"] == 1
         # Idempotent: the second call finds nothing on disk and still succeeds.
         again = await purge.purge_user("u1")
         assert again["workspace_removed"] is False
@@ -206,5 +221,6 @@ async def test_delete_route_reports_what_was_removed(client, internal_headers, p
     body = resp.json()
     assert set(body) == {
         "agent_memories", "skill_pool", "skill_files", "agent_skills",
-        "agent_definitions", "agent_definition_files", "workspace_removed",
+        "agent_definitions", "agent_definition_files",
+        "conversation_files", "conversation_file_blobs", "workspace_removed",
     }

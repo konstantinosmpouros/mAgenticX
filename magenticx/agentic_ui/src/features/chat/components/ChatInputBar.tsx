@@ -24,6 +24,13 @@ import { SlashCommandMenu } from "@/features/chat/components/SlashCommandMenu";
 import { Orb } from "@/shared/ui/orb";
 import type { SlashComposer } from "@/features/chat/hooks/useSlashCommands";
 import { INTERACTIVE_SURFACE } from "@/shared/lib/consts";
+import type {
+  Tooltip as TooltipComponent,
+  TooltipContent as TooltipContentComponent,
+  TooltipTrigger as TooltipTriggerComponent,
+} from "@/shared/ui/tooltip";
+import type { Textarea as TextareaComponent } from "@/shared/ui/textarea";
+import { usePanelMotion } from "@/shared/lib/motion/panels";
 export type { DictationStatus };
 export type ChatInputMode = "chat" | "voice";
 
@@ -84,9 +91,9 @@ type ChatInputBarProps = {
   textareaMaxHeight: number;
 
   // UI bits you already import in the page
-  Tooltip: any;
-  TooltipTrigger: any;
-  TooltipContent: any;
+  Tooltip: typeof TooltipComponent;
+  TooltipTrigger: typeof TooltipTriggerComponent;
+  TooltipContent: typeof TooltipContentComponent;
 
   // Optional extras available in your page
   toast?: (opts: { title: string; description?: string; duration?: number }) => void;
@@ -97,7 +104,7 @@ type ChatInputBarProps = {
   onToggleVoiceMute?: () => void;
   onVoiceTextSubmit?: (text: string) => void;
   currentAgent?: { name?: string; description?: string } | null;
-  Textarea: any;
+  Textarea: typeof TextareaComponent;
   onDictationSubmit?: (audioBlob: Blob) => void;
   onDictationStatusChange?: (status: DictationStatus) => void;
   dictationStatus?: DictationStatus;
@@ -575,6 +582,8 @@ export function ChatInputBar(props: ChatInputBarProps) {
 
   const canSubmitVoiceText = currentMessage.trim().length > 0;
   const rm = prefersReducedMotion ?? false;
+  // The chat, voice and HITL bars hand over with the shared dock motion.
+  const { dock } = usePanelMotion();
 
   // The lift animates only when the screen changes (conversation <-> new
   // chat), and only while the chat bar is the visible bar: in an empty
@@ -635,17 +644,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
               voiceBarVisible ? (
                 <motion.div
                   key="voice-bar"
-                  initial={{ opacity: 0, y: rm ? 0 : 10 }}
-                  animate={{
-                    opacity: 1,
-                    y: 0,
-                    transition: { duration: 0.32, ease: [0.22, 1, 0.36, 1] },
-                  }}
-                  exit={{
-                    opacity: 0,
-                    y: rm ? 0 : 5,
-                    transition: { duration: 0.18, ease: "easeIn" },
-                  }}
+                  {...dock}
                   style={{ transformOrigin: "center bottom" }}
                 >
                   <div className="relative mx-auto max-w-3xl pointer-events-auto">
@@ -746,13 +745,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
             ) : hitlTakeover ? (
               <motion.div
                 key="hitl-bar"
-                initial={{ opacity: 0, y: rm ? 0 : 10 }}
-                animate={{
-                  opacity: 1,
-                  y: 0,
-                  transition: { duration: 0.32, ease: [0.22, 1, 0.36, 1] },
-                }}
-                exit={{ opacity: 0, y: rm ? 0 : 5, transition: { duration: 0.18, ease: "easeIn" } }}
+                {...dock}
                 style={{ transformOrigin: "center bottom" }}
               >
                 <div className="dark relative mx-auto max-w-3xl pointer-events-auto">{hitlTakeover}</div>
@@ -760,13 +753,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
             ) : chatBarVisible ? (
               <motion.div
                 key="chat-bar"
-                initial={{ opacity: 0, y: rm ? 0 : 10 }}
-                animate={{
-                  opacity: 1,
-                  y: 0,
-                  transition: { duration: 0.32, ease: [0.22, 1, 0.36, 1] },
-                }}
-                exit={{ opacity: 0, y: rm ? 0 : 5, transition: { duration: 0.18, ease: "easeIn" } }}
+                {...dock}
                 style={{ transformOrigin: "center bottom" }}
                 className="relative"
               >

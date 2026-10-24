@@ -31,6 +31,7 @@ import { BranchControls } from "./BranchControls";
 import { MessageUsage, TruncatedMark } from "./MessageUsage";
 import { INTERACTIVE_SURFACE_QUIET } from "@/shared/lib/consts";
 import { returnFocusOnlyForKeyboard } from "@/shared/lib/focus-return";
+import { RADIX_MOTION } from "@/shared/lib/motion/panels";
 
 type BranchControlsConfig = {
   parentId: string | null;
@@ -356,7 +357,7 @@ export const AIActionBar = ({
                   onCloseAutoFocus={returnFocusOnlyForKeyboard}
                   sideOffset={8}
                   collisionPadding={10}
-                  className="z-[70] min-w-[12rem] rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-lg animate-scale-in"
+                  className={`z-[70] min-w-[12rem] rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-lg origin-[--radix-dropdown-menu-content-transform-origin] ${RADIX_MOTION.popover}`}
                 >
                   <DropdownMenu.Item
                     className={moreMenuItemClass}

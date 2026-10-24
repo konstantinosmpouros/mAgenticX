@@ -8,6 +8,7 @@ import {
   THEME_IDS,
   THEMES,
   logoFor,
+  markFor,
   orbFor,
   resolveStoredTheme,
   themeFor,
@@ -87,6 +88,16 @@ describe("theme registry", () => {
     expect(orbFor("daylight")).toBe("/orbital-hub-transparent.webp");
     expect(orbFor("dark")).toBe("/orbital-hub-midnight.webp");
     for (const theme of THEMES) expect(orbFor(theme.id)).toMatch(/^\/orbital-hub-[a-z]+\.webp$/);
+  });
+
+  it("gives every theme its soft-node mark, shipped in public/", () => {
+    expect(markFor("sunset")).toBe("/brand/logos/soft-node/sunset-mark.webp");
+    expect(markFor("dark")).toBe("/brand/logos/soft-node/midnight-mark.webp");
+    expect(markFor("nope")).toBe("/brand/logos/soft-node/daylight-mark.webp");
+    for (const theme of THEMES) {
+      expect(theme.mark).toBe(`/brand/logos/soft-node/${theme.id}-mark.webp`);
+      expect(() => readFileSync(path.join(UI, "public", theme.mark!))).not.toThrow();
+    }
   });
 
   it("theme-init.js knows the same dark ids and aliases", () => {

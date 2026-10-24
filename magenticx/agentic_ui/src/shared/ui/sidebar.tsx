@@ -22,11 +22,12 @@ import * as React from "react";
 import { Slot } from "@radix-ui/react-slot";
 import { VariantProps, cva } from "class-variance-authority";
 import { PanelLeft } from "lucide-react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 
 import { useIsMobile } from "@/shared/hooks/use-mobile";
 import type { ChatKeyboardShortcutOptions, ChatKeyboardShortcutsHook } from "@/shared/lib/types";
 import { cn } from "@/shared/lib/utils";
+import { usePanelMotion } from "@/shared/lib/motion/panels";
 import { Button } from "@/shared/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/shared/ui/tooltip";
 
@@ -209,7 +210,8 @@ function SidebarMobileDrawer({
   onClose: () => void;
   children: React.ReactNode;
 }) {
-  const reduceMotion = useReducedMotion();
+  // Slides in from the left with the shared sheet motion (shared/lib/motion/panels).
+  const drawerMotion = usePanelMotion().sheet("left");
   const panelRef = React.useRef<HTMLDivElement | null>(null);
 
   React.useEffect(() => {
@@ -280,10 +282,7 @@ function SidebarMobileDrawer({
               here and closes it; below the drawer (z-50) and the menus it opens. */}
           <motion.div
             className="fixed inset-0 z-[45] bg-black/50 md:hidden"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: reduceMotion ? 0 : 0.2 }}
+            {...drawerMotion.backdrop}
             onClick={onClose}
             aria-hidden="true"
           />
@@ -300,17 +299,7 @@ function SidebarMobileDrawer({
             // intentionally NOT applied here — merging it would override `fixed` and
             // drop the drawer into normal flow, pushing the page instead of overlaying.
             className="group fixed inset-y-0 left-0 z-50 flex flex-col bg-sidebar text-sidebar-foreground shadow-xl outline-none md:hidden"
-            initial={{ x: "-100%" }}
-            animate={{
-              x: 0,
-              transition: reduceMotion
-                ? { duration: 0 }
-                : { duration: 0.3, ease: [0.22, 1, 0.36, 1] },
-            }}
-            exit={{
-              x: "-100%",
-              transition: reduceMotion ? { duration: 0 } : { duration: 0.2, ease: [0.4, 0, 1, 1] },
-            }}
+            {...drawerMotion.content}
           >
             <div data-sidebar="sidebar" className="flex h-full w-full flex-col">
               {children}

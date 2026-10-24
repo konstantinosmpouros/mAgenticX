@@ -476,46 +476,36 @@ class DeepAgentsSettings(BaseModel):
 class FilesystemSettings(BaseSettings):
     model_config = _BASE_MODEL_CONFIG
 
-    # --- The two planes -----------------------------------------------------
-    # Everything on the agents filesystem hangs off these two roots, both backed
-    # by one Docker volume mounted at /var/magenticx. `global_root` holds
-    # platform-owned shared assets (built-in agent definitions + the skills
-    # catalogue); `workspaces_root` holds one tree per user (their skill pool,
-    # their own agent definitions, per-agent memory, tool prefs and every
-    # conversation's files). `harness.filesystem.layout` derives every concrete
-    # path from these — nothing else should join path segments by hand.
+    # --- The global plane --------------------------------------------------
+    # Platform-owned shared assets (built-in agent definitions + the skills
+    # catalogue) on the magenticx_data volume. `harness.filesystem.layout`
+    # derives every concrete path from it — nothing else joins path segments
+    # by hand. A conversation's files are rows in agent_runtime instead
+    # (harness/conversation_files), so nothing per-user lives on the volume.
     global_root: Path = Field(
         Path("/var/magenticx/global"),
         validation_alias="MAGENTICX_GLOBAL_ROOT",
     )
+    # Where the per-user conversation trees used to live. Read only by the
+    # one-off move into Postgres (harness/conversation_files/legacy_volume.py).
+    # TODO(plan 43): remove once agents v1.22.0 has deployed.
     workspaces_root: Path = Field(
         Path("/var/magenticx/workspaces"),
         validation_alias="MAGENTICX_WORKSPACES_ROOT",
     )
-
-    # Server-side caps for the conversation input/ seeding endpoint (defence in
-    # depth — the bridge already enforces these at upload). Mirror the bridge's
-    # AttachmentSettings defaults: 25 MB/file, 10 files/turn.
-    input_max_file_bytes: int = Field(26214400, validation_alias="INPUT_MAX_FILE_BYTES")
-    input_max_files: int = Field(10, validation_alias="INPUT_MAX_FILES")
 
     # Ceiling on an image handed to the model by `view_image`. Unlike the stream
     # preview this is the *model's* copy, so the cap guards context cost and a
     # decode of something pathological — not display size.
     view_image_max_bytes: int = Field(10485760, validation_alias="VIEW_IMAGE_MAX_BYTES")
 
-    # Server-side caps for reading agent-presented deliverables back out of the
-    # conversation output/ dir (the present_artifact → generated-attachment
-    # path). One run rarely presents many docs, so the count cap is tighter than
-    # input; the per-file cap matches input (25 MB) since a report/export can be
-    # large. Over-cap files are skipped (logged), not fatal.
+    # Caps on reading agent-presented deliverables back to the bridge (the
+    # present_artifact → generated-attachment snapshot). One run rarely
+    # presents many docs; the per-file cap matches the bridge's attachment
+    # limit (25 MB), since the snapshot becomes a downloadable attachment.
+    # Over-cap files are skipped (logged), not fatal.
     output_max_file_bytes: int = Field(26214400, validation_alias="OUTPUT_MAX_FILE_BYTES")
     output_max_files: int = Field(20, validation_alias="OUTPUT_MAX_FILES")
-    # The run-end manifest of output/ (every file the agent wrote, so the bridge
-    # can store them all — not only presented ones). Bounds one listing; files
-    # past it are left out and logged. The hash is read in chunks.
-    output_manifest_max_files: int = Field(500, ge=1, validation_alias="OUTPUT_MANIFEST_MAX_FILES")
-    output_hash_chunk_bytes: int = Field(1048576, ge=4096, validation_alias="OUTPUT_HASH_CHUNK_BYTES")
 
     # Hard cap on saved memories per (user, agent) — the `remember` tool refuses
     # new entries beyond this (updates to existing ones always go through), so
@@ -534,34 +524,30 @@ class FilesystemSettings(BaseSettings):
     # isolation kernel (gVisor-class) is in place.
     sandbox_execution_enabled: bool = Field(False, validation_alias="SANDBOX_EXECUTION_ENABLED")
 
-    # --- Workspace retention (input/ and output/ are TTL-erased caches) -----
-    # Conversation input/ files are bridge-seeded copies of DB attachment blobs
-    # (re-materialized per run), and presented output/ files are read back at
-    # run finalize and persisted as generated-attachment blobs — so both dirs
-    # are caches of DB-owned data and safe to erase after a TTL. 0 disables
-    # that scope's sweep (logged loudly at startup). Sweeper details live in
-    # harness/filesystem/retention.py.
-    input_ttl_hours: int = Field(72, validation_alias="WORKSPACE_INPUT_TTL_HOURS")
-    output_ttl_hours: int = Field(168, validation_alias="WORKSPACE_OUTPUT_TTL_HOURS")
-    retention_sweep_interval_minutes: int = Field(
-        60, validation_alias="WORKSPACE_SWEEP_INTERVAL_MINUTES"
+
+class ConversationFilesSettings(BaseSettings):
+    """A conversation's files, stored in ``agent_runtime`` (plan 43).
+
+    Files live exactly as long as their conversation — there is no TTL and no
+    quota. The per-file cap is a technical safety limit (one file is held in
+    memory while it is encrypted, written or read), not a storage policy.
+    """
+    model_config = _BASE_MODEL_CONFIG
+
+    max_file_bytes: int = Field(
+        100 * 1024 * 1024, ge=1, validation_alias="CONVERSATION_FILE_MAX_BYTES"
     )
-
-    @field_validator("input_ttl_hours", "output_ttl_hours", mode="after")
-    @classmethod
-    def _bound_ttls(cls, v: int, info) -> int:
-        # 0 = disabled; otherwise 1 hour .. 365 days. Negative values are a
-        # misconfiguration, not a disable — fail loudly instead of guessing.
-        if v < 0 or v > 8760:
-            raise ValueError(f"{info.field_name} must be between 0 (disabled) and 8760 hours.")
-        return v
-
-    @field_validator("retention_sweep_interval_minutes", mode="after")
-    @classmethod
-    def _bound_sweep_interval(cls, v: int) -> int:
-        if v < 5 or v > 1440:
-            raise ValueError("WORKSPACE_SWEEP_INTERVAL_MINUTES must be between 5 and 1440.")
-        return v
+    # Process-wide cache of the user's uploads, fetched from the bridge on
+    # first read. Keyed by content hash, so an entry can never go stale.
+    input_cache_bytes: int = Field(
+        128 * 1024 * 1024, ge=0, validation_alias="CONVERSATION_INPUT_CACHE_BYTES"
+    )
+    # The one-off move of the old volume trees into Postgres, run in the
+    # background after boot (harness/conversation_files/legacy_volume.py).
+    # TODO(plan 43): remove once agents v1.22.0 has deployed.
+    legacy_volume_migration: bool = Field(
+        True, validation_alias="LEGACY_VOLUME_MIGRATION_ENABLED"
+    )
 
 
 class RemoteSkillsSettings(BaseSettings):
@@ -676,12 +662,20 @@ class BridgeSettings(BaseSettings):
 
     base_url: str = Field("https://dialogue_bridge:8002", validation_alias="DIALOGUE_BRIDGE_URL")
     memory_search_path: str = Field("/v1/internal/memory/search", validation_alias="BRIDGE_MEMORY_SEARCH_PATH")
+    # The user's uploads behind /conversation/input/ (plan 43).
+    conversations_path: str = Field(
+        "/v1/internal/conversations", validation_alias="BRIDGE_CONVERSATIONS_PATH"
+    )
     request_timeout_seconds: float = Field(20.0, validation_alias="BRIDGE_REQUEST_TIMEOUT_SECONDS")
     connect_timeout_seconds: float = Field(10.0, validation_alias="BRIDGE_CONNECT_TIMEOUT_SECONDS")
 
     @property
     def memory_search_url(self) -> str:
         return f"{self.base_url.rstrip('/')}{self.memory_search_path}"
+
+    @property
+    def conversations_url(self) -> str:
+        return f"{self.base_url.rstrip('/')}{self.conversations_path}"
 
 
 # ---------------------------------------------------------------------------
@@ -707,6 +701,7 @@ class Settings(BaseSettings):
     deep_agents: DeepAgentsSettings = Field(default_factory=DeepAgentsSettings)
     model_profiles: ModelProfileSettings = Field(default_factory=ModelProfileSettings)
     filesystem: FilesystemSettings = Field(default_factory=FilesystemSettings)
+    conversation_files: ConversationFilesSettings = Field(default_factory=ConversationFilesSettings)
     remote_skills: RemoteSkillsSettings = Field(default_factory=RemoteSkillsSettings)
     summarization: SummarizationSettings = Field(default_factory=SummarizationSettings)
     rate_limit_retry: RateLimitRetrySettings = Field(default_factory=RateLimitRetrySettings)

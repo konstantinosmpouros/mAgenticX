@@ -417,12 +417,10 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
                   onDownload={handleFileDownload}
                 />
 
-                {attachmentPreview.selectedImage && (
-                  <ImageLightbox
-                    src={attachmentPreview.selectedImage}
-                    onClose={handleCloseImagePreview}
-                  />
-                )}
+                <ImageLightbox
+                  src={attachmentPreview.selectedImage}
+                  onClose={handleCloseImagePreview}
+                />
               </div>
             </HitlProvider>
           </TooltipProvider>

@@ -1,11 +1,12 @@
 import { useEffect, useRef } from "react";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion } from "framer-motion";
 import { Lock, Zap } from "lucide-react";
 
 import { useSpaceAbove } from "@/features/chat/hooks/useSpaceAbove";
 import type { SlashComposer } from "@/features/chat/hooks/useSlashCommands";
 import { Command, CommandGroup, CommandItem, CommandList } from "@/shared/ui/command";
 import { cn } from "@/shared/lib/utils";
+import { usePanelMotion } from "@/shared/lib/motion/panels";
 
 /**
  * The composer's `/` menu (plan 35), opened by a bare `/word` in the draft.
@@ -19,7 +20,8 @@ import { cn } from "@/shared/lib/utils";
  * header — whether the composer sits mid-screen or at the bottom.
  */
 export function SlashCommandMenu({ slash }: { slash: SlashComposer }) {
-  const reduceMotion = useReducedMotion();
+  // Opens and closes with the shared popover motion, from the composer below it.
+  const { popover } = usePanelMotion();
   const active = slash.items[Math.min(slash.activeIndex, slash.items.length - 1)];
   const listRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -39,10 +41,8 @@ export function SlashCommandMenu({ slash }: { slash: SlashComposer }) {
   return (
     <motion.div
       ref={panelRef}
-      initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 4 }}
-      transition={{ duration: 0.18, ease: "easeOut" }}
+      {...popover}
+      style={{ transformOrigin: "bottom center" }}
       className="absolute bottom-[calc(100%+0.5rem)] left-0 right-0 z-30"
     >
       <Command

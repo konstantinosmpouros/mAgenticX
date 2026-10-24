@@ -2,7 +2,8 @@
 
 One module per concept/router — auth, catalog, conversations, messages,
 attachments, sharing, inference, voice, skills, memories, preferences,
-usage, search, scheduled_tasks, agent_tools, user_agents, internal_memory —
+usage, search, scheduled_tasks, agent_tools, user_agents, internal_memory,
+internal_conversations —
 on the shared building blocks in ``base``. Re-exported so callers keep the
 stable ``from schema import ...`` import surface regardless of which module
 a DTO lives in.
@@ -55,6 +56,12 @@ from schema.inference import (
     InferenceStartPayload,
     InferenceStartResponse,
     ResumeActionDecisionIn,
+)
+from schema.internal_conversations import (
+    ExistingConversationsIn,
+    ExistingConversationsOut,
+    InputFileOut,
+    InputFilesOut,
 )
 from schema.internal_memory import (
     MemoryMessageMatch,
@@ -257,4 +264,8 @@ __all__ = [
     "UserSkill",
     "UserSkillDetail",
     "WorkspaceSearchResult",
+    "ExistingConversationsIn",
+    "ExistingConversationsOut",
+    "InputFileOut",
+    "InputFilesOut",
 ]

@@ -2,6 +2,7 @@ import * as React from "react";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 
 import { cn } from "@/shared/lib/utils";
+import { RADIX_MOTION } from "@/shared/lib/motion/panels";
 
 const TooltipProvider = TooltipPrimitive.Provider;
 
@@ -22,7 +23,8 @@ const TooltipContent = React.forwardRef<
         // sidebar/dropdown layers (z-[80]/z-[90]) so hover labels are never
         // clipped behind an overlay, while staying below toasts (z-[100]).
         // Tooltips are transient hover hints and are always meant to be on top.
-        "z-[95] overflow-hidden rounded-md border bg-popover px-3 py-1.5 text-sm text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 origin-[--radix-tooltip-content-transform-origin]",
+        "z-[95] overflow-hidden rounded-md border bg-popover px-3 py-1.5 text-sm text-popover-foreground shadow-md origin-[--radix-tooltip-content-transform-origin]",
+        RADIX_MOTION.popover,
         className,
       )}
       {...props}

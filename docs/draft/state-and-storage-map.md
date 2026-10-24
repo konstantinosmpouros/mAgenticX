@@ -14,8 +14,8 @@ whichever servers the gateway currently has open, owned by nothing here.
 | # | Store | Physical location | What it owns |
 | --- | --- | --- | --- |
 | 1 | **`chat_db`** (Postgres) | `chat_postgres` | Conversations, messages, attachments, users, preferences, agent *metadata*, shares, scheduled tasks, embeddings |
-| 2 | **`agent_runtime`** (Postgres) | Same instance, **different database** | LangGraph checkpoints — the agent's own memory of a thread |
-| 3 | **Agents volume** | `magenticx_data:/var/magenticx` | Agent definitions, skills, per-agent memory, tool prefs, conversation input/output files |
+| 2 | **`agent_runtime`** (Postgres) | Same instance, **different database** | LangGraph checkpoints — the agent's own memory of a thread — and every conversation's files (plan 43) |
+| 3 | **Agents volume** | `magenticx_data:/var/magenticx` | Agent definitions, skills, per-agent memory, tool prefs (conversation files moved to `agent_runtime`, plan 43) |
 | 4 | **Redis** | `redis` | Run event log (durable-ish), skill caches, logout denylist |
 | 5 | **Vectorstore** | `vectorstore` volume (Chroma) | RAG corpora — unrelated to a conversation's own state |
 
@@ -30,12 +30,12 @@ backup of the other**, and §6 is the list of things that live in exactly one.
 flowchart TD
     U["User sends a message"] --> M["chat_db · messages<br/>append-only tree"]
     M --> A["chat_db · attachments + blobs<br/>the uploaded bytes"]
-    A -->|seed_input_files| IN["volume · conversations/&lt;cid&gt;/input/<br/>TTL 72h"]
+    A -->|read on demand, never copied| IN["/conversation/input/<br/>a view of the uploads"]
     M --> R["agents service · run"]
     R --> EV["redis · inference:run:&lt;id&gt;:events<br/>the stream the UI replays"]
     R --> CP["agent_runtime · checkpoint<br/>thread_id + checkpoint_id"]
-    R --> OUT["volume · conversations/&lt;cid&gt;/output/<br/>TTL 168h"]
-    OUT -->|present_artifact → finalize| GEN["chat_db · attachments(origin='generated')"]
+    R --> OUT["agent_runtime · conversation_files<br/>for the life of the conversation"]
+    OUT -->|present_artifact → finalize snapshot| GEN["chat_db · attachments(origin='generated')"]
     CP --> M2["chat_db · messages.checkpoint_thread_id<br/>messages.checkpoint_id"]
     EV --> M3["chat_db · messages.raw_events"]
 ```
@@ -79,19 +79,16 @@ the durable one.
 
 ### 2.4 Files — the split that matters
 
-| Direction | Postgres | Volume |
+| Direction | Where | Lifetime |
 | --- | --- | --- |
-| **Upload** | `attachments` + `blobs` (the truth) | `conversations/<cid>/input/` — a **cache**, TTL 72h |
-| **Agent output** | only if `present_artifact` promoted it | `conversations/<cid>/output/` — TTL 168h |
+| **Upload** | `chat_db` `attachments` + `blobs`; the agent reads them through the bridge as `/conversation/input/<workspace_name>` | the message's |
+| **Agent output** (and offloads) | `agent_runtime` `conversation_files` → encrypted, per-user content-addressed blobs | the conversation's |
+| **Presented output** | also snapshotted as `attachments(origin='generated')` on the answer | the message's |
 
-An upload is durable in Postgres and mirrored to the volume for the agent to
-read. An agent's output is the reverse: it lives **only on the volume** until
-`present_artifact` designates it, at which point the bridge reads it back at run
-finalize and stores it as `attachments(origin='generated')`.
-
-**So anything the agent wrote and did not present is deleted after 7 days.**
-That is intended — `output/` is scratch — but it is the one place where "the
-agent made me a file" and "I still have the file" differ.
+Since plan 43 nothing a conversation owns is on the volume and nothing expires:
+a file the agent wrote lives until its conversation (or account) is deleted,
+presented or not. The volume trees from before are moved in once by
+`harness/conversation_files/legacy_volume.py` (temporary).
 
 ---
 
@@ -206,7 +203,7 @@ loss would destroy.
 | **Per-agent assigned skills** | Volume | Reverts to nothing assigned |
 | **Per-agent memory** (`AGENTS.md`, entries) | Volume | Everything every agent learned about every user |
 | **Per-(user, agent) tool prefs** | Volume | Enable/disable choices reset |
-| **Unpresented agent output** | Volume, 7-day TTL | By design, but invisible to the user |
+| **Agent output** | `agent_runtime` since plan 43 | Backed up with Postgres; no longer a volume risk |
 | **Checkpoints** | `agent_runtime` | Recoverable — cold-seed from the message tree |
 
 `chat_db` has an automated story (`pg_dump`). **The volume does not** — and it
@@ -248,7 +245,7 @@ than arriving at.
 | Checkpointer access | `magenticx/agents/utils/checkpointer.py` |
 | Path authority (every volume path) | `magenticx/agents/harness/filesystem/layout.py` |
 | Workspace mounts + write-deny | `magenticx/agents/harness/filesystem/workspace.py` |
-| Input/output TTL sweeper | `magenticx/agents/harness/filesystem/retention.py` |
+| Conversation files (store, backend, uploads view) | `magenticx/agents/harness/conversation_files/` |
 | Skill pools ①–④ | `magenticx/agents/harness/skill_registry/` |
 | Custom agent CRUD + validation | `magenticx/agents/harness/abstractions/user_agents.py` |
 | YAML agent engine | `magenticx/agents/harness/abstractions/yaml_agent.py` |

@@ -1,7 +1,8 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useTheme } from "next-themes";
 
 import { cn } from "@/shared/lib/utils";
+import { useLiquid, type LiquidMotion } from "@/shared/ui/liquid";
 import { orbFor } from "@/styles/theme/themes";
 
 // The artwork is the active theme's (`orb` in styles/theme/themes.ts), at full
@@ -57,6 +58,20 @@ function useOrbArtwork(src: string): { current: string; leaving: string | null }
  */
 export type OrbState = "idle" | "listening" | "thinking" | "speaking" | "asleep";
 
+/**
+ * The ripple of the liquid inside the glass, per state (shared/ui/liquid.tsx):
+ * calm when idle, livelier listening, a fast swirl thinking, in the speech
+ * rhythm speaking, nearly still asleep. The light flowing inside is CSS
+ * (.orb-flow in styles/orb.css).
+ */
+const ORB_LIQUID: Record<OrbState, LiquidMotion> = {
+  idle: { speed: 1, amount: 0.05 },
+  listening: { speed: 1.6, amount: 0.06 },
+  thinking: { speed: 2.8, amount: 0.06 },
+  speaking: { speed: 1.5, amount: 0.065, rhythm: true },
+  asleep: { speed: 0.2, amount: 0.02 },
+};
+
 type OrbProps = {
   state?: OrbState;
   /** Edge length in px (or any CSS length). Omit to size it with `className`. */
@@ -72,21 +87,29 @@ type OrbProps = {
  * theme (`orb` in themes.ts, --orb-glow-* in its CSS). Every state change eases
  * over (the motion amplitudes are transitioned custom properties, the extra
  * layers cross-fade) and nothing but transform, opacity and filter moves; a
- * theme change cross-fades the artwork. Under reduced motion it holds still
- * and the glow alone tells the states apart.
+ * theme change cross-fades the artwork. Inside the glass the liquid moves too:
+ * the artwork ripples (an SVG displacement that leaves the rim untouched) and
+ * light in the theme's colours flows through it, masked to its shape. Under
+ * reduced motion it holds still and the glow alone tells the states apart.
  */
 export function Orb({ state = "idle", size, label, className }: OrbProps) {
   const { resolvedTheme } = useTheme();
   const artwork = useOrbArtwork(orbFor(resolvedTheme));
-  const style: CSSProperties | undefined =
-    size === undefined
-      ? undefined
+  const root = useRef<HTMLDivElement>(null);
+  const liquid = useLiquid(root, ORB_LIQUID[state]);
+  // The artwork doubles as the mask of the light flowing inside it.
+  const style = {
+    "--orb-art": `url("${artwork.current}")`,
+    ...(size === undefined
+      ? null
       : {
           width: typeof size === "number" ? `${size}px` : size,
           height: typeof size === "number" ? `${size}px` : size,
-        };
+        }),
+  } as CSSProperties;
   return (
     <div
+      ref={root}
       className={cn("orb", className)}
       data-state={state}
       style={style}
@@ -113,6 +136,7 @@ export function Orb({ state = "idle", size, label, className }: OrbProps) {
                 decoding="async"
                 draggable={false}
                 className="orb-image"
+                style={liquid.imageStyle}
               />
               {artwork.leaving ? (
                 <img
@@ -126,11 +150,20 @@ export function Orb({ state = "idle", size, label, className }: OrbProps) {
                   className="orb-image orb-image-leaving"
                 />
               ) : null}
+              <div className="orb-flow orb-flow-color">
+                <div className="orb-flow-drift" />
+                <div className="orb-flow-swirl" />
+              </div>
+              <div className="orb-flow orb-flow-light">
+                <div className="orb-flow-caustic" />
+                <div className="orb-flow-voice" />
+              </div>
               <div className="orb-sheen" />
             </div>
           </div>
         </div>
       </div>
+      {liquid.filter}
     </div>
   );
 }

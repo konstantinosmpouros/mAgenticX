@@ -1,0 +1,161 @@
+/* The soft-node brand mark (shared/ui/brand-mark.tsx): the theme's artwork
+   floating gently over a soft glow in the theme's primary colour — the same
+   idle language as the orb (styles/orb.css), quieter. Static under reduced
+   motion.
+
+   Inside the glass the liquid moves: the image ripples (an SVG filter from
+   shared/ui/liquid.tsx that leaves the rim untouched) and the theme's glow
+   hues and a soft light drift through it, masked by the artwork itself
+   (--mark-art), so nothing shows outside its outline.
+
+   Markup: .brand-mark (sized by the caller) > .brand-mark-glow
+     + .brand-mark-float > img
+                         + .brand-mark-flow-color > .brand-mark-drift
+                         + .brand-mark-flow-light > .brand-mark-caustic */
+
+.brand-mark {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  isolation: isolate;
+}
+
+.brand-mark-glow {
+  position: absolute;
+  /* Wide and faint: scattered light around the mark, not a shadow under it. */
+  inset: -14%;
+  z-index: -1;
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle,
+    hsl(var(--primary) / 0.2) 0%,
+    hsl(var(--primary) / 0.07) 45%,
+    transparent 74%
+  );
+  filter: blur(24px);
+  animation: brand-mark-glow 6s ease-in-out infinite;
+}
+
+.brand-mark-float {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* Its own blending group: the flow mixes with the artwork, not the page. */
+  isolation: isolate;
+  animation: brand-mark-float 6s ease-in-out infinite;
+  will-change: translate;
+}
+
+.brand-mark-float > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.brand-mark-flow {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  -webkit-mask-image: var(--mark-art);
+  mask-image: var(--mark-art);
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+.brand-mark-flow > * {
+  position: absolute;
+}
+.brand-mark-flow-color {
+  mix-blend-mode: soft-light;
+}
+.brand-mark-flow-light {
+  mix-blend-mode: screen;
+}
+.brand-mark-drift {
+  inset: -20%;
+  border-radius: 9999px;
+  background:
+    radial-gradient(circle at 30% 32%, hsl(var(--orb-glow-1)) 0%, hsl(var(--orb-glow-1) / 0) 40%),
+    radial-gradient(circle at 72% 44%, hsl(var(--orb-glow-3)) 0%, hsl(var(--orb-glow-3) / 0) 40%),
+    radial-gradient(circle at 46% 76%, hsl(var(--orb-glow-2)) 0%, hsl(var(--orb-glow-2) / 0) 42%);
+  opacity: 0.8;
+  animation: brand-mark-turn 16s linear infinite;
+}
+.brand-mark-caustic {
+  inset: -15%;
+  background:
+    radial-gradient(circle at 34% 36%, rgb(255 255 255 / 0.5) 0%, rgb(255 255 255 / 0) 22%),
+    radial-gradient(circle at 66% 64%, hsl(var(--orb-glow-2) / 0.45) 0%, hsl(var(--orb-glow-2) / 0) 26%);
+  opacity: 0.4;
+  animation: brand-mark-caustic 11s ease-in-out infinite;
+}
+:root[data-theme="midnight"] .brand-mark-flow-light {
+  opacity: 0.75;
+}
+
+@keyframes brand-mark-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes brand-mark-caustic {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  25% {
+    transform: translate(7%, -5%) rotate(40deg);
+  }
+  50% {
+    transform: translate(2%, 6%) rotate(95deg);
+  }
+  75% {
+    transform: translate(-6%, 1%) rotate(50deg);
+  }
+}
+
+@keyframes brand-mark-float {
+  0%,
+  100% {
+    translate: 0 0;
+    rotate: 0deg;
+  }
+  50% {
+    translate: 0 -5%;
+    rotate: -1.5deg;
+  }
+}
+
+@keyframes brand-mark-glow {
+  0%,
+  100% {
+    opacity: 0.7;
+    scale: 0.94;
+  }
+  50% {
+    opacity: 1;
+    scale: 1.04;
+  }
+}
+
+/* Reduced motion: the artwork holds still and shows as drawn (the ripple's
+   filter is off too, in liquid.tsx). */
+@media (prefers-reduced-motion: reduce) {
+  .brand-mark-glow,
+  .brand-mark-float,
+  .brand-mark-drift,
+  .brand-mark-caustic {
+    animation: none;
+  }
+  .brand-mark-flow {
+    display: none;
+  }
+}

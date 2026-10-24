@@ -36,7 +36,7 @@ async def purge_user_threads(user_id: str, payload: PurgeThreadsRequest) -> Purg
     dependencies=[Depends(require_internal_caller)],
 )
 async def purge_user_data(user_id: str) -> PurgeUserResponse:
-    """Delete the user's memories, skills, agent definitions and workspace folder."""
+    """Delete the user's memories, skills, agent definitions and conversation files."""
     try:
         counts = await purge_user(user_id)
     except ValueError as exc:

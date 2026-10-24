@@ -22,11 +22,20 @@ def workspace(agents_service):
     return importlib.import_module("harness.filesystem.workspace")
 
 
+def _files(agent_slug="agent-1"):
+    """A run's conversation files over a pool that is never queried here."""
+    package = importlib.import_module("harness.conversation_files")
+    return package.ConversationFiles(
+        user_id="user-1", conversation_id="conv-1", agent_slug=agent_slug,
+        store=package.ConversationFileStore(object()),
+    )
+
+
 def _backend(workspace, *, reference_dir=None, default_skills_dir=None):
     factory = workspace.build_workspace_backend(
         user_id="user-1",
         agent_slug="agent-1",
-        conversation_id="conv-1",
+        files=_files(),
         use_memory=True,
         reference_dir=reference_dir,
         default_skills_dir=default_skills_dir,
@@ -170,7 +179,7 @@ def test_a_user_authored_agents_tier_one_resolves_through_the_store(workspace, s
     from deepagents.backends import StoreBackend
 
     factory = workspace.build_workspace_backend(
-        user_id="user-1", agent_slug="nova", conversation_id="conv-1",
+        user_id="user-1", agent_slug="nova", files=_files("nova"),
         use_memory=False, declared_skills=("note-taker", "planner"),
     )
     route = factory(None).routes["/default_skills/"]
@@ -183,7 +192,7 @@ def test_the_two_skill_mounts_cannot_see_each_others_entries(workspace, skills_f
     from tier ②. If they collided, a user-authored agent's read-only declared
     skills and its user-toggled ones would be the same set."""
     factory = workspace.build_workspace_backend(
-        user_id="user-1", agent_slug="nova", conversation_id="conv-1",
+        user_id="user-1", agent_slug="nova", files=_files("nova"),
         use_memory=False, declared_skills=("planner",),
     )
     routes = factory(None).routes
@@ -200,7 +209,7 @@ def test_a_declared_set_does_not_override_a_bundled_folder(workspace, skills_fs,
     defaults = tmp_path / "default_skills"
     defaults.mkdir()
     factory = workspace.build_workspace_backend(
-        user_id="user-1", agent_slug="omni", conversation_id="conv-1",
+        user_id="user-1", agent_slug="omni", files=_files("omni"),
         use_memory=False, default_skills_dir=defaults, declared_skills=("planner",),
     )
     assert isinstance(factory(None).routes["/default_skills/"], FilesystemBackend)
@@ -227,7 +236,7 @@ def test_a_user_authored_agents_reference_resolves_through_the_store(workspace, 
     from deepagents.backends import StoreBackend
 
     factory = workspace.build_workspace_backend(
-        user_id="user-1", agent_slug="nova", conversation_id="conv-1",
+        user_id="user-1", agent_slug="nova", files=_files("nova"),
         use_memory=False, reference_namespace=("user-1", "nova"),
     )
     route = factory(None).routes["/reference/"]
@@ -243,11 +252,28 @@ def test_an_image_folder_wins_over_a_namespace(workspace, skills_fs, tmp_path):
     definition = tmp_path / "definition"
     definition.mkdir()
     factory = workspace.build_workspace_backend(
-        user_id="user-1", agent_slug="omni", conversation_id="conv-1",
+        user_id="user-1", agent_slug="omni", files=_files("omni"),
         use_memory=False, reference_dir=definition,
         reference_namespace=("user-1", "omni"),
     )
     assert isinstance(factory(None).routes["/reference/"], FilesystemBackend)
+
+
+# ---------------------------------------------------------------------------
+# The conversation's files — rows, one route per prefix
+# ---------------------------------------------------------------------------
+def test_the_conversation_mounts_are_one_store_with_no_overlapping_routes(workspace, skills_fs):
+    """One ``/conversation/`` route (uploads inside it) instead of three
+    overlapping ones, so a grep from the root sees each file once; the offload
+    prefixes are routes of their own, outside ``/conversation/``, so their
+    write-deny cannot be sidestepped through it."""
+    from harness.conversation_files import ConversationFilesBackend
+
+    routes = _backend(workspace).routes
+    conversation_routes = [prefix for prefix in routes if prefix.startswith("/conversation")]
+    assert sorted(conversation_routes) == ["/conversation/", "/conversation_history/"]
+    for prefix in ("/conversation/", "/large_tool_results/", "/conversation_history/"):
+        assert isinstance(routes[prefix], ConversationFilesBackend)
 
 
 def test_no_reference_route_when_neither_source_is_given(workspace, skills_fs):

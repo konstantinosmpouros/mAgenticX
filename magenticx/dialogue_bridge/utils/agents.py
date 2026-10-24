@@ -12,7 +12,7 @@ from sqlalchemy.sql import func
 from core.settings import settings
 from utils import agent_tool_prefs
 from core.security.tls import get_httpx_client_cert, get_httpx_verify
-from core.database import AgentTable, MessageTable, SessionLocal, UserPreferencesTable
+from core.database import AgentTable, SessionLocal, UserPreferencesTable
 from core.security.internal_trust import internal_service_headers
 from core.error_handling import upstream_error_handler
 
@@ -106,25 +106,17 @@ def build_agent_resume_url(agent: AgentTable) -> str:
     return f"{AGENTS_SERVICE_URL.rstrip('/')}/agents/{slug}/resume"
 
 
-def build_agent_input_files_url(agent: AgentTable, user_id: str, conversation_id: str) -> str:
-    """PUT endpoint that seeds user-uploaded files into a conversation's input/ dir."""
-    slug = _require_agent_slug(agent)
+def build_conversation_files_url(user_id: str, conversation_id: str) -> str:
+    """A conversation's files in the agents service (plan 43): keyed by the
+    conversation, never by agent — the files belong to the conversation."""
     base = AGENTS_SERVICE_URL.rstrip("/")
-    return f"{base}/agents/{slug}/users/{user_id}/conversations/{conversation_id}/input-files"
+    return f"{base}/users/{user_id}/conversations/{conversation_id}/files"
 
 
-def build_agent_output_files_url(agent: AgentTable, user_id: str, conversation_id: str) -> str:
-    """GET endpoint that reads named files back out of a conversation's output/
-    dir (the run-end capture of generated attachments)."""
-    slug = _require_agent_slug(agent)
+def build_conversation_reap_url(user_id: str, conversation_id: str) -> str:
+    """POST endpoint that drops a deleted conversation's threads and files."""
     base = AGENTS_SERVICE_URL.rstrip("/")
-    return f"{base}/agents/{slug}/users/{user_id}/conversations/{conversation_id}/output-files"
-
-
-def build_agent_output_manifest_url(agent: AgentTable, user_id: str, conversation_id: str) -> str:
-    """GET endpoint listing every file in a conversation's output/ dir (path,
-    size, SHA-256) — read at run end so every file the agent wrote is stored."""
-    return f"{build_agent_output_files_url(agent, user_id, conversation_id)}/manifest"
+    return f"{base}/users/{user_id}/conversations/{conversation_id}/reap"
 
 
 def build_agent_commands_url(agent: AgentTable, user_id: str) -> str:
@@ -142,12 +134,6 @@ def build_agent_compact_url(agent: AgentTable) -> str:
 def build_agent_compact_undo_url(agent: AgentTable) -> str:
     """POST endpoint that undoes a manual compaction still at the branch's head."""
     return f"{AGENTS_SERVICE_URL.rstrip('/')}/agents/{_require_agent_slug(agent)}/compact/undo"
-
-
-def build_agent_reap_url(agent_slug: str, user_id: str, conversation_id: str) -> str:
-    """POST endpoint that reaps a conversation's checkpoint threads + filesystem dir."""
-    base = AGENTS_SERVICE_URL.rstrip("/")
-    return f"{base}/agents/{agent_slug}/users/{user_id}/conversations/{conversation_id}/reap"
 
 
 def _require_agent_slug(agent: AgentTable) -> str:
@@ -350,51 +336,24 @@ async def get_agent_by_id(agent_id: str) -> AgentTable | None:
         return None
 
 
-async def reap_conversation_runtime(db: AsyncSession, user_id: str, conversation_id: str) -> None:
-    """Best-effort: drop a conversation's durable checkpoint threads + per-agent
-    filesystem dirs on the agents service. Call BEFORE deleting the conversation
-    row (it reads the AI messages' agent_id + checkpoint_thread_id). Never
-    raises — a cleanup miss leaves reapable orphans, it must not block delete.
-
-    Threads are grouped by the agent that produced them so each agent reaps its
-    own threads and its own per-(user, agent, conversation) filesystem dir
-    (a conversation may mix agents).
-    """
-    result = await db.execute(
-        select(MessageTable.agent_id, MessageTable.checkpoint_thread_id).where(
-            MessageTable.conversation_id == conversation_id,
-            MessageTable.sender == "ai",
-        )
-    )
-    threads_by_agent: Dict[str, set[str]] = {}
-    for agent_id, thread_id in result.all():
-        if not agent_id:
-            continue
-        bucket = threads_by_agent.setdefault(agent_id, set())
-        if thread_id:
-            bucket.add(thread_id)
-    if not threads_by_agent:
-        return
-
-    timeout = settings.http.agents_timeout
-    headers = internal_service_headers(get_context().get("request_id"))
-    async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()) as client:
-        for agent_id, thread_ids in threads_by_agent.items():
-            agent = await get_agent_by_id(agent_id)
-            if agent is None or not getattr(agent, "slug", None):
-                continue
-            url = build_agent_reap_url(agent.slug, str(user_id), str(conversation_id))
-            try:
-                resp = await client.post(url, json={"thread_ids": sorted(thread_ids)}, headers=headers)
-                resp.raise_for_status()
-            except Exception:
-                logger.warning(
-                    "conversation_reap_failed",
-                    "Failed to reap agent runtime for a deleted conversation",
-                    exc_info=True,
-                    conversation_id=conversation_id,
-                    agent_slug=agent.slug,
-                )
+async def copy_conversation_files(user_id: str, source_id: str, target_id: str) -> None:
+    """Give a fork its source conversation's files (paths only — the agents
+    service shares the bytes). Best-effort: a fork without them is still a
+    fork, so a failure is logged, not raised."""
+    url = f"{build_conversation_files_url(user_id, source_id)}/copy"
+    try:
+        async with httpx.AsyncClient(
+            timeout=settings.http.agents_timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()
+        ) as client:
+            resp = await client.post(
+                url,
+                json={"target_conversation_id": target_id},
+                headers=internal_service_headers(get_context().get("request_id")),
+            )
+            resp.raise_for_status()
+    except httpx.HTTPError as exc:
+        logger.warning("conversation_files_copy_failed", "Could not give a fork its source's files",
+                       conversation_id=target_id, error_type=type(exc).__name__)
 
 
 async def _memory_prefs(db: AsyncSession, user_id: str) -> Dict[str, str]:

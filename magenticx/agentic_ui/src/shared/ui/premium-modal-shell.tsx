@@ -2,6 +2,7 @@ import * as React from "react";
 import { X } from "lucide-react";
 
 import { Button } from "@/shared/ui/button";
+import { ModalLayer } from "@/shared/ui/modal-layer";
 import { pushModalShell } from "@/shared/lib/modalStack";
 import { cn } from "@/shared/lib/utils";
 
@@ -22,6 +23,10 @@ import { cn } from "@/shared/lib/utils";
  * so its title and buttons stay on screen (see EditProfileDialog); any other
  * child scrolls inside the card. It is never clipped and never scrolls the
  * page behind it.
+ *
+ * It appears and leaves with the shared `panel` motion (shared/lib/motion/panels):
+ * on close the card and the backdrop animate out with the last content they
+ * showed, so callers simply pass `open={false}` and keep rendering the shell.
  */
 type PremiumModalShellProps = {
   open: boolean;
@@ -62,42 +67,31 @@ export function PremiumModalShell({
     return unregister;
   }, [open]);
 
-  if (!open) return null;
-
   return (
-    <div className="dark fixed inset-0 z-[60] flex items-center justify-center px-4 py-6">
-      <div
-        aria-hidden="true"
-        className="absolute inset-0 z-0 bg-black/80 backdrop-blur-md animate-in fade-in-0 duration-200"
-        onClick={onClose}
-      />
-      <div
-        ref={cardRef}
-        role="dialog"
-        aria-modal="true"
-        tabIndex={-1}
-        className={cn(
-          "relative z-10 w-full outline-none animate-in fade-in-0 zoom-in-95 duration-200 ease-out",
-          className,
-        )}
-      >
-        {/* Capped at the window minus the overlay's py-6 (3rem). */}
-        <div className="relative flex max-h-[calc(100dvh-3rem)] flex-col overflow-y-auto overflow-x-hidden overscroll-contain rounded-[1.6rem] border border-white/[0.14] bg-[#151515] text-white shadow-[0_28px_100px_rgba(0,0,0,0.72)] [scrollbar-color:rgba(255,255,255,0.2)_transparent] [scrollbar-width:thin]">
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/20" />
-          {showClose ? (
-            <Button
-              size="icon"
-              variant="ghost"
-              aria-label={closeLabel}
-              onClick={onClose}
-              className="absolute right-5 top-5 z-20 h-9 w-9 rounded-full text-white/65 shadow-sm transition hover:bg-white/10 hover:text-white focus-visible:ring-2 focus-visible:ring-white/35 focus-visible:ring-offset-0 focus-visible:outline-none"
-            >
-              <X size={18} />
-            </Button>
-          ) : null}
-          {children}
-        </div>
+    <ModalLayer
+      open={open}
+      onBackdropClick={onClose}
+      className="dark z-[60] px-4 py-6"
+      cardClassName={cn("w-full outline-none", className)}
+      cardRef={cardRef}
+      cardProps={{ role: "dialog", "aria-modal": true, tabIndex: -1 }}
+    >
+      {/* Capped at the window minus the overlay's py-6 (3rem). */}
+      <div className="relative flex max-h-[calc(100dvh-3rem)] flex-col overflow-y-auto overflow-x-hidden overscroll-contain rounded-[1.6rem] border border-white/[0.14] bg-[#151515] text-white shadow-[0_28px_100px_rgba(0,0,0,0.72)] [scrollbar-color:rgba(255,255,255,0.2)_transparent] [scrollbar-width:thin]">
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/20" />
+        {showClose ? (
+          <Button
+            size="icon"
+            variant="ghost"
+            aria-label={closeLabel}
+            onClick={onClose}
+            className="absolute right-5 top-5 z-20 h-9 w-9 rounded-full text-white/65 shadow-sm transition hover:bg-white/10 hover:text-white focus-visible:ring-2 focus-visible:ring-white/35 focus-visible:ring-offset-0 focus-visible:outline-none"
+          >
+            <X size={18} />
+          </Button>
+        ) : null}
+        {children}
       </div>
-    </div>
+    </ModalLayer>
   );
 }

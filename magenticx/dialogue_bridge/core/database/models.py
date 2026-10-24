@@ -542,10 +542,14 @@ class AttachmentTable(Base):
     # Agent-supplied display metadata — populated for generated artifacts only.
     title = Column(String, nullable=True)
     summary = Column(String, nullable=True)
-    # SHA-256 of a generated file's bytes (migration 0039). The run-end capture
-    # stores every file the agent wrote; this is how it knows a file is already
-    # held, so an unchanged one is never stored twice. NULL for uploads.
+    # SHA-256 of the bytes: generated files since migration 0039, uploads since
+    # 0042. The agents service checks an upload it reads against it.
     content_sha256 = Column(String(64), nullable=True)
+    # An upload's name in the agent's /conversation/input/ folder (migration
+    # 0042): one safe path segment, unique within the conversation, assigned
+    # once at upload and never changed (utils/workspace_names.py). The history
+    # the agent reads and the file it opens agree on it. NULL for generated files.
+    workspace_name = Column(String, nullable=True)
     # The agent showed this file to the user (present_artifact) — it has a card.
     # A generated file that was only written, never presented, stays private to
     # the owner: share links and the PDF export carry uploads and presented
@@ -619,6 +623,28 @@ event.listen(
         "FOR EACH ROW WHEN (OLD.blob_id IS NOT NULL) EXECUTE FUNCTION delete_attachment_blob()"
     ).execute_if(dialect="postgresql"),
 )
+
+
+class PendingRuntimeReapTable(Base):
+    """A deleted conversation whose agents-service state is not gone yet (0042).
+
+    Written in the transaction that deletes the conversation, so a delete can
+    never forget to reap: the row names what the agents service must drop
+    (the checkpoint threads; the files are found by the conversation id) and
+    is removed once it confirms. Drained right after each delete and at boot —
+    no loop, no TTL; it exists only until the reap succeeds
+    (utils/runtime_reaps.py). Keyed by the conversation, which is gone, so
+    there is no foreign key to it; the user's cascades.
+    """
+
+    __tablename__ = "pending_runtime_reaps"
+
+    conversation_id = Column(String, primary_key=True)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    thread_ids = Column(JSON, nullable=False)
+    attempts = Column(Integer, nullable=False, default=0, server_default="0")
+    last_error = Column(String, nullable=True)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
 
 
 class ScheduledTaskTable(Base):

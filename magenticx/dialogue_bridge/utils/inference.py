@@ -168,9 +168,11 @@ def serialise_message_with_images_for_agent(msg: MessageTable, *, include_input_
     Convert a MessageTable (with attachments) into a LangChain message with multimodal content.
     - Images are embedded as data-URLs (so a vision model sees them this turn)
     - Other attachments are listed in a text block. When ``include_input_paths``
-      is set (deep agents, which have a filesystem) the note references the
-      file's ``/conversation/input/<name>`` path so the agent can ``read_file``
-      it; otherwise (LangGraph agents) it is listed by filename only.
+      is set (deep agents, which have a filesystem) an upload's note references
+      its ``/conversation/input/<workspace name>`` path so the agent can
+      ``read_file`` it — the stable name it was given at upload, which is the
+      name the agent's input folder lists; otherwise (LangGraph agents, and
+      files the agent generated) it is listed by filename only.
     """
     role = "user" if msg.sender == "user" else "ai"
     text_content = (msg.content or "").strip()
@@ -208,9 +210,10 @@ def serialise_message_with_images_for_agent(msg: MessageTable, *, include_input_
                 # Non-image attachments are summarized as text bullets.
                 mime_label = getattr(attachment, "mime_type", None)
                 label = f"{name} ({mime_label})" if mime_label else name
-                if include_input_paths:
-                    # Point the agent at the on-disk copy it can read on demand.
-                    label = f"{label} — /conversation/input/{name}"
+                if include_input_paths and getattr(attachment, "origin", "upload") == "upload":
+                    # Point the agent at the upload it can read on demand.
+                    workspace_name = getattr(attachment, "workspace_name", None) or name
+                    label = f"{label} — /conversation/input/{workspace_name}"
                 other_attachment_notes.append(label)
 
     if other_attachment_notes:

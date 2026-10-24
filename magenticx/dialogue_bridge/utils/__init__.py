@@ -7,7 +7,6 @@ from utils.agents import (
     get_agent_by_id,
     get_cached_agents,
     list_user_agents,
-    reap_conversation_runtime,
     sync_agents_with_service,
 )
 from utils.conversations import (
@@ -105,7 +104,6 @@ __all__ = [
     "prepare_inference_history",
     "read_aloud_response",
     "read_capped_dictation_audio",
-    "reap_conversation_runtime",
     "recent_conversations_for_suggestions",
     "recent_history_for_voice_instructions",
     "resolve_conversation_title",

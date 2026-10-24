@@ -341,9 +341,7 @@ export default function SharedConversationPage() {
         </section>
       ) : null}
 
-      {selectedImage && (
-        <ImageLightbox src={selectedImage} onClose={() => setSelectedImage(null)} />
-      )}
+      <ImageLightbox src={selectedImage} onClose={() => setSelectedImage(null)} />
     </div>
   );
 }

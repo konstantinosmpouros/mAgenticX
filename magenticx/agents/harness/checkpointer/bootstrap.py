@@ -23,6 +23,7 @@ from core.logging import get_logger
 from harness.checkpointer.store import set_checkpointer
 from harness.memory.pool import set_memory_pool
 from harness.agent_registry.store import AgentDefinitionStore
+from harness.conversation_files import ConversationFileStore
 from harness.skill_registry.store import SkillStore
 from harness.memory.store import AgentMemoryStore
 
@@ -132,6 +133,10 @@ async def init_durable_checkpointer(app: FastAPI) -> None:
         # consumer owns it. Only the catalog row (id, name, is_active) stays in
         # `chat_db`, where the bridge lists and routes agents without a hop.
         await AgentDefinitionStore(pool).setup()
+        # A conversation's files (plan 43): the agent reads and writes them on
+        # nearly every tool call, so they are local SQL on this pool, not a
+        # hop to the bridge.
+        await ConversationFileStore(pool).setup()
 
     serde = None
     aes_key = cfg.aes_key.get_secret_value()

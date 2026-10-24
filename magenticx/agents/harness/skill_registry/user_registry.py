@@ -38,7 +38,7 @@ import yaml
 
 from core.logging import get_logger
 from core.settings import settings
-from harness.filesystem.provisioner import _safe_segment
+from harness.filesystem.layout import safe_segment as _safe_segment
 from harness.memory.pool import get_memory_pool
 from harness.skill_registry.remote import (
     SOURCES,

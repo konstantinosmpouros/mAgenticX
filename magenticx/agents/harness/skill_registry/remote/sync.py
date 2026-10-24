@@ -474,7 +474,7 @@ async def run_remote_skill_sync_loop() -> None:
     Returns at once when ``REMOTE_SKILLS_ENABLED`` is false (the kill switch) —
     then no request leaves the service.
     A failed pass is logged and retried next interval; it never takes the
-    service down, the same contract the retention sweeper has.
+    service down.
     """
     cfg = settings.remote_skills
     if not cfg.enabled:

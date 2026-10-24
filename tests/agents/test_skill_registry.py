@@ -293,38 +293,11 @@ async def test_removing_a_skill_the_user_never_held_is_not_an_error(ur):
 
 
 # ---------------------------------------------------------------------------
-# The provisioner, now that skills are not directories
+# Path segments
 # ---------------------------------------------------------------------------
 def test_safe_segment_rejects_traversal(skills_fs):
-    prov = skills_fs.service.provisioner
+    layout = skills_fs.service.filesystem_layout
     for bad in ["", "a/b", "a\\b", "..", ".hidden"]:
         with pytest.raises(ValueError):
-            prov._safe_segment(bad)
-    assert prov._safe_segment("ok-id") == "ok-id"
-
-
-def test_first_contact_creates_no_memory_or_skill_tree(skills_fs):
-    """Both moved into ``agent_runtime``. The provisioner used to mint an empty
-    ``skills/`` here and seed ``memory/entries/``; a directory it still created
-    would be re-created after every prune and read by nothing."""
-    prov = skills_fs.service.provisioner
-    prov.ensure_user_agent_filesystem(user_id="user-1", agent_slug="omni")
-
-    agent_dir = prov.agent_root("user-1", "omni")
-    assert not (agent_dir / "skills").exists()
-    assert not (agent_dir / "default_skills").exists()
-    assert not (agent_dir / "memory").exists()
-
-
-def test_a_bad_agent_slug_is_rejected_even_though_no_directory_bears_it(skills_fs):
-    # The slug stopped being a path component on this call; validating it anyway
-    # keeps the failure here rather than deeper in, where it becomes a DB key.
-    prov = skills_fs.service.provisioner
-    with pytest.raises(ValueError):
-        prov.ensure_user_agent_filesystem(user_id="user-1", agent_slug="../escape")
-
-
-def test_first_contact_with_a_conversation_creates_its_working_dir(skills_fs):
-    prov = skills_fs.service.provisioner
-    prov.ensure_user_agent_filesystem(user_id="user-1", agent_slug="omni", conversation_id="conv-1")
-    assert prov.conversation_root("user-1", "omni", "conv-1").is_dir()
+            layout.safe_segment(bad)
+    assert layout.safe_segment("ok-id") == "ok-id"

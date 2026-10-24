@@ -19,9 +19,9 @@ reading closely. A crop smaller than ``MIN_DETAIL_EDGE`` is scaled up, because
 a 60x20 slice of a screenshot carries the same few pixels of text whether or
 not the model is told to look harder.
 
-Bound **per run** to this conversation, and readable from both mounts:
-``/conversation/input/`` (the user's uploads) and ``/conversation/output/``
-(what the agent has produced).
+Bound **per run** to the run's conversation files, and readable from both
+folders: ``/conversation/input/`` (the user's uploads) and
+``/conversation/output/`` (what the agent has produced).
 """
 from __future__ import annotations
 
@@ -36,7 +36,9 @@ from pydantic import BaseModel, Field
 
 from core.logging import get_logger
 from core.settings import settings
-from harness.filesystem import resolve_conversation_file
+from harness.conversation_files import ConversationFiles, InputsUnavailable
+from harness.conversation_files.inputs import UNAVAILABLE_MESSAGE
+from harness.conversation_files.paths import INPUT_PREFIX, OUTPUT_PREFIX, InvalidPath, normalise
 
 try:  # optional at import time so a missing wheel degrades instead of crashing
     from PIL import Image
@@ -200,29 +202,20 @@ def _describe(raw: bytes) -> str:
     )
 
 
-def build_view_image_tool(
-    *, user_id: str, agent_slug: str, conversation_id: str
-) -> StructuredTool:
-    """Return a ``view_image`` tool bound to this run's conversation."""
+def build_view_image_tool(*, files: ConversationFiles) -> StructuredTool:
+    """Return a ``view_image`` tool bound to this run's conversation files."""
 
-    def _view_image(
+    async def _view_image(
         path: str, tool_call_id: str, region: Optional[_Region] = None
     ) -> ToolMessage:
         try:
-            resolved = resolve_conversation_file(
-                user_id=user_id,
-                agent_slug=agent_slug,
-                conversation_id=conversation_id,
-                virtual_path=path,
-            )
-        except ValueError as exc:
+            resolved = normalise((path or "").strip())
+        except InvalidPath as exc:
             return _failure(f"Could not view the image: {exc}", tool_call_id)
-
-        if not resolved.is_file():
+        if not resolved.startswith((INPUT_PREFIX, OUTPUT_PREFIX)):
             return _failure(
-                f"No image at {path!r} — it does not exist in this filesystem. "
-                "Use 'ls' to see what is in '/conversation/input/' and "
-                "'/conversation/output/'.",
+                f"Could not view the image: path must be under {INPUT_PREFIX} or "
+                f"{OUTPUT_PREFIX}: {path!r}",
                 tool_call_id,
             )
 
@@ -236,16 +229,16 @@ def build_view_image_tool(
             )
 
         try:
-            raw = resolved.read_bytes()
-        except OSError as exc:
-            logger.warning(
-                "view_image_read_failed",
-                "Could not read an image for view_image",
-                agent_slug=agent_slug,
-                conversation_id=conversation_id,
-                failure_reason=type(exc).__name__,
+            raw = await files.read_bytes(resolved)
+        except InputsUnavailable:
+            return _failure(UNAVAILABLE_MESSAGE, tool_call_id)
+        if raw is None:
+            return _failure(
+                f"No image at {path!r} — it does not exist in this filesystem. "
+                "Use 'ls' to see what is in '/conversation/input/' and "
+                "'/conversation/output/'.",
+                tool_call_id,
             )
-            return _failure(f"Could not read {path!r}.", tool_call_id)
 
         max_bytes = settings.filesystem.view_image_max_bytes
         if len(raw) > max_bytes:
@@ -269,8 +262,8 @@ def build_view_image_tool(
                 logger.warning(
                     "view_image_crop_failed",
                     "Could not crop an image for view_image",
-                    agent_slug=agent_slug,
-                    conversation_id=conversation_id,
+                    agent_slug=files.agent_slug,
+                    conversation_id=files.conversation_id,
                     failure_reason=type(exc).__name__,
                 )
                 return _failure(
@@ -284,9 +277,9 @@ def build_view_image_tool(
         logger.info(
             "image_viewed",
             "Agent viewed an image from the conversation filesystem",
-            agent_slug=agent_slug,
-            conversation_id=conversation_id,
-            filename=resolved.name,
+            agent_slug=files.agent_slug,
+            conversation_id=files.conversation_id,
+            filename=Path(resolved).name,
             image_bytes=len(raw),
             zoomed=region is not None,
         )
@@ -305,7 +298,7 @@ def build_view_image_tool(
         )
 
     return StructuredTool.from_function(
-        func=_view_image,
+        coroutine=_view_image,
         name="view_image",
         description=(
             "Look at an image in this conversation — a screenshot or photo the "

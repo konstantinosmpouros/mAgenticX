@@ -530,19 +530,12 @@ class AttachmentSettings(BaseSettings):
 
 
 class OutputCaptureSettings(BaseSettings):
-    """The run-end capture of every file an agent wrote (utils/output_capture.py).
-
-    Bounds one run: how many files and bytes are stored at most, and how much is
-    fetched from the agents service in one request — so a run that wrote many
-    large files is captured without holding them all in memory at once.
-    """
+    """The run-end snapshot of the files an agent presented (utils/output_capture.py)."""
     model_config = _BASE_MODEL_CONFIG
 
-    max_files_per_run: int = Field(100, ge=1, validation_alias="OUTPUT_CAPTURE_MAX_FILES_PER_RUN")
-    max_bytes_per_run: int = Field(256 * 1024 * 1024, ge=1024, validation_alias="OUTPUT_CAPTURE_MAX_BYTES_PER_RUN")
-    # The agents service reads at most OUTPUT_MAX_FILES (20) per request.
+    # Files fetched per request; the agents service reads at most
+    # OUTPUT_MAX_FILES (20) per request.
     batch_files: int = Field(20, ge=1, le=20, validation_alias="OUTPUT_CAPTURE_BATCH_FILES")
-    batch_bytes: int = Field(32 * 1024 * 1024, ge=1024, validation_alias="OUTPUT_CAPTURE_BATCH_BYTES")
 
 
 class ExportSettings(BaseSettings):

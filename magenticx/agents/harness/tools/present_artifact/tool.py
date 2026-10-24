@@ -16,21 +16,25 @@ own card, and the bridge dedupes the finalize fetch by path.
 
 The tool itself does NOT emit the AG-UI event (deep agents don't stream the
 custom channel — see ``harness.agui.normalizer``). It validates the file exists
-under the conversation's output mount and returns a confirmation the model can
+under the conversation's output folder and returns a confirmation the model can
 act on; the ``AGUIStreamNormalizer`` detects the ``present_artifact`` tool call
 by name and synthesizes the ``PRESENT_ARTIFACT`` custom event (top-level agent
-only). The bridge reads the referenced bytes back at finalize and persists them.
+only). The bridge reads the referenced bytes back at finalize and stores them
+as a snapshot attachment on the answer.
 
-Bound **per run** (closes over this run's ``user_id`` + ``agent_slug`` +
-``conversation_id``), so it can only ever reach this conversation's output dir.
+Bound **per run** to the run's conversation files, so it can only ever reach
+this conversation's output folder.
 """
 from __future__ import annotations
+
+from pathlib import PurePosixPath
 
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
 from core.logging import get_logger
-from harness.filesystem import resolve_output_file
+from harness.conversation_files import ConversationFiles
+from harness.conversation_files.paths import OUTPUT_PREFIX, InvalidPath, normalise
 
 logger = get_logger(__name__)
 
@@ -54,30 +58,25 @@ class _PresentArtifactArgs(BaseModel):
     )
 
 
-def build_present_artifact_tool(
-    *, user_id: str, agent_slug: str, conversation_id: str
-) -> StructuredTool:
-    """Return a ``present_artifact`` tool bound to this run's conversation."""
+def build_present_artifact_tool(*, files: ConversationFiles) -> StructuredTool:
+    """Return a ``present_artifact`` tool bound to this run's conversation files."""
 
-    def _present_artifact(path: str, title: str, summary: str = "") -> str:
+    async def _present_artifact(path: str, title: str, summary: str = "") -> str:
         title = (title or "").strip()[:_MAX_TITLE]
         if not title:
             return "Could not present: 'title' is required."
 
-        # Resolve + guard the path against the output mount. A path outside
-        # output/ (or with an illegal segment) is a hard error the model should
-        # fix, not a silent no-op.
+        # Guard the path against the output folder. A path outside output/ (or
+        # with an illegal segment) is a hard error the model should fix, not a
+        # silent no-op.
         try:
-            resolved = resolve_output_file(
-                user_id=user_id,
-                agent_slug=agent_slug,
-                conversation_id=conversation_id,
-                virtual_path=path,
-            )
-        except ValueError as exc:
+            resolved = normalise((path or "").strip())
+        except InvalidPath as exc:
             return f"Could not present: {exc}"
+        if not resolved.startswith(OUTPUT_PREFIX):
+            return f"Could not present: artifact path must be under {OUTPUT_PREFIX}: {path!r}"
 
-        if not resolved.is_file():
+        if not await files.exists(resolved):
             return (
                 f"Could not present: no file at {path!r}. Write the document to "
                 "'/conversation/output/' with write_file first, then present it."
@@ -86,9 +85,9 @@ def build_present_artifact_tool(
         logger.info(
             "artifact_presented",
             "Agent designated an output file as a user-facing deliverable",
-            agent_slug=agent_slug,
-            conversation_id=conversation_id,
-            filename=resolved.name,
+            agent_slug=files.agent_slug,
+            conversation_id=files.conversation_id,
+            filename=PurePosixPath(resolved).name,
         )
         return (
             f"'{title}' is now a document card in the conversation, which the "
@@ -98,7 +97,7 @@ def build_present_artifact_tool(
         )
 
     return StructuredTool.from_function(
-        func=_present_artifact,
+        coroutine=_present_artifact,
         name="present_artifact",
         description=(
             "Hand a finished document to the user, right where you are in the "

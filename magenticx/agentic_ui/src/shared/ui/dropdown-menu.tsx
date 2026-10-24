@@ -4,6 +4,7 @@ import { Check, ChevronRight, Circle } from "lucide-react";
 
 import { returnFocusOnlyForKeyboard } from "@/shared/lib/focus-return";
 import { cn } from "@/shared/lib/utils";
+import { RADIX_MOTION } from "@/shared/lib/motion/panels";
 
 /**
  * The shadcn wrapper over Radix's dropdown menu.
@@ -48,8 +49,8 @@ const DropdownMenuSubContent = React.forwardRef<
   <DropdownMenuPrimitive.SubContent
     ref={ref}
     className={cn(
-      "z-50 min-w-[8rem] overflow-hidden rounded-xl border border-border/60 bg-popover p-1 text-popover-foreground shadow-lg",
-      "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
+      "z-50 min-w-[8rem] overflow-hidden rounded-xl border border-border/60 bg-popover p-1 text-popover-foreground shadow-lg origin-[--radix-dropdown-menu-content-transform-origin]",
+      RADIX_MOTION.popover,
       className,
     )}
     {...props}
@@ -67,9 +68,8 @@ const DropdownMenuContent = React.forwardRef<
       sideOffset={sideOffset}
       onCloseAutoFocus={onCloseAutoFocus}
       className={cn(
-        "z-50 min-w-[10rem] overflow-hidden rounded-xl border border-border/60 bg-popover p-1 text-popover-foreground shadow-lg",
-        "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
-        "data-[side=bottom]:slide-in-from-top-1 data-[side=top]:slide-in-from-bottom-1",
+        "z-50 min-w-[10rem] overflow-hidden rounded-xl border border-border/60 bg-popover p-1 text-popover-foreground shadow-lg origin-[--radix-dropdown-menu-content-transform-origin]",
+        RADIX_MOTION.popover,
         className,
       )}
       {...props}

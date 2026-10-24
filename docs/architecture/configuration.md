@@ -233,8 +233,7 @@ See [account-deletion](../flows/account-deletion.md). The batch and rate bounds 
 | `ATTACHMENT_DOCX_PREVIEW_TOKEN_TTL_SECONDS` | `60` | Lifetime of a signed DOCX-preview token. |
 | `ATTACHMENT_INLINE_CACHE_MAX_AGE_SECONDS` | `300` | `Cache-Control max-age` on inline attachment responses. |
 | `ATTACHMENT_STREAM_CHUNK_BYTES` | `524288` (512 KB) | Chunk size when streaming a blob. |
-| `OUTPUT_CAPTURE_MAX_FILES_PER_RUN` / `OUTPUT_CAPTURE_MAX_BYTES_PER_RUN` | `100` / `268435456` (256 MB) | Most generated files stored from one run (presented first); the rest are left out and logged. |
-| `OUTPUT_CAPTURE_BATCH_FILES` / `OUTPUT_CAPTURE_BATCH_BYTES` | `20` / `33554432` (32 MB) | One fetch of output files from the agents service (≤ 20, its per-request cap). |
+| `OUTPUT_CAPTURE_BATCH_FILES` | `20` | Presented files fetched per request for the run-end snapshot (≤ 20, the agents service's per-request cap). |
 | `SPEECH_DICTATION_MAX_BYTES` | `26214400` (25 MB) | Max dictation upload. |
 | `SPEECH_DICTATION_READ_CHUNK_BYTES` | `1048576` (1 MB) | Read-chunk size for dictation. |
 | `SPEECH_READ_ALOUD_MAX_CHARS` | `2000` | Max characters per read-aloud request. |
@@ -338,7 +337,7 @@ LangGraph + DeepAgents runtime. Configuration splits into runtime infra, the dur
 | `AGENT_RUNTIME_POOL_TIMEOUT` | `30.0` | Wait for a pool connection (seconds). |
 | `AGENT_RUNTIME_SETUP_ON_STARTUP` | `true` | Run `AsyncPostgresSaver.setup()` (idempotent DDL) on boot. Emergency opt-out, mirrors the bridge's migration knob. |
 | `LANGGRAPH_STRICT_MSGPACK` | `true` | Strict msgpack deserialization allow-list — blocks the `JsonPlusSerializer` RCE class (CVE-2025-64439). Exported into the env LangGraph reads. **Leave on.** |
-| `LANGGRAPH_AES_KEY` | (secret, optional) | AES key for `EncryptedSerializer` (at-rest checkpoint encryption). Empty ⇒ no encryption. |
+| `LANGGRAPH_AES_KEY` | (secret, optional) | AES key for `EncryptedSerializer` (at-rest checkpoint encryption) — and, through the same cipher, for conversation file bytes (plan 43). Empty ⇒ no encryption of either. |
 
 ### Proxy trust, logging & redaction
 
@@ -398,20 +397,19 @@ Each built-in workflow agent picks its models per node. All accept `openai:<mode
 
 **Model windows** (`MODEL_CONTEXT_WINDOWS`, JSON, default `{"openai:gpt-6-luna": 1050000}`): the context window of a model the pinned `langchain-openai` has no profile for. Compaction and the composer's context ring need it; without it a model runs with no window. Registered through deepagents' `ProviderProfile` before an agent builds its model (`DeepAgent.register_model_windows` in `harness/abstractions/deep_agent.py`).
 
-### Deep-agent filesystem & summarization
+### Deep-agent filesystem, conversation files & summarization
 
 | Env var | Default | What it does |
 | --- | --- | --- |
-| `AGENTS_FILESYSTEM_ROOT` | `/var/agents/filesystem` | Per-user filesystem root (volume-backed) for `CompositeBackend` mounts — AGENT.md + enabled skills survive restarts. |
-| `INPUT_MAX_FILE_BYTES` | `26214400` (25 MB) | Server-side per-file cap on the conversation-input seeding endpoint (defence in depth; mirrors the bridge). |
+| `MAGENTICX_GLOBAL_ROOT` | `/var/magenticx/global` | The global plane on the `magenticx_data` volume: built-in agent definitions and the skills catalogue (build-time content). |
+| `CONVERSATION_FILE_MAX_BYTES` | `104857600` (100 MB) | Largest single conversation file (plan 43). A technical safety limit — one file is held in memory to encrypt and write it — not a quota: there is none, and no TTL. An over-cap `write_file`/`edit_file` returns an error the model can act on. |
+| `CONVERSATION_INPUT_CACHE_BYTES` | `134217728` (128 MB) | Process-wide cache of upload bytes read from the bridge for `/conversation/input/`, keyed by content hash. `0` disables it. |
+| `BRIDGE_CONVERSATIONS_PATH` | `/v1/internal/conversations` | The bridge's internal routes behind `/conversation/input/` (on `DIALOGUE_BRIDGE_URL`). |
+| `MAGENTICX_WORKSPACES_ROOT` | `/var/magenticx/workspaces` | **Temporary (plan 43).** Where the old per-conversation trees live until the one-off move into Postgres has emptied them. Remove with `LEGACY_VOLUME_MIGRATION_ENABLED`. |
+| `LEGACY_VOLUME_MIGRATION_ENABLED` | `true` | **Temporary (plan 43).** The background pass that imports, verifies and then deletes the old volume trees (see [deployment.md](deployment.md#one-off-move-of-conversation-files-into-postgres-plan-43)). `false` skips the pass; the per-run import still keeps every file visible. |
 | `VIEW_IMAGE_MAX_BYTES` | `10485760` (10 MB) | Largest image `view_image` will hand to the model. Unlike the AG-UI preview bounds this caps the **model's** copy, so it guards context cost rather than display size. |
-| `INPUT_MAX_FILES` | `10` | Server-side per-turn file cap. |
-| `OUTPUT_MANIFEST_MAX_FILES` | `500` | Most files one run-end `output/` manifest lists (path, size, SHA-256). |
-| `OUTPUT_HASH_CHUNK_BYTES` | `1048576` | Chunk size when hashing an output file. |
+| `OUTPUT_MAX_FILE_BYTES` / `OUTPUT_MAX_FILES` | `26214400` (25 MB) / `20` | Caps on the presented-file read the bridge snapshots at run end: larger files are reported missing, more paths per request is a 422. |
 | `SANDBOX_EXECUTION_ENABLED` | `false` | Fail-closed kill switch for sandboxed command execution: while false, workspace assembly refuses to mint a sandbox-capable default backend, which is exactly what would make deepagents expose its `execute` tool. Reserved for the future gVisor-class sandbox rollout. |
-| `WORKSPACE_INPUT_TTL_HOURS` | `72` | TTL for conversation `input/` cache files (bridge-seeded copies of DB attachment blobs). `0` disables the input sweep. |
-| `WORKSPACE_OUTPUT_TTL_HOURS` | `168` | TTL for conversation `output/` cache files (every file the agent wrote is stored in Postgres at run end, so the sweep loses nothing). `0` disables the output sweep. |
-| `WORKSPACE_SWEEP_INTERVAL_MINUTES` | `60` | Retention sweeper cadence (jittered ±10%; bounded 5–1440). |
 | `SUMMARIZATION_TRIGGER_FRACTION` | `0.95` | Compact automatically when the context reaches this fraction of a model's window (models with a known window — see `MODEL_CONTEXT_WINDOWS`). |
 | `SUMMARIZATION_KEEP_FRACTION` | `0.30` | Only bounds deepagents' overflow clipping: every compaction, automatic or manual, folds everything before the latest question. |
 | `SUMMARIZATION_TRIGGER_TOKENS` | `200000` | Fallback token trigger for profile-less models. |

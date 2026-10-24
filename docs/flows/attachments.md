@@ -256,49 +256,46 @@ The RAG system operates on two separate data sources:
 - ChromaDB collections populated out-of-band (not from user uploads)
 - Excel workbooks loaded from the `rag_service/data/` directory at startup
 
-Attachments still reach **deep agents** out-of-band of RAG — as files on the agent's conversation filesystem and (for images) inline base64 in the message — never through ChromaDB. See Phase 7 below. Automatic file-to-text extraction / chunking into the vector store is not performed.
+Attachments still reach **deep agents** out-of-band of RAG — as read-only files in the agent's `/conversation/input/` (served from `chat_db`) and (for images) inline base64 in the message — never through ChromaDB. See Phase 7 below. Automatic file-to-text extraction / chunking into the vector store is not performed.
 
 ---
 
 ## Phase 7 — Attachments and the Agent Filesystem
 
-Beyond chat display, uploaded files are made available to **deep agents** at inference time. The chat_db blob is the durable system of record; the agent gets a disk-backed copy seeded onto its conversation filesystem for the turn. Uploads live **on disk, not in the LangGraph checkpoint** — the durable checkpoint stores graph state only, never blob bytes.
+Deep agents see a conversation's files through their filesystem tools. Since plan 43 every byte a conversation owns lives in Postgres, for exactly as long as the conversation — there is no TTL and no copy on a volume:
 
-### Input / output filesystem split
-
-The workspace builder (`harness/filesystem/workspace.py`, `build_workspace_backend()` — `DeepAgent._build_composite_backend()` delegates to it) splits the per-conversation mount into two routes:
-
-| Route | Mode | Contents |
+| Route | Mode | Backed by |
 | --- | --- | --- |
-| `/conversation/input/` | read-only (write-denied via `FilesystemPermission`) | User-uploaded files seeded for this conversation |
-| `/conversation/output/` | read-write | Agent-produced artifacts |
+| `/conversation/input/` | read-only (write-deny + the backend refuses) | the bridge's **upload attachments** in `chat_db`, read on demand — never copied |
+| `/conversation/output/`, `/conversation/**` | read-write | rows in `agent_runtime.conversation_files` |
+| `/large_tool_results/`, `/conversation_history/` | written by deepagents' offloading only | the same table |
 
-The write-deny on `input/` keeps the agent from clobbering the user's uploads; artifacts go to `output/`. Omni's system prompt (`deep_agents/omni_agent/system_prompts.py`) instructs the agent to write to `/conversation/output/`. `ensure_user_agent_filesystem()` mkdirs both `input/` and `output/`.
+One `ConversationFilesBackend` (`harness/conversation_files/backend.py`) serves all three routes (`harness/filesystem/workspace.py`), with `FilesystemBackend`'s semantics and error texts. Files belong to the **conversation**, not to an agent: every agent of a mixed-agent conversation sees the same files. The uploads are not in the LangGraph checkpoint either — a resumed run reads them again.
 
-### Seeding flow (chat_db blob → bridge → agents input/)
+### Uploads → `/conversation/input/` (no copy)
 
 ```mermaid
 sequenceDiagram
-    participant D as dialogue_bridge (_run)
-    participant PG as chat_postgres (blobs)
-    participant A as agents service
+    participant A as agents (InputView)
+    participant D as dialogue_bridge (internal)
+    participant PG as chat_db
 
-    Note over D: new turn for a deep agent, before /stream
-    D->>PG: SELECT attachment blobs for the new user message
-    D->>A: PUT /agents/{slug}/users/{userId}/conversations/{convId}/input-files\n{ files: [{ name, bytes }] }
-    A->>A: seed_input_files() → write into /conversation/input/
-    D->>A: POST /agents/{slug}/stream
+    Note over A: first look at input/ in a run
+    A->>D: GET /v1/internal/conversations/{cid}/input-files?user_id=
+    D->>PG: every upload of the conversation, all branches (owner-checked)
+    D-->>A: [{name, attachment_id, size, sha256, …}]
+    A->>D: GET …/input-files/{attachment_id}?user_id= (on read)
+    D-->>A: bytes — checked against sha256, cached by it
 ```
 
-- The bridge's `_run` seeds **only the new turn's attachments** (deep agents only) before streaming, via `build_agent_input_files_url()` (`utils/agents.py`) → `PUT .../input-files`. The agents endpoint calls `seed_input_files()` (`harness/filesystem/provisioner.py`), which writes the bytes under `conversation_input_root()`.
-- The serialiser `serialise_message_with_images_for_agent()` still **inlines images as base64** in the message content (vision on the upload turn). For deep agents it additionally references each **non-image** file by its `/conversation/input/<name>` path (flag `include_input_paths=True`) so the agent can open it with its filesystem tools.
-- **LangGraph agents have no filesystem** — they are not seeded; they receive message content only (inline images, no input-path references).
+- **Stable names.** Each upload gets `attachments.workspace_name` when it is stored (`utils/workspace_names.py`, migration `0042` backfilled the rest): one safe path segment; the first file keeps a name, different bytes become `stem_1.ext`, the same bytes reuse it. Names never change, and forks and continued shares carry them, so a file from turn 1 is readable on turn 50 under the name the history shows.
+- **History.** `serialise_message_with_images_for_agent()` still inlines images; for deep agents a non-image **upload** is labelled `/conversation/input/<workspace_name>`. Generated files get no input path.
+- **The list** is fetched once per run, bytes once per hash (`CONVERSATION_INPUT_CACHE_BYTES`, process-wide LRU). A bridge that cannot answer makes the uploads *temporarily unavailable* — a readable tool error, never a failed run.
+- **LangGraph agents have no filesystem** — they receive message content only.
 
-### Generated files — every file the agent writes is stored
+### Generated files — durable rows, presented ones snapshotted
 
-`/conversation/output/` lives on the agents volume, which a TTL sweep empties after a week, so it is not the record. **At the end of every run the bridge stores every file the agent wrote there** — presented or not, whatever the run's outcome — as `attachments(origin='generated')` on the **assistant** message (plan 35 phase 0, `utils/output_capture.py`). Postgres is the record of a conversation's files; the volume is scratch.
-
-**Presenting** a file is a separate, display act: the built-in **`present_artifact(path, title, summary)`** tool gives it a card in the timeline. The call is a **mid-reply move, not an end-of-turn hand-off**: the timeline interleaves the artifact card at the position of the call (`pushArtifactBlock` closes the open content block, so text the agent writes afterwards starts *below* the card), and an agent may present several distinct files in one turn — each gets its own card. The tool never emits an AG-UI event itself. It validates that `path` resolves under the output mount and the file exists, then returns a confirmation. The **normalizer** detects the call by name and — **for the top-level orchestrator only** — synthesizes a `PRESENT_ARTIFACT` custom event carrying display metadata (`title`, `summary`, `filename`, `mime`), but no bytes. See [agui-protocol.md](../development/agui-protocol.md).
+Whatever the agent writes is a row in `conversation_files` (content-addressed, encrypted blobs — see [database-schema.md](../architecture/database-schema.md#conversation_files--conversation_file_blobs)). **Presenting** a file is the display act: the built-in **`present_artifact(path, title, summary)`** tool gives it a card in the timeline at the position of the call (`pushArtifactBlock` closes the open content block). The tool checks the file exists under `/conversation/output/` and returns a confirmation; the **normalizer** synthesizes the `PRESENT_ARTIFACT` custom event for the top-level orchestrator (see [agui-protocol.md](../development/agui-protocol.md)).
 
 ```mermaid
 sequenceDiagram
@@ -307,42 +304,24 @@ sequenceDiagram
     participant A as agents service
     participant PG as chat_postgres
 
-    AG->>D: CUSTOM PRESENT_ARTIFACT { artifact_id, path, title, summary } (optional)
+    AG->>D: CUSTOM PRESENT_ARTIFACT { artifact_id, path, title, summary }
     Note over D: run ends (completed / failed / cancelled) → _finish_run
-    rect rgb(240,240,240)
-    Note over D,PG: step 1 — in the finalize transaction
-    D->>A: GET …/output-files?paths=<presented paths>
-    D->>PG: presented files (presented=true, title, summary) + the answer, one commit
-    end
-    D-->>D: terminal frame → the UI (it never waits for step 2)
-    rect rgb(240,240,240)
-    Note over D,PG: step 2 — background task, one at a time per conversation
-    D->>A: GET …/output-files/manifest → [{path, size, sha256}], no bytes
-    Note over D: keep (name, sha256) not yet held — step 1's files are already held
-    loop batches ≤ 20 files and ≤ 32 MB
-        D->>A: GET …/output-files?paths=…
-    end
-    D->>PG: the other files (presented=false), own commit
-    end
+    D->>A: GET /users/{uid}/conversations/{cid}/files?paths=<presented paths>
+    D->>PG: presented files (origin=generated, presented=true) + the answer, one commit
 ```
 
 | Rule | Why |
 | --- | --- |
-| **Every file, every outcome** | A failed or cancelled run's files exist too, and the sweep would delete them |
-| **Two steps.** Presented files in the finalize transaction; the rest in a background task after the commit, chained per conversation | A card must find its file when the terminal frame arrives; nothing else may delay that frame. Chaining keeps two runs from both storing a file. A capture lost to a restart heals on the next run (the file is still on the volume) |
-| **Stored once.** A file is skipped when the conversation already holds the same `(file name, content_sha256)`; an edited file becomes a new version on the answer that changed it | No duplicate bytes for files a later turn leaves untouched |
-| **A presented file is always stored on its answer**, even unchanged | Its card is matched to an attachment on that message (presented one first, if two share a name) |
-| **Bounded.** `OUTPUT_CAPTURE_MAX_FILES_PER_RUN` (100) / `_MAX_BYTES_PER_RUN` (256 MB) for step 2; fetched in batches of `OUTPUT_CAPTURE_BATCH_FILES` (20) / `_BATCH_BYTES` (32 MB) | A run that wrote many large files never holds them all in memory |
-| **Fail-open**, in the finalize transaction | The answer is already persisted: an unreachable agents service, a vanished file or bad base64 is logged and skipped |
-| **`presented = false` files stay the owner's.** Share snapshots, imported shares and the PDF export carry uploads and presented files only (`is_shareable`); the data export carries everything | A scratch file was never shown — it must not reach a public link |
-| **Only deep agents** — LangGraph agents have no filesystem; the capture skips them without a call | |
-| **Forks copy every attachment field** (`origin`, `title`, `summary`, `content_sha256`, `presented`) | Before, a presented file came back as an "upload" in the copy, its card broken |
+| **Presented files only**, in the finalize transaction (`utils/output_capture.py`) | The card must find its file when the terminal frame arrives. Everything else the agent wrote is already durable in `agent_runtime` |
+| **A snapshot.** The attachment keeps the version presented, even if the agent edits the file later | Cards, share links, forks and the PDF export show what the user was shown |
+| **Bounded.** `/conversation/output/` only, ≤ `OUTPUT_MAX_FILE_BYTES` (25 MB) each, fetched `OUTPUT_CAPTURE_BATCH_FILES` (20) at a time | An upload or offload can never become a deliverable; the snapshot is a downloadable attachment |
+| **Fail-open** | The answer is already persisted: an unreachable agents service or bad base64 is logged and skipped |
+| **`presented = false` rows** (stored by the capture of every written file before plan 43) are kept and stay the owner's: shares and the PDF export carry uploads and presented files only (`is_shareable`) | |
 
-Generated files without a card are not shown under the answer (the message's file stack is uploads only); they are listed by `/files` (plan 35).
+### Forks and deletion
 
-### Cleanup
-
-The conversation filesystem (`input/` + `output/`) is removed by `delete_conversation_files()` during the conversation-delete reap (see [conversation-management.md](conversation-management.md)). There is no per-turn cleanup; seeded input files accumulate for the life of the conversation.
+- **Fork** — the bridge clones the branch (attachments with every field, `workspace_name` included), then asks the agents service to copy the source's file **rows** to the fork (`POST …/files/copy`): the rows name the same blobs, so no byte is copied.
+- **Delete** — see [conversation-management.md](conversation-management.md): an outbox row in the delete's transaction, then a reap by conversation id that drops the checkpoint threads and every file. Account deletion deletes the user's files and blobs by `user_id` ([account-deletion.md](account-deletion.md)).
 
 ---
 
@@ -350,7 +329,7 @@ The conversation filesystem (`input/` + `output/`) is removed by `delete_convers
 
 - **Blobs live in PostgreSQL.** There is no filesystem or object storage. A very large attachment — or many forks of a conversation with large attachments — directly increases the database size. Monitor `pg_table_size('blobs')` in production.
 
-- **No deduplication.** Uploading the same file twice creates two independent blob rows. Forking creates another copy. There is no content-hash check or blob-sharing mechanism.
+- **No deduplication of uploads.** Uploading the same file twice creates two independent blob rows, and forking copies them. (The agent's own files are deduplicated per user in `agent_runtime` — a fork copies only their path rows.)
 
 - **Base64 inflates payload size by ~33%.** A 25 MB file becomes ~33 MB in the request body. nginx's `client_max_body_size 50m` gives room for up to ~37 MB raw files in a single message before the body limit is hit; the application-level 25 MB cap is the binding constraint.
 
@@ -366,11 +345,11 @@ The conversation filesystem (`input/` + `output/`) is removed by `delete_convers
 
 - **Byte-range support is on download and preview, not images.** The `/download` and `/preview` endpoints support `Range` headers; the `/images` batch endpoint does not. Large images retrieved via the gallery are served in full.
 
-- **Deletion is permanent and cascades immediately.** There is no soft-delete or recycle bin for attachments. Deleting a message or conversation immediately removes all associated attachments and blobs from the database with no recovery path. The disk-backed agent copies under `/conversation/input/` and `/conversation/output/` are not on the DB cascade — they are removed by the separate conversation-delete reap call to the agents service.
+- **Deletion is permanent and cascades immediately.** There is no soft-delete or recycle bin for attachments. Deleting a message or conversation immediately removes all associated attachments and blobs from the database with no recovery path. The agent's files live in another database (`agent_runtime`), so no cascade reaches them: the delete writes a `pending_runtime_reaps` row in its own transaction and the reap removes them (see [conversation-management.md](conversation-management.md)).
 
-- **Seeded files are disk-backed, not checkpointed.** Uploads are written to the agent's `/conversation/input/` on disk and referenced by path; they are never serialized into the durable LangGraph checkpoint. A resumed run re-reads them from disk, so input files must remain present for the life of the conversation.
+- **Uploads are not checkpointed.** The agent reads `/conversation/input/` from the bridge on demand and the history references uploads by path; bytes are never serialized into the durable LangGraph checkpoint. Deleting the message that carried an upload removes it from the agent's input folder too.
 
-- **Only deep agents get filesystem seeding.** LangGraph agents have no `CompositeBackend` mount, so they never receive input-path references — they only see inline images and any text the message already carries.
+- **Only deep agents have a filesystem.** LangGraph agents have no `CompositeBackend` mount, so they never receive input-path references — they only see inline images and any text the message already carries.
 
 ---
 
@@ -381,14 +360,14 @@ The conversation filesystem (`input/` + `output/`) is removed by `delete_convers
 | DB tables | [magenticx/dialogue_bridge/core/database/models.py](../../magenticx/dialogue_bridge/core/database/models.py) | `AttachmentTable`, `BlobTable`, FK cascade definitions |
 | Attachments router | [magenticx/dialogue_bridge/router/attachments.py](../../magenticx/dialogue_bridge/router/attachments.py) | download, preview, preview-token, public, images endpoints |
 | Upload persistence | [magenticx/dialogue_bridge/utils/conversations.py](../../magenticx/dialogue_bridge/utils/conversations.py) | `init_attachments()`, `clone_branch_to_conversation()` |
-| Agent filesystem seeding (bridge) | [magenticx/dialogue_bridge/utils/agents.py](../../magenticx/dialogue_bridge/utils/agents.py) | `build_agent_input_files_url()`, `serialise_message_with_images_for_agent(include_input_paths=...)` |
-| Input/output backend split + permissions | [magenticx/agents/harness/filesystem/workspace.py](../../magenticx/agents/harness/filesystem/workspace.py) | `build_workspace_backend()` (mount routes), `WORKSPACE_WRITE_DENY` (`/conversation/input/` write-deny) — `DeepAgent._build_composite_backend()` delegates here |
-| Filesystem provisioner | [magenticx/agents/harness/filesystem/provisioner.py](../../magenticx/agents/harness/filesystem/provisioner.py) | `seed_input_files()`, `delete_conversation_files()`, `conversation_input_root()`, `conversation_output_root()`, `ensure_user_agent_filesystem()` |
-| Input-files seed endpoint | [magenticx/agents/main.py](../../magenticx/agents/main.py) | `PUT /agents/{slug}/users/{user_id}/conversations/{conversation_id}/input-files` |
-| `present_artifact` tool | [magenticx/agents/harness/tools/present_artifact/tool.py](../../magenticx/agents/harness/tools/present_artifact/tool.py) | `build_present_artifact_tool()` — path-guarded, returns a confirmation (never emits); registered in `harness/tools/registry.py` as an auto-attach native |
-| Output-files read endpoint + util | [magenticx/agents/router/inference.py](../../magenticx/agents/router/inference.py) | `GET …/output-files` → `harness.filesystem.read_output_files()` / `resolve_output_file()` (path-guarded, size-capped) |
-| Generated-file capture (bridge) | [magenticx/dialogue_bridge/utils/output_capture.py](../../magenticx/dialogue_bridge/utils/output_capture.py) | `capture_presented_files()` (in `_finish_run`'s transaction) and `schedule_remaining_capture()` (after its commit, every terminal status), `select_files_to_capture()`; presented metadata from `InferenceRunRuntime.presented_artifacts` |
-| Output manifest (agents) | [magenticx/agents/harness/filesystem/provisioner.py](../../magenticx/agents/harness/filesystem/provisioner.py) | `list_output_manifest()` → `GET …/output-files/manifest` (internal) |
+| Stable upload names | [magenticx/dialogue_bridge/utils/workspace_names.py](../../magenticx/dialogue_bridge/utils/workspace_names.py) | `WorkspaceNames.assign()` (used by `init_attachments()` and the share import), migration `0042_conversation_files` |
+| Uploads for the agent (bridge, internal) | [magenticx/dialogue_bridge/router/internal_conversations.py](../../magenticx/dialogue_bridge/router/internal_conversations.py) | `GET /v1/internal/conversations/{cid}/input-files[/{attachment_id}]` over `utils/conversation_inputs.py` |
+| History labels | [magenticx/dialogue_bridge/utils/inference.py](../../magenticx/dialogue_bridge/utils/inference.py) | `serialise_message_with_images_for_agent(include_input_paths=...)` |
+| Mount table + permissions | [magenticx/agents/harness/filesystem/workspace.py](../../magenticx/agents/harness/filesystem/workspace.py) | `build_workspace_backend()` (routes), `WORKSPACE_WRITE_DENY` (`/conversation/input/` write-deny) |
+| Conversation files (agents) | [magenticx/agents/harness/conversation_files/](../../magenticx/agents/harness/conversation_files/) | `ConversationFilesBackend`, `ConversationFileStore`, `InputView`, `paths.normalise()` |
+| `present_artifact` tool | [magenticx/agents/harness/tools/present_artifact/tool.py](../../magenticx/agents/harness/tools/present_artifact/tool.py) | `build_present_artifact_tool()` — output/ only, returns a confirmation (never emits) |
+| Files / copy / reap routes (agents) | [magenticx/agents/router/conversation_files.py](../../magenticx/agents/router/conversation_files.py) | `GET /users/{uid}/conversations/{cid}/files`, `POST …/files/copy`, `POST …/reap` (over `utils/conversation_files.py`) |
+| Presented-file snapshot (bridge) | [magenticx/dialogue_bridge/utils/output_capture.py](../../magenticx/dialogue_bridge/utils/output_capture.py) | `capture_presented_files()` (in `_finish_run`'s transaction); metadata from `InferenceRunRuntime.presented_artifacts` |
 | Generated-artifact rendering (frontend) | [magenticx/agentic_ui/src/features/chat/components/message_parts/MessageAttachments.tsx](../../magenticx/agentic_ui/src/features/chat/components/message_parts/MessageAttachments.tsx) | `origin === "generated"` branch — left-aligned card, Sparkles icon, agent title/summary |
 | Share snapshot builder | [magenticx/dialogue_bridge/utils/conversations.py](../../magenticx/dialogue_bridge/utils/conversations.py) | `_attachment_to_share_snapshot()`, `build_share_snapshot()` |
 | Pydantic schemas | [magenticx/dialogue_bridge/schema/attachments.py](../../magenticx/dialogue_bridge/schema/attachments.py) | `AttachmentIn`, `AttachmentOut`, `ImageOut`, `DocxPreviewTokenOut` |

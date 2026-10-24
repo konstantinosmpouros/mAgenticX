@@ -1,3 +1,4 @@
+import hashlib
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 
@@ -25,6 +26,7 @@ from schema import (
 from core.settings import settings
 from utils.account_status import open_deletion_exists_for
 from utils.conversations import _preview, init_message
+from utils.workspace_names import WorkspaceNames
 
 
 def parse_snapshot_datetime(value: str | None) -> datetime | None:
@@ -168,6 +170,7 @@ async def create_conversation_from_share_record(
 
     message_id_map: dict[str, str] = {}
     last_imported_message: MessageTable | None = None
+    upload_names = WorkspaceNames()
     for item in snapshot_messages:
         if not isinstance(item, dict):
             continue
@@ -203,14 +206,21 @@ async def create_conversation_from_share_record(
         for attachment in item.get("attachments") or []:
             if not isinstance(attachment, dict):
                 continue
-            blob = BlobTable(data=b64_decode(attachment["data"])) if attachment.get("data") else None
+            raw = b64_decode(attachment["data"]) if attachment.get("data") else None
+            blob = BlobTable(data=raw) if raw is not None else None
+            # Snapshots only ever hold uploads and presented files.
+            origin = "generated" if attachment.get("origin") == "generated" else "upload"
+            file_name = attachment.get("name") or "attachment"
+            sha256 = hashlib.sha256(raw).hexdigest() if raw is not None else None
             db.add(AttachmentTable(
                 message_id=imported.id,
-                file_name=attachment.get("name") or "attachment",
+                file_name=file_name,
                 mime_type=attachment.get("mime") or "application/octet-stream",
                 size_bytes=attachment.get("size"),
-                # Snapshots only ever hold uploads and presented files.
-                origin="generated" if attachment.get("origin") == "generated" else "upload",
+                origin=origin,
+                content_sha256=sha256,
+                # The continued conversation's agent reads its uploads by name.
+                workspace_name=upload_names.assign(file_name, sha256) if origin == "upload" else None,
                 title=attachment.get("title") if isinstance(attachment.get("title"), str) else None,
                 summary=attachment.get("summary") if isinstance(attachment.get("summary"), str) else None,
                 presented=attachment.get("origin") == "generated",

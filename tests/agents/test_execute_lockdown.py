@@ -34,12 +34,20 @@ def test_local_shell_backend_is_never_imported():
     assert not offenders, f"LocalShellBackend import found in: {offenders}"
 
 
+def _files():
+    package = importlib.import_module("harness.conversation_files")
+    return package.ConversationFiles(
+        user_id="user-1", conversation_id="conv-1", agent_slug="agent-1",
+        store=package.ConversationFileStore(object()),
+    )
+
+
 def test_workspace_factory_builds_with_sandbox_execution_disabled(agents_service, skills_fs):
     """The normal path: flag off + StateBackend default builds cleanly."""
     workspace = importlib.import_module("harness.filesystem.workspace")
     assert agents_service.settings_module.settings.filesystem.sandbox_execution_enabled is False
     factory = workspace.build_workspace_backend(
-        user_id="user-1", agent_slug="agent-1", conversation_id="conv-1", use_memory=True
+        user_id="user-1", agent_slug="agent-1", files=_files(), use_memory=True
     )
     backend = factory(None)
     assert backend is not None
@@ -61,7 +69,7 @@ def test_workspace_factory_refuses_sandbox_default_when_disabled(
     monkeypatch.setattr(workspace, "StateBackend", _SandboxLookalike)
 
     factory = workspace.build_workspace_backend(
-        user_id="user-1", agent_slug="agent-1", conversation_id="conv-1", use_memory=False
+        user_id="user-1", agent_slug="agent-1", files=_files(), use_memory=False
     )
     with pytest.raises(RuntimeError, match="SANDBOX_EXECUTION_ENABLED"):
         factory(None)

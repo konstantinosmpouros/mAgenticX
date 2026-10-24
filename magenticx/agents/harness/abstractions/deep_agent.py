@@ -25,11 +25,10 @@ from harness.middlewares import (
     exclude_stock_summarization,
     find_summarizer,
 )
-from harness.filesystem import (
-    build_workspace_backend,
-    ensure_user_agent_filesystem,
-    workspace_write_deny,
-)
+from harness.conversation_files import ConversationFiles, ConversationFileStore
+from harness.conversation_files import legacy_volume
+from harness.filesystem import build_workspace_backend, workspace_write_deny
+from harness.memory import get_memory_pool
 from core.logging import get_logger
 from core.settings import settings
 
@@ -116,9 +115,9 @@ class DeepAgent(BaseAgent, ABC):
     def __init__(self, *, config: Optional[Mapping[str, Any]] = None) -> None:
         super().__init__(config=config)
 
-        # Per-request cache of the resolved per-user filesystem root (set on
-        # first use; avoids re-resolving across the build hooks).
-        self._user_filesystem_root: Optional[Path] = None
+        # This run's conversation files, built on first use (see
+        # `conversation_files`) and shared by the mounts and the file tools.
+        self._conversation_files: Optional[ConversationFiles] = None
 
         # Agent components — populated during ensure_built()
         # Skill *sources* for create_deep_agent(skills=[...]): a virtual route, or a
@@ -162,35 +161,28 @@ class DeepAgent(BaseAgent, ABC):
 
 
     # ---------------------------------------------------------------------
-    # Per-user filesystem resolution
+    # The conversation's files
     # ---------------------------------------------------------------------
-    def _resolve_user_filesystem_root(self) -> Path:
-        """Provision (idempotently) and return ``<filesystem_root>/<user_id>/``.
+    @property
+    def conversation_files(self) -> ConversationFiles:
+        """This run's view of its conversation's files (plan 43).
 
-        Reads ``user_id`` and ``conversation_id`` from ``self.context`` — the
-        bridge stamps both on every request, and
-        ``BaseAgent._validate_context_config`` rejects payloads that omit
-        either. The first call for a (user, agent) pair seeds the ``AGENTS.md``
-        memory index from the standard template; the skills directory is created empty
-        (writes are owned by the skill-registry layer). The conversation
-        directory is mkdir'd on every call but is a cheap no-op when it
-        already exists.
+        One instance per run, so the mounts, ``view_image`` and
+        ``present_artifact`` share it — the uploads are listed once per run
+        however many of them look. ``user_id`` and ``conversation_id`` come
+        from ``self.context``, which ``BaseAgent._validate_context_config``
+        guarantees.
         """
-        if self._user_filesystem_root is not None:
-            return self._user_filesystem_root
-        ctx = self.context or {}
-        user_id = ctx.get("user_id")
-        if not user_id:
-            raise ValueError(
-                "Deep agent requires a non-empty user_id in context to provision its filesystem."
+        if self._conversation_files is None:
+            ctx = self.context
+            self._conversation_files = ConversationFiles(
+                user_id=ctx["user_id"],
+                conversation_id=ctx["conversation_id"],
+                agent_slug=self.name,
+                store=ConversationFileStore(get_memory_pool()),
+                run_id=ctx.get("run_id"),
             )
-        conversation_id = ctx.get("conversation_id")
-        self._user_filesystem_root = ensure_user_agent_filesystem(
-            user_id=user_id,
-            agent_slug=self.name,
-            conversation_id=conversation_id,
-        )
-        return self._user_filesystem_root
+        return self._conversation_files
 
 
     def _build_composite_backend(self) -> Callable[[Any], CompositeBackend]:
@@ -204,11 +196,10 @@ class DeepAgent(BaseAgent, ABC):
         ``/memories/`` mount when off). Permissions are applied in
         ``build_deep_agent`` via ``WORKSPACE_WRITE_DENY``.
         """
-        ctx = self.context
         return build_workspace_backend(
-            user_id=ctx["user_id"],
+            user_id=self.context["user_id"],
             agent_slug=self.name,
-            conversation_id=ctx["conversation_id"],
+            files=self.conversation_files,
             use_memory=self.use_memory,
             reference_dir=self.reference_dir,
             reference_namespace=self.reference_namespace,
@@ -303,7 +294,7 @@ class DeepAgent(BaseAgent, ABC):
         # one place (harness/tools/registry.py). Gating is unchanged: the builder
         # for each auto-attach tool returns None when its gate is off
         # (remember→use_memory, search_past_conversations→search_past_convs,
-        # present_artifact→conversation_id present).
+        # present_artifact / view_image→the conversation's files present).
         return build_auto_attach_tools(
             NativeToolContext(
                 user_id=user_id,
@@ -314,6 +305,7 @@ class DeepAgent(BaseAgent, ABC):
                 run_id=ctx.get("run_id"),
                 thread_id=ctx.get("thread_id"),
                 trust_level=trust_level(self.tools),
+                files=self.conversation_files if ctx.get("conversation_id") else None,
             )
         )
 
@@ -546,10 +538,10 @@ class DeepAgent(BaseAgent, ABC):
     def load_skills(self) -> list[str | tuple[str, str]]:
         """Skill sources the agent should expose at startup, in precedence order.
 
-        ``/skills/`` (tier ②) resolves to ``<user_root>/agents/<slug>/skills/`` —
-        ONLY the skills the user explicitly enabled for this (user, agent) pair.
-        The central registry is never mounted; users browse it in the Skills tab
-        and the bridge's PUT endpoint copies directories into this mount.
+        ``/skills/`` (tier ②) resolves against this (user, agent)'s
+        ``agent_skills`` rows — ONLY the skills the user explicitly enabled for
+        the pair. The central registry is never mounted; users browse it in the
+        Skills tab.
 
         When the agent ships with skills of its own (``default_skills_dir``),
         ``/default_skills/`` (tier ①) is appended. **Order matters:** deepagents
@@ -562,7 +554,6 @@ class DeepAgent(BaseAgent, ABC):
         the path otherwise, and a bare ``/skills/`` derives ``Skills`` — rendering
         as the duplicative "**Skills Skills**" its own docs warn about.
         """
-        self._resolve_user_filesystem_root()  # ensure tree exists
         sources: list[str | tuple[str, str]] = [("/skills/", "Your")]
         if self._has_default_skills:
             sources.append(("/default_skills/", "Built-in"))
@@ -608,11 +599,11 @@ class DeepAgent(BaseAgent, ABC):
     def load_agent_md(self) -> list[str]:
         """This (user, agent)'s memory index file.
 
-        Resolved through the CompositeBackend ``/memories/`` route, which maps
-        to ``<user_root>/agents/<self.name>/memory/AGENTS.md``. The provisioner
-        seeds it from the standard template on first run; the ``remember`` tool
-        maintains it (one summary line per memory, pointing at ``entries/``)
-        and deepagents' MemoryMiddleware injects it as always-on context.
+        Resolved through the CompositeBackend ``/memories/`` route, a view over
+        this (user, agent)'s ``agent_memories`` rows that derives the index on
+        read; the ``remember`` tool maintains the entries (one summary line per
+        memory, pointing at ``entries/``) and deepagents' MemoryMiddleware
+        injects it as always-on context.
 
         Returns ``[]`` when memory is disabled for this run (``self.use_memory``
         False, threaded from the user's preference) so ``create_deep_agent``
@@ -621,7 +612,6 @@ class DeepAgent(BaseAgent, ABC):
         """
         if not self.use_memory:
             return []
-        self._resolve_user_filesystem_root()  # ensure file exists
         return ["/memories/AGENTS.md"]
 
 
@@ -670,6 +660,7 @@ class DeepAgent(BaseAgent, ABC):
         if self.agent is not None:
             return
         logger.info("deep_agent_build_started", "Deep agent build started", agent_slug=self.name)
+        await self._import_legacy_files()
         if self.checkpointer is None:
             self.checkpointer = MemorySaver()
         self.skills_paths   = self.load_skills()
@@ -684,6 +675,26 @@ class DeepAgent(BaseAgent, ABC):
             agent_md_count=len(self.agent_md_paths),
             has_subagents=self.sub_agents is not None,
         )
+
+
+
+    async def _import_legacy_files(self) -> None:
+        """Bring this conversation's files over from the old volume before the
+        run reads them, in case the background move has not reached it yet.
+
+        Best-effort: a failure is logged and the run goes on — the files stay
+        on the volume and the background pass retries.
+        TODO(plan 43): remove once agents v1.22.0 has deployed.
+        """
+        ctx = self.context or {}
+        if not ctx.get("user_id") or not ctx.get("conversation_id"):
+            return
+        try:
+            await legacy_volume.import_conversation(ctx["user_id"], ctx["conversation_id"])
+        except Exception:
+            logger.warning("conversation_files_import_failed",
+                           "Could not import this conversation's files from the volume",
+                           exc_info=True, agent_slug=self.name)
 
 
 

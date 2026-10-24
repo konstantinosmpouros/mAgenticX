@@ -118,7 +118,8 @@ Import-time `sys.path.append(PACKAGE_ROOT)` (`main.py:1-7`) → absolute imports
 3. `scheduler.start()` — in-process scheduled-tasks loop (no-op if `SCHEDULER_ENABLED=false`).
 4. Launch `run_embedding_sweeper(stop_event)` as a background task (no-op if `EMBEDDINGS_ENABLED=false`).
 5. Launch `run_account_purger(stop_event)` — purges accounts whose deletion grace period is over, one at a time, and resumes any purge a restart interrupted (no-op if `ACCOUNT_DELETION_ENABLED=false`; see [account-deletion](../flows/account-deletion.md)).
-6. `yield`. Shutdown: set both stop events → `scheduler.stop()` → `await asyncio.wait_for(task, 10)` for the sweeper and the purger (cancel on timeout).
+6. Launch `drain_runtime_reaps()` once — sends the reaps of conversations deleted while the agents service could not be reached (`pending_runtime_reaps`, plan 43; see [conversation-management](../flows/conversation-management.md)).
+7. `yield`. Shutdown: set both stop events → `scheduler.stop()` → `await asyncio.wait_for(task, 10)` for the sweeper, the purger and the reap drain (cancel on timeout).
 
 **App** — `FastAPI(title="Bridge Service", lifespan=lifespan)`, `register_exception_handlers(app)` (handles `HTTPException`, `RequestValidationError`, catch-all `Exception`; 429s are produced by fastapi-redis-sdk's own `RateLimitExceeded` handler, registered by `install_redis_sdk`).
 
@@ -208,7 +209,8 @@ The `conversations ↔ messages` cross-FK cycle is resolved via `use_alter` in t
 | `0015` | `user_preferences.personality` + `custom_instructions` (personalization). |
 | `0016` | **destructive** — retire global tool enablement: drop `user_preferences.tools`, `messages.streaming_enabled_tools`, `scheduled_tasks.enabled_tools`. Tools are now per-agent (`agent.yaml`) + per-(user, agent) disables on the agents service. |
 | `0017`–`0040` | See [database-schema](../architecture/database-schema.md) (usage tables `0032`–`0034`, compaction `0035`, generated-file capture `0039`, `messages.command` `0040`, …). |
-| `0041_inference_metrics` | Plan 41: cost (`BIGINT` micro-USD), unpriced / truncated calls, time to first token and generation speed on `messages`, `message_usage`, `conversations`, `usage_daily`, `usage_daily_groups`; new `tool_usage` + `tool_usage_daily`. Additive, no backfill. **Current head.** |
+| `0041_inference_metrics` | Plan 41: cost (`BIGINT` micro-USD), unpriced / truncated calls, time to first token and generation speed on `messages`, `message_usage`, `conversations`, `usage_daily`, `usage_daily_groups`; new `tool_usage` + `tool_usage_daily`. Additive, no backfill. |
+| `0042_conversation_files` | Plan 43: `attachments.workspace_name` (an upload's stable name in the agent's `/conversation/input/`, backfilled per conversation in upload order with a frozen copy of the naming rule) + `content_sha256` for uploads (computed in Postgres); new `pending_runtime_reaps` outbox. Additive. **Current head.** |
 
 Partial/`postgresql_where` and pgvector-opclass indexes are always hand-written (autogenerate blind spots). **No inference-run table exists** — the run is the `messages.streaming_*` columns, present since the baseline.
 
@@ -275,7 +277,7 @@ nginx strips `/api/`, so the browser calls `/api/v1/...` and FastAPI sees `/v1/.
 
 **Voice** `/v1/voice`: `POST /realtime/{uid}/session`, `…/conversation-event`, `…/end` (all CSRF).
 
-**Shared** `/v1/shared-conversations/{token}` (**public**). **Search** `/v1/search/{uid}` (`?q&limit`). **Skills** `/v1/skills` (+ user pool + per-(user,agent) enablement — proxies to agents, Redis-cached). **Memories** `/v1/memories/users/{uid}/agents/{aid}[/{name}]` (read + delete; agent owns writes). **Scheduled tasks** `/v1/scheduled-tasks/{uid}` (list/create/patch/delete). **Internal** `POST /v1/internal/memory/search` (`require_internal_caller`, pgvector search backing the agent's `search_past_conversations` tool).
+**Shared** `/v1/shared-conversations/{token}` (**public**). **Search** `/v1/search/{uid}` (`?q&limit`). **Skills** `/v1/skills` (+ user pool + per-(user,agent) enablement — proxies to agents, Redis-cached). **Memories** `/v1/memories/users/{uid}/agents/{aid}[/{name}]` (read + delete; agent owns writes). **Scheduled tasks** `/v1/scheduled-tasks/{uid}` (list/create/patch/delete). **Internal** (`require_internal_caller`): `POST /v1/internal/memory/search` (pgvector search backing the agent's `search_past_conversations` tool); `GET /v1/internal/conversations/{cid}/input-files[/{attachment_id}]` (the agent's `/conversation/input/`); `POST /v1/internal/conversations/existing` (temporary — the agents service's one-off volume move, plan 43).
 
 Schemas live in the `schema/` package — one module per concept, all re-exported from `__init__.py`; wire shape: camelCase response aliases + snake_case `validation_alias` for ORM ingestion, UTC ISO-8601 `Z` timestamps. Key models: `AuthRequest`/`AuthResponse`/`UserProfile`, `ConversationSummary`/`ConversationDetail`/`MessageOut`/`AttachmentOut`, `MessageIn`/`AttachmentIn` (base64 `validate=True` + size caps), `ConversationIn`/`ConversationShareIn`/`ConversationPdfExportIn`, `UserPreferences` (the `ToolsPreferences`/`ToolPreference` schemas were deleted in the tool-enablement retirement), `ScheduledTaskCreate`/`Update`/`Out`, `MemorySearchRequest`/`MemoryMessageMatch`, and the inference DTOs below.
 
@@ -408,7 +410,8 @@ terminal → _finish_run writes content+raw_events+checkpoint_id; event_log.mark
 - **Append-only tree** — `messages.parent_message_id` (self-FK) is the only tree edge. Edits and retries create **sibling** rows under the same parent; content is **never** overwritten. Branch identity flows through `checkpoint_thread_id`; the durable head is `checkpoint_id`.
 - **History materialization** — a run's branch is ordered by `streaming_message_path` (the message-id list the agent saw as context), or reconstructed via `prepare_inference_history` for a `full_seed`. A trailing empty AI placeholder is stripped so the agent never sees unfinished assistant output as context.
 - **Create** — `POST /v1/conversations/{uid}` validates the agent, resolves a title (multiple candidates via the agents `/titles` endpoint, random pick; falls back to preview/agent-name/"New conversation"), `init_conv` creates the conversation + first message atomically.
-- **Fork** — `POST …/fork` uses `build_message_lineage` + `clone_branch_to_conversation` to copy a branch into a new conversation (`forked_parent_id`/`forked_message_id` record lineage).
+- **Fork** — `POST …/fork` uses `build_message_lineage` + `clone_branch_to_conversation` to copy a branch into a new conversation (`forked_parent_id`/`forked_message_id` record lineage), then asks the agents service to copy the agent's files to it (`copy_conversation_files`, rows only — best-effort).
+- **Delete** — `DELETE /v1/conversations/{uid}/{cid}` writes a `pending_runtime_reaps` row in the delete's transaction (`enqueue_runtime_reap`), commits, then `drain_runtime_reaps()` posts `POST /users/{uid}/conversations/{cid}/reap` to the agents service (checkpoint threads + files, by conversation id). A failed send keeps the row; it is retried after the next delete and at startup.
 - **Reactions** — `like`/`dislike` toggle the nullable `liked` (True/False/None).
 - **Report / archive / title** — flag columns on the conversation.
 
@@ -416,7 +419,8 @@ terminal → _finish_run writes content+raw_events+checkpoint_id; event_log.mark
 
 ## 14. Attachments & blobs
 
-- **Ingestion** — attachments arrive as base64 in `MessageIn.attachments`; `AttachmentIn` validates with `base64.b64decode(..., validate=True)`, enforces per-file/total/count caps (25MiB / 25MiB / 10). A `BlobTable` row stores the raw bytes; an `AttachmentTable` row stores metadata + the FK. **Blobs live in Postgres — no filesystem/object storage.**
+- **Ingestion** — attachments arrive as base64 in `MessageIn.attachments`; `AttachmentIn` validates with `base64.b64decode(..., validate=True)`, enforces per-file/total/count caps (25MiB / 25MiB / 10). A `BlobTable` row stores the raw bytes; an `AttachmentTable` row stores metadata + the FK, the SHA-256 and the upload's stable `workspace_name` (`utils/workspace_names.py`, under a `FOR UPDATE` on the conversation row). **Blobs live in Postgres — no filesystem/object storage.**
+- **For deep agents** — the agent reads the uploads through `GET /v1/internal/conversations/{cid}/input-files[/{attachment_id}]?user_id=` (`router/internal_conversations.py`, every upload of the conversation, owner-checked); nothing is pushed before a run. At finalize only the files the agent presented are snapshotted as generated attachments (`utils/output_capture.py`). See [attachments](../flows/attachments.md#phase-7--attachments-and-the-agent-filesystem).
 - **Download** — `GET /download/...` streams non-image blobs with `Range`/`206 Partial Content` support (chunked, `stream_chunk_bytes`=512KiB); images are served only via the paginated base64 `images` endpoint. `preview` is the inline variant.
 - **Office preview** — `preview-token` mints a short-lived HMAC token (signed with `SESSION_TOKEN_SECRET`, TTL 60s); `public/{token}` serves the raw Office blob **without a session** (for the Microsoft Office Online Viewer), under a locked-down CSP/`nosniff`/`no-store`.
 

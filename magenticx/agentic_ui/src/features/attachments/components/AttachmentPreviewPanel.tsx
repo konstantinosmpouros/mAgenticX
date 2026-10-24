@@ -4,6 +4,7 @@ import { Download, X } from "lucide-react";
 import { fetchAttachmentPreviewBlob, fetchDocxPreviewToken } from "@/shared/lib/api";
 import type { AttachmentOut, MessageOut } from "@/shared/lib/types";
 import { Button } from "@/shared/ui/button";
+import { ModalLayer } from "@/shared/ui/modal-layer";
 import {
   classifyAttachmentPreview,
   CodeTextPreview,
@@ -310,88 +311,90 @@ export default function AttachmentPreviewPanel({
     };
   }, [conversationId, descriptor, meta, preview, userId]);
 
-  if (!open || !preview || !meta) {
-    return null;
-  }
-
-  const handleDownload = () => onDownload(preview.attachment, preview.message);
+  const handleDownload = () => {
+    if (preview) onDownload(preview.attachment, preview.message);
+  };
   const readyContent = state.status === "ready" ? renderReadyState(state) : null;
-  const subtitle = [descriptor.label, meta.mime, formatBytes(meta.size)]
-    .filter(Boolean)
-    .join(" · ");
+  const subtitle = meta
+    ? [descriptor.label, meta.mime, formatBytes(meta.size)].filter(Boolean).join(" · ")
+    : "";
 
+  // Appears and leaves with the shared panel motion; the card keeps the file it
+  // showed while it leaves.
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/78 p-3 backdrop-blur-sm sm:p-5 animate-in fade-in-0 duration-200"
-      onClick={onClose}
+    <ModalLayer
+      open={Boolean(open && preview && meta)}
+      onBackdropClick={onClose}
+      className="z-50 p-3 sm:p-5"
+      backdropClassName="bg-black/78 backdrop-blur-sm"
+      cardClassName="flex h-[min(94vh,64rem)] w-[min(96vw,76rem)] flex-col overflow-hidden rounded-[1.85rem] border border-white/10 bg-[#252525] text-white shadow-[0_28px_100px_-32px_rgba(0,0,0,0.92)]"
     >
-      <div
-        className="flex h-[min(94vh,64rem)] w-[min(96vw,76rem)] flex-col overflow-hidden rounded-[1.85rem] border border-white/10 bg-[#252525] text-white shadow-[0_28px_100px_-32px_rgba(0,0,0,0.92)] animate-in fade-in-0 zoom-in-95 duration-200 ease-out"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="flex items-center justify-between gap-4 border-b border-white/10 px-4 py-4 sm:px-5">
-          <div className="min-w-0">
-            <h2 className="truncate text-base font-medium text-white sm:text-[1.2rem]">
-              {meta.name}
-            </h2>
-            {subtitle ? <p className="mt-1 truncate text-xs text-white/45">{subtitle}</p> : null}
+      {meta ? (
+        <>
+          <div className="flex items-center justify-between gap-4 border-b border-white/10 px-4 py-4 sm:px-5">
+            <div className="min-w-0">
+              <h2 className="truncate text-base font-medium text-white sm:text-[1.2rem]">
+                {meta.name}
+              </h2>
+              {subtitle ? <p className="mt-1 truncate text-xs text-white/45">{subtitle}</p> : null}
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-9 gap-2 rounded-md border border-white/10 bg-white/[0.04] px-3 text-white/70 hover:bg-white/[0.08] hover:text-white"
+                onClick={handleDownload}
+              >
+                <Download className="h-4 w-4" />
+                Download
+              </Button>
+              <button
+                type="button"
+                aria-label="Close preview"
+                className="flex h-10 w-10 items-center justify-center rounded-full text-white/70 transition-colors hover:bg-white/8 hover:text-white"
+                onClick={onClose}
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              className="h-9 gap-2 rounded-md border border-white/10 bg-white/[0.04] px-3 text-white/70 hover:bg-white/[0.08] hover:text-white"
-              onClick={handleDownload}
-            >
-              <Download className="h-4 w-4" />
-              Download
-            </Button>
-            <button
-              type="button"
-              aria-label="Close preview"
-              className="flex h-10 w-10 items-center justify-center rounded-full text-white/70 transition-colors hover:bg-white/8 hover:text-white"
-              onClick={onClose}
-            >
-              <X className="h-5 w-5" />
-            </button>
+
+          <div className="relative min-h-0 flex-1 bg-[#1f1f1f] p-3 sm:p-4">
+            {state.status === "loading" ? <PreviewLoading /> : null}
+
+            {state.status === "error" ? (
+              <PreviewMessage
+                title="Preview unavailable"
+                description={state.error}
+                tone="error"
+                onDownload={handleDownload}
+              />
+            ) : null}
+
+            {state.status === "ready" && !descriptor.previewable ? (
+              <PreviewMessage
+                title="Preview unavailable"
+                description={
+                  descriptor.reason ?? "Download this file to open it in its native application."
+                }
+                onDownload={handleDownload}
+              />
+            ) : null}
+
+            {state.status === "ready" && descriptor.previewable && !readyContent ? (
+              <PreviewMessage
+                title="Preview unavailable"
+                description="This file could not be rendered in the browser."
+                tone="error"
+                onDownload={handleDownload}
+              />
+            ) : null}
+
+            {readyContent}
           </div>
-        </div>
-
-        <div className="relative min-h-0 flex-1 bg-[#1f1f1f] p-3 sm:p-4">
-          {state.status === "loading" ? <PreviewLoading /> : null}
-
-          {state.status === "error" ? (
-            <PreviewMessage
-              title="Preview unavailable"
-              description={state.error}
-              tone="error"
-              onDownload={handleDownload}
-            />
-          ) : null}
-
-          {state.status === "ready" && !descriptor.previewable ? (
-            <PreviewMessage
-              title="Preview unavailable"
-              description={
-                descriptor.reason ?? "Download this file to open it in its native application."
-              }
-              onDownload={handleDownload}
-            />
-          ) : null}
-
-          {state.status === "ready" && descriptor.previewable && !readyContent ? (
-            <PreviewMessage
-              title="Preview unavailable"
-              description="This file could not be rendered in the browser."
-              tone="error"
-              onDownload={handleDownload}
-            />
-          ) : null}
-
-          {readyContent}
-        </div>
-      </div>
-    </div>
+        </>
+      ) : null}
+    </ModalLayer>
   );
 }
