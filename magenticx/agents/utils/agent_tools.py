@@ -90,8 +90,10 @@ def _builtin_rows(gates: Set[str], *, use_memory: bool, search_past_convs: bool)
                 available=available,
                 unavailableReason=reason,
                 enabled=True,
-                approval=tool.name in gates,
-                approvalLocked=tool.locked,
+                # An ungateable tool (`ask_user`, itself the pause) reports a
+                # fixed "off": locked, so no switch is offered for it.
+                approval=tool.gateable and tool.name in gates,
+                approvalLocked=tool.locked or not tool.gateable,
             )
         )
     return rows

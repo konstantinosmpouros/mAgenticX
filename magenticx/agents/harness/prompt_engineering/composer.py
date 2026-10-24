@@ -10,7 +10,7 @@ one answer to "what does the prompt look like":
 1. the agent's own instructions (``AGENT.md``, or a code agent's constant)
 2. personalization — the user's preset + custom instructions
 3. the workspace — which mounts exist, which refuse writes
-4. the platform verbs — ``view_image`` / ``present_artifact`` / ``render_chart``
+4. the platform verbs — ``view_image`` / ``present_artifact`` / ``render_chart`` / ``ask_user``
 5. long-term memory
 6. the current date and time
 

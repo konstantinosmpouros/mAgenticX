@@ -5,6 +5,7 @@ import { Bot, Check, ChevronRight, Copy, Hand, MessageSquareText, Wrench } from 
 import { Button } from "@/shared/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { cn } from "@/shared/lib/utils";
+import { isAskUserInterrupt } from "@/features/inference/hitl";
 import { HitlRequestSummary } from "./HitlActionSummary";
 import { STATUS_META } from "./subagentStatus";
 
@@ -82,7 +83,7 @@ function InterruptList({ interrupts }: { interrupts: SubagentInterrupt[] }) {
 
           <div className="mb-1.5 flex items-center gap-2">
             <span className="rounded-full bg-warning/[0.12] px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.16em] text-warning">
-              Approval requested
+              {isAskUserInterrupt(interrupt.content) ? "Question asked" : "Approval requested"}
             </span>
           </div>
           {/* The same summary the approval card shows — what was asked, never the

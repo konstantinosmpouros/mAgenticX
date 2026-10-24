@@ -217,6 +217,19 @@ async def test_a_locked_gate_is_reported_on_whatever_is_stored(db, rows):
 
 
 @pytest.mark.asyncio
+async def test_a_locked_off_row_is_reported_off_whatever_is_stored(db, rows):
+    # `ask_user` is itself the pause, so it can never be gated: locked, and off.
+    # Locked means "the baseline is final", not "on".
+    ask_user = {"key": "ask_user", "name": "ask_user", "kind": "builtin", "group": "Interaction",
+                "declared": True, "enabled": True, "approval": False, "approvalLocked": True}
+    await prefs.set_approval(db, "u1", "omni", "ask_user", required=True, baseline=False)
+    await db.commit()
+    approvals = _by_key(await _apply(db, [*rows, ask_user]), "approval")
+    assert approvals["ask_user"] is False
+    assert approvals["execute"] is True
+
+
+@pytest.mark.asyncio
 async def test_a_choice_for_a_tool_that_no_longer_exists_is_ignored(db, rows):
     # An MCP server can disappear from the gateway. The stale row stays — it
     # costs nothing and the tool may come back — but must not invent a row.

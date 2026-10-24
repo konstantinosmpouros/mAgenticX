@@ -34,6 +34,7 @@ def full(pe):
         search_past_convs=True,
         sandbox_enabled=True,
         has_subagents=True,
+        has_ask_user=True,
         now=datetime(2026, 9, 15, 17, 23, tzinfo=timezone.utc),
         personalization="## How To Talk To This User\n\nBe brief.",
     )
@@ -137,6 +138,19 @@ def test_the_orchestrator_rule_appears_only_for_a_delegating_agent(pe):
 
     assert "sub-agent" in with_subs
     assert "sub-agent" not in without
+
+
+def test_the_ask_user_rule_appears_only_when_the_tool_is_attached(pe):
+    # A scheduled task's run has no `ask_user`; telling it to ask would have it
+    # end the run with questions nobody reads.
+    with_tool = pe.compose_system_prompt(
+        "x", pe.PromptContext(has_conversation=True, has_ask_user=True)
+    )
+    without = pe.compose_system_prompt("x", pe.PromptContext(has_conversation=True))
+
+    assert "`ask_user`" in with_tool
+    assert "Other" in with_tool  # never an "Other" option: the user can always write their own
+    assert "ask_user" not in without
 
 
 def test_the_platform_verbs_need_a_conversation(pe):

@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
 from harness.conversation_files import ConversationFiles
+from harness.tools.ask_user import build_ask_user_tool
 from harness.tools.builtins import builtin_hitl_defaults
 from harness.tools.charts import build_render_chart_tool
 from harness.tools.create_skill import build_create_skill_tool
@@ -54,6 +55,9 @@ class NativeToolContext:
     # The run's conversation files (plan 43), shared with its filesystem
     # mounts. None when the run has no conversation.
     files: ConversationFiles | None = None
+    # Someone is there to answer: a chat turn. A scheduled task's run is not
+    # (nobody would ever resume it), so it never gets `ask_user`.
+    interactive: bool = True
 
 
 @dataclass(frozen=True)
@@ -99,6 +103,8 @@ def register_native_tool(defn: NativeToolDef) -> NativeToolDef:
 #   view_image             → same gate; reads from input/ and output/
 #   create_skill           → always attached (HITL-gated; writes to the user's pool)
 #   render_chart           → attached whenever there is a conversation to draw into
+#   ask_user               → attached to an interactive conversation run (never
+#                            gated; refuses inside a sub-agent)
 
 register_native_tool(
     NativeToolDef(
@@ -201,6 +207,18 @@ register_native_tool(
             user_id=ctx.user_id,
             agent_slug=ctx.agent_slug,
         ),
+    )
+)
+
+register_native_tool(
+    NativeToolDef(
+        name="ask_user",
+        description="Ask the user 1-3 clarifying questions with suggested answers, pausing until they reply.",
+        auto_attach=True,
+        # The call is itself the human-in-the-loop pause, so it is never gated
+        # (see `BuiltinTool.gateable`). It needs someone to answer: a
+        # conversation, and a run the user is actually watching.
+        builder=lambda ctx: build_ask_user_tool() if ctx.conversation_id and ctx.interactive else None,
     )
 )
 

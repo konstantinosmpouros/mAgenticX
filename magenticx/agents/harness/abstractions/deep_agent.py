@@ -284,6 +284,9 @@ class DeepAgent(BaseAgent, ABC):
           user-facing deliverable) is attached whenever there's a
           ``conversation_id`` — it has no preference gate but needs a
           conversation whose output/ mount it can point into.
+        * ``ask_user`` (clarifying questions, a HITL pause) additionally needs
+          an interactive run — ``interactive`` in the context, false for a
+          scheduled task's run, where nobody would ever answer.
         """
         ctx = self.context or {}
         user_id = ctx.get("user_id")
@@ -305,8 +308,18 @@ class DeepAgent(BaseAgent, ABC):
                 thread_id=ctx.get("thread_id"),
                 trust_level=trust_level(self.tools),
                 files=self.conversation_files if ctx.get("conversation_id") else None,
+                interactive=self.interactive,
             )
         )
+
+
+    @property
+    def interactive(self) -> bool:
+        """Whether someone is there to answer this run (``ask_user``'s gate).
+
+        Absent means a chat turn: the bridge sends ``False`` only for a run with
+        no one watching it (a scheduled task)."""
+        return bool((self.context or {}).get("interactive", True))
 
 
     @staticmethod
@@ -401,6 +414,9 @@ class DeepAgent(BaseAgent, ABC):
             use_memory=self.use_memory,
             has_subagents=has_subagents,
             has_conversation=bool(ctx.get("conversation_id")),
+            # The same gate as the tool's builder (a user, a conversation, an
+            # interactive run): the rule never describes a tool the run lacks.
+            has_ask_user=bool(ctx.get("user_id") and ctx.get("conversation_id")) and self.interactive,
             has_reference=self._has_reference,
             has_default_skills=self._has_default_skills,
             search_past_convs=bool(ctx.get("search_past_convs")),

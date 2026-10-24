@@ -30,7 +30,7 @@ A deep agent's live toolset is drawn from four distinct sources. Only one class 
 | Class | Examples | Origin | How it attaches | Disable-able |
 | --- | --- | --- | --- | --- |
 | **framework** | `write_todos`, `ls`, `read_file`, `write_file`, `edit_file`, `task` | Provided by the **deepagents** library — not our code. | Added inside `create_deep_agent(...)`. Names are *reserved*; a colliding MCP tool is dropped. | No — always present |
-| **native · auto-attach** | `remember`, `search_past_conversations`, `render_chart`, `present_artifact`, `create_skill` | **Custom-made, platform-owned.** Registered in `harness/tools/registry.py` with `auto_attach=True`. | Given to every deep agent via `_builtin_tools()`, each behind a gate. | No via the Agents tab — `remember`/`search_past_conversations` follow the Personalization prefs; `render_chart`, `present_artifact` and `create_skill` are always on |
+| **native · auto-attach** | `remember`, `search_past_conversations`, `render_chart`, `present_artifact`, `create_skill`, `ask_user` | **Custom-made, platform-owned.** Registered in `harness/tools/registry.py` with `auto_attach=True`. | Given to every deep agent via `_builtin_tools()`, each behind a gate. | No via the Agents tab — `remember`/`search_past_conversations` follow the Personalization prefs; `render_chart`, `present_artifact` and `create_skill` are always on |
 | **native · opt-in** | *(slot exists; none shipped — the three above are all auto-attach)* | Same registry, `auto_attach=False`. | Declared in `agent.yaml` as `{ native: <name> }`, resolved by `resolve_native_tool()`. | No via the Agents tab (as above) |
 | **MCP** | `tavily/tavily-search`, `arxiv/download_paper` | External servers behind the MCP gateway — a **live manifest**, not code. | Declared in `agent.yaml` (`tool_name` + `server_id`); or **enabled per agent** from the gateway catalog (Agents tab). Filtered from the live manifest at stream time. | Yes — per (user, agent): disable a declared one, or enable any gateway tool |
 
@@ -100,8 +100,9 @@ Each auto-attach builtin's `builder(ctx)` returns the tool **or** `None` when it
 | `present_artifact` | Hands a finished `output/` file to the user as a document card, placed inline at the point of the call — so an agent presents each document as it becomes ready rather than only at the end of the turn. | a `conversation_id` exists (no preference gate) |
 | `view_image` | Shows the model an image from `/conversation/input/` or `/conversation/output/`, whole or zoomed into a pixel `region`. Returns a `ToolMessage` carrying a text note plus an **image content block** — a JSON string of base64 would reach the model as text and be worth nothing. PNG/JPEG/GIF/WebP, capped by `VIEW_IMAGE_MAX_BYTES` (10 MB). Rendered *bare* in the UI: titled with the file ("View photo.jpg"), no Parameters pane, no Result heading — just the picture, or the error. | a `conversation_id` exists (no preference gate) |
 | `create_skill` | Authors a reusable skill into the user's pool (`add_custom_to_user`) and enables it for the calling agent (`assign_user_skill_to_agent`). Both are writes to `agent_runtime`, so the skill is readable by the *next* tool call in the same run. Writes the **user-managed** tier (tier ②), so the user can still disable it in Settings → Agents — not the read-only tier ① an agent's declared `skills:` resolves to. | ungated, but **approval-gated by default** (see below) |
+| `ask_user` | Asks the user 1–3 clarifying questions (each with 0–6 suggested answers, `multiple` for multi-select) and pauses the run on a LangGraph `interrupt` whose value is `{"type": "ask_user", "questions": [{id: "q1", question, options, multiple}, …]}`. The answer comes back through the HITL `/resume` path as `Command(resume={"answers": [...], "skipped": bool})` and becomes the tool's result. **Never approval-gated** (`BuiltinTool.gateable=False`: `resolve_interrupt_on` strips it from every layer, and its Agents-tab row is `approvalLocked` with `approval: false`). **Main agent only**: it refuses inside a sub-agent (detected from its checkpoint namespace — two or more `tools:` segments), and `YamlDeepAgent` drops it from explicit sub-agent tool lists. | a `conversation_id` exists **and** the run is interactive (`context.interactive`, false for a scheduled task's run) |
 
-Registration order in `registry.py` is the attach order: `remember → search_past_conversations → render_chart → view_image → present_artifact → create_skill`. These are **not** toggled in the Agents tab: `remember` and `search_past_conversations` follow the Personalization prefs above, while `render_chart`, `present_artifact` and `create_skill` are always on.
+Registration order in `registry.py` is the attach order: `remember → search_past_conversations → render_chart → view_image → present_artifact → create_skill → ask_user`. These are **not** toggled in the Agents tab: `remember` and `search_past_conversations` follow the Personalization prefs above, while `render_chart`, `present_artifact` and `create_skill` are always on.
 
 ---
 
@@ -314,7 +315,7 @@ See [database-schema](../architecture/database-schema.md#agent_runtime-tables) f
 | --- | --- | --- |
 | Native-tool registry + builtins + gates | [magenticx/agents/harness/tools/registry.py](../../magenticx/agents/harness/tools/registry.py) | `NATIVE_TOOLS`, `build_auto_attach_tools`, `resolve_native_tool`, `native_catalog` |
 | Gate + selection rules | [magenticx/agents/harness/tools/gates.py](../../magenticx/agents/harness/tools/gates.py) | `resolve_interrupt_on` (the four-layer merge, locked last), `user_gates` (cache key → tool name), `strip_reserved_names` (an MCP tool may not shadow a prebuilt one), `trust_level`, `key_set`/`approval_map` |
-| Builtin implementations | [magenticx/agents/harness/tools/](../../magenticx/agents/harness/tools/) | One folder per tool — `<name>/tool.py` plus a barrel fixing `harness.tools.<name>` as the import path: `remember/`, `forget/`, `memory_search/`, `charts/`, `view_image/`, `present_artifact/`, `create_skill/`. The two cross-cutting modules stay at the package level: `builtins.py` and `registry.py`. |
+| Builtin implementations | [magenticx/agents/harness/tools/](../../magenticx/agents/harness/tools/) | One folder per tool — `<name>/tool.py` plus a barrel fixing `harness.tools.<name>` as the import path: `remember/`, `forget/`, `memory_search/`, `charts/`, `view_image/`, `present_artifact/`, `create_skill/`, `ask_user/`. The two cross-cutting modules stay at the package level: `builtins.py` and `registry.py`. |
 | Assembly + builtins + disable filter | [magenticx/agents/harness/abstractions/deep_agent.py](../../magenticx/agents/harness/abstractions/deep_agent.py) | `build_deep_agent`, `_builtin_tools`, `_apply_tool_disables`, `_apply_live_tools` |
 | MCP filter (`attach_tools`, cache keys) | [magenticx/agents/harness/abstractions/base_agent.py](../../magenticx/agents/harness/abstractions/base_agent.py) | `attach_tools`, `_filter_live_tools`, `_build_tool_key_from_config` |
 | YAML → spec tools (native + MCP) | [magenticx/agents/harness/abstractions/yaml_agent.py](../../magenticx/agents/harness/abstractions/yaml_agent.py) | `config_tool_names` seed, `_resolve_native_tools` |
@@ -335,7 +336,7 @@ what is configurable:
 
 | Kind | Members | Enable | Approval |
 | --- | --- | --- | --- |
-| `builtin` | **framework (9)** `write_todos` `ls` `read_file` `write_file` `edit_file` `glob` `grep` `execute` `task` — **native (7)** `remember` `forget` `search_past_conversations` `render_chart` `view_image` `present_artifact` `create_skill` | never | configurable |
+| `builtin` | **framework (9)** `write_todos` `ls` `read_file` `write_file` `edit_file` `glob` `grep` `execute` `task` — **native (8)** `remember` `forget` `search_past_conversations` `render_chart` `view_image` `present_artifact` `create_skill` `ask_user` | never | configurable (fixed off for `ask_user`) |
 | `mcp` | whatever the gateway exposes | configurable | configurable |
 
 **A builtin can never be enable-configured**, and not by policy. The framework
@@ -355,6 +356,7 @@ than dropping the row — a tool that silently disappears reads as a bug:
 | `remember` | `use_memory` |
 | `search_past_conversations` | `search_past_convs` |
 | `present_artifact` | a conversation exists |
+| `ask_user` | a conversation exists (and, per run, an interactive one) |
 | `execute` | `SANDBOX_EXECUTION_ENABLED` (**default false**) |
 
 The first two are the user's preferences, which the agents service cannot see —

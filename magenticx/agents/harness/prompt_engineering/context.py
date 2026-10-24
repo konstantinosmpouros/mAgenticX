@@ -40,6 +40,8 @@ class PromptContext:
     #: a sub-agent's ``present_artifact`` for every deep agent — but it only
     #: *applies* to an agent that can delegate, and is noise to one that cannot.
     has_subagents: bool = False
+    #: ``ask_user`` is attached: an interactive run with a conversation.
+    has_ask_user: bool = False
     #: Wall-clock for the run, injected rather than read inside a prompt so the
     #: composed text is deterministic under test.
     now: Optional[datetime] = None

@@ -53,6 +53,7 @@ class AGUIStreamNormalizer:
         - __interrupt__ => only HITL event (priority)
         - write_todos   => only plan_snapshot (dedupe)
         - task tool     => only subagent event (dedupe)
+        - ask_user      => nothing (its interrupt is the HITL event)
         - other tools   => full lifecycle start/args/result/end
     """
 
@@ -459,6 +460,17 @@ class AGUIStreamNormalizer:
                                         namespace=ns_label,
                                     ),
                                 )
+                        self._ignored_tool_call_ids.add(tc_id)  # ignore ToolMessage if it appears later
+                        continue
+
+                    if tc_name == "ask_user":
+                        # The question panel is its UI: the tool pauses on an
+                        # `interrupt` whose value (the questions) reaches the
+                        # client as HITL_INTERRUPT above. No tool lifecycle —
+                        # nor for the result, which arrives on /resume through
+                        # a fresh normalizer that never saw this call anyway.
+                        # A sub-agent's call is refused by the tool itself and
+                        # stays as silent.
                         self._ignored_tool_call_ids.add(tc_id)  # ignore ToolMessage if it appears later
                         continue
 

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import ClassVar
 
 import httpx
+import pytest
 
 
 def _custom_body(name: str, description: str = "from api", extra_files=None):
@@ -634,6 +636,87 @@ async def test_resume_decisions_count_mismatch_422(client, agents_service, inter
         },
     )
     assert response.status_code == 422
+
+
+class _AskUserInterrupt:
+    def __init__(self, interrupt_id="int-ask"):
+        self.id = interrupt_id
+        self.value = {
+            "type": "ask_user",
+            "questions": [
+                {"id": "q1", "question": "Which period?", "options": ["Q3", "Q4"], "multiple": False},
+                {"id": "q2", "question": "Anything else?", "options": [], "multiple": False},
+            ],
+        }
+
+
+class _AskUserResumeAgent(_FakeResumeAgent):
+    interrupts: ClassVar[list] = [_AskUserInterrupt()]
+
+
+def _ask_user_resume(client, internal_headers, **body):
+    return client.post(
+        "/agents/omni/resume",
+        headers=internal_headers,
+        json={"config": {"run_config": {"configurable": {}}}, "thread_id": "t-1", **body},
+    )
+
+
+async def test_resume_ask_user_answers_become_the_resume_value(client, agents_service, internal_headers, monkeypatch):
+    _resume_env(agents_service, monkeypatch, agent_cls=_AskUserResumeAgent)
+    _AskUserResumeAgent.captured_command = {}
+    response = await _ask_user_resume(
+        client,
+        internal_headers,
+        decision="approve",
+        interrupt_id="int-ask",
+        value={"answers": [{"id": "q1", "selected": ["Q4"], "text": "and Q1 next year"}]},
+    )
+    assert response.status_code == 200
+    cmd = _AskUserResumeAgent.captured_command["command"]
+    # Not approval decisions: the tool itself reads this.
+    assert cmd.resume == {
+        "answers": [{"id": "q1", "selected": ["Q4"], "text": "and Q1 next year"}],
+        "skipped": False,
+    }
+
+
+async def test_resume_ask_user_reject_is_a_skip(client, agents_service, internal_headers, monkeypatch):
+    _resume_env(agents_service, monkeypatch, agent_cls=_AskUserResumeAgent)
+    _AskUserResumeAgent.captured_command = {}
+    response = await _ask_user_resume(client, internal_headers, decision="reject", value={"answers": "ignored"})
+    assert response.status_code == 200
+    assert _AskUserResumeAgent.captured_command["command"].resume == {"answers": [], "skipped": True}
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        None,
+        {"answers": "nope"},
+        {"answers": [{"id": "q7", "selected": []}]},
+        {"answers": [{"id": "q1", "selected": "Q3"}]},
+    ],
+)
+async def test_resume_ask_user_malformed_value_422(client, agents_service, internal_headers, monkeypatch, value):
+    _resume_env(agents_service, monkeypatch, agent_cls=_AskUserResumeAgent)
+    _AskUserResumeAgent.captured_command = {}
+    response = await _ask_user_resume(client, internal_headers, decision="approve", value=value)
+    assert response.status_code == 422
+    assert _AskUserResumeAgent.captured_command == {}
+
+
+class _TwoAskUserResumeAgent(_FakeResumeAgent):
+    interrupts: ClassVar[list] = [_AskUserInterrupt("a" * 32), _AskUserInterrupt("b" * 32)]
+
+
+async def test_resume_ask_user_with_two_pauses_answers_the_first_by_id(client, agents_service, internal_headers, monkeypatch):
+    # LangGraph refuses a bare resume value while several interrupts are pending.
+    _resume_env(agents_service, monkeypatch, agent_cls=_TwoAskUserResumeAgent)
+    _TwoAskUserResumeAgent.captured_command = {}
+    response = await _ask_user_resume(client, internal_headers, decision="reject")
+    assert response.status_code == 200
+    assert _TwoAskUserResumeAgent.captured_command["command"].resume == {"a" * 32: {"answers": [], "skipped": True}}
 
 
 async def test_resume_no_pending_interrupt_409(client, agents_service, internal_headers, monkeypatch):

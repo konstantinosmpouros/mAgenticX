@@ -19,7 +19,7 @@ import {
   TOKEN_USAGE_EVENT_TYPE,
   TokenUsagePayloadSchema,
 } from "./agui";
-import { parseHitlInterrupt } from "./hitl";
+import { askUserAnswers, askUserQuestions, isAskUserInterrupt, parseHitlInterrupt } from "./hitl";
 import type {
   ArtifactBlock,
   ChartBlock,
@@ -33,6 +33,7 @@ import type {
   ThinkingBlock,
   TimelineBlock,
   TimelineFoldIndexes,
+  AskUserAnswer,
   TimelineHitlActionOutcome,
   TimelineHitlApproval,
   TimelineTerminalStatus,
@@ -502,6 +503,9 @@ function pushInterrupt(
     status: "pending",
     subagentId,
   };
+  // The agent's clarifying questions: the item carries them, so the record of
+  // what was asked (and later answered) needs nothing else.
+  if (isAskUserInterrupt(wrapped)) approval.questions = askUserQuestions(wrapped);
   session.state.interrupts.push(approval);
   return approval;
 }
@@ -515,6 +519,10 @@ function pushInterrupt(
 // nothing stalled is found (e.g. a free-form interrupt), letting the caller
 // fall back to a chip item.
 function bindInterruptToTool(block: ThinkingBlock, approval: TimelineHitlApproval): boolean {
+  // `ask_user` gates no tool call (and has no tool step of its own): with no
+  // action names to match it would otherwise latch onto whatever tool is
+  // still running.
+  if (approval.questions) return false;
   const parsed = parseHitlInterrupt(approval.content);
   const actions = parsed.actions.length ? parsed.actions : [{ toolName: parsed.toolName }];
 
@@ -554,6 +562,7 @@ function resolveInterrupt(
   decision: string | undefined,
   reason: string | null | undefined,
   decisions?: TimelineHitlActionOutcome[],
+  answers?: AskUserAnswer[],
 ): void {
   const interrupts = session.state.interrupts;
   const targetId = interruptId ?? interrupts.find((item) => item.status === "pending")?.id ?? null;
@@ -571,7 +580,13 @@ function resolveInterrupt(
 
   const index = interrupts.findIndex((item) => item.id === targetId);
   if (index >= 0) {
-    interrupts[index] = { ...interrupts[index], status, reason: reason ?? null, decisions };
+    interrupts[index] = {
+      ...interrupts[index],
+      status,
+      reason: reason ?? null,
+      decisions,
+      ...(answers ? { answers } : {}),
+    };
   }
 
   const resolveInBlock = (
@@ -581,7 +596,12 @@ function resolveInterrupt(
   ): void => {
     block.items.forEach((item, itemIndex) => {
       if (item.kind === "hitl" && item.id === targetId) {
-        write().items[itemIndex] = { ...item, status, reason: reason ?? null };
+        write().items[itemIndex] = {
+          ...item,
+          status,
+          reason: reason ?? null,
+          ...(answers ? { answers } : {}),
+        };
       } else if (item.kind === "tool" && item.approval?.id === targetId) {
         const outcome = outcomeFor(item.approval);
         write().items[itemIndex] = {
@@ -991,7 +1011,14 @@ function applySubagentInnerEvent(session: Session, key: string, inner: RawEvent)
           reason: d?.reason ?? null,
         }))
       : undefined;
-    resolveInterrupt(session, interruptId, value.decision, value.reason ?? null, decisions);
+    resolveInterrupt(
+      session,
+      interruptId,
+      value.decision,
+      value.reason ?? null,
+      decisions,
+      askUserAnswers(value.answers),
+    );
     return;
   }
 
@@ -1036,7 +1063,11 @@ function applySubagentInnerEvent(session: Session, key: string, inner: RawEvent)
     // input-bar takeover is the approval surface. It binds onto the stalled
     // tool step in the sub-agent's open block; a chip item is the fallback
     // for interrupts that don't gate a tool call.
-    if (approval && subFold.openThinkingIndex !== null) {
+    if (approval?.questions) {
+      // Not expected (ask_user is the main agent's), but kept like the
+      // orchestrator's: the record of the questions needs a block to live in.
+      subEnsureThinking(session, parentIndex, subFold, eventTimestamp(inner)).items.push(approval);
+    } else if (approval && subFold.openThinkingIndex !== null) {
       const thinking = subBlockForWrite<ThinkingBlock>(
         session,
         parentIndex,
@@ -1225,7 +1256,14 @@ function applyEvent(session: Session, event: RawEvent): void {
       // approval" thinking block — the takeover owns the pending state. The
       // approval binds onto the stalled tool step; a chip item is the
       // fallback for interrupts that don't gate a tool call.
-      if (approval && session.state.fold.openThinkingIndex !== null) {
+      //
+      // The agent's questions (`ask_user`) are the exception: they have no tool
+      // step to ride on, and the answers belong in the conversation's history,
+      // so they always get a block — its header reads "Waiting for your
+      // answer…" while the takeover asks, then the item records the answers.
+      if (approval?.questions) {
+        ensureThinking(session, eventTimestamp(event)).items.push(approval);
+      } else if (approval && session.state.fold.openThinkingIndex !== null) {
         const thinking = blockForWrite<ThinkingBlock>(
           session,
           session.state.fold.openThinkingIndex,
@@ -1249,7 +1287,14 @@ function applyEvent(session: Session, event: RawEvent): void {
             reason: d?.reason ?? null,
           }))
         : undefined;
-      resolveInterrupt(session, interruptId, value.decision, value.reason ?? null, decisions);
+      resolveInterrupt(
+        session,
+        interruptId,
+        value.decision,
+        value.reason ?? null,
+        decisions,
+        askUserAnswers(value.answers),
+      );
       return;
     }
 

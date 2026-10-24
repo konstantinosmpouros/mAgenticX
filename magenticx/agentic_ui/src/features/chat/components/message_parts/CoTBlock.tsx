@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   CircleSlash,
   Clock,
+  MessageCircleQuestion,
   ShieldQuestion,
   ShieldX,
   Wrench,
@@ -22,7 +23,7 @@ import { useWorkspaceStore } from "@/shared/stores/workspaceStore";
 import { ToolCallArgsView, ToolCallResultView } from "./ToolCallViews";
 import { ShimmeringText } from "@/shared/ui/shadcn-io/shimmering-text";
 import { MarkdownRenderer } from "@/shared/ui/markdownRenderer";
-import { useHitl } from "@/features/inference";
+import { isAskUserAnswered, useHitl } from "@/features/inference";
 import { useApprovalSummaries } from "@/features/chat/hooks/useApprovalSummaries";
 import {
   approvalHeadline,
@@ -32,6 +33,8 @@ import {
 import { HitlActionSummary, HitlSummaryList } from "./HitlActionSummary";
 import { cn } from "@/shared/lib/utils";
 import type {
+  AskUserAnswer,
+  AskUserQuestion,
   ThinkingBlock,
   TimelineHitlApproval,
   TimelineTerminalStatus,
@@ -300,6 +303,128 @@ const TimelineHitlItem = memo(
 );
 TimelineHitlItem.displayName = "TimelineHitlItem";
 
+// The agent's clarifying questions (`ask_user`), once resolved: "Answered ·
+// 2 questions" (or "Skipped"), opening onto each question and what was
+// answered — the picks as chips, the user's own words as a quote. Like an
+// approval it says nothing while pending: the takeover is asking.
+const AskUserAnswerView = ({ answer }: { answer: AskUserAnswer | undefined }) => {
+  if (!answer || !isAskUserAnswered(answer)) {
+    return <p className="text-muted-foreground text-xs italic">No preference</p>;
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {answer.selected.map((option) => (
+        <span
+          key={option}
+          className="inline-flex max-w-full items-center gap-1 rounded-full border border-primary/25 bg-primary/[0.07] px-2.5 py-0.5 text-foreground text-xs"
+        >
+          <Check aria-hidden className="size-3 shrink-0 text-primary" strokeWidth={3} />
+          <span className="truncate">{option}</span>
+        </span>
+      ))}
+      {answer.text ? (
+        <p className="w-full whitespace-pre-wrap border-primary/30 border-l-2 pl-2.5 text-foreground text-sm leading-relaxed">
+          {answer.text}
+        </p>
+      ) : null}
+    </div>
+  );
+};
+
+export const AskUserList = ({
+  questions,
+  answers,
+  skipped,
+}: {
+  questions: AskUserQuestion[];
+  answers?: AskUserAnswer[];
+  skipped: boolean;
+}) => (
+  <ol className="space-y-3">
+    {questions.map((question, index) => (
+      <li key={question.id} className="flex gap-2.5">
+        <span
+          aria-hidden
+          className="mt-px flex size-5 shrink-0 items-center justify-center rounded-full bg-muted font-semibold text-[10px] text-muted-foreground tabular-nums"
+        >
+          {index + 1}
+        </span>
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <p className="font-medium text-foreground text-sm leading-snug">{question.question}</p>
+          {skipped ? (
+            <p className="text-muted-foreground text-xs italic">Skipped — left to the agent</p>
+          ) : answers ? (
+            <AskUserAnswerView answer={answers.find((answer) => answer.id === question.id)} />
+          ) : (
+            <p className="text-muted-foreground text-xs italic">Answer sent</p>
+          )}
+        </div>
+      </li>
+    ))}
+  </ol>
+);
+
+const TimelineAskUserItem = memo(
+  ({
+    approval,
+    questions,
+    runId,
+    isLast,
+    soleItem,
+  }: {
+    approval: TimelineHitlApproval;
+    questions: AskUserQuestion[];
+    runId: string;
+    isLast: boolean;
+    // The block holds nothing else: open on the answers straight away.
+    soleItem: boolean;
+  }) => {
+    const [open, setOpen] = useState<boolean | null>(null);
+    const hitl = useHitl();
+    const clientResolved = hitl ? hitl.isInterruptResolved(runId, approval.id) : false;
+    if (approval.status === "pending" && !clientResolved) return null;
+
+    const skipped = approval.status === "rejected";
+    const count = questions.length;
+    const label = skipped ? "Skipped" : approval.status === "approved" ? "Answered" : "Answers sent";
+    const detail = count === 1 ? questions[0].question : `${count} questions`;
+    const expanded = open ?? soleItem;
+    return (
+      <Collapsible open={expanded} onOpenChange={setOpen}>
+        <ChainOfThoughtStep
+          icon={MessageCircleQuestion}
+          hideConnector={isLast}
+          className={cn("text-sm", skipped ? "text-muted-foreground" : "text-primary")}
+          label={
+            <CollapsibleTrigger
+              disabled={!count}
+              className="flex max-w-full items-center gap-2 text-left transition-colors hover:text-foreground disabled:cursor-default"
+              aria-label={`Toggle ${label.toLowerCase()} questions`}
+            >
+              <span
+                className={cn(
+                  "shrink-0 font-medium",
+                  skipped ? "text-muted-foreground" : "text-primary",
+                )}
+              >
+                {label}
+              </span>
+              <span className="truncate text-muted-foreground">· {detail}</span>
+            </CollapsibleTrigger>
+          }
+        >
+          {count ? (
+            <CollapsibleContent className="pt-1 text-foreground outline-none data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 data-[state=closed]:animate-out data-[state=open]:animate-in">
+              <AskUserList questions={questions} answers={approval.answers} skipped={skipped} />
+            </CollapsibleContent>
+          ) : null}
+        </ChainOfThoughtStep>
+      </Collapsible>
+    );
+  },
+);
+TimelineAskUserItem.displayName = "TimelineAskUserItem";
+
 const DONE_SENTINELS: Record<
   TimelineTerminalStatus,
   { icon: typeof CheckCircle2; label: string; className: string }
@@ -338,12 +463,29 @@ export const CoTBlock = memo(
     const durationLabel = formatThinkingDuration(
       blockDurationSeconds(block) ?? fallbackDurationSeconds ?? null,
     );
-    const sentinel = doneStatus ? DONE_SENTINELS[doneStatus] : null;
     const awaitingApproval = block.items.some(
       (item) =>
         (item.kind === "hitl" && item.status === "pending") ||
         (item.kind === "tool" && item.approval?.status === "pending"),
     );
+    // The agent's own questions wait on an answer, not an approval.
+    const awaitingAnswer = block.items.some(
+      (item) => item.kind === "hitl" && item.status === "pending" && Boolean(item.questions),
+    );
+    // A block that is nothing but the agent's questions has no thinking to time.
+    const askedOnly =
+      block.items.length > 0 &&
+      block.items.every((item) => item.kind === "hitl" && Boolean(item.questions));
+    const askedCount = askedOnly
+      ? block.items.reduce(
+          (sum, item) => sum + (item.kind === "hitl" ? (item.questions?.length ?? 0) : 0),
+          0,
+        )
+      : 0;
+    // ...nor a "Done" to close: the answers are the whole record. (A run that
+    // failed or stopped there still says so.)
+    const sentinel =
+      doneStatus && !(askedOnly && doneStatus === "completed") ? DONE_SENTINELS[doneStatus] : null;
     if (!block.items.length && !sentinel && !isLiveActive) return null;
 
     return (
@@ -355,13 +497,21 @@ export const CoTBlock = memo(
         <ChainOfThoughtHeader className="text-sm md:text-[0.95rem] font-medium text-muted-foreground hover:text-foreground">
           {isLiveActive ? (
             <ShimmeringText
-              text={awaitingApproval ? "Waiting for approval..." : "Reasoning..."}
+              text={
+                awaitingAnswer
+                  ? "Waiting for your answer..."
+                  : awaitingApproval
+                    ? "Waiting for approval..."
+                    : "Reasoning..."
+              }
               duration={1.1}
               pause={1.4}
               color="hsl(var(--muted-foreground))"
               shimmeringColor="#2b2d36"
               className="text-sm md:text-[0.95rem] font-medium"
             />
+          ) : askedOnly ? (
+            askedCount === 1 ? "Asked you a question" : `Asked you ${askedCount} questions`
           ) : durationLabel ? (
             `Thought for ${durationLabel}`
           ) : (
@@ -390,6 +540,18 @@ export const CoTBlock = memo(
             if (item.kind === "tool") {
               return (
                 <TimelineToolItem key={item.id} tool={item} runId={runId} isLast={isLastRendered} />
+              );
+            }
+            if (item.questions) {
+              return (
+                <TimelineAskUserItem
+                  key={item.id}
+                  approval={item}
+                  questions={item.questions}
+                  runId={runId}
+                  isLast={isLastRendered}
+                  soleItem={askedOnly}
+                />
               );
             }
             return (

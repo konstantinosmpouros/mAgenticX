@@ -236,3 +236,12 @@ def test_a_user_can_clear_a_default_gate(built):
 def test_clearing_cannot_reach_a_locked_gate(built):
     # Same request against the one tool nobody may ungate.
     assert built(approvals={"execute": False})["execute"] is True
+
+
+def test_ask_user_can_never_be_gated(built):
+    # The call is itself the pause for the user. A gate in front of it would ask
+    # for approval to ask — so every layer's attempt is stripped after the merge.
+    gates = built(class_gates={"ask_user": True}, approvals={"ask_user": True})
+    assert "ask_user" not in gates
+    assert "ask_user" not in built(interrupt_on={"ask_user": True})
+    assert gates["execute"] is True  # the strip touches nothing else

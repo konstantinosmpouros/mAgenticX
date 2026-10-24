@@ -44,6 +44,33 @@ export const HITLInterruptPayloadSchema = z.object({
 });
 
 // ------------------------------------------------------
+// ask_user — the agent's clarifying questions, raised as a HITL interrupt
+// whose value is {type: "ask_user", questions: [...]}; the resume carries
+// {answers: [...]}, which BRIDGE_HITL_RESOLVED echoes. Loose on purpose: a
+// model wrote these, so `features/inference/hitl.ts` trims, drops and caps
+// rather than rejecting the whole interrupt over one bad entry.
+// ------------------------------------------------------
+export const ASK_USER_INTERRUPT_TYPE = "ask_user" as const;
+
+export const AskUserPayloadSchema = z.object({
+  type: z.literal(ASK_USER_INTERRUPT_TYPE),
+  questions: z.array(z.unknown()).nullish(),
+});
+
+export const AskUserQuestionSchema = z.object({
+  id: z.union([z.string(), z.number()]).nullish(),
+  question: z.string(),
+  options: z.array(z.unknown()).nullish(),
+  multiple: z.boolean().nullish(),
+});
+
+export const AskUserAnswerSchema = z.object({
+  id: z.union([z.string(), z.number()]),
+  selected: z.array(z.unknown()).nullish(),
+  text: z.string().nullish(),
+});
+
+// ------------------------------------------------------
 // Plan Snapshot
 // ------------------------------------------------------
 // Declared in shared/lib/schemas.ts (a zod-only leaf) so shared/lib/types can

@@ -24,7 +24,9 @@ from core.database import ConversationTable, MessageTable, UserTable
 from router import inference as inference_router
 from utils.inference_runs import (
     InferenceRunRuntime,
+    hitl_resolved_value,
     inference_run_manager,
+    run_is_interactive,
 )
 
 
@@ -101,6 +103,43 @@ def test_runtime_counts_multiple_hitl_interrupts():
             "value": {"thread_id": thread, "interrupt": {}},
         })
     assert runtime.pending_interrupts == 3
+
+
+# ---------------------------------------------------------------------------
+# What the run tells the agents service, and what the log keeps
+# ---------------------------------------------------------------------------
+
+def test_a_chat_turn_is_interactive_and_a_scheduled_run_is_not():
+    # Feeds `context.interactive`: a scheduled task's run never gets `ask_user`,
+    # since nobody would ever answer it.
+    assert run_is_interactive(MessageTable(conversation_id="c", sender="ai", content="")) is True
+    assert run_is_interactive(
+        MessageTable(conversation_id="c", sender="ai", content="", scheduled_task_id="task-1")
+    ) is False
+
+
+def test_the_resolved_marker_of_an_approval_is_unchanged():
+    payload = {"interrupt_id": "int-1", "decision": "reject", "reason": "no", "value": None, "decisions": None}
+    assert hitl_resolved_value(payload, "reject") == {
+        "interrupt_id": "int-1",
+        "decision": "reject",
+        "reason": "no",
+        "decisions": None,
+    }
+
+
+def test_the_resolved_marker_of_an_ask_user_reply_carries_the_answers():
+    # So a reloaded client shows what was answered, not an open question panel.
+    answers = [{"id": "q1", "selected": ["Q3"], "text": "and Q4"}]
+    payload = {"interrupt_id": "int-ask", "decision": "approve", "value": {"answers": answers}}
+    marker = hitl_resolved_value(payload, "approve")
+    assert marker["answers"] == answers
+    assert marker["interrupt_id"] == "int-ask" and marker["decision"] == "approve"
+
+
+def test_a_value_without_answers_adds_nothing_to_the_marker():
+    for value in (None, "text", {"answers": "nope"}, {"other": 1}):
+        assert "answers" not in hitl_resolved_value({"value": value}, "approve")
 
 
 # ---------------------------------------------------------------------------

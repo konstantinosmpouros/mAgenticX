@@ -518,7 +518,7 @@ harness/prompt_engineering/
 ├── composer.py             compose_system_prompt() + the fixed section order
 └── prompts/
     ├── filesystem_prompt.py     which mounts exist, which refuse writes
-    ├── capabilities_prompt.py   view_image / present_artifact / render_chart
+    ├── capabilities_prompt.py   view_image / present_artifact / render_chart / ask_user
     ├── memory_prompt.py         /memories/, remember, forget, past-conv search
     └── temporal_prompt.py       today's date and time
 ```
@@ -734,7 +734,7 @@ When the user approves/rejects, the bridge POSTs `AgentResumeRequest{thread_id, 
 2. Calls `compiled_graph.aget_state(config)` to inspect `snapshot.interrupts`.
 3. Verifies `snapshot.interrupts[0].id == req.interrupt_id` (when supplied); 409s on a stale click.
 4. Computes `decision_count = len(snapshot.interrupts[0].value.action_requests)` so the resume payload has the exact length the middleware validates against.
-5. Builds `Command(resume={"decisions": [<decision_dict>] * decision_count})` and feeds it to `agent.astream(payload={"messages": []}, command=resume_command)`.
+5. Builds `Command(resume={"decisions": [<decision_dict>] * decision_count})` and feeds it to `agent.astream(payload={"messages": []}, command=resume_command)`. An `ask_user` pause (`interrupt.value.type == "ask_user"`) instead resumes with `Command(resume={"answers": [...], "skipped": bool})` from `value.answers` (`reject` = skipped).
 
 Decision dicts:
 

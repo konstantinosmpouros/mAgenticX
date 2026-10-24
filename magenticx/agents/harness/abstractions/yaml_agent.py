@@ -35,6 +35,7 @@ from harness.abstractions.agent_spec import AgentSpec, SubAgentSpec, ToolRef
 from utils import build_tool_cache_key, get_tool_cache_key
 from utils.declarative import read_prompt, resolve_prompt
 from harness.filesystem import layout
+from harness.tools.ask_user import ASK_USER_TOOL_NAME
 from harness.tools.registry import NativeToolContext, resolve_native_tool
 from core.logging import get_logger
 
@@ -191,6 +192,7 @@ class YamlDeepAgent(DeepAgent):
             use_memory=self.use_memory,
             search_past_convs=bool(self.context.get("search_past_convs")),
             files=self.conversation_files if conversation_id else None,
+            interactive=self.interactive,
         )
 
     def _resolve_native_tools(self, refs: list[ToolRef]) -> list[Any]:
@@ -247,8 +249,14 @@ class YamlDeepAgent(DeepAgent):
         does not serve right now, is simply absent — and it stays absent rather
         than widening back to "inherit everything", because the author asked for
         a restriction.
+
+        ``ask_user`` is never given to a sub-agent, even when listed: only the
+        main agent can pause the run on a question (the tool also refuses at
+        call time, for the sub-agents that inherit it).
         """
-        tools = self._resolve_native_tools([t for t in sa.tools if t.is_native])
+        tools = self._resolve_native_tools(
+            [t for t in sa.tools if t.is_native and t.native != ASK_USER_TOOL_NAME]
+        )
         missing: list[str] = []
         for ref in sa.tools:
             if ref.is_native:

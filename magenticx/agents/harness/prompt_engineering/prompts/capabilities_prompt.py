@@ -6,8 +6,9 @@ exists* changes what the agent does, and its own description cannot convey that.
 told will write a report into `output/` and then paste it into the chat, and the
 user never gets a file.
 
-Everything here is gated on a conversation, because all three tools point into
-the conversation mounts and are not attached without one.
+Everything here is gated on a conversation, because these tools point into
+the conversation mounts (or, for `ask_user`, pause it) and are not attached
+without one.
 """
 from __future__ import annotations
 
@@ -37,6 +38,22 @@ _BODY = """\
   The chart types and their modifiers are in the tool's own schema — read it
   there rather than guessing."""
 
+#: Only for an interactive run (``has_ask_user``): a scheduled task has nobody
+#: to answer, so the tool is not attached and the rule would describe nothing.
+_ASK_USER = """\
+- **Ask the user** with `ask_user` when an answer would change what you do —
+  the scope, which item they mean, how deep to go, a preference you cannot
+  infer. Never ask for something you can find out yourself, and never end an
+  answer with questions in prose instead. Ask 1-3 questions, each about one
+  thing, with 2-5 short suggested answers when sensible; the user can always
+  write their own, so never add an "Other" option. Call it alone and once,
+  before doing the work, after at most one short sentence to the user; then
+  stop — the run pauses, and the tool's result is the user's reply. Ask at
+  most once per user message: once they have answered, do the work with what
+  they gave you, even if it is vague, and state any assumption you still make
+  instead of asking again. If they skip, carry on with reasonable assumptions
+  and state them briefly."""
+
 _SANDBOX = """\
 - **Run code** with `execute`. It requires the user's approval on every call."""
 
@@ -58,6 +75,8 @@ def capabilities_prompt(context: PromptContext) -> str:
     body = _BODY
     if context.has_subagents:
         body = f"{body}\n{_ORCHESTRATOR}"
+    if context.has_ask_user:
+        body = f"{body}\n{_ASK_USER}"
     if context.sandbox_enabled:
         body = f"{body}\n{_SANDBOX}"
     return f"{_HEADER}\n\n{body}"

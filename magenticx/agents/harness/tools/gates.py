@@ -19,7 +19,7 @@ import types
 from typing import Any, Mapping, Protocol, Sequence
 
 from core.logging import get_logger
-from harness.tools.builtins import BUILTIN_BY_NAME, builtin_hitl_defaults, locked_gates
+from harness.tools.builtins import BUILTIN_BY_NAME, builtin_hitl_defaults, locked_gates, ungateable_tools
 from utils import get_tool_cache_key
 
 logger = get_logger(__name__)
@@ -153,6 +153,10 @@ def resolve_interrupt_on(
 
     Step 4 is last so no layer beneath it can clear a mandated gate: a user
     switching off approval for ``execute`` must not be able to succeed.
+
+    Then the ungateable tools are dropped from the result, whichever layer set
+    them: ``ask_user`` is itself the pause, and a gate in front of it would
+    stop for an approval before asking the question.
     """
     resolved = {**builtin_hitl_defaults(), **(own_gates or {})}
     for name, wanted in user_gates(tools, approvals, agent_slug=agent_slug).items():
@@ -161,6 +165,8 @@ def resolve_interrupt_on(
         else:
             resolved.pop(name, None)
     resolved.update(locked_gates())
+    for name in ungateable_tools():
+        resolved.pop(name, None)
     return resolved
 
 

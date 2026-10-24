@@ -176,15 +176,17 @@ def apply_to_rows(
             row_enabled = key not in disabled
         else:
             row_enabled = key in enabled
-        # The user's explicit choice wins over the baseline; a locked gate wins
-        # over both, because reporting it off would show a live switch for a
-        # control that does nothing.
+        # The user's explicit choice wins over the baseline; a locked row's
+        # baseline wins over both, because reporting anything else would show
+        # a switch for a control that does nothing. Locked means final either
+        # way: on for a mandated gate (`execute`), off for a tool that is
+        # itself a pause for the user (`ask_user`).
         approval = approvals.get(key, bool(row.get("approval")))
         out.append(
             {
                 **row,
                 "enabled": row_enabled,
-                "approval": bool(row.get("approvalLocked")) or approval,
+                "approval": bool(row.get("approval")) if row.get("approvalLocked") else approval,
             }
         )
     return out

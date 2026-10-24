@@ -1,5 +1,7 @@
 import {
+  askUserQuestions,
   hitlActionRequests,
+  isAskUserInterrupt,
   isGenericHitlDescription,
   type HitlActionRequest,
 } from "@/features/inference/hitl";
@@ -245,6 +247,7 @@ export const presentInterrupt = (
   content: unknown,
   serverIdFor: (toolName: string) => string | undefined = () => undefined,
 ): ApprovalSummary[] => {
+  if (isAskUserInterrupt(content)) return [presentAskUser(content)];
   const requests = hitlActionRequests(content);
   if (requests.length) {
     return requests.map((request) =>
@@ -264,6 +267,27 @@ export const presentInterrupt = (
     : undefined;
   if (question) return [{ title: fallback, fields: [{ kind: "markdown", value: question.trim() }] }];
   return [{ title: fallback, fields: argFields(value) }];
+};
+
+/**
+ * The agent's clarifying questions (`ask_user`) where a generic surface shows
+ * an interrupt: "Asked: <first question>", each question (with its suggested
+ * answers) as a field. The questions themselves are asked by AskUserTakeover.
+ */
+export const presentAskUser = (content: unknown): ApprovalSummary => {
+  const questions = askUserQuestions(content);
+  if (!questions.length) return { title: "The agent asked you a question", fields: [] };
+  const more = questions.length > 1 ? ` (+${questions.length - 1} more)` : "";
+  return {
+    title: `Asked: ${clip(questions[0].question, 80)}${more}`,
+    fields: questions.map((question, index) => ({
+      kind: "prose" as const,
+      label: questions.length > 1 ? `Question ${index + 1}` : "Question",
+      value: question.options.length
+        ? [question.question, ...question.options.map((option) => `• ${option}`)].join("\n")
+        : question.question,
+    })),
+  };
 };
 
 /** "Hand off to the research sub-agent (+2 more)" — the one line under "Approval required". */

@@ -115,6 +115,9 @@ type ChatInputBarProps = {
   // swap (voice-bar precedent) — used for the pending-HITL approval surface
   // so the action lives at the bottom where the user is already looking.
   hitlTakeover?: React.ReactNode;
+  // The approval bar is always dark; a takeover that stands in for the
+  // composer itself (the agent's questions) keeps the active theme instead.
+  hitlTakeoverThemed?: boolean;
   starterSuggestions?: string[];
   onStarterSuggestionSelect?: (suggestion: string) => void;
 };
@@ -183,6 +186,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
     dictationCancelSignal,
     topAccessory,
     hitlTakeover,
+    hitlTakeoverThemed = false,
     starterSuggestions = [],
     onStarterSuggestionSelect,
   } = props;
@@ -748,7 +752,11 @@ export function ChatInputBar(props: ChatInputBarProps) {
                 {...dock}
                 style={{ transformOrigin: "center bottom" }}
               >
-                <div className="dark relative mx-auto max-w-3xl pointer-events-auto">{hitlTakeover}</div>
+                <div
+                  className={`${hitlTakeoverThemed ? "" : "dark "}relative mx-auto max-w-3xl pointer-events-auto`}
+                >
+                  {hitlTakeover}
+                </div>
               </motion.div>
             ) : chatBarVisible ? (
               <motion.div

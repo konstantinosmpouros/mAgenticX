@@ -414,6 +414,17 @@ async def test_ungating_a_locked_tool_is_refused(tool_rows, session_factory):
 
 
 @pytest.mark.asyncio
+async def test_gating_a_tool_that_is_itself_a_pause_is_refused(tool_rows, session_factory):
+    tool_rows.append(
+        {"key": "ask_user", "name": "ask_user", "kind": "builtin", "group": "Interaction",
+         "declared": True, "enabled": True, "approval": False, "approvalLocked": True}
+    )
+    async with session_factory() as db:
+        with _expect_http(409):
+            await agents_util.set_agent_tool_approval(db, "u1", "omni", "ask_user", True)
+
+
+@pytest.mark.asyncio
 async def test_a_tool_that_does_not_exist_is_a_404(tool_rows, session_factory):
     async with session_factory() as db:
         with _expect_http(404):

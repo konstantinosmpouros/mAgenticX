@@ -44,6 +44,29 @@ export type ParsedHitlRequest = ParsedHitlAction & {
   raw: string;
 };
 
+/**
+ * One clarifying question of an `ask_user` interrupt (the agent asks before it
+ * goes on). `options` are suggested answers — empty for an open question —
+ * and `multiple` lets the user pick more than one.
+ */
+export type AskUserQuestion = {
+  id: string;
+  question: string;
+  options: string[];
+  multiple: boolean;
+};
+
+/**
+ * The user's answer to one question, as the resume sends it and the bridge's
+ * BRIDGE_HITL_RESOLVED echoes it: the options picked and anything written in
+ * their own words (either may be empty — no preference).
+ */
+export type AskUserAnswer = {
+  id: string;
+  selected: string[];
+  text: string;
+};
+
 export type TimelineHitlApproval = {
   kind: "hitl";
   id: string;
@@ -59,6 +82,10 @@ export type TimelineHitlApproval = {
   // Per-action resolved outcomes (set on BRIDGE_HITL_RESOLVED for a batch);
   // index-aligned to action_requests. Drives per-tool chip status.
   decisions?: TimelineHitlActionOutcome[];
+  // An `ask_user` interrupt: the questions put to the user, and once resolved
+  // what they answered ("approved" = answered, "rejected" = skipped, no answers).
+  questions?: AskUserQuestion[];
+  answers?: AskUserAnswer[];
 };
 
 export type TimelineToolExecution = {

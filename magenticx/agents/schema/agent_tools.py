@@ -24,7 +24,9 @@ class AgentToolRow(BaseModel):
     unavailableReason: Optional[str] = None
     enabled: bool
     approval: bool = False
-    #: Approval cannot be cleared by anyone.
+    #: Approval cannot be changed by anyone: ``approval`` is final — on for a
+    #: mandated gate (``execute``), off for a tool that is itself a pause
+    #: (``ask_user``).
     approvalLocked: bool = False
 
 

@@ -523,6 +523,10 @@ LangChain's `HumanInTheLoopMiddleware` expects `Command(resume={"decisions": [..
 | approve | `{"type": "approve"}` | Tool executes normally. `reason`/`value` from the bridge are dropped — LangChain's `ApproveDecision` has no `message` slot. |
 | reject | `{"type": "reject", "message": req.reason or "User rejected this action."}` | Tool does **not** execute. A `ToolMessage` with `content=<message>` is appended in its place and the agent loop continues, so the agent can adapt to the rejection rather than terminating. The default message is mandatory — LangChain raises `KeyError` if `message` is missing. |
 
+### `ask_user` pauses
+
+The agent's `ask_user` tool pauses on its own interrupt (`interrupt.value = {"type": "ask_user", "questions": [{id, question, options, multiple}]}`), resumed through the same route. `approve` + `value: {"answers": [{"id": "q1", "selected": [...], "text": "..."}]}` becomes `Command(resume={"answers": [...], "skipped": false})`; `reject` becomes `Command(resume={"answers": [], "skipped": true})`. A malformed value or an unknown question id is a 422. The bridge's `BRIDGE_HITL_RESOLVED` marker also carries the `answers`.
+
 ### interrupt_id contract
 
 Every `HITL_INTERRUPT` event carries `value.interrupt.id` — the LangGraph interrupt's unique id, captured in [`normalizer.py`](../../magenticx/agents/harness/agui/normalizer.py). The full chain uses this id, **not** `thread_id`, for dedup and resolution tracking:

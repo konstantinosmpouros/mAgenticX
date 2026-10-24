@@ -188,6 +188,34 @@ def _effective_personalization(prefs_row: UserPreferencesTable | None) -> dict[s
     return payload
 
 
+def run_is_interactive(run: MessageTable) -> bool:
+    """Whether a person is there to answer this run's questions (``ask_user``).
+
+    A chat turn is; a scheduled task's run is not — nobody would ever resume
+    it, so the agents service leaves the tool out."""
+    return run.scheduled_task_id is None
+
+
+def hitl_resolved_value(resume_payload: dict[str, Any], decision: str) -> dict[str, Any]:
+    """The ``BRIDGE_HITL_RESOLVED`` marker's value for one resume.
+
+    Persisted in the event log so a reloaded client knows the pause was
+    resolved, and how. An ``ask_user`` reply also carries the user's
+    ``answers`` (``value.answers`` of the resume), so the panel can show what
+    was answered after a reload.
+    """
+    marker: dict[str, Any] = {
+        "interrupt_id": resume_payload.get("interrupt_id"),
+        "decision": decision,
+        "reason": resume_payload.get("reason"),
+        "decisions": resume_payload.get("decisions"),
+    }
+    value = resume_payload.get("value")
+    if isinstance(value, dict) and isinstance(value.get("answers"), list):
+        marker["answers"] = value["answers"]
+    return marker
+
+
 def _parse_sse_bytes(buffer: str, chunk: bytes) -> tuple[str, list[dict[str, Any]]]:
     buffer += chunk.decode("utf-8", errors="ignore")
     events: list[dict[str, Any]] = []
@@ -909,6 +937,10 @@ class InferenceRunManager:
                         "run_id": str(run.id),
                         "search_past_convs": search_past_convs,
                         "use_memory": use_memory,
+                        # Someone is watching this run and can answer it. A
+                        # scheduled task's run has nobody to resume a pause,
+                        # so its agent never gets `ask_user`.
+                        "interactive": run_is_interactive(run),
                         # The user's per-agent tool choices, from chat_db,
                         # decoded once by the agent's abstraction layer. They
                         # ride the run config rather than being materialised on
@@ -1042,12 +1074,7 @@ class InferenceRunManager:
                     marker = runtime.apply_event({
                         "type": "CUSTOM",
                         "name": "BRIDGE_HITL_RESOLVED",
-                        "value": {
-                            "interrupt_id": resume_payload.get("interrupt_id"),
-                            "decision": overall_decision,
-                            "reason": resume_payload.get("reason"),
-                            "decisions": resume_decisions,
-                        },
+                        "value": hitl_resolved_value(resume_payload, overall_decision),
                         "timestamp": int(time.time() * 1000),
                     })
                     await self._publish_delta(run_id, run_meta, runtime, [marker])

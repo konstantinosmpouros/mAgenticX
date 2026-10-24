@@ -6,7 +6,9 @@ them and cannot filter them — only ``interrupt_on`` reaches them. The **native
 tools are ours (``harness/tools/registry.py`` owns their builders), but the
 Agents tab is not where their presence is decided either.
 
-That is why a builtin's approval is configurable and its enablement never is.
+That is why a builtin's approval is configurable and its enablement never is —
+with one exception: a tool whose call *is* the human step (``ask_user``) is
+never gated, since an approval in front of a question would ask twice.
 
 Descriptions for native tools are not duplicated here — the catalog reads them
 from the registry, which owns them.
@@ -45,6 +47,9 @@ class BuiltinTool:
     hitl_default: bool = False
     #: Approval cannot be turned off by anyone. Enforced last in the merge.
     locked: bool = False
+    #: Approval can never be turned on: the call is itself a pause for the user.
+    #: Stripped after every layer of the merge, so no gate can reach it.
+    gateable: bool = True
     availability: Availability = Availability.ALWAYS
 
 
@@ -74,6 +79,7 @@ BUILTIN_TOOLS: tuple[BuiltinTool, ...] = (
     BuiltinTool("render_chart", "Output"),
     BuiltinTool("present_artifact", "Output", availability=Availability.CONVERSATION),
     BuiltinTool("create_skill", "Skills", hitl_default=True),
+    BuiltinTool("ask_user", "Interaction", gateable=False, availability=Availability.CONVERSATION),
 )
 
 BUILTIN_BY_NAME: dict[str, BuiltinTool] = {t.name: t for t in BUILTIN_TOOLS}
@@ -92,6 +98,11 @@ def builtin_hitl_defaults() -> dict[str, bool]:
 def locked_gates() -> dict[str, bool]:
     """Gates no layer may clear. Merged last, after the user's choices."""
     return {t.name: True for t in BUILTIN_TOOLS if t.locked}
+
+
+def ungateable_tools() -> frozenset[str]:
+    """Tools no layer may gate. Removed after the merge, locked gates included."""
+    return frozenset(t.name for t in BUILTIN_TOOLS if not t.gateable)
 
 
 def resolve_availability(
@@ -122,4 +133,5 @@ __all__ = [
     "is_builtin",
     "locked_gates",
     "resolve_availability",
+    "ungateable_tools",
 ]

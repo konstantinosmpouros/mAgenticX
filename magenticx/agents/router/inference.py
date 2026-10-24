@@ -1,10 +1,8 @@
 import asyncio
-from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from langchain_mcp_adapters.tools import load_mcp_tools
-from langgraph.types import Command
 
 from core.security.internal_trust import require_internal_caller
 from core.logging import get_context, get_logger, set_context
@@ -22,6 +20,7 @@ from schema import (
 from utils import emit_checkpoint_committed, optional_mcp_session, release_checkpoint_unless_paused
 from utils.agents import resolve_agent_definition
 from utils.compaction import compact_agent_thread, undo_agent_compaction
+from utils.hitl_resume import build_resume_command
 
 logger = get_logger(__name__)
 
@@ -151,6 +150,10 @@ async def resume_agent(agent_slug: str, req: AgentResumeRequest):
     regular ``/stream`` endpoint so the bridge can plumb resume output through
     the same Redis stream + WebSocket observer pipeline. Because the checkpoint
     is durable, this now works even across an agents-service restart.
+
+    Two kinds of pause share it: an approval gate (approve/reject decisions)
+    and an ``ask_user`` question panel (``value.answers``, or ``reject`` to
+    skip), told apart by the pending interrupt's value.
     """
     context_data = req.config.get("context", {}) if isinstance(req.config, dict) else {}
     run_config = req.config.get("run_config", {}) if isinstance(req.config, dict) else {}
@@ -218,12 +221,12 @@ async def resume_agent(agent_slug: str, req: AgentResumeRequest):
 
     request_context = get_context()
 
-    # Build the LangChain HumanInTheLoopMiddleware-compatible resume payload.
-    # The middleware expects a dict of the form
+    # Build the resume payload from what the checkpoint is paused on. An
+    # approval gate is LangChain's HumanInTheLoopMiddleware, which expects
     #     {"decisions": [<decision>, <decision>, ...]}
-    # with one entry per pending tool call in the SAME order. The middleware
-    # raises a ValueError if the count is wrong, so we read it back from the
-    # saved checkpoint instead of guessing.
+    # with one entry per pending tool call in the SAME order (and raises a
+    # ValueError if the count is wrong), so we read it back from the saved
+    # checkpoint instead of guessing. An `ask_user` pause takes the answers.
     try:
         # Build the graph bound to the durable saver, then read the saved state
         # (async — AsyncPostgresSaver has no sync get_state) before issuing the
@@ -278,56 +281,7 @@ async def resume_agent(agent_slug: str, req: AgentResumeRequest):
             detail="The targeted interrupt is no longer pending.",
         )
 
-    # The first interrupt's value is a langchain HITLRequest:
-    #   { "action_requests": [...], "review_configs": [...] }
-    interrupt_value = pending_interrupt.value
-    if isinstance(interrupt_value, dict):
-        action_requests = interrupt_value.get("action_requests") or []
-    else:
-        action_requests = getattr(interrupt_value, "action_requests", []) or []
-    decision_count = max(1, len(action_requests))
-
-    def _to_lc_decision(decision: str, reason: Optional[str]) -> dict[str, Any]:
-        # LangChain's RejectDecision requires `message`. Falling back to a
-        # generic string when the user didn't type a reason avoids a KeyError
-        # in HumanInTheLoopMiddleware.after_model when it does
-        # `decision["message"]` to build the ToolMessage. Reject is non-
-        # terminal in LangChain — the rejection becomes a ToolMessage and the
-        # agent loop continues, which is exactly the "rehydrate after reject"
-        # behavior the bridge expects.
-        if decision == "approve":
-            return {"type": "approve"}
-        return {"type": "reject", "message": reason or "User rejected this action."}
-
-    if req.decisions is not None:
-        # Per-action path (batched interrupt): one decision per hanging tool
-        # call, in order. LangChain maps decisions[i] -> action_requests[i]
-        # positionally and raises ValueError on a count mismatch, so we guard
-        # with a 422 (clearer than a 500 from a leaked ValueError).
-        if len(req.decisions) != len(action_requests):
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail=(
-                    f"Decision count ({len(req.decisions)}) does not match the "
-                    f"number of pending actions ({len(action_requests)})."
-                ),
-            )
-        decisions = [_to_lc_decision(d.decision, d.reason) for d in req.decisions]
-    else:
-        # Legacy / single-action path: replicate the one decision across every
-        # hanging tool call.
-        decisions = [dict(_to_lc_decision(req.decision, req.reason)) for _ in range(decision_count)]
-
-    resume_command = Command(resume={"decisions": decisions})
-
-    agent_logger.info(
-        "agent_resume_command_built",
-        "Built LangChain HITL resume command",
-        decision=req.decision,
-        decision_count=len(decisions),
-        decision_types=[d["type"] for d in decisions],
-        per_action=req.decisions is not None,
-    )
+    resume_command = build_resume_command(req, pending_interrupt.value, pending_interrupts, agent_logger)
 
     resume_run_id = context_data.get("run_id") or effective_thread_id
 

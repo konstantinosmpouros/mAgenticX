@@ -1280,3 +1280,54 @@ def test_emitter_subagent_completed_shape(agents_service):
     frame = AGUIEmitter().subagent_completed(task_id="t", status="weird", subagent_namespace=("tools:a",))
     _, value = _custom_value(frame)
     assert value == {"task_id": "t", "status": "completed", "namespace": ["tools:a"], "started_at": None, "ended_at": None}
+
+
+# ----------------------------------------------------------------------------
+# ask_user — its interrupt is its only UI
+# ----------------------------------------------------------------------------
+def _ask_user_call(call_id="ask-1"):
+    return AIMessage(
+        content="",
+        tool_calls=[{"id": call_id, "name": "ask_user", "args": {"questions": [{"question": "Which period?"}]}}],
+    )
+
+
+def test_ask_user_call_emits_no_tool_lifecycle(agents_service):
+    norm = _norm(agents_service)
+    out = norm.handle_chunk(("updates", {"model": {"messages": [_ask_user_call()]}}))
+    assert out == []
+    assert "ask-1" in norm._ignored_tool_call_ids
+    # Its result (after the resume) is swallowed too, and the id is released.
+    result = norm.handle_chunk(("messages", ToolMessage(content="The user answered", tool_call_id="ask-1")))
+    assert result == []
+    assert "ask-1" not in norm._ignored_tool_call_ids
+
+
+def test_ask_user_interrupt_still_reaches_the_client_unchanged(agents_service):
+    norm = _norm(agents_service)
+    norm.handle_chunk(("updates", {"model": {"messages": [_ask_user_call()]}}))
+    panel = {
+        "type": "ask_user",
+        "questions": [{"id": "q1", "question": "Which period?", "options": ["Q3", "Q4"], "multiple": False}],
+    }
+    out = norm.handle_chunk(("updates", {"__interrupt__": [_FakeInterrupt("int-ask", panel)]}))
+    assert _names(out) == ["HITL_INTERRUPT"]
+    _, value = _custom_value(out[0])
+    assert value["interrupt"] == {"id": "int-ask", "value": panel}
+
+
+def test_ask_user_result_on_a_fresh_resume_normalizer_is_dropped(agents_service):
+    # /resume builds a new normalizer that never saw the call: the result must
+    # not surface as an orphan TOOL_CALL_RESULT.
+    norm = _norm(agents_service, thread_id="t-resume")
+    out = norm.handle_chunk(("messages", ToolMessage(content="The user answered", tool_call_id="ask-1")))
+    assert out == []
+
+
+def test_a_sub_agents_refused_ask_user_stays_silent(agents_service):
+    norm = _norm(agents_service)
+    ns = ("tools:sub-1",)
+    out = norm.handle_chunk((ns, "updates", {"model": {"messages": [_ask_user_call("ask-sub")]}}))
+    assert out == []
+    refused = ToolMessage(content="ask_user is not available to a sub-agent", tool_call_id="ask-sub")
+    assert norm.handle_chunk((ns, "messages", (refused, {}))) == []

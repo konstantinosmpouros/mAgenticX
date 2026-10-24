@@ -9,6 +9,8 @@ import { ChatInputBar } from "@/features/chat/components/ChatInputBar";
 import { ChatDisclaimer } from "@/features/chat/components/ChatDisclaimer";
 import { PlanCard } from "@/features/chat/components/message_parts/PlanningContainer";
 import { HitlInputTakeover } from "@/features/chat/components/HitlInputTakeover";
+import { AskUserTakeover } from "@/features/chat/components/AskUserTakeover";
+import { isAskUserInterrupt } from "@/features/inference";
 import { AgentMapButton } from "@/features/chat/components/agent_map/AgentMapButton";
 import { createCommandActions } from "@/features/chat/handlers/commandActions";
 import { useSlashCommands } from "@/features/chat/hooks/useSlashCommands";
@@ -111,6 +113,9 @@ export default function ChatView() {
   const selectedAgent = useWorkspaceStore((s) => s.selectedAgent);
   const starterSuggestions = useWorkspaceStore((s) => s.starterSuggestions);
   const reduceMotion = useReducedMotion() ?? false;
+  const activeHitlIsQuestion = activeHitlInterrupt
+    ? isAskUserInterrupt(activeHitlInterrupt.content)
+    : false;
 
   // Slash commands (plan 35): the agent the next message goes to decides the
   // menu; each action calls what its button calls.
@@ -290,8 +295,28 @@ export default function ChatView() {
               />
             ) : null
           }
+          hitlTakeoverThemed={activeHitlIsQuestion}
           hitlTakeover={
-            activeHitlInterrupt && activeConversationRun ? (
+            activeHitlInterrupt && activeConversationRun && activeHitlIsQuestion ? (
+              // The agent's clarifying questions: answered (or skipped) through
+              // the same resume, the answers riding in `value`.
+              <AskUserTakeover
+                key={activeHitlInterrupt.id}
+                interrupt={{
+                  interruptId: activeHitlInterrupt.id,
+                  threadId: activeHitlInterrupt.threadId,
+                  content: activeHitlInterrupt.content,
+                }}
+                agentName={inputBarAgent?.name}
+                onResolve={(resolution) =>
+                  resumeInferenceRunHandler(activeConversationRun.id, {
+                    interruptId: activeHitlInterrupt.id,
+                    threadId: activeHitlInterrupt.threadId,
+                    ...resolution,
+                  })
+                }
+              />
+            ) : activeHitlInterrupt && activeConversationRun ? (
               <HitlInputTakeover
                 interrupt={{
                   interruptId: activeHitlInterrupt.id,

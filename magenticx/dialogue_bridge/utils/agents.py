@@ -510,16 +510,21 @@ async def set_agent_tool_approval(
 ) -> Dict[str, Any]:
     """Gate or ungate one tool for this (user, agent).
 
-    A locked gate is refused rather than stored: the runtime re-applies it after
-    every user choice, so accepting would leave the UI showing a gate as off
-    while every call still paused.
+    A locked row is refused rather than stored: the runtime re-applies a locked
+    gate after every user choice (and strips any gate from a tool that is itself
+    a pause), so accepting would leave the UI showing a switch the runtime
+    ignores.
     """
 
     async def write(slug: str, row: Dict[str, Any]) -> None:
         if row.get("approvalLocked"):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="That tool always requires approval and cannot be changed.",
+                detail=(
+                    "That tool always requires approval and cannot be changed."
+                    if row.get("approval")
+                    else "That tool never pauses for approval and cannot be changed."
+                ),
             )
         await agent_tool_prefs.set_approval(
             db, user_id, slug, tool_key,
