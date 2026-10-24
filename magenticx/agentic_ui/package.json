@@ -30,6 +30,7 @@
     "@radix-ui/react-tooltip": "^1.2.8",
     "@radix-ui/react-use-controllable-state": "^1.2.2",
     "@tanstack/react-query": "^5.56.2",
+    "@xyflow/react": "12.10.0",
     "ai": "^5.0.183",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

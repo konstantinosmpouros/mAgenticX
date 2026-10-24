@@ -1,7 +1,6 @@
 import * as React from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ListTodo } from "lucide-react";
-
+import { PlanIcon } from "@/shared/ui/plan-icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { planProgressLabel, type ConversationPlans } from "@/features/chat/lib/conversationPlans";
 import { PlanPanel } from "./PlanPanel";
@@ -58,11 +57,7 @@ export function PlanButton({ plans, agentName, visible }: PlanButtonProps) {
                   onClick={() => setOpen(true)}
                   className="plan-glow group/plan relative flex h-10 w-10 cursor-pointer items-center justify-center rounded-full transition-[background-color,transform] duration-150 hover:bg-[hsl(var(--hover-surface))] active:scale-[0.94] focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70 motion-reduce:active:scale-100"
                 >
-                  <ListTodo
-                    size={20}
-                    aria-hidden
-                    className="text-muted-foreground transition-[color,transform] duration-300 ease-out group-hover/plan:text-foreground motion-safe:supports-[hover:hover]:group-hover/plan:scale-110"
-                  />
+                  <PlanIcon className="text-muted-foreground transition-[color,transform] duration-300 ease-out group-hover/plan:text-foreground motion-safe:supports-[hover:hover]:group-hover/plan:scale-110" />
                 </button>
               </TooltipTrigger>
               <TooltipContent side="top" align="center">

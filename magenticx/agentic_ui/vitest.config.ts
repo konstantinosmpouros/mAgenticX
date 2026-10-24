@@ -50,6 +50,8 @@ export default defineConfig({
       ),
       // Components that navigate need a router around them in a test.
       "react-router-dom": path.resolve(__dirname, "node_modules/react-router-dom"),
+      // The agent map's flow view: its test swaps React Flow for a light stand-in.
+      "@xyflow/react": path.resolve(__dirname, "node_modules/@xyflow/react"),
     },
   },
   test: {

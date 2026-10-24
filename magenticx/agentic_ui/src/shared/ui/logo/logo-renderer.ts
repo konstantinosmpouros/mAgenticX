@@ -203,6 +203,11 @@ export class LogoRenderer {
     return this.current !== null;
   }
 
+  /** The GPU dropped the context (too many on the page, a GPU reset). */
+  get contextLost(): boolean {
+    return this.gl.isContextLost();
+  }
+
   setMotion(motion: MotionPreset): void {
     const { gl, uniforms: u } = this;
     gl.uniform1f(u.uFlow, motion.flow);
@@ -269,10 +274,13 @@ export class LogoRenderer {
     this.gl.viewport(0, 0, width, height);
   }
 
-  /** Draws a frame. `phase` is the loop position in radians, `amp` scales every deformation. */
-  draw(phase: number, amp: number): void {
+  /**
+   * Draws a frame. `phase` is the loop position in radians, `amp` scales every
+   * deformation. False when there was nothing to draw yet (no texture).
+   */
+  draw(phase: number, amp: number): boolean {
     const { gl, uniforms: u } = this;
-    if (!this.current) return;
+    if (!this.current) return false;
     let mix = 0;
     if (this.incoming) {
       mix = Math.min(1, (performance.now() - this.fadeStart) / CROSSFADE_MS);
@@ -291,6 +299,7 @@ export class LogoRenderer {
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    return true;
   }
 
   dispose(): void {

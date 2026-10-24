@@ -2,10 +2,11 @@ import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import type { Variants } from "framer-motion";
-import { ArrowLeft, ChevronRight, Route, X } from "lucide-react";
+import { ArrowLeft, ChevronRight, X } from "lucide-react";
 
 import { cn } from "@/shared/lib/utils";
 import { EASE_ENTER, PANEL_TIMING } from "@/shared/lib/motion/panels";
+import { AgentMapIcon } from "@/shared/ui/agent-map-icon";
 import { Orb } from "@/shared/ui/orb";
 import {
   AGENT_MAP_ROOT_ID,
@@ -14,26 +15,39 @@ import {
   type AgentMapAnswer,
   type AgentMapNode,
 } from "@/features/chat/lib/agentMap";
+import type { AgentFlowSavedView } from "@/features/chat/lib/agentMapFlow";
+import { useAgentMapView, type AgentMapViewMode } from "@/features/chat/hooks/useAgentMapView";
 import { AgentMapTree } from "./AgentMapTree";
 import { AgentMapDetail } from "./AgentMapDetail";
+import { AgentMapViewSwitch } from "./AgentMapViewSwitch";
 import { ComposerPanel } from "../ComposerPanel";
 
 // The agent map's panel, in the composer panels' shell (../ComposerPanel):
 // above the composer on a desktop, a bottom sheet on a phone, modal. Two
-// views slide sideways between each other — the tree, and one sub-agent's
-// detail — with Esc and Back stepping out of the detail first. The tree's
-// open branches, focused row and scroll position are kept while away.
+// views slide sideways between each other — the map, and one sub-agent's
+// detail — with Esc and Back stepping out of the detail first. The map is the
+// tree or the flow graph (the header's switch, remembered per browser); the
+// two cross-fade. The tree's open branches, focused row and scroll position
+// are kept while away.
 
 const ANSWER_PAGE = 25;
 
+// The flow view brings React Flow along: its own chunk, fetched the first time
+// it shows (or the switch is hovered).
+const loadAgentMapFlow = () => import("./AgentMapFlow");
+const AgentMapFlow = React.lazy(loadAgentMapFlow);
+
+/** How a view comes and goes: sideways (into a detail and out), or a cross-fade (tree and flow). */
+type ViewMotion = { direction: number; fade: boolean };
+
 const SLIDE: Variants = {
-  enter: (direction: number) => ({ x: direction * 44, opacity: 0 }),
+  enter: ({ direction, fade }: ViewMotion) =>
+    fade ? { x: 0, opacity: 0 } : { x: direction * 44, opacity: 0 },
   center: { x: 0, opacity: 1, transition: { duration: 0.34, ease: EASE_ENTER } },
-  exit: (direction: number) => ({
-    x: direction * -44,
-    opacity: 0,
-    transition: { duration: 0.2, ease: "easeIn" },
-  }),
+  exit: ({ direction, fade }: ViewMotion) =>
+    fade
+      ? { x: 0, opacity: 0, transition: { duration: 0.22, ease: "easeOut" } }
+      : { x: direction * -44, opacity: 0, transition: { duration: 0.2, ease: "easeIn" } },
 };
 const FADE: Variants = {
   enter: { opacity: 0 },
@@ -89,12 +103,17 @@ export function AgentMapPanel({
 }: AgentMapPanelProps) {
   const reduceMotion = useReducedMotion() ?? false;
   const [view, setView] = React.useState<View>({ kind: "tree" });
-  const [direction, setDirection] = React.useState(1);
+  const [mode, setMode] = useAgentMapView();
+  const [viewMotion, setViewMotion] = React.useState<ViewMotion>({ direction: 1, fade: false });
+  const setDirection = (direction: number) => setViewMotion({ direction, fade: false });
   const [collapsed, setCollapsed] = React.useState<Set<string>>(() => new Set());
   const [focusedId, setFocusedId] = React.useState(AGENT_MAP_ROOT_ID);
   const [answerLimit, setAnswerLimit] = React.useState(ANSWER_PAGE);
   const [revealed, setRevealed] = React.useState(false);
   const treeScrollRef = React.useRef(0);
+  const flowViewRef = React.useRef<AgentFlowSavedView | null>(null);
+  const focusedRef = React.useRef(focusedId);
+  focusedRef.current = focusedId;
   const contentRef = React.useRef<HTMLDivElement>(null);
   const now = useNow(open && map.runningCount > 0);
 
@@ -107,14 +126,15 @@ export function AgentMapPanel({
   // The sub-agent left the branch (an edit, a switch): back to the tree.
   const showingDetail = view.kind === "detail" && entry !== null;
 
-  // Closing resets to the tree; the open branches and scroll stay for next time.
-  // After the panel has left, so it keeps its view while it fades out.
+  // Closing resets to the map (tree or flow, as chosen); the open branches and
+  // scroll stay for next time. After the panel has left, so it keeps its view
+  // while it fades out.
   React.useEffect(() => {
     if (open) return;
     const timer = window.setTimeout(
       () => {
         setView({ kind: "tree" });
-        setDirection(1);
+        setViewMotion({ direction: 1, fade: false });
         setRevealed(false);
       },
       Math.max(PANEL_TIMING.panel.exit, PANEL_TIMING.sheet.exit) * 1000,
@@ -123,18 +143,32 @@ export function AgentMapPanel({
   }, [open]);
 
   // Each view, once it has slid in, takes the focus: the tree its active row,
-  // the detail its Back button — the element that was clicked is gone.
+  // the flow the node last focused, the detail its Back button — the element
+  // that was clicked is gone. Not after the view switch changed the view: the
+  // focus stays on the switch.
   const focusView = React.useCallback(() => {
     const root = contentRef.current;
     if (!root) return;
+    if (document.activeElement?.closest("[data-agent-map-switch]")) return;
+    const flowNode =
+      typeof CSS !== "undefined" && CSS.escape
+        ? `[data-agent-map-view="current"] .react-flow__node[data-id="${CSS.escape(focusedRef.current)}"]`
+        : null;
     const target =
       root.querySelector<HTMLElement>(
         '[data-agent-map-view="current"] [role="treeitem"][tabindex="0"]',
       ) ??
+      (flowNode ? root.querySelector<HTMLElement>(flowNode) : null) ??
       root.querySelector<HTMLElement>("[data-agent-map-back]") ??
       root.querySelector<HTMLElement>('[data-agent-map-view="current"]');
     target?.focus({ preventScroll: true });
   }, []);
+
+  const changeMode = (next: AgentMapViewMode) => {
+    if (next === mode) return;
+    setViewMotion((current) => ({ ...current, fade: true }));
+    setMode(next);
+  };
 
   const openNode = (nodeId: string) => {
     setDirection(1);
@@ -184,6 +218,8 @@ export function AgentMapPanel({
   }, []);
 
   const variants = reduceMotion ? FADE : SLIDE;
+  // Nothing to map: the empty state, whichever view is chosen.
+  const showFlow = mode === "flow" && map.answers.length > 0;
 
   return (
     <ComposerPanel
@@ -216,15 +252,17 @@ export function AgentMapPanel({
         onJump={jumpTo}
         onClose={() => onOpenChange(false)}
         reduceMotion={reduceMotion}
+        mode={mode}
+        onModeChange={changeMode}
       />
 
       <div className="relative min-h-0 flex-1 overflow-hidden">
-        <AnimatePresence initial={false} custom={direction}>
+        <AnimatePresence initial={false} custom={viewMotion}>
           {showingDetail && entry ? (
             <ScrollView
               key={`detail:${entry.node.id}`}
               variants={variants}
-              direction={direction}
+              motion={viewMotion}
               onEntered={focusView}
             >
               <AgentMapDetail
@@ -236,11 +274,34 @@ export function AgentMapPanel({
                 now={now}
               />
             </ScrollView>
+          ) : showFlow ? (
+            <ScrollView
+              key="flow"
+              variants={variants}
+              motion={viewMotion}
+              bare
+              onEntered={focusView}
+            >
+              <React.Suspense fallback={<FlowLoading />}>
+                <AgentMapFlow
+                  map={map}
+                  agentName={agentName}
+                  answers={shownAnswers}
+                  hiddenAnswers={map.answers.length - shownAnswers.length}
+                  onShowEarlier={() => setAnswerLimit((limit) => limit + ANSWER_PAGE)}
+                  onOpenNode={openNode}
+                  onFocusChange={setFocusedId}
+                  now={now}
+                  savedView={flowViewRef.current}
+                  onViewChange={(saved) => (flowViewRef.current = saved)}
+                />
+              </React.Suspense>
+            </ScrollView>
           ) : (
             <ScrollView
               key="tree"
               variants={variants}
-              direction={direction}
+              motion={viewMotion}
               initialScrollTop={treeScrollRef.current}
               onScrollTop={(top) => (treeScrollRef.current = top)}
               onEntered={focusView}
@@ -271,17 +332,19 @@ export function AgentMapPanel({
   );
 }
 
-/** One view's scroll area; it slides in and out with the view. */
+/** One view's scroll area (`bare`: a plain fill); it slides in and out with the view. */
 function ScrollView({
   variants,
-  direction,
+  motion: viewMotion,
+  bare = false,
   initialScrollTop = 0,
   onScrollTop,
   onEntered,
   children,
 }: {
   variants: Variants;
-  direction: number;
+  motion: ViewMotion;
+  bare?: boolean;
   initialScrollTop?: number;
   onScrollTop?: (top: number) => void;
   onEntered?: () => void;
@@ -296,7 +359,7 @@ function ScrollView({
   return (
     <motion.div
       ref={ref}
-      custom={direction}
+      custom={viewMotion}
       variants={variants}
       initial="enter"
       animate="center"
@@ -307,7 +370,10 @@ function ScrollView({
         if (definition === "center") onEntered?.();
       }}
       onScroll={onScrollTop ? (event) => onScrollTop(event.currentTarget.scrollTop) : undefined}
-      className="scrollbar-muted absolute inset-0 overflow-y-auto overscroll-contain px-4 pb-4 pt-1 focus:outline-none sm:px-5"
+      className={cn(
+        "absolute inset-0 focus:outline-none",
+        !bare && "scrollbar-muted overflow-y-auto overscroll-contain px-4 pb-4 pt-1 sm:px-5",
+      )}
     >
       {children}
     </motion.div>
@@ -324,6 +390,8 @@ function PanelHeader({
   onJump,
   onClose,
   reduceMotion,
+  mode,
+  onModeChange,
 }: {
   view: View;
   entry: NodeEntry | null;
@@ -334,6 +402,8 @@ function PanelHeader({
   onJump: (nodeId: string) => void;
   onClose: () => void;
   reduceMotion: boolean;
+  mode: AgentMapViewMode;
+  onModeChange: (mode: AgentMapViewMode) => void;
 }) {
   const detail = view.kind === "detail" && entry !== null;
   const crumb =
@@ -415,7 +485,7 @@ function PanelHeader({
             exit={{ opacity: 0, transition: { duration: 0.12 } }}
           >
             <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-border bg-secondary/55 text-primary">
-              <Route className="h-4 w-4" aria-hidden />
+              <AgentMapIcon className="h-4 w-4" />
             </span>
             <div className="min-w-0">
               <DialogPrimitive.Title className="text-base font-semibold leading-tight tracking-tight text-foreground">
@@ -427,6 +497,14 @@ function PanelHeader({
                   : "Who worked on this conversation"}
               </p>
             </div>
+            {map.answers.length ? (
+              <AgentMapViewSwitch
+                value={mode}
+                onChange={onModeChange}
+                onPreload={() => void loadAgentMapFlow()}
+                className="ml-auto"
+              />
+            ) : null}
           </motion.div>
         )}
       </AnimatePresence>
@@ -447,6 +525,19 @@ function Separator() {
     <li role="presentation" aria-hidden className="flex flex-shrink-0 items-center">
       <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/50" />
     </li>
+  );
+}
+
+/** While the flow view's chunk loads (the first time only). */
+function FlowLoading() {
+  return (
+    <div role="status" className="flex h-full items-center justify-center">
+      <span
+        aria-hidden
+        className="h-5 w-5 rounded-full border-2 border-muted-foreground/25 border-t-muted-foreground/70 motion-safe:animate-spin"
+      />
+      <span className="sr-only">Loading the flow view</span>
+    </div>
   );
 }
 

@@ -55,21 +55,6 @@ export function AnimatedLogo({ src, motion, active = false, className, label }: 
     renderer.setMotion(motion);
     setMode("loading");
 
-    loadedSrcRef.current = srcRef.current;
-    renderer.setImage(srcRef.current).then(
-      () => renderer.ready && setMode((prev) => (prev === "still" ? prev : "live")),
-      () => setMode("still"),
-    );
-
-    const size = () => {
-      const ratio = Math.min(window.devicePixelRatio || 1, 2);
-      const side = Math.min(MAX_CANVAS_PX, Math.round(canvas.clientWidth * ratio));
-      if (side > 0) renderer.resize(side, side);
-    };
-    size();
-    const resizeObserver = new ResizeObserver(size);
-    resizeObserver.observe(canvas);
-
     // The loop: phase advances with the (eased) speed; amplitude ramps up from
     // zero once, so the first frame is the still image.
     let phase = 0;
@@ -79,6 +64,49 @@ export function AnimatedLogo({ src, motion, active = false, className, label }: 
     let frame = 0;
     let onScreen = true;
     let contextLost = false;
+    let painted = false;
+
+    // Back to the still image for good: the GPU dropped the context (too many
+    // on the page, a GPU reset — DevTools' device mode can cause one) or a
+    // draw failed. A blank canvas must never stand in for the artwork.
+    const fallBack = () => {
+      contextLost = true;
+      cancelAnimationFrame(frame);
+      setMode("still");
+    };
+    // One frame. The canvas replaces the still image only once it has really
+    // drawn one, so a paused loop (off screen) or a texture still loading
+    // never leaves the spot empty.
+    const paint = () => {
+      if (contextLost) return;
+      try {
+        if (renderer.contextLost) return fallBack();
+        if (renderer.draw(phase, ramp * ramp * (3 - 2 * ramp)) && !painted && canvas.width > 0) {
+          painted = true;
+          setMode((prev) => (prev === "still" ? prev : "live"));
+        }
+      } catch {
+        fallBack();
+      }
+    };
+
+    loadedSrcRef.current = srcRef.current;
+    renderer.setImage(srcRef.current).then(paint, () => setMode("still"));
+
+    // Resizing a canvas clears it: draw again straight away, so it is never
+    // left blank while the loop is paused.
+    const size = () => {
+      const ratio = Math.min(window.devicePixelRatio || 1, 2);
+      const side = Math.min(MAX_CANVAS_PX, Math.round(canvas.clientWidth * ratio));
+      if (side > 0) {
+        renderer.resize(side, side);
+        paint();
+      }
+    };
+    size();
+    const resizeObserver = new ResizeObserver(size);
+    resizeObserver.observe(canvas);
+
     const tick = (now: number) => {
       const dt = last ? Math.min(0.1, (now - last) / 1000) : 0;
       last = now;
@@ -91,8 +119,8 @@ export function AnimatedLogo({ src, motion, active = false, className, label }: 
         motion.flow * (1 + (ACTIVE_BOOST.flow - 1) * liveliness),
         motion.breath + ACTIVE_BOOST.breath * liveliness,
       );
-      renderer.draw(phase, ramp * ramp * (3 - 2 * ramp));
-      frame = requestAnimationFrame(tick);
+      paint();
+      if (!contextLost) frame = requestAnimationFrame(tick);
     };
     const run = () => {
       cancelAnimationFrame(frame);
@@ -108,12 +136,7 @@ export function AnimatedLogo({ src, motion, active = false, className, label }: 
     intersection.observe(canvas);
     document.addEventListener("visibilitychange", run);
     // Browsers drop the oldest contexts when too many are open: show the still image.
-    const lost = () => {
-      contextLost = true;
-      cancelAnimationFrame(frame);
-      setMode("still");
-    };
-    canvas.addEventListener("webglcontextlost", lost);
+    canvas.addEventListener("webglcontextlost", fallBack);
     run();
 
     return () => {
@@ -121,7 +144,7 @@ export function AnimatedLogo({ src, motion, active = false, className, label }: 
       resizeObserver.disconnect();
       intersection.disconnect();
       document.removeEventListener("visibilitychange", run);
-      canvas.removeEventListener("webglcontextlost", lost);
+      canvas.removeEventListener("webglcontextlost", fallBack);
       renderer.dispose();
       rendererRef.current = null;
       loadedSrcRef.current = null;

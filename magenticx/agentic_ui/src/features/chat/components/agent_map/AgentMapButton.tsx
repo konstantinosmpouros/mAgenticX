@@ -1,8 +1,7 @@
 import * as React from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Route } from "lucide-react";
-
 import { cn } from "@/shared/lib/utils";
+import { AgentMapIcon } from "@/shared/ui/agent-map-icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import type { AgentMap } from "@/features/chat/lib/agentMap";
 import { AgentMapPanel } from "./AgentMapPanel";
@@ -56,11 +55,7 @@ export function AgentMapButton({ map, agentName, visible }: AgentMapButtonProps)
                   onClick={() => setOpen(true)}
                   className="group/map relative flex h-10 w-10 cursor-pointer items-center justify-center rounded-full transition-[background-color,transform] duration-150 hover:bg-[hsl(var(--hover-surface))] active:scale-[0.94] focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70 motion-reduce:active:scale-100"
                 >
-                  <Route
-                    size={20}
-                    aria-hidden
-                    className="text-muted-foreground transition-[color,transform] duration-300 ease-out group-hover/map:text-foreground motion-safe:supports-[hover:hover]:group-hover/map:scale-110"
-                  />
+                  <AgentMapIcon className="text-muted-foreground transition-[color,transform] duration-300 ease-out group-hover/map:text-foreground motion-safe:supports-[hover:hover]:group-hover/map:scale-110" />
                   <AnimatePresence initial={false}>
                     {count ? (
                       <motion.span

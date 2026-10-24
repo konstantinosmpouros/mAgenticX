@@ -1,0 +1,141 @@
+/* The agent map's flow view (features/chat/components/agent_map/AgentMapFlow.tsx).
+
+   React Flow's own stylesheet (@xyflow/react/dist/style.css) is imported just
+   before this one, in the same lazy chunk, so these rules win on order. They
+   take React Flow's look off: a transparent canvas with a faint dot grid, the
+   edges in the theme's colours by the sub-agent they lead into (lit and
+   animated into a running one, the brand colour into a finished one, a red
+   tint into a failed one), theme-styled zoom controls and a quiet attribution.
+   The nodes are the view's own cards (Tailwind, theme tokens). */
+
+.agent-map-flow.react-flow {
+  --xy-background-color: transparent;
+  --xy-background-pattern-color: hsl(var(--muted-foreground) / 0.2);
+  --xy-edge-stroke: hsl(var(--primary) / 0.32);
+  --xy-edge-stroke-width: 1.5;
+  --xy-attribution-background-color: transparent;
+  --xy-controls-box-shadow: 0 6px 18px -10px hsl(var(--foreground) / 0.3);
+  --xy-controls-button-background-color: hsl(var(--card));
+  --xy-controls-button-background-color-hover: hsl(var(--hover-surface));
+  --xy-controls-button-color: hsl(var(--muted-foreground));
+  --xy-controls-button-color-hover: hsl(var(--foreground));
+  --xy-controls-button-border-color: hsl(var(--border) / 0.7);
+  font-family: inherit;
+  color: hsl(var(--foreground));
+}
+
+/* ---- Nodes ------------------------------------------------------------- */
+
+.agent-map-flow .react-flow__node {
+  cursor: default;
+  border-radius: 1rem;
+}
+
+.agent-map-flow .react-flow__node-agentSubagent {
+  cursor: pointer;
+}
+
+.agent-map-flow .react-flow__node-agentAnswer {
+  border-radius: 0.75rem;
+  cursor: zoom-in;
+}
+
+.agent-map-flow .agent-map-flow-card {
+  box-shadow:
+    0 1px 2px hsl(var(--foreground) / 0.05),
+    0 8px 20px -14px hsl(var(--foreground) / 0.28);
+}
+
+.agent-map-flow .react-flow__node:focus {
+  outline: none;
+}
+
+.agent-map-flow .react-flow__node:focus-visible {
+  outline: 2px solid hsl(var(--primary) / 0.7);
+  outline-offset: 3px;
+}
+
+/* Read-only: the handles that anchor the edges stay out of sight. */
+.agent-map-flow .agent-map-flow-handle {
+  width: 1px;
+  min-width: 0;
+  height: 1px;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ---- Edges ------------------------------------------------------------- */
+
+.agent-map-flow .react-flow__edge-path {
+  transition: stroke 0.3s ease;
+}
+
+.agent-map-flow .agent-map-flow-edge.is-done .react-flow__edge-path {
+  stroke: hsl(var(--primary) / 0.55);
+}
+
+.agent-map-flow .agent-map-flow-edge.is-failed .react-flow__edge-path {
+  stroke: hsl(var(--destructive) / 0.55);
+}
+
+.agent-map-flow .agent-map-flow-edge.is-running .react-flow__edge-path {
+  stroke: hsl(var(--subagent-active));
+  stroke-width: 2;
+  filter: drop-shadow(0 0 3px hsl(var(--subagent-active-glow) / 0.55));
+}
+
+.agent-map-flow .react-flow__edge.animated .react-flow__edge-path {
+  stroke-dasharray: 6 5;
+  animation-duration: 0.9s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-map-flow .react-flow__edge.animated .react-flow__edge-path {
+    stroke-dasharray: none;
+    animation: none;
+  }
+}
+
+/* ---- Controls and attribution ------------------------------------------ */
+
+.agent-map-flow .agent-map-flow-controls {
+  overflow: hidden;
+  border: 1px solid hsl(var(--border) / 0.7);
+  border-radius: 0.75rem;
+}
+
+.agent-map-flow .agent-map-flow-controls .react-flow__controls-button {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.agent-map-flow .agent-map-flow-controls .react-flow__controls-button:last-child {
+  border-bottom: 0;
+}
+
+.agent-map-flow .agent-map-flow-controls .react-flow__controls-button svg {
+  max-width: 11px;
+  max-height: 11px;
+}
+
+.agent-map-flow .agent-map-flow-controls .react-flow__controls-button:focus-visible {
+  outline: 2px solid hsl(var(--primary) / 0.7);
+  outline-offset: -2px;
+}
+
+.agent-map-flow .react-flow__attribution {
+  padding: 2px 8px;
+  font-size: 9px;
+  opacity: 0.55;
+}
+
+.agent-map-flow .react-flow__attribution a {
+  color: hsl(var(--muted-foreground));
+}

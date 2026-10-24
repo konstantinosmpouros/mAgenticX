@@ -1,10 +1,10 @@
 ﻿import { Button } from "@/shared/ui/button";
+import { PlanIcon } from "@/shared/ui/plan-icon";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/shared/ui/tooltip";
 import {
   Bot,
   Copy,
   Check,
-  ListTodo,
   ThumbsUp,
   ThumbsDown,
   Pencil,
@@ -429,7 +429,7 @@ export const AIActionBar = ({
                   onClick={onOpenPlan}
                   aria-label="Open agent plan"
                 >
-                  <ListTodo className="h-4 w-4" />
+                  <PlanIcon className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent
