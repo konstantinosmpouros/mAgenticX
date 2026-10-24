@@ -684,7 +684,7 @@ class DeepAgent(BaseAgent, ABC):
 
         Best-effort: a failure is logged and the run goes on — the files stay
         on the volume and the background pass retries.
-        TODO(plan 43): remove once agents v1.22.0 has deployed.
+        TODO(plan 43): remove once agents v1.21.20 has deployed.
         """
         ctx = self.context or {}
         if not ctx.get("user_id") or not ctx.get("conversation_id"):

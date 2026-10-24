@@ -79,7 +79,7 @@ async def _lifespan(app: FastAPI):
     old = loop.get_exception_handler()
     loop.set_exception_handler(_make_loop_exception_handler(old))
     pool = None
-    # TODO(plan 43): remove once agents v1.22.0 has deployed.
+    # TODO(plan 43): remove once agents v1.21.20 has deployed.
     legacy_volume_task: asyncio.Task | None = None
     remote_sync_task: asyncio.Task | None = None
     try:
@@ -95,7 +95,7 @@ async def _lifespan(app: FastAPI):
         # The one-off move of the old per-conversation volume trees into
         # agent_runtime: import, verify, then delete each tree. Background and
         # best-effort — it logs and retries, never takes the service down.
-        # TODO(plan 43): remove once agents v1.22.0 has deployed.
+        # TODO(plan 43): remove once agents v1.21.20 has deployed.
         legacy_volume_task = asyncio.create_task(
             run_legacy_volume_migration(), name="legacy-volume-migration"
         )
@@ -141,7 +141,7 @@ app.include_router(embeddings_router)
 app.include_router(export_router)
 app.include_router(generation_router)
 app.include_router(inference_router)
-# TODO(plan 43): remove once agents v1.22.0 has deployed.
+# TODO(plan 43): remove once agents v1.21.20 has deployed.
 app.include_router(legacy_workspace_router)
 app.include_router(memories_router)
 app.include_router(skills_router)

@@ -1,7 +1,7 @@
 """The one-off move of the old volume trees into Postgres (plan 43, temporary).
 
 TODO(plan 43): remove with ``harness/conversation_files/legacy_volume.py``
-once agents v1.22.0 has deployed.
+once agents v1.21.20 has deployed.
 
 What must hold, because the move ends in deleting user data from the volume:
 

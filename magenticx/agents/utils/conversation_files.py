@@ -90,7 +90,7 @@ async def reap_conversation(user_id: str, conversation_id: str, thread_ids: list
         for thread_id in filter(None, thread_ids):
             await checkpointer.adelete_thread(thread_id)
         await _store().delete_conversation(user_id, conversation_id)
-        # TODO(plan 43): remove once agents v1.22.0 has deployed.
+        # TODO(plan 43): remove once agents v1.21.20 has deployed.
         await legacy_volume.delete_conversation_trees(user_id, conversation_id)
     except (RuntimeError, psycopg.Error, OSError) as exc:
         logger.warning("conversation_reap_failed", "Could not reap a deleted conversation; the bridge retries",

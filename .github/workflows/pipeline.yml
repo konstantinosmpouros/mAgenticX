@@ -9,13 +9,28 @@ on:
   workflow_dispatch:
 
 jobs:
-  # CI — one job, one step per service. Details: docs/architecture/deployment.md
+  # CI — one job: a step per service's tests, then a step per service's image.
+  # Details: docs/architecture/deployment.md
+  #   images publish: push to main that changed docker-compose-denis.yaml, or Run workflow
+  #   images check:   pull request that changes it — build + scan only, nothing pushed
   ci:
     name: ci
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
+    runs-on: ubuntu-24.04-arm # Dennis is ARM64: images build natively, no QEMU
+    timeout-minutes: 120
+    # One run per branch at a time, so two releases never build the same tag
+    # at once; a PR's run is superseded by the PR's next push.
+    concurrency:
+      group: ci-${{ github.ref }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    permissions:
+      contents: read
+      packages: write
+    env:
+      RELEASE_MODE: ${{ github.event_name == 'pull_request' && 'check' || 'publish' }}
+      COMPOSE_FILE: magenticx/docker-compose-denis.yaml
+      TRIVY_IMAGE: ghcr.io/aquasecurity/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa
     outputs:
-      release: ${{ steps.release.outputs.release }}
+      deploy: ${{ steps.release.outputs.deploy }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -24,13 +39,15 @@ jobs:
 
       # A change to docker-compose-denis.yaml is a release. Diffed with git:
       # Actions' push payload has no file lists.
+      #   images: build the new tags (publish, or check for a PR) — main or a PR only
+      #   deploy: images were published, so `cd` runs
       - name: Is this a release? (docker-compose-denis.yaml changed)
         id: release
         env:
           EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
           PUSH_BEFORE: ${{ github.event.before }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
-          COMPOSE_FILE: magenticx/docker-compose-denis.yaml
         run: |
           case "$EVENT" in
             workflow_dispatch) release=true ;;
@@ -47,8 +64,13 @@ jobs:
               release=true
             fi
           fi
-          echo "release=$release" >> "$GITHUB_OUTPUT"
-          echo "release=$release"
+          images=false; deploy=false
+          if [ "$release" = true ]; then
+            if [ "$EVENT" = pull_request ]; then images=true
+            elif [ "$REF" = refs/heads/main ]; then images=true; deploy=true
+            fi
+          fi
+          { echo "release=$release"; echo "images=$images"; echo "deploy=$deploy"; } | tee -a "$GITHUB_OUTPUT"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -144,37 +166,14 @@ jobs:
           path: coverage-*.xml
           if-no-files-found: ignore
 
-  # CD — one job, one step per service. Details: docs/architecture/deployment.md
-  #   publish: push to main that changed docker-compose-denis.yaml, or Run workflow
-  #   check:   pull request that changes it — build + scan only, nothing pushed
-  cd:
-    name: cd
-    needs: [ci]
-    if: >-
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.ci.outputs.release == 'true') ||
-      (github.event_name == 'pull_request' && needs.ci.outputs.release == 'true')
-    runs-on: ubuntu-24.04-arm # Dennis is ARM64: build natively, no QEMU
-    timeout-minutes: 90
-    # One release at a time; PR checks get their own lane.
-    concurrency:
-      group: ${{ github.event_name == 'pull_request' && format('cd-check-{0}', github.ref) || 'deploy-production' }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-    permissions:
-      contents: read
-      packages: write
-    env:
-      RELEASE_MODE: ${{ github.event_name == 'pull_request' && 'check' || 'publish' }}
-      SITE: https://agents.magenticx.com
-      COMPOSE_FILE: magenticx/docker-compose-denis.yaml
-      TRIVY_IMAGE: ghcr.io/aquasecurity/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+      # --- images: a step per service ------------------------------------------
+      # Only after every test above is green (no `!cancelled()` here). Builds +
+      # scans each new tag; pushes only in publish mode. Any failure fails `ci`,
+      # and `cd` needs `ci`, so a half-built release never deploys.
 
       # Fail closed: only the repository owner can ship to production.
       - name: Only the repository owner can release
-        if: env.RELEASE_MODE == 'publish'
+        if: steps.release.outputs.images == 'true' && env.RELEASE_MODE == 'publish'
         env:
           ACTOR: ${{ github.triggering_actor }}
           OWNER: ${{ github.repository_owner }}
@@ -185,28 +184,30 @@ jobs:
           fi
 
       - name: Log in to GHCR
+        if: steps.release.outputs.images == 'true'
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: printf '%s' "$TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
 
-      # Builds + scans each new tag; pushes only in publish mode. Any failure
-      # stops the job, so a half-built release never deploys.
-
-      - name: dialogue_bridge — build, scan, push
+      - name: dialogue_bridge — build, scan, push image
+        if: steps.release.outputs.images == 'true'
         run: bash .github/scripts/release_image.sh dialogue_bridge
 
-      - name: agents — build, scan, push
+      - name: agents — build, scan, push image
+        if: steps.release.outputs.images == 'true'
         run: bash .github/scripts/release_image.sh agents
 
-      - name: rag_service — build, scan, push
+      - name: rag_service — build, scan, push image
+        if: steps.release.outputs.images == 'true'
         run: bash .github/scripts/release_image.sh rag_service
 
-      - name: agentic_ui — build, scan, push
+      - name: agentic_ui — build, scan, push image
+        if: steps.release.outputs.images == 'true'
         run: bash .github/scripts/release_image.sh agentic_ui
 
       # An anonymous pull must be refused — fails the release if any image is public.
       - name: Verify every image is private
-        if: env.RELEASE_MODE == 'publish'
+        if: steps.release.outputs.images == 'true' && env.RELEASE_MODE == 'publish'
         run: |
           anon=$(mktemp -d)
           failed=0
@@ -225,9 +226,39 @@ jobs:
           rm -rf "$anon"
           exit "$failed"
 
+  # CD — deploys the images `ci` published; builds nothing.
+  # Only after a publish (never for a pull request's check).
+  cd:
+    name: cd
+    needs: [ci]
+    if: needs.ci.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    env:
+      SITE: https://agents.magenticx.com
+      COMPOSE_FILE: magenticx/docker-compose-denis.yaml
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+
+      # Fail closed: only the repository owner can ship to production.
+      - name: Only the repository owner can deploy
+        env:
+          ACTOR: ${{ github.triggering_actor }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          if [ "$ACTOR" != "$OWNER" ]; then
+            echo "::error::Deploys are started by $OWNER only (this run was started by $ACTOR)."
+            exit 1
+          fi
+
       # Portainer pulls main and redeploys. Safe to retry.
       - name: Tell Portainer to pull main and redeploy the stack
-        if: env.RELEASE_MODE == 'publish'
         env:
           WEBHOOK_URL: ${{ secrets.PORTAINER_WEBHOOK_URL }}
         run: |
@@ -239,7 +270,6 @@ jobs:
 
       # Wait until the public site reports the new bridge + UI versions.
       - name: Wait for the release to go live
-        if: env.RELEASE_MODE == 'publish'
         run: |
           tag_of() {
             grep -E "^[[:space:]]+image:[[:space:]]+ghcr\.io/[^/]+/magenticx_$1:" "$COMPOSE_FILE" \

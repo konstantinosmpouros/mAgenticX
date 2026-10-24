@@ -1,6 +1,6 @@
 """TEMPORARY — the previous bridge's file routes, answered by the new store (plan 43).
 
-TODO(plan 43): remove once agents v1.22.0 has deployed (with
+TODO(plan 43): remove once agents v1.21.20 has deployed (with
 ``harness/conversation_files/legacy_volume.py``).
 
 During a rolling deploy a bridge task from the previous release (≤ v2.18.2)

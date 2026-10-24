@@ -37,6 +37,6 @@ class PurgeUserResponse(BaseModel):
     agent_definition_files: int
     conversation_files: int
     conversation_file_blobs: int
-    # TODO(plan 43): remove once agents v1.22.0 has deployed (the
+    # TODO(plan 43): remove once agents v1.21.20 has deployed (the
     # old volume folder is gone by then).
     workspace_removed: bool

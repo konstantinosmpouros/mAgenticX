@@ -1,6 +1,6 @@
 """TEMPORARY — moves the old per-conversation volume trees into Postgres (plan 43).
 
-TODO(plan 43): remove once agents v1.22.0 has deployed, together
+TODO(plan 43): remove once agents v1.21.20 has deployed, together
 with everything that calls it — the lifespan hook in ``main.py``, the run-time
 import in ``DeepAgent.ensure_built``, the reap / account-purge calls, the
 ``router/legacy_workspace.py`` shims, and the ``LEGACY_VOLUME_MIGRATION_ENABLED``

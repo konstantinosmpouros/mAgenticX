@@ -89,7 +89,7 @@ async def purge_user(user_id: str) -> dict[str, int | bool]:
         )
         raise AccountPurgeError("agent_runtime") from exc
     try:
-        # TODO(plan 43): remove once agents v1.22.0 has deployed.
+        # TODO(plan 43): remove once agents v1.21.20 has deployed.
         counts["workspace_removed"] = await legacy_volume.delete_user_tree(user_id)
     except OSError as exc:
         logger.warning(

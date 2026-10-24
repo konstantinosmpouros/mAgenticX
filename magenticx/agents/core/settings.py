@@ -488,7 +488,7 @@ class FilesystemSettings(BaseSettings):
     )
     # Where the per-user conversation trees used to live. Read only by the
     # one-off move into Postgres (harness/conversation_files/legacy_volume.py).
-    # TODO(plan 43): remove once agents v1.22.0 has deployed.
+    # TODO(plan 43): remove once agents v1.21.20 has deployed.
     workspaces_root: Path = Field(
         Path("/var/magenticx/workspaces"),
         validation_alias="MAGENTICX_WORKSPACES_ROOT",
@@ -544,7 +544,7 @@ class ConversationFilesSettings(BaseSettings):
     )
     # The one-off move of the old volume trees into Postgres, run in the
     # background after boot (harness/conversation_files/legacy_volume.py).
-    # TODO(plan 43): remove once agents v1.22.0 has deployed.
+    # TODO(plan 43): remove once agents v1.21.20 has deployed.
     legacy_volume_migration: bool = Field(
         True, validation_alias="LEGACY_VOLUME_MIGRATION_ENABLED"
     )
