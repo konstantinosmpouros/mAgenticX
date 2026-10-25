@@ -1,8 +1,10 @@
 from typing import Any
 
 from deepagents import SubAgent
+from deepagents.middleware.subagents import GENERAL_PURPOSE_SUBAGENT
 
 from harness.abstractions import DeepAgent
+from harness.abstractions.subagent_tree import SUBAGENTS_KEY, subagent
 from core.settings import settings
 from deep_agents.omni_agent.system_prompts import (
     OMNI_INSTRUCTIONS,
@@ -21,6 +23,42 @@ HITL_GATED_TOOLS: dict[str, bool] = {
     # the user can see the prompt before a model spends tokens on it.
     "task": True,
 }
+
+
+def _helpers() -> list[dict[str, Any]]:
+    """The general-purpose helpers each Omni sub-agent can delegate to.
+
+    Every sub-agent may hand a self-contained piece of its work to a ``helper``
+    (two levels below Omni), which may hand one more piece to a
+    ``sub-helper`` (three levels below — the most nesting allows, so it does
+    the work itself). Distinct names per level: a name may not repeat down a
+    branch. Models and tools are inherited from the agent above; every
+    hand-off still goes through the ``task`` approval gate.
+    """
+    prompt = GENERAL_PURPOSE_SUBAGENT["system_prompt"]
+    return [
+        subagent(
+            "helper",
+            (
+                "A general-purpose helper for one self-contained piece of your task "
+                "(looking something up, drafting a section, checking a result). Give it "
+                "everything it needs in the description; it returns its result to you. "
+                "It can split its own work once more."
+            ),
+            prompt,
+            subagents=[
+                subagent(
+                    "sub-helper",
+                    (
+                        "A general-purpose helper for one small, self-contained piece of your "
+                        "task. Give it everything it needs; it does the work itself and returns "
+                        "the result."
+                    ),
+                    prompt,
+                ),
+            ],
+        ),
+    ]
 
 
 class OmniAgent(DeepAgent):
@@ -63,7 +101,17 @@ class OmniAgent(DeepAgent):
     # ------------------------------------------------------------------
     def register_subagents(self) -> list[SubAgent]:
         omni = settings.deep_agents.omni
+        # deepagents' general-purpose sub-agent, declared here (same description
+        # and prompt) so it too can delegate; the build adds it otherwise.
+        general_purpose: dict[str, Any] = {
+            **GENERAL_PURPOSE_SUBAGENT,
+            "model": omni.main_model,
+            SUBAGENTS_KEY: _helpers(),
+        }
+        if self.skills_paths:
+            general_purpose["skills"] = list(self.skills_paths)
         return [
+            general_purpose,
             SubAgent(
                 model=omni.researcher_model,
                 name="researcher",
@@ -73,6 +121,7 @@ class OmniAgent(DeepAgent):
                 ),
                 system_prompt=RESEARCHER_SYSTEM_PROMPT,
                 tools=[],
+                **{SUBAGENTS_KEY: _helpers()},
             ),
             SubAgent(
                 model=omni.writer_model,
@@ -83,6 +132,7 @@ class OmniAgent(DeepAgent):
                 ),
                 system_prompt=WRITER_SYSTEM_PROMPT,
                 tools=[],
+                **{SUBAGENTS_KEY: _helpers()},
             ),
         ]
 

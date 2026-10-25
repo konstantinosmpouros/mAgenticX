@@ -20,6 +20,7 @@ Two layers of validation:
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
 from typing import Callable, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -28,6 +29,14 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 # Kebab-case: lowercase alnum groups joined by single hyphens. Doubles as a
 # path-safety guard — a slug is used as an on-disk directory name.
 SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+
+#: How many levels of sub-agents may sit below the main agent: 3 allows
+#: main → researcher → fact-checker → source-verifier and no deeper. Every level
+#: is a model call chain of its own, so depth multiplies cost and latency, and a
+#: deeper tree is harder for a person to follow in the chat. Enforced on every
+#: definition (platform YAML, user-authored, and code — see
+#: ``harness.abstractions.subagent_tree``).
+MAX_SUBAGENT_DEPTH = 3
 
 # The only agent type expressible in YAML for v1. LangGraph agents stay Python
 # until a declarative graph interpreter exists (plan §7).
@@ -73,16 +82,20 @@ class ToolRef(BaseModel):
 
 
 class SubAgentSpec(BaseModel):
-    """A nested sub-agent. Maps 1:1 to ``deepagents.SubAgent``.
+    """A sub-agent. Maps 1:1 to ``deepagents.SubAgent``.
 
     ``prompt`` is a path to a markdown file relative to the agent directory
     (e.g. ``./subagents/researcher.md``) or an inline string. ``model`` falls
     back to ``AgentSpec.model.subagents[name]`` and then the main model when
     omitted.
 
-    ``tools`` empty means **inherit** every tool the parent has in the run; a
-    non-empty list restricts the sub-agent to exactly those, and must be a
-    subset of the parent's declared ``tools`` (``AgentSpec`` enforces it).
+    ``tools`` empty means **inherit** every tool the agent above it has in the
+    run; a non-empty list restricts the sub-agent to exactly those, and must be
+    a subset of what the agent above it may use (``AgentSpec`` enforces it).
+
+    ``subagents`` are its own sub-agents, which it delegates to with ``task``
+    exactly as the main agent does — at most :data:`MAX_SUBAGENT_DEPTH` levels
+    below the main agent in all.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -92,6 +105,7 @@ class SubAgentSpec(BaseModel):
     prompt: str
     model: Optional[str] = None
     tools: list[ToolRef] = Field(default_factory=list)
+    subagents: list[SubAgentSpec] = Field(default_factory=list)
 
 
 class ModelSpec(BaseModel):
@@ -157,31 +171,69 @@ class AgentSpec(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def _subagent_tools_within_agent(self) -> "AgentSpec":
-        """A sub-agent may only narrow its parent's tools, never add to them.
+    def _subagent_tree_is_valid(self) -> "AgentSpec":
+        """The sub-agent tree: bounded, unambiguous, and least-privilege.
 
-        Least privilege, enforced where the definition is parsed so it holds for
-        platform and user-authored agents alike: delegating to a sub-agent must
-        not be a way to reach a tool the agent itself was never given. An empty
-        sub-agent list means "inherit the parent's tools" and is always valid.
+        * at most :data:`MAX_SUBAGENT_DEPTH` levels below the main agent;
+        * sibling names are unique — the model picks a sub-agent by name;
+        * no sub-agent shares a name with one above it — ``researcher`` under
+          ``researcher`` reads as a loop to the model, and to a person;
+        * a sub-agent may only narrow the tools of the agent above it, never
+          add to them. Delegating must not be a way to reach a tool the agent
+          itself was never given. An empty list means "inherit" and is always
+          valid; what it inherits is whatever the agent above may use.
         """
-        declared = {ref.key() for ref in self.tools}
-        for sa in self.subagents:
-            extra = sorted({ref.key() for ref in sa.tools} - declared)
-            if extra:
-                shown = ", ".join(k.replace("native::", "").replace("::", "/") for k in extra)
-                raise ValueError(
-                    f"Sub-agent {sa.name!r} lists tools the agent itself does not declare: {shown}. "
-                    "A sub-agent can only use a subset of its agent's tools."
-                )
+        def check(subagents: list[SubAgentSpec], *, allowed: set[str], above: tuple[str, ...]) -> None:
+            depth = len(above) + 1
+            names = [sa.name for sa in subagents]
+            duplicates = sorted({n for n in names if names.count(n) > 1})
+            if duplicates:
+                where = f"under {above[-1]!r}" if above else "of the agent"
+                raise ValueError(f"Sub-agents {where} share a name: {', '.join(duplicates)}.")
+            for sa in subagents:
+                path = " > ".join((*above, sa.name))
+                if depth > MAX_SUBAGENT_DEPTH:
+                    raise ValueError(
+                        f"Sub-agent {path!r} is {depth} levels below the agent; "
+                        f"at most {MAX_SUBAGENT_DEPTH} are allowed."
+                    )
+                if sa.name in above:
+                    raise ValueError(f"Sub-agent {path!r} repeats a name above it; sub-agents cannot loop.")
+                own = {ref.key() for ref in sa.tools}
+                extra = sorted(own - allowed)
+                if extra:
+                    shown = ", ".join(k.replace("native::", "").replace("::", "/") for k in extra)
+                    if above:
+                        raise ValueError(
+                            f"Sub-agent {path!r} lists tools sub-agent {above[-1]!r} does not have: {shown}. "
+                            "A sub-agent can only use a subset of the tools of the agent above it."
+                        )
+                    raise ValueError(
+                        f"Sub-agent {sa.name!r} lists tools the agent itself does not declare: {shown}. "
+                        "A sub-agent can only use a subset of its agent's tools."
+                    )
+                check(sa.subagents, allowed=own or allowed, above=(*above, sa.name))
+
+        check(self.subagents, allowed={ref.key() for ref in self.tools}, above=())
         return self
+
+    def walk_subagents(self) -> Iterator[tuple[tuple[str, ...], SubAgentSpec]]:
+        """Every sub-agent at every depth, parents first, with its name path
+        (``("researcher", "fact-checker")``)."""
+        def walk(subagents: list[SubAgentSpec], above: tuple[str, ...]):
+            for sa in subagents:
+                path = (*above, sa.name)
+                yield path, sa
+                yield from walk(sa.subagents, path)
+
+        yield from walk(self.subagents, ())
 
     def all_model_ids(self) -> list[str]:
         """Every model id referenced (main + per-name + sub-agent overrides).
 
         Used by the loader to validate against the model registry."""
         ids = {self.model.main, *self.model.subagents.values()}
-        ids.update(sa.model for sa in self.subagents if sa.model)
+        ids.update(sa.model for _, sa in self.walk_subagents() if sa.model)
         return sorted(i for i in ids if i)
 
     def native_tool_names(self) -> list[str]:
@@ -189,7 +241,7 @@ class AgentSpec(BaseModel):
 
         Used by the loader to validate against the native-tool registry."""
         names = {t.native for t in self.tools if t.is_native}
-        for sa in self.subagents:
+        for _, sa in self.walk_subagents():
             names.update(t.native for t in sa.tools if t.is_native)
         return sorted(n for n in names if n)
 
@@ -214,4 +266,6 @@ class AgentSpec(BaseModel):
         return errors
 
 
-__all__ = ["AgentSpec", "AgentSpecType", "ModelSpec", "SubAgentSpec", "ToolRef"]
+SubAgentSpec.model_rebuild()
+
+__all__ = ["MAX_SUBAGENT_DEPTH", "AgentSpec", "AgentSpecType", "ModelSpec", "SubAgentSpec", "ToolRef"]

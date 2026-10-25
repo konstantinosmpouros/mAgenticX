@@ -485,7 +485,11 @@ def test_build_deep_agent_guarantees_it_on_the_agent_and_every_sub_agent(monkeyp
         return sum(isinstance(m, ToolMetricsMiddleware) for m in stack)
 
     assert count(captured["middleware"]) == 1
-    researcher, writer, compiled = captured["subagents"]
+    # deepagents' general-purpose sub-agent is declared by the build, first,
+    # so it carries the guarantee too.
+    general, researcher, writer, compiled = captured["subagents"]
+    assert general["name"] == "general-purpose"
+    assert count(general["middleware"]) == 1
     assert count(researcher["middleware"]) == 1 and count(writer["middleware"]) == 1
     assert "middleware" not in compiled
 

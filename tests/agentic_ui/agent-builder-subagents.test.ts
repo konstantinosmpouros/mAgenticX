@@ -50,7 +50,10 @@ type SpecSub = {
 const specSubs = (d: AgentDraft) =>
   (buildAgentPayload(d).spec as { subagents: SpecSub[] }).subagents;
 
-const detail = (spec: Record<string, unknown>, files: { path: string; content: string }[] = []): CustomAgentDetail => ({
+const detail = (
+  spec: Record<string, unknown>,
+  files: { path: string; content: string }[] = [],
+): CustomAgentDetail => ({
   id: "my-agent-v1",
   slug: "my-agent",
   name: "My agent",
@@ -67,7 +70,13 @@ const detail = (spec: Record<string, unknown>, files: { path: string; content: s
 
 describe("a new sub-agent", () => {
   it("starts out inheriting the agent's model and tools", () => {
-    expect(emptySubagent()).toEqual({ name: "", description: "", prompt: "", model: "", tools: [] });
+    expect(emptySubagent()).toEqual({
+      name: "",
+      description: "",
+      prompt: "",
+      model: "",
+      tools: [],
+    });
   });
 });
 
@@ -91,13 +100,18 @@ describe("sub-agents — saving", () => {
     // The server refuses it outright; the builder prunes on removal, and the
     // payload filters too so no path can produce a rejected spec.
     const [s] = specSubs(
-      draft({ tools: ["tavily/search"], subagents: [sub({ tools: ["arxiv/search_papers", "tavily/search"] })] }),
+      draft({
+        tools: ["tavily/search"],
+        subagents: [sub({ tools: ["arxiv/search_papers", "tavily/search"] })],
+      }),
     );
     expect(s.tools).toEqual([{ server_id: "tavily", tool_name: "search" }]);
   });
 
   it("falls back to inherit when every picked tool has left the agent", () => {
-    const [s] = specSubs(draft({ tools: [], subagents: [sub({ tools: ["arxiv/search_papers"] })] }));
+    const [s] = specSubs(
+      draft({ tools: [], subagents: [sub({ tools: ["arxiv/search_papers"] })] }),
+    );
     expect(s).not.toHaveProperty("tools");
   });
 });
@@ -143,5 +157,63 @@ describe("round trip", () => {
     const saved = buildAgentPayload(original);
     const rehydrated = draftFromDetail(detail(saved.spec, saved.files));
     expect(specSubs(rehydrated)).toEqual(specSubs(original));
+  });
+});
+
+describe("nested sub-agents (a sub-agent's own sub-agents)", () => {
+  type NestedSub = SpecSub & { subagents?: SpecSub[] };
+  const nestedDetail = () =>
+    detail(
+      {
+        tools: [{ server_id: "arxiv", tool_name: "search_papers" }],
+        subagents: [
+          {
+            name: "researcher",
+            description: "Finds sources",
+            prompt: "./subagents/researcher.md",
+            subagents: [
+              {
+                name: "fact-checker",
+                description: "Checks one claim",
+                prompt: "./subagents/researcher--fact-checker.md",
+                tools: [{ server_id: "arxiv", tool_name: "search_papers" }],
+              },
+            ],
+          },
+        ],
+      },
+      [
+        { path: "subagents/researcher.md", content: "Research." },
+        { path: "subagents/researcher--fact-checker.md", content: "Check." },
+      ],
+    );
+
+  it("keeps them, with their prompts, through edit → save", () => {
+    const d = draftFromDetail(nestedDetail());
+    // Their prompt files are theirs, not reference files the user would see.
+    expect(d.files).toEqual([]);
+    expect(
+      d.subagents[0].subagents?.map(({ name, prompt, tools }) => ({ name, prompt, tools })),
+    ).toEqual([{ name: "fact-checker", prompt: "Check.", tools: ["arxiv/search_papers"] }]);
+    const saved = buildAgentPayload(d);
+    const [researcher] = (saved.spec as { subagents: NestedSub[] }).subagents;
+    expect(researcher.subagents).toEqual([
+      {
+        name: "fact-checker",
+        description: "Checks one claim",
+        prompt: "./subagents/researcher--fact-checker.md",
+        tools: [{ server_id: "arxiv", tool_name: "search_papers" }],
+      },
+    ]);
+    expect(
+      saved.files.find((f) => f.path === "subagents/researcher--fact-checker.md")?.content,
+    ).toBe("Check.");
+  });
+
+  it("drops a nested tool the agent no longer declares", () => {
+    const d = draftFromDetail(nestedDetail());
+    const saved = buildAgentPayload({ ...d, tools: [] });
+    const [researcher] = (saved.spec as { subagents: NestedSub[] }).subagents;
+    expect(researcher.subagents?.[0]).not.toHaveProperty("tools");
   });
 });

@@ -101,7 +101,26 @@ export type TimelineToolExecution = {
   endedAt?: number;
 };
 
-export type ThinkingBlockItem = TimelineThought | TimelineToolExecution | TimelineHitlApproval;
+/**
+ * A sub-agent handing part of its task to a sub-agent of its own: where, in
+ * the delegating sub-agent's steps, its `task` call happened. The service
+ * turns that call into TASK_SUBAGENT (never a tool step), so this is the only
+ * mark of the moment; the agent map's transcript places the child right after
+ * it and shows it as a row that opens the child. Never a tool: tool counts and
+ * tool lists skip it.
+ */
+export type TimelineDelegation = {
+  kind: "delegation";
+  id: string;
+  /** The child's `task` call id — its sub-agent block's fold key. */
+  taskId: string;
+  /** The child's type (`fact-checker`) and what it was asked. */
+  type?: string;
+  description?: string;
+};
+
+export type ThinkingBlockItem =
+  TimelineThought | TimelineToolExecution | TimelineHitlApproval | TimelineDelegation;
 
 export type ThinkingBlock = {
   kind: "thinking";
@@ -129,12 +148,7 @@ export type ContentBlock = {
  *     `cancelled` follow the run's terminal status and stay distinct.
  */
 export type SubagentRunStatus =
-  | "pending"
-  | "running"
-  | "awaiting_approval"
-  | "done"
-  | "failed"
-  | "cancelled";
+  "pending" | "running" | "awaiting_approval" | "done" | "failed" | "cancelled";
 
 export type SubagentBlock = {
   kind: "subagent";

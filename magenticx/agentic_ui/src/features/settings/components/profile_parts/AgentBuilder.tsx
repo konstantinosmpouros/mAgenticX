@@ -181,13 +181,7 @@ const readTextFile = (file: File): Promise<AgentDraftFile | { error: string }> =
 
 /** The builder's sections, in nav order. */
 type BuilderSection =
-  | "identity"
-  | "instructions"
-  | "tools"
-  | "skills"
-  | "team"
-  | "files"
-  | "approvals";
+  "identity" | "instructions" | "tools" | "skills" | "team" | "files" | "approvals";
 
 type AgentBuilderProps = {
   /** Every agent already visible to the user — used for name/slug collisions. */
@@ -246,10 +240,7 @@ export default function AgentBuilder({
   const isEdit = mode === "edit";
   // The live, per-account rows only mean something for an agent that exists.
   const live = isEdit ? liveTools : null;
-  const liveByKey = useMemo(
-    () => new Map((live ?? []).map((row) => [row.key, row])),
-    [live],
-  );
+  const liveByKey = useMemo(() => new Map((live ?? []).map((row) => [row.key, row])), [live]);
   const gatedCount = useMemo(() => (live ?? []).filter((row) => row.approval).length, [live]);
   const [draft, setDraft] = useState<AgentDraft>(() =>
     initial ? draftFromDetail(initial) : emptyDraft(),
@@ -366,7 +357,11 @@ export default function AgentBuilder({
   // is visible on its tab instead of only surfacing when you press Save.
   const sectionTabs: SectionTab<BuilderSection>[] = useMemo(
     () => [
-      { id: "identity", label: "Identity", flagged: Boolean(slugError) && (nameTouched || attempted) },
+      {
+        id: "identity",
+        label: "Identity",
+        flagged: Boolean(slugError) && (nameTouched || attempted),
+      },
       { id: "instructions", label: "Instructions", flagged: Boolean(promptError) },
       { id: "tools", label: "Tools", count: draft.tools.length },
       { id: "skills", label: "Skills", count: draft.skills.length },
@@ -667,7 +662,10 @@ export default function AgentBuilder({
                       Name <Required />
                     </span>
                     <input
-                      className={cn(inputClass, slugError && (nameTouched || attempted) && "border-destructive")}
+                      className={cn(
+                        inputClass,
+                        slugError && (nameTouched || attempted) && "border-destructive",
+                      )}
                       value={draft.name}
                       onChange={(event) => onNameChange(event.target.value)}
                       onBlur={() => setNameTouched(true)}
@@ -870,57 +868,57 @@ export default function AgentBuilder({
                           const tool = catalogByKey.get(key);
                           return (
                             <li key={key}>
-                            <SoftPanel className="flex items-center gap-3 px-3 py-2">
-                              <span className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-primary/40 bg-primary/15 text-primary">
-                                <Wrench className="h-3.5 w-3.5" aria-hidden />
-                              </span>
-                              <span className="min-w-0 flex-1">
-                                <span className="block truncate text-sm font-medium text-foreground">
-                                  {tool?.toolName ?? key}
+                              <SoftPanel className="flex items-center gap-3 px-3 py-2">
+                                <span className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-primary/40 bg-primary/15 text-primary">
+                                  <Wrench className="h-3.5 w-3.5" aria-hidden />
                                 </span>
-                                {tool ? (
-                                  <span className="block truncate text-xs text-muted-foreground">
-                                    {tool.serverId}
-                                    {tool.description ? ` · ${tool.description}` : ""}
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate text-sm font-medium text-foreground">
+                                    {tool?.toolName ?? key}
                                   </span>
-                                ) : (
-                                  // Kept, not dropped: the gateway may simply be
-                                  // down, and silently discarding a declared tool
-                                  // on save would be a worse answer than saying so.
-                                  <span className="block truncate text-xs text-destructive">
-                                    {key} — not in the catalog right now.
-                                  </span>
-                                )}
-                              </span>
-                              {live ? (
-                                liveByKey.get(key) ? (
-                                  <ToggleSwitch
-                                    size="sm"
-                                    checked={Boolean(liveByKey.get(key)?.enabled)}
-                                    disabled={togglingKey === key || !onToggleTool}
-                                    onToggle={() => {
-                                      const row = liveByKey.get(key);
-                                      if (row) onToggleTool?.(row);
-                                    }}
-                                    label={`${liveByKey.get(key)?.enabled ? "Turn off" : "Turn on"} ${tool?.toolName ?? key} for you`}
-                                  />
-                                ) : (
-                                  // Added in this edit and not saved yet: there is
-                                  // no per-account row to switch until it is.
-                                  <span className="shrink-0 text-[0.7rem] text-muted-foreground">
-                                    On after saving
-                                  </span>
-                                )
-                              ) : null}
-                              <button
-                                type="button"
-                                onClick={() => removeTool(key)}
-                                aria-label={`Remove tool ${key}`}
-                                className="shrink-0 rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/50"
-                              >
-                                <Trash2 size={15} aria-hidden />
-                              </button>
-                            </SoftPanel>
+                                  {tool ? (
+                                    <span className="block truncate text-xs text-muted-foreground">
+                                      {tool.serverId}
+                                      {tool.description ? ` · ${tool.description}` : ""}
+                                    </span>
+                                  ) : (
+                                    // Kept, not dropped: the gateway may simply be
+                                    // down, and silently discarding a declared tool
+                                    // on save would be a worse answer than saying so.
+                                    <span className="block truncate text-xs text-destructive">
+                                      {key} — not in the catalog right now.
+                                    </span>
+                                  )}
+                                </span>
+                                {live ? (
+                                  liveByKey.get(key) ? (
+                                    <ToggleSwitch
+                                      size="sm"
+                                      checked={Boolean(liveByKey.get(key)?.enabled)}
+                                      disabled={togglingKey === key || !onToggleTool}
+                                      onToggle={() => {
+                                        const row = liveByKey.get(key);
+                                        if (row) onToggleTool?.(row);
+                                      }}
+                                      label={`${liveByKey.get(key)?.enabled ? "Turn off" : "Turn on"} ${tool?.toolName ?? key} for you`}
+                                    />
+                                  ) : (
+                                    // Added in this edit and not saved yet: there is
+                                    // no per-account row to switch until it is.
+                                    <span className="shrink-0 text-[0.7rem] text-muted-foreground">
+                                      On after saving
+                                    </span>
+                                  )
+                                ) : null}
+                                <button
+                                  type="button"
+                                  onClick={() => removeTool(key)}
+                                  aria-label={`Remove tool ${key}`}
+                                  className="shrink-0 rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/50"
+                                >
+                                  <Trash2 size={15} aria-hidden />
+                                </button>
+                              </SoftPanel>
                             </li>
                           );
                         })}
@@ -1074,8 +1072,8 @@ export default function AgentBuilder({
                     <SoftPanel className="px-5 py-6 text-center">
                       <p className="text-sm font-semibold text-foreground">No sub-agents</p>
                       <p className="mx-auto mt-1 max-w-sm text-xs text-muted-foreground">
-                        Helpers this agent can hand work to, each with its own instructions,
-                        model and tools.
+                        Helpers this agent can hand work to, each with its own instructions, model
+                        and tools.
                       </p>
                       <button
                         type="button"
@@ -1135,6 +1133,17 @@ export default function AgentBuilder({
                                 placeholder="You research topics thoroughly and return structured findings…"
                                 aria-label="Sub-agent instructions"
                               />
+                              {sa.subagents?.length ? (
+                                // Nested sub-agents come from agent.yaml; the form
+                                // keeps them as they are (editing them here is a
+                                // follow-up).
+                                <p className="text-xs text-muted-foreground">
+                                  Delegates to its own sub-agent
+                                  {sa.subagents.length === 1 ? "" : "s"}:{" "}
+                                  {sa.subagents.map((child) => child.name).join(", ")} — kept as
+                                  defined.
+                                </p>
+                              ) : null}
 
                               <div className="grid gap-3 sm:grid-cols-[minmax(0,13rem)_minmax(0,1fr)]">
                                 <label className={labelClass}>
@@ -1147,23 +1156,36 @@ export default function AgentBuilder({
                                       })
                                     }
                                   >
-                                    <SelectTrigger className={inputClass} aria-label={`Model for ${label}`}>
+                                    <SelectTrigger
+                                      className={inputClass}
+                                      aria-label={`Model for ${label}`}
+                                    >
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent className="z-[90] rounded-xl border border-border/60 bg-background text-foreground shadow-lg">
                                       <SelectItem value={INHERIT_MODEL} className="rounded-lg">
                                         <span className="flex items-baseline gap-2">
-                                          <span className="font-medium text-foreground">Inherit</span>
+                                          <span className="font-medium text-foreground">
+                                            Inherit
+                                          </span>
                                           <span className="text-xs text-muted-foreground">
                                             {modelLabel(draft.model)}
                                           </span>
                                         </span>
                                       </SelectItem>
                                       {MODEL_CHOICES.map((model) => (
-                                        <SelectItem key={model.id} value={model.id} className="rounded-lg">
+                                        <SelectItem
+                                          key={model.id}
+                                          value={model.id}
+                                          className="rounded-lg"
+                                        >
                                           <span className="flex items-baseline gap-2">
-                                            <span className="font-medium text-foreground">{model.label}</span>
-                                            <span className="text-xs text-muted-foreground">{model.hint}</span>
+                                            <span className="font-medium text-foreground">
+                                              {model.label}
+                                            </span>
+                                            <span className="text-xs text-muted-foreground">
+                                              {model.hint}
+                                            </span>
                                           </span>
                                         </SelectItem>
                                       ))}
@@ -1201,7 +1223,9 @@ export default function AgentBuilder({
                                     {pickable.length > 0 ? (
                                       <VoiceSelector
                                         open={subToolPicker === index}
-                                        onOpenChange={(open) => setSubToolPicker(open ? index : null)}
+                                        onOpenChange={(open) =>
+                                          setSubToolPicker(open ? index : null)
+                                        }
                                       >
                                         <VoiceSelectorTrigger asChild>
                                           <button
@@ -1218,7 +1242,9 @@ export default function AgentBuilder({
                                         >
                                           <VoiceSelectorInput placeholder="Search this agent's tools..." />
                                           <VoiceSelectorList className="max-h-[22rem]">
-                                            <VoiceSelectorEmpty>No matching tool.</VoiceSelectorEmpty>
+                                            <VoiceSelectorEmpty>
+                                              No matching tool.
+                                            </VoiceSelectorEmpty>
                                             <VoiceSelectorGroup heading="This agent's tools">
                                               {pickable.map((key) => {
                                                 const tool = catalogByKey.get(key);
@@ -1236,10 +1262,14 @@ export default function AgentBuilder({
                                                       <Wrench className="h-3.5 w-3.5" aria-hidden />
                                                     </span>
                                                     <span className="min-w-0 flex-1">
-                                                      <VoiceSelectorName>{tool?.toolName ?? key}</VoiceSelectorName>
+                                                      <VoiceSelectorName>
+                                                        {tool?.toolName ?? key}
+                                                      </VoiceSelectorName>
                                                       <span className="mt-0.5 block truncate text-xs text-muted-foreground">
                                                         {tool?.serverId ?? key.split("/")[0]}
-                                                        {tool?.description ? ` · ${tool.description}` : ""}
+                                                        {tool?.description
+                                                          ? ` · ${tool.description}`
+                                                          : ""}
                                                       </span>
                                                     </span>
                                                   </VoiceSelectorItem>
@@ -1436,7 +1466,11 @@ export default function AgentBuilder({
                   <div className="flex flex-col gap-2">
                     {liveToolsError ? (
                       <SoftPanel className="flex items-start gap-3 px-4 py-3">
-                        <AlertCircle size={16} className="mt-0.5 shrink-0 text-destructive" aria-hidden />
+                        <AlertCircle
+                          size={16}
+                          className="mt-0.5 shrink-0 text-destructive"
+                          aria-hidden
+                        />
                         <p className="text-sm text-muted-foreground">{liveToolsError}</p>
                       </SoftPanel>
                     ) : null}

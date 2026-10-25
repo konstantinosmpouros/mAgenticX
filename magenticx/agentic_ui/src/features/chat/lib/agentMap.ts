@@ -1,4 +1,9 @@
-import { createTimeline, foldTimeline, subagentRunStatus } from "@/features/inference/timeline";
+import {
+  createTimeline,
+  foldTimeline,
+  resolveSubagentParents,
+  subagentRunStatus,
+} from "@/features/inference/timeline";
 import type {
   ContentBlock,
   MessageOut,
@@ -82,7 +87,6 @@ export const answerItemId = (answer: Pick<AgentMapAnswer, "id">) => `answer:${an
 export const EMPTY_AGENT_MAP: AgentMap = { answers: [], subagentCount: 0, runningCount: 0 };
 
 const SETTLED = new Set<SubagentRunStatus>(["done", "failed", "cancelled"]);
-const NAMESPACE_SEPARATOR = " / ";
 
 const oneLine = (text: string | undefined): string => (text ?? "").replace(/\s+/g, " ").trim();
 
@@ -99,50 +103,6 @@ function titleOf(block: SubagentBlock, index: number): string {
   return block.label || block.type || `Sub-agent ${index + 1}`;
 }
 
-/**
- * The parent of each spawned sub-agent, by index into `blocks` (-1: the main
- * agent's own). The namespace path is the primary link — a nested sub-agent's
- * LangGraph namespace extends its parent's, so the parent is the sub-agent with
- * the longest namespace that is a strict prefix of it (acyclic by construction).
- * The `task` call the fold saw inside a parent (`parentTaskId`) is the fallback
- * when a namespace is missing, accepted only if it does not close a loop.
- */
-function resolveParents(blocks: SubagentBlock[]): number[] {
-  const segments = blocks.map((block) =>
-    block.namespace ? block.namespace.split(NAMESPACE_SEPARATOR) : null,
-  );
-  const indexByTask = new Map(blocks.map((block, index) => [block.taskId, index]));
-  const parents = blocks.map((_, index) => {
-    const own = segments[index];
-    let best = -1;
-    let bestLength = 0;
-    if (own) {
-      segments.forEach((candidate, other) => {
-        if (other === index || !candidate || candidate.length >= own.length) return;
-        if (candidate.length <= bestLength) return;
-        if (candidate.every((part, i) => part === own[i])) {
-          best = other;
-          bestLength = candidate.length;
-        }
-      });
-    }
-    return best;
-  });
-  blocks.forEach((block, index) => {
-    if (parents[index] !== -1 || !block.parentTaskId) return;
-    const parent = indexByTask.get(block.parentTaskId);
-    if (parent === undefined || parent === index) return;
-    // Walk up from the would-be parent; reaching this block would be a loop.
-    let cursor = parent;
-    for (let guard = 0; cursor !== -1 && guard <= blocks.length; guard += 1) {
-      if (cursor === index) return;
-      cursor = parents[cursor];
-    }
-    parents[index] = parent;
-  });
-  return parents;
-}
-
 /** One answer's sub-agents as a forest, in the order they started. */
 export function buildAnswerNodes(
   messageId: string,
@@ -155,7 +115,7 @@ export function buildAnswerNodes(
     (block): block is SubagentBlock => block.kind === "subagent" && Boolean(block.spawned),
   );
   if (!blocks.length) return [];
-  const parents = resolveParents(blocks);
+  const parents = resolveSubagentParents(blocks);
   const nodes = blocks.map((block, index): AgentMapNode => {
     const status = subagentRunStatus(block, timeline, live);
     const settled = status !== null && SETTLED.has(status);
@@ -356,9 +316,11 @@ const TERMINAL_STATUS: Partial<Record<SubagentRunStatus, TimelineTerminalStatus>
 /**
  * A node's reply in the shape the main chat renders an answer from. Its nested
  * sub-agents are separate top-level blocks in the run's timeline; here each
- * one goes after its `task` call (by tool-call id, else the next `task` call in
- * order), splitting the thinking block there — as the orchestrator's own
- * sub-agents sit in an answer. One whose call is not found goes at the end.
+ * one goes right after the step where it was delegated — the `delegation` item
+ * the fold left in the node's steps (by task id), or a `task` tool step in
+ * order for a log that has none — splitting the thinking block there, as the
+ * orchestrator's own sub-agents sit in an answer. One whose step is not found
+ * goes at the end.
  */
 export function agentTranscript(node: AgentMapNode): AgentTranscript {
   const live = node.status === "running";
@@ -376,25 +338,42 @@ export function agentTranscript(node: AgentMapNode): AgentTranscript {
     let items: ThinkingBlock["items"] = [];
     let part = 0;
     let startedAt = block.startedAt;
-    for (const item of block.items) {
-      items.push(item);
-      if (item.kind !== "tool" || item.name !== "task") continue;
-      const direct = byTask.get(item.id);
-      const child = direct && !placed.has(direct) ? direct : unplacedInOrder();
-      if (!child) continue;
-      placed.add(child);
+    // Children delegated in one go (parallel `task` calls) follow the run of
+    // steps that started them together.
+    let pending: SubagentBlock[] = [];
+    const flush = () => {
+      if (!pending.length) return;
       blocks.push({
         ...block,
         id: part ? `${block.id}~${part}` : block.id,
         items,
         startedAt,
-        endedAt: child.startedAt ?? block.endedAt,
+        endedAt: pending[0].startedAt ?? block.endedAt,
       });
-      blocks.push(child);
+      blocks.push(...pending);
+      const ends = pending.map((child) => child.endedAt).filter((end) => typeof end === "number");
+      startedAt = ends.length ? Math.max(...(ends as number[])) : undefined;
       items = [];
       part += 1;
-      startedAt = child.endedAt;
+      pending = [];
+    };
+    for (const item of block.items) {
+      let child: SubagentBlock | undefined;
+      if (item.kind === "delegation") {
+        const direct = byTask.get(item.taskId);
+        child = direct && !placed.has(direct) ? direct : undefined;
+      } else if (item.kind === "tool" && item.name === "task") {
+        const direct = byTask.get(item.id);
+        child = direct && !placed.has(direct) ? direct : unplacedInOrder();
+      }
+      if (!child) flush();
+      items.push(item);
+      if (child) {
+        placed.add(child);
+        pending.push(child);
+      }
     }
+    flush();
     if (items.length || !part) {
       blocks.push({ ...block, id: part ? `${block.id}~${part}` : block.id, items, startedAt });
     }

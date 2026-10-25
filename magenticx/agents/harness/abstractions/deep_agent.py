@@ -4,14 +4,28 @@ from typing import Any, Callable, List, Mapping, Optional, Literal, Sequence
 from abc import abstractmethod, ABC
 
 from deepagents import ProviderProfile, create_deep_agent, register_provider_profile
+from deepagents._models import resolve_model
 from deepagents.backends import CompositeBackend
+# Private, but the very merge create_deep_agent applies to its own sub-agents'
+# gates; a sub-agent built below depth 1 must get the same.
+from deepagents.graph import _merge_fs_interrupt_on
+from deepagents.middleware._fs_interrupt import _build_interrupt_on_from_permissions
+from deepagents.middleware.filesystem import FilesystemMiddleware
+from deepagents.middleware.patch_tool_calls import PatchToolCallsMiddleware
+from deepagents.middleware.subagents import GENERAL_PURPOSE_SUBAGENT, SubAgentMiddleware
+from deepagents.middleware.summarization import create_summarization_middleware
+from langchain.agents.middleware import TodoListMiddleware
+from langchain_anthropic.middleware import AnthropicPromptCachingMiddleware
 from langgraph.checkpoint.memory import MemorySaver
 
 from harness.agui import AGUIEmitter, AGUIStreamNormalizer
 from harness.abstractions.base_agent import AgentType, BaseAgent
+from harness.abstractions.subagent_tree import SUBAGENTS_KEY, validate_subagent_tree
 from harness.commands import command_permissions
 from harness.personalization import build_personalization_prompt
 from harness.prompt_engineering import PromptContext, compose_system_prompt, describe_sections
+from harness.prompt_engineering.prompts.capabilities_prompt import delegating_subagent_prompt
+from harness.tools.ask_user import ASK_USER_TOOL_NAME
 from harness.tools.gates import resolve_interrupt_on, strip_reserved_names, trust_level
 from harness.tools.registry import NativeToolContext, build_auto_attach_tools
 from harness.middlewares import (
@@ -33,8 +47,14 @@ from core.settings import settings
 
 logger = get_logger(__name__)
 
-STREAMING_MODES = Literal["updates", "messages"]
+STREAMING_MODES = Literal["updates", "messages", "tasks"]
 SubAgentsT = Sequence[Any] | Mapping[str, Any] | None
+
+
+def _without_ask_user(tools: Sequence[Any] | None) -> list[Any]:
+    """``tools`` minus ``ask_user``: only the main agent may pause the run on a
+    question, at any depth (the tool also refuses a sub-agent's call)."""
+    return [t for t in (tools or []) if getattr(t, "name", None) != ASK_USER_TOOL_NAME]
 
 class DeepAgent(BaseAgent, ABC):
     """
@@ -84,8 +104,10 @@ class DeepAgent(BaseAgent, ABC):
     # (see register_model_windows); registration merges, so once is enough.
     _windows_registered: set[str] = set()
 
-    # Default streaming mode
-    stream_mode: List[STREAMING_MODES] = ["messages", "updates"]
+    # Default streaming mode. "tasks" emits no events of its own: it tells the
+    # normalizer which `task` call each sub-agent namespace runs (exact for
+    # parallel and nested sub-agents, and on a /resume stream).
+    stream_mode: List[STREAMING_MODES] = ["messages", "updates", "tasks"]
 
     _log_domain: str = "deep_agent"
 
@@ -496,17 +518,6 @@ class DeepAgent(BaseAgent, ABC):
             has_custom_instructions=self.personalization.has_custom_instructions,
         )
 
-        # Sub-agents get the same guarantee separately (parent middleware doesn't
-        # reach them); pre-compiled "runnable" specs pass through untouched.
-        augmented_subagents: SubAgentsT = subagents
-        if isinstance(subagents, (list, tuple)):
-            augmented_subagents = [
-                {**spec, "middleware": self._ensure_platform_middleware(spec.get("middleware"))}
-                if isinstance(spec, dict) and "runnable" not in spec
-                else spec
-                for spec in subagents
-            ]
-
         # Selection already happened in _filter_live_tools; builtins are appended
         # here and are structurally out of reach of any user disable.
         resolved_tools = self.tools + self._builtin_tools()
@@ -514,11 +525,32 @@ class DeepAgent(BaseAgent, ABC):
         # `is not None` and not truthiness: a spec that deliberately declares no
         # gates passes `{}` and must stay empty rather than falling back to the
         # class attribute. The layer order itself lives in harness.tools.gates.
+        own_gates = interrupt_on if interrupt_on is not None else self.hitl_gates
         resolved_interrupt_on = resolve_interrupt_on(
             resolved_tools,
-            own_gates=interrupt_on if interrupt_on is not None else self.hitl_gates,
+            own_gates=own_gates,
             approvals=self.tool_config.approvals,
             agent_slug=self.name,
+        )
+
+        # Derived from the same flag as the mount, so a rule can never point at a
+        # route this run didn't mount. A slash command can only add rules here
+        # (read-only), never lift one.
+        permissions = workspace_write_deny(
+            include_reference=self._has_reference,
+            include_default_skills=self._has_default_skills,
+        ) + command_permissions(self.command_spec)
+
+        # Sub-agents get the platform guarantees separately (parent middleware
+        # doesn't reach them), at every depth; pre-compiled "runnable" specs
+        # pass through untouched.
+        augmented_subagents = self._prepare_subagents(
+            subagents,
+            model=model,
+            backend=backend,
+            tools=resolved_tools,
+            own_gates=own_gates,
+            permissions=permissions,
         )
 
         return create_deep_agent(
@@ -533,16 +565,202 @@ class DeepAgent(BaseAgent, ABC):
             memory=self.agent_md_paths,
             skills=self.skills_paths,
             backend=backend,
-            # Derived from the same flag as the mount, so a rule can never point
-            # at a route this run didn't mount.
-            # A slash command can only add rules here (read-only), never lift one.
-            permissions=workspace_write_deny(
-                include_reference=self._has_reference,
-                include_default_skills=self._has_default_skills,
-            ) + command_permissions(self.command_spec),
+            permissions=permissions,
             context_schema=self.context,
             checkpointer=self.checkpointer,
             store=None,
+        )
+
+
+    # ---------------------------------------------------------------------
+    # Sub-agents, at every depth
+    # ---------------------------------------------------------------------
+    def _prepare_subagents(
+        self,
+        subagents: SubAgentsT,
+        *,
+        model: Any,
+        backend: Any,
+        tools: Sequence[Any],
+        own_gates: Mapping[str, Any] | None,
+        permissions: list[Any],
+    ) -> SubAgentsT:
+        """The main agent's sub-agent specs, ready for ``create_deep_agent``.
+
+        deepagents builds the main agent's own sub-agents (depth 1) itself and
+        gives each its base stack — planning, filesystem with ``permissions``,
+        summarization, PatchToolCalls — and the run's approval gates. What it
+        does not give them, and what this adds:
+
+        * the platform middleware (``_ensure_platform_middleware``);
+        * no ``ask_user``, ever: an inheriting sub-agent gets the main agent's
+          tools *minus* ``ask_user`` (the tool also refuses at call time), and
+          deepagents' general-purpose sub-agent is declared here so it is
+          covered too;
+        * a ``task`` tool of its own when the spec lists ``subagents`` — a
+          ``SubAgentMiddleware`` whose specs are built fully by
+          :meth:`_nested_subagent`, because deepagents processes nothing below
+          depth 1;
+        * a spec's own ``interrupt_on`` re-resolved through the gate layers,
+          so a sub-agent can add a gate but never clear a locked one.
+        """
+        if not isinstance(subagents, (list, tuple)):
+            return subagents
+        validate_subagent_tree(subagents)
+        inherited = _without_ask_user(tools)
+        prepared: list[Any] = []
+        for raw in subagents:
+            if not isinstance(raw, Mapping) or "runnable" in raw:
+                prepared.append(raw)
+                continue
+            spec = dict(raw)
+            children = spec.pop(SUBAGENTS_KEY, None) or []
+            spec["tools"] = _without_ask_user(spec["tools"]) if "tools" in spec else list(inherited)
+            if "interrupt_on" in spec:
+                spec["interrupt_on"] = self._subagent_gates(spec["tools"], spec["interrupt_on"], own_gates)
+            stack = list(spec.get("middleware") or [])
+            if children:
+                stack.append(self._subagent_middleware(
+                    children,
+                    parent_model=spec.get("model") or model,
+                    parent_tools=spec["tools"],
+                    backend=backend,
+                    own_gates=own_gates,
+                    permissions=permissions,
+                    depth=2,
+                ))
+                spec["system_prompt"] = delegating_subagent_prompt(spec.get("system_prompt"))
+            spec["middleware"] = self._ensure_platform_middleware(stack)
+            prepared.append(spec)
+        if not any(isinstance(s, Mapping) and s.get("name") == GENERAL_PURPOSE_SUBAGENT["name"] for s in prepared):
+            prepared.insert(0, self._general_purpose_subagent(model, inherited))
+        return prepared
+
+
+    def _general_purpose_subagent(self, model: Any, tools: Sequence[Any]) -> dict[str, Any]:
+        """deepagents' general-purpose sub-agent, declared rather than auto-added,
+        so it too runs without ``ask_user`` and with the platform middleware.
+        Same name, description, prompt, model and skills as the one deepagents
+        would add; as a declared spec it gets the same base stack."""
+        spec: dict[str, Any] = {
+            **GENERAL_PURPOSE_SUBAGENT,
+            "model": model,
+            "tools": list(tools),
+            "middleware": self._ensure_platform_middleware([]),
+        }
+        if self.skills_paths:
+            spec["skills"] = list(self.skills_paths)
+        return spec
+
+
+    def _subagent_middleware(
+        self,
+        children: Sequence[Any],
+        *,
+        parent_model: Any,
+        parent_tools: Sequence[Any],
+        backend: Any,
+        own_gates: Mapping[str, Any] | None,
+        permissions: list[Any],
+        depth: int,
+    ) -> SubAgentMiddleware:
+        """The ``task`` tool of a sub-agent that has sub-agents of its own."""
+        return SubAgentMiddleware(
+            backend=backend,
+            subagents=[
+                child if "runnable" in child else self._nested_subagent(
+                    child,
+                    parent_model=parent_model,
+                    parent_tools=parent_tools,
+                    backend=backend,
+                    own_gates=own_gates,
+                    permissions=permissions,
+                    depth=depth,
+                )
+                for child in children
+            ],
+        )
+
+
+    def _nested_subagent(
+        self,
+        raw: Mapping[str, Any],
+        *,
+        parent_model: Any,
+        parent_tools: Sequence[Any],
+        backend: Any,
+        own_gates: Mapping[str, Any] | None,
+        permissions: list[Any],
+        depth: int,
+    ) -> dict[str, Any]:
+        """A fully built spec for a sub-agent at ``depth`` ≥ 2.
+
+        ``SubAgentMiddleware`` runs a spec as given, so everything deepagents
+        adds at depth 1 is added here, in the same order — planning,
+        filesystem with the workspace's write-deny rules, summarization,
+        PatchToolCalls (whose marker binds the sub-agent's stream), the spec's
+        own middleware, its own ``task`` tool if it has sub-agents, prompt
+        caching — and then the platform middleware. Its model defaults to the
+        one above it, its tools to the ones above it (never ``ask_user``), its
+        approval gates to the run's, re-resolved for its tools.
+        """
+        spec = dict(raw)
+        children = spec.pop(SUBAGENTS_KEY, None) or []
+        model = spec.get("model") or parent_model
+        resolved_model = resolve_model(model)
+        tools = _without_ask_user(spec["tools"]) if "tools" in spec else list(parent_tools)
+        gates = _merge_fs_interrupt_on(
+            _build_interrupt_on_from_permissions(permissions),
+            self._subagent_gates(tools, spec.get("interrupt_on"), own_gates),
+        )
+        stack: list[Any] = [
+            TodoListMiddleware(),
+            FilesystemMiddleware(backend=backend, _permissions=permissions),
+            create_summarization_middleware(resolved_model, backend),
+            PatchToolCallsMiddleware(),
+            *(spec.get("middleware") or []),
+        ]
+        system_prompt = spec.get("system_prompt", "")
+        if children:
+            stack.append(self._subagent_middleware(
+                children,
+                parent_model=model,
+                parent_tools=tools,
+                backend=backend,
+                own_gates=own_gates,
+                permissions=permissions,
+                depth=depth + 1,
+            ))
+            system_prompt = delegating_subagent_prompt(system_prompt)
+        stack.append(AnthropicPromptCachingMiddleware(unsupported_model_behavior="ignore"))
+        built: dict[str, Any] = {
+            "name": spec["name"],
+            "description": spec.get("description", ""),
+            "system_prompt": system_prompt,
+            "model": resolved_model,
+            "tools": tools,
+            "middleware": self._ensure_platform_middleware(stack),
+        }
+        if gates:
+            built["interrupt_on"] = gates
+        return built
+
+
+    def _subagent_gates(
+        self,
+        tools: Sequence[Any],
+        spec_gates: Mapping[str, Any] | None,
+        own_gates: Mapping[str, Any] | None,
+    ) -> dict[str, Any]:
+        """A sub-agent's approval gates: the run's layers, with its own spec's
+        gates on top of the agent's — then the user's choices and the locked
+        gates, exactly as for the main agent, so no spec can clear a gate the
+        platform mandates."""
+        return resolve_interrupt_on(
+            tools,
+            own_gates={**(own_gates or {}), **(spec_gates or {})},
+            approvals=self.tool_config.approvals,
+            agent_slug=self.name,
         )
 
 

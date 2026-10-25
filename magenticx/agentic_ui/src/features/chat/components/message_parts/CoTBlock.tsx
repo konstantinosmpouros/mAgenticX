@@ -5,6 +5,7 @@ import {
   CircleSlash,
   Clock,
   MessageCircleQuestion,
+  Network,
   ShieldQuestion,
   ShieldX,
   Wrench,
@@ -23,7 +24,7 @@ import { useWorkspaceStore } from "@/shared/stores/workspaceStore";
 import { ToolCallArgsView, ToolCallResultView } from "./ToolCallViews";
 import { ShimmeringText } from "@/shared/ui/shadcn-io/shimmering-text";
 import { MarkdownRenderer } from "@/shared/ui/markdownRenderer";
-import { isAskUserAnswered, useHitl } from "@/features/inference";
+import { isAskUserAnswered, toTitleCase, useHitl } from "@/features/inference";
 import { useApprovalSummaries } from "@/features/chat/hooks/useApprovalSummaries";
 import {
   approvalHeadline,
@@ -36,6 +37,7 @@ import type {
   AskUserAnswer,
   AskUserQuestion,
   ThinkingBlock,
+  TimelineDelegation,
   TimelineHitlApproval,
   TimelineTerminalStatus,
   TimelineToolExecution,
@@ -163,7 +165,9 @@ const TimelineToolItem = memo(
               </span>
               {meta ? <span className="shrink-0 text-muted-foreground text-xs">{meta}</span> : null}
               {duration ? (
-                <span className="shrink-0 text-muted-foreground text-xs tabular-nums">{duration}</span>
+                <span className="shrink-0 text-muted-foreground text-xs tabular-nums">
+                  {duration}
+                </span>
               ) : null}
             </span>
           }
@@ -268,7 +272,11 @@ const TimelineHitlItem = memo(
       return null;
     }
     const rejected = approval.status === "rejected";
-    const label = rejected ? "Rejected" : approval.status === "approved" ? "Approved" : "Decision sent";
+    const label = rejected
+      ? "Rejected"
+      : approval.status === "approved"
+        ? "Approved"
+        : "Decision sent";
     return (
       <Collapsible open={open} onOpenChange={setOpen}>
         <ChainOfThoughtStep
@@ -281,7 +289,12 @@ const TimelineHitlItem = memo(
               className="flex max-w-full items-center gap-2 text-left transition-colors hover:text-foreground disabled:cursor-default"
               aria-label={`Toggle ${headline} details`}
             >
-              <span className={cn("shrink-0 font-medium", rejected ? "text-destructive" : "text-success")}>
+              <span
+                className={cn(
+                  "shrink-0 font-medium",
+                  rejected ? "text-destructive" : "text-success",
+                )}
+              >
                 {label}
               </span>
               <span className="truncate text-muted-foreground">
@@ -386,7 +399,11 @@ const TimelineAskUserItem = memo(
 
     const skipped = approval.status === "rejected";
     const count = questions.length;
-    const label = skipped ? "Skipped" : approval.status === "approved" ? "Answered" : "Answers sent";
+    const label = skipped
+      ? "Skipped"
+      : approval.status === "approved"
+        ? "Answered"
+        : "Answers sent";
     const detail = count === 1 ? questions[0].question : `${count} questions`;
     const expanded = open ?? soleItem;
     return (
@@ -425,6 +442,48 @@ const TimelineAskUserItem = memo(
 );
 TimelineAskUserItem.displayName = "TimelineAskUserItem";
 
+/**
+ * A sub-agent handing part of its work to a sub-agent of its own — shown where
+ * it happened in the delegating agent's steps. Where the child can be opened
+ * (the agent map's transcript), the row opens it.
+ */
+const TimelineDelegationItem = memo(
+  ({
+    item,
+    isLast,
+    onOpen,
+  }: {
+    item: TimelineDelegation;
+    isLast: boolean;
+    onOpen?: (taskId: string) => void;
+  }) => {
+    const title = toTitleCase(item.type) ?? "Sub-agent";
+    return (
+      <ChainOfThoughtStep
+        icon={Network}
+        hideConnector={isLast}
+        className="text-sm"
+        label={
+          onOpen ? (
+            <button
+              type="button"
+              onClick={() => onOpen(item.taskId)}
+              className="rounded-sm text-left font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+              aria-label={`Open ${title}`}
+            >
+              Delegated to {title}
+            </button>
+          ) : (
+            <span className="font-medium text-foreground">Delegated to {title}</span>
+          )
+        }
+        description={item.description}
+      />
+    );
+  },
+);
+TimelineDelegationItem.displayName = "TimelineDelegationItem";
+
 const DONE_SENTINELS: Record<
   TimelineTerminalStatus,
   { icon: typeof CheckCircle2; label: string; className: string }
@@ -448,6 +507,9 @@ type ThinkingBlockViewProps = {
   fallbackDurationSeconds?: number | null;
   open: boolean;
   onOpenChange: () => void;
+  // Opens a sub-agent this block's agent delegated to (the agent map's
+  // transcript); without it a delegation row is plain text.
+  onOpenDelegation?: (taskId: string) => void;
 };
 
 export const CoTBlock = memo(
@@ -459,6 +521,7 @@ export const CoTBlock = memo(
     fallbackDurationSeconds,
     open,
     onOpenChange,
+    onOpenDelegation,
   }: ThinkingBlockViewProps) => {
     const durationLabel = formatThinkingDuration(
       blockDurationSeconds(block) ?? fallbackDurationSeconds ?? null,
@@ -511,7 +574,11 @@ export const CoTBlock = memo(
               className="text-sm md:text-[0.95rem] font-medium"
             />
           ) : askedOnly ? (
-            askedCount === 1 ? "Asked you a question" : `Asked you ${askedCount} questions`
+            askedCount === 1 ? (
+              "Asked you a question"
+            ) : (
+              `Asked you ${askedCount} questions`
+            )
           ) : durationLabel ? (
             `Thought for ${durationLabel}`
           ) : (
@@ -540,6 +607,16 @@ export const CoTBlock = memo(
             if (item.kind === "tool") {
               return (
                 <TimelineToolItem key={item.id} tool={item} runId={runId} isLast={isLastRendered} />
+              );
+            }
+            if (item.kind === "delegation") {
+              return (
+                <TimelineDelegationItem
+                  key={item.id}
+                  item={item}
+                  isLast={isLastRendered}
+                  onOpen={onOpenDelegation}
+                />
               );
             }
             if (item.questions) {

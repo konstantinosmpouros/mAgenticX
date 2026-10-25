@@ -1,18 +1,19 @@
 import { useMemo } from "react";
 import { Bot, ListChecks } from "lucide-react";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/shared/ui/sheet";
-import { SubagentCard } from "./SubagentContainer";
+import { SubagentTreeCard } from "./SubagentTreeCard";
 import { PlanChecklist } from "../plan/PlanChecklist";
 import { PlanProgressRing } from "../plan/PlanProgressRing";
-import { subagentBlockToItem, subagentRunStatus } from "@/features/inference";
+import { subagentRunStatus, subagentTree } from "@/features/inference";
 import type { PlanSnapshot } from "@/features/inference/agui";
 import { buildPlanAnswer, planProgressLabel } from "@/features/chat/lib/conversationPlans";
 import type { PlanStepTiming, RunTimeline, SubagentBlock } from "@/shared/lib/types";
 
 // Post-run side panels behind two action-bar buttons: one answer's plan (the
 // same checklist as the composer's plan panel), and its sub-agents — the cards
-// stay inline and the sub-agents panel lists them again, all together. Both
-// panels replay state derived from the same run timeline.
+// stay inline and the sub-agents panel lists them again, all together, as the
+// same tree (a sub-agent's own sub-agents inside its card). Both panels replay
+// state derived from the same run timeline.
 
 type PlanSidePanelProps = {
   plan: PlanSnapshot;
@@ -91,6 +92,8 @@ export function SubagentsSidePanel({
       ),
     [timeline.blocks],
   );
+  const tree = useMemo(() => subagentTree({ blocks: subagents }), [subagents]);
+  const nestedCount = subagents.length - tree.roots.length;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -107,18 +110,20 @@ export function SubagentsSidePanel({
           </SheetTitle>
           <SheetDescription>
             {subagents.length} delegated task{subagents.length === 1 ? "" : "s"} in this run
+            {nestedCount ? ` — ${nestedCount} by other sub-agents` : ""}
           </SheetDescription>
         </SheetHeader>
         {/* Block container, NOT flex-col: SubagentCard's root is overflow-hidden,
             which zeroes a flex item's automatic min-height — a flex column would
             squash the cards to fit instead of overflowing into this scroll. */}
         <div className="scrollbar-muted min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
-          {subagents.map((block, index) => (
-            <SubagentCard
+          {tree.roots.map((block, index) => (
+            <SubagentTreeCard
               key={block.id}
-              subagent={subagentBlockToItem(block)}
+              block={block}
               index={index}
-              status={subagentRunStatus(block, timeline, isLive)}
+              childrenOf={tree.childrenOf}
+              statusOf={(item) => subagentRunStatus(item, timeline, isLive)}
               defaultCollapsedSections
             />
           ))}

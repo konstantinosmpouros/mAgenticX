@@ -1,0 +1,28 @@
+# Example declarative agent with nested sub-agents — a TEST definition, never
+# seeded into the image. main → researcher → fact-checker: the researcher has a
+# sub-agent of its own, which it calls with its own `task` tool.
+# Used by tests/agents/test_nested_subagent_example.py (scripted models) and to
+# record the fixtures in tests/agents/fixtures/nested_subagents/example_*.json.
+id: Nested Research Demo v1
+slug: nested-research-demo
+name: Nested research demo
+version: 1.0.0
+type: deep_agent
+description: Answers a factual question by delegating research, which delegates fact-checking.
+icon: Network
+prompt: ./AGENT.md
+model:
+  main: openai:gpt-4.1-mini
+memory: false
+tools: []
+skills: []
+subagents:
+  - name: researcher
+    description: >-
+      Researches a factual question and has every key fact checked by its own
+      fact-checker before reporting back.
+    prompt: ./subagents/researcher.md
+    subagents:
+      - name: fact-checker
+        description: Verifies one factual claim and says whether it holds.
+        prompt: ./subagents/fact-checker.md

@@ -18,6 +18,7 @@ def _clear_namespace_bindings(agents_service):
     stores = (
         agents_service.normalizer._THREAD_NAMESPACE_BINDINGS,
         agents_service.normalizer._THREAD_TASK_STARTED_AT,
+        agents_service.normalizer._THREAD_TASK_COMPLETED,
     )
     for store in stores:
         store.clear()

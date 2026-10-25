@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useMemo } from "react";
-import { subagentRunStatus } from "@/features/inference";
+import { subagentRunStatus, subagentTree } from "@/features/inference";
 import type {
   AttachmentOut,
   MessageOut,
@@ -62,10 +62,26 @@ export function TimelineSequence({
       subagentLinks ? subagentLinks.statusOf(block) : subagentRunStatus(block, timeline, runLive),
     [subagentLinks, timeline, runLive],
   );
+  // A sub-agent that another sub-agent delegated to is drawn inside that
+  // one's card, not as a card of its own beside it.
+  const tree = useMemo(() => subagentTree(timeline), [timeline]);
+  const openDelegation = useMemo(() => {
+    if (!subagentLinks) return undefined;
+    return (taskId: string) => {
+      const target = timeline.blocks.find(
+        (block): block is SubagentBlock => block.kind === "subagent" && block.taskId === taskId,
+      );
+      if (target) subagentLinks.onOpen(target);
+    };
+  }, [subagentLinks, timeline]);
   const renderBlocks = useMemo<TimelineBlock[]>(() => {
     const merged: TimelineBlock[] = [];
     let dropped = false;
     for (const block of timeline.blocks) {
+      if (block.kind === "subagent" && tree.isNested(block)) {
+        dropped = true;
+        continue;
+      }
       if (block.kind === "subagent" && statusOf(block) === null) {
         dropped = true;
         continue;
@@ -84,7 +100,7 @@ export function TimelineSequence({
       merged.push(block);
     }
     return merged;
-  }, [timeline, statusOf]);
+  }, [timeline, statusOf, tree]);
 
   const lastThinkingIndex = useMemo(() => {
     for (let i = renderBlocks.length - 1; i >= 0; i -= 1) {
@@ -108,10 +124,10 @@ export function TimelineSequence({
           subagentIndex,
           isLiveActive,
           subagentStatus: block.kind === "subagent" ? statusOf(block) : undefined,
-          onOpenSubagent:
-            block.kind === "subagent" && subagentLinks
-              ? () => subagentLinks.onOpen(block)
-              : undefined,
+          onOpenSubagent: subagentLinks?.onOpen,
+          subagentChildrenOf: tree.childrenOf,
+          subagentStatusOf: statusOf,
+          onOpenDelegation: openDelegation,
           doneStatus:
             timeline.terminal && isLast
               ? timeline.terminalStatus

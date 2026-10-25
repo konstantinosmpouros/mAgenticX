@@ -15,7 +15,7 @@ from harness.tools.charts import normalize_chart_payload
 logger = get_logger(__name__)
 
 
-_ALLOWED_MODES = {"messages", "updates"}
+_ALLOWED_MODES = {"messages", "updates", "tasks"}
 
 # Subagent namespace->task_call_id bindings, persisted across the streams of a
 # single run (keyed by thread_id). A fresh AGUIStreamNormalizer is built per
@@ -30,6 +30,12 @@ _THREAD_NAMESPACE_BINDINGS: Dict[str, Dict[tuple, str]] = {}
 # lifecycle as the bindings: SUBAGENT_COMPLETED carries it as ``started_at``
 # even when the sub-agent returns on a later (resume) stream.
 _THREAD_TASK_STARTED_AT: dict[str, dict[str, int]] = {}
+# `task` calls whose SUBAGENT_COMPLETED this run already sent, same lifecycle.
+# On /resume LangGraph replays the saved writes of a tools step whose other
+# calls finished before the pause (parallel sub-agents, one of them gated), so
+# a finished sub-agent's result streams again; without this it would be
+# announced twice, the second time with the resume's ``ended_at``.
+_THREAD_TASK_COMPLETED: dict[str, set[str]] = {}
 
 
 def release_namespace_bindings(thread_id: str) -> None:
@@ -37,6 +43,7 @@ def release_namespace_bindings(thread_id: str) -> None:
     if thread_id:
         _THREAD_NAMESPACE_BINDINGS.pop(thread_id, None)
         _THREAD_TASK_STARTED_AT.pop(thread_id, None)
+        _THREAD_TASK_COMPLETED.pop(thread_id, None)
 
 
 def _now_ms() -> int:
@@ -45,9 +52,12 @@ def _now_ms() -> int:
 class AGUIStreamNormalizer:
     """
     Combined streaming normalizer for LangGraph:
-        - stream_mode MUST be ["messages", "updates"] on the agent.
+        - stream_mode is ["messages", "updates", "tasks"] on a deep agent
+          (``tasks`` optional: without it sub-agents bind by order alone).
         - "messages" => ONLY assistant text content (chunks)
         - "updates"  => tools/subagents/plan/interrupt (NO content)
+        - "tasks"    => no events; which `task` call each sub-agent
+                        namespace belongs to (see _handle_tasks_payload)
 
     Policies:
         - __interrupt__ => only HITL event (priority)
@@ -72,7 +82,8 @@ class AGUIStreamNormalizer:
 
         # --- custom event dedupe ---
         self._emitted_subagent_task_ids: set[str] = set()
-        self._completed_subagent_task_ids: set[str] = set()  # SUBAGENT_COMPLETED sent
+        # SUBAGENT_COMPLETED sent — on this run's earlier streams too.
+        self._completed_subagent_task_ids: set[str] = set(_THREAD_TASK_COMPLETED.get(thread_id, ()))
         self._last_plan_fingerprint: Optional[str] = None
 
         # --- automatic compaction (plan 34) ---
@@ -90,6 +101,19 @@ class AGUIStreamNormalizer:
         # level below it, which is what keeps a nested sub-agent from binding
         # to a sibling's call that has not started yet.
         self._pending_task_callers: Dict[str, Optional[tuple]] = {}
+        # Exact sub-agent namespace -> `task` call id, read off the "tasks"
+        # stream: LangGraph names a sub-agent's namespace segment after the
+        # tool-node task that runs its `task` call (`tools:<task id>`), and
+        # that task's input is the call itself. Binding through it is exact
+        # for parallel siblings, at any depth, and on a /resume stream that
+        # never saw the call announced. Without "tasks", binding falls back
+        # to call order (see _bind_namespace_to_next_task).
+        self._task_call_namespaces: dict[tuple, str] = {}
+        # `task` call ids learned from the "tasks" stream, so their results
+        # raise SUBAGENT_COMPLETED even when this stream never announced them.
+        self._known_task_call_ids: set[str] = set()
+        # Sub-agent namespaces whose BEFORE_AGENT marker this stream sent.
+        self._announced_namespaces: set[tuple] = set()
         # Rehydrate bindings established on earlier streams of this run so a HITL
         # resume (incl. a subagent's own gated tool) keeps mapping the subagent's
         # namespace to its original `task` tool_call_id instead of orphaning it.
@@ -112,8 +136,65 @@ class AGUIStreamNormalizer:
         elif mode == "updates":
             events = self._handle_updates_payload(payload, metadata, namespace)
             return self._wrap_subagent_events_if_needed(events, namespace)
+        elif mode == "tasks":
+            return self._handle_tasks_payload(payload, namespace)
         else:
             return []
+
+
+
+    # ---------------------------- tasks mode -----------------------------
+    def _handle_tasks_payload(self, payload: Any, namespace: tuple | None) -> list[bytes]:
+        """Bind each sub-agent's namespace to its `task` call as it starts.
+
+        A task-start chunk of a ``tools`` node carries the task's id and its
+        input — the tool call(s) it runs. A sub-agent spawned by a `task` call
+        streams under ``namespace + ("tools:<that id>",)``, so this is the one
+        exact link between a call id and its sub-agent's chunks, at any depth.
+        The sub-agent starts now: its BEFORE_AGENT marker (with the task it was
+        given) goes out at once, wrapped in its own namespace — the same marker
+        deepagents' PatchToolCallsMiddleware triggers, which a sub-agent built
+        without that middleware never sends.
+        """
+        out: list[bytes] = []
+        if not isinstance(payload, dict) or payload.get("name") != "tools" or "input" not in payload:
+            return out
+        node_task_id = payload.get("id")
+        if not node_task_id:
+            return out
+        for call in self._tool_calls_in_task_input(payload.get("input")):
+            if call.get("name") != "task" or not call.get("id"):
+                continue
+            call_id = str(call["id"])
+            child = (*(namespace or ()), f"tools:{node_task_id}")
+            self._task_call_namespaces[child] = call_id
+            self._known_task_call_ids.add(call_id)
+            bound = self._bind_namespace_to_next_task(child)
+            if bound is None or child in self._announced_namespaces:
+                continue
+            self._announced_namespaces.add(child)
+            args = call.get("args") if isinstance(call.get("args"), dict) else {}
+            marker = self.emitter.before_agent_event(
+                message=str(args.get("description") or ""),
+                metadata={"namespace": bound},
+                namespace=bound,
+            )
+            out.extend(self._wrap_subagent_events_if_needed([marker] if marker else [], child))
+        return out
+
+
+    @staticmethod
+    def _tool_calls_in_task_input(task_input: Any) -> list[dict[str, Any]]:
+        """The tool calls a ``tools`` node task runs: a list of tool-call dicts
+        (``Send`` per call), or one call wrapped with its context."""
+        items = task_input if isinstance(task_input, list) else [task_input]
+        calls: list[dict[str, Any]] = []
+        for item in items:
+            wrapped = item.get("tool_call") if isinstance(item, dict) else getattr(item, "tool_call", None)
+            call = wrapped if isinstance(wrapped, dict) else item
+            if isinstance(call, dict) and call.get("name") and call.get("id"):
+                calls.append(call)
+        return calls
 
 
 
@@ -306,9 +387,11 @@ class AGUIStreamNormalizer:
             # order, NOT on message content. This is the only deterministic link
             # between a `task` tool_call_id and its subagent's stream namespace.
             if node_name == "PatchToolCallsMiddleware.before_agent":
-                if namespace is not None:
+                # Already announced from the "tasks" stream: once is enough.
+                if namespace is not None and namespace not in self._announced_namespaces:
                     bound = self._bind_namespace_to_next_task(namespace)
                     if bound is not None:
+                        self._announced_namespaces.add(namespace)
                         self._push(
                             out,
                             self.emitter.before_agent_event(
@@ -523,14 +606,17 @@ class AGUIStreamNormalizer:
         # A `task` result means that sub-agent has returned: say so now, so its
         # card turns done/failed while the run goes on (the result text itself
         # is never forwarded). Recognised by id when this stream announced the
-        # task, and by name otherwise — a fresh normalizer on /resume never saw
-        # the `task` call, so its id is in none of the sets above.
+        # task or the "tasks" stream showed it running (at any depth), and by
+        # name otherwise — a fresh normalizer on /resume never saw the `task`
+        # call, so its id is in none of the sets above.
         if self._is_subagent_task_result(msg, tool_call_id, ns_label):
             self._ignored_tool_call_ids.discard(tool_call_id)
             self._pending_tasks.pop(tool_call_id, None)  # rejected → never binds
             self._pending_task_callers.pop(tool_call_id, None)
             if tool_call_id not in self._completed_subagent_task_ids:
                 self._completed_subagent_task_ids.add(tool_call_id)
+                if self.thread_id:
+                    _THREAD_TASK_COMPLETED.setdefault(self.thread_id, set()).add(str(tool_call_id))
                 self._push(out, self._subagent_completed(str(tool_call_id), is_error, ns_label))
             return
 
@@ -564,7 +650,7 @@ class AGUIStreamNormalizer:
 
     def _is_subagent_task_result(self, msg: Any, tool_call_id: str, ns_label: str | None) -> bool:
         """Whether a ToolMessage is the result of a `task` (sub-agent) call."""
-        if tool_call_id in self._emitted_subagent_task_ids:
+        if tool_call_id in self._emitted_subagent_task_ids or tool_call_id in self._known_task_call_ids:
             return True
         # Unannounced id: only the orchestrator's own `task` tool counts, and
         # never a call this stream deliberately left unannounced (non-dict args)
@@ -785,27 +871,36 @@ class AGUIStreamNormalizer:
         if namespace in self._namespace_task_labels:
             return self._namespace_task_labels[namespace]
 
-        # A sub-agent runs one namespace level below the agent that called its
-        # `task`: prefer the calls made from there, so a nested sub-agent never
-        # takes a sibling's call that is still waiting to start. A call whose
-        # caller is unknown (seeded on /resume) is the orchestrator's.
+        # Exact: the "tasks" stream named the call this namespace runs.
+        exact = self._task_call_namespaces.get(namespace)
+        if exact is not None:
+            return self._bind(namespace, exact)
+
+        # By order (no "tasks" stream): a sub-agent runs one namespace level
+        # below the agent that called its `task`: prefer the calls made from
+        # there, so a nested sub-agent never takes a sibling's call that is
+        # still waiting to start. A call whose caller is unknown (seeded on
+        # /resume) is the orchestrator's. A call the "tasks" stream already
+        # tied to another namespace is never taken. Parallel sibling calls
+        # can only be told apart by the "tasks" stream.
+        reserved = set(self._task_call_namespaces.values())
+        pending = [task_id for task_id in self._pending_tasks if str(task_id) not in reserved]
         caller = tuple(namespace[:-1]) or None
         candidates = [
-            task_id
-            for task_id in self._pending_tasks
-            if self._pending_task_callers.get(task_id) == caller
-        ] or list(self._pending_tasks.keys())
-        for task_id in candidates:
-            task_str = str(task_id)
-            self._namespace_task_labels[namespace] = task_str
-            self._pending_tasks.pop(task_id, None)
-            self._pending_task_callers.pop(task_id, None)
-            if self.thread_id:
-                _THREAD_NAMESPACE_BINDINGS.setdefault(self.thread_id, {})[namespace] = task_str
-                _THREAD_TASK_STARTED_AT.setdefault(self.thread_id, {}).setdefault(task_str, _now_ms())
-            return task_str
+            task_id for task_id in pending if self._pending_task_callers.get(task_id) == caller
+        ] or pending
+        return self._bind(namespace, str(candidates[0])) if candidates else None
 
-        return None
+
+    def _bind(self, namespace: tuple, task_id: str) -> str:
+        """Tie ``namespace`` to the `task` call ``task_id`` for this run."""
+        self._namespace_task_labels[namespace] = task_id
+        self._pending_tasks.pop(task_id, None)
+        self._pending_task_callers.pop(task_id, None)
+        if self.thread_id:
+            _THREAD_NAMESPACE_BINDINGS.setdefault(self.thread_id, {})[namespace] = task_id
+            _THREAD_TASK_STARTED_AT.setdefault(self.thread_id, {}).setdefault(task_id, _now_ms())
+        return task_id
 
 
     def _resolve_namespace_label(self, namespace: Optional[tuple], payload: Any = None) -> Optional[str]:

@@ -32,6 +32,7 @@ from deepagents import SubAgent
 
 from harness.abstractions.deep_agent import DeepAgent
 from harness.abstractions.agent_spec import AgentSpec, SubAgentSpec, ToolRef
+from harness.abstractions.subagent_tree import SUBAGENTS_KEY
 from utils import build_tool_cache_key, get_tool_cache_key
 from utils.declarative import read_prompt, resolve_prompt
 from harness.filesystem import layout
@@ -221,24 +222,33 @@ class YamlDeepAgent(DeepAgent):
         Approval gates are never set here, so every sub-agent inherits the
         parent's resolved ``interrupt_on``. Giving a sub-agent a tool therefore
         cannot route around its gate.
+
+        **Nested sub-agents** come out the same way, under the ``subagents`` key
+        of the spec above them (``harness.abstractions.subagent_tree``), and
+        ``build_deep_agent`` gives that sub-agent a ``task`` tool for them. The
+        rules repeat one level down: an empty ``tools`` inherits the tools of
+        the sub-agent above (``AgentSpec`` keeps an explicit list inside them).
         """
         # The parent's MCP tools as already filtered for this run —
         # `(declared ∪ user-enabled) − user-disabled` — keyed the way a ToolRef
         # keys them. Natives are not in `self.tools` yet: `register_agent` adds
         # them after this runs.
         parent_mcp = {get_tool_cache_key(tool): tool for tool in self.tools}
-        subagents: list[SubAgent] = []
-        for sa in self._spec.subagents:
-            spec = SubAgent(
-                model=self._resolve_subagent_model(sa),
-                name=sa.name,
-                description=sa.description,
-                system_prompt=self._read_prompt(sa.prompt),
-            )
-            if sa.tools:
-                spec["tools"] = self._resolve_subagent_tools(sa, parent_mcp)
-            subagents.append(spec)
-        return subagents
+        return [self._subagent(sa, parent_mcp) for sa in self._spec.subagents]
+
+    def _subagent(self, sa: SubAgentSpec, parent_mcp: Mapping[str, Any]) -> SubAgent:
+        """One sub-agent's spec, with its own sub-agents under it."""
+        spec = SubAgent(
+            model=self._resolve_subagent_model(sa),
+            name=sa.name,
+            description=sa.description,
+            system_prompt=self._read_prompt(sa.prompt),
+        )
+        if sa.tools:
+            spec["tools"] = self._resolve_subagent_tools(sa, parent_mcp)
+        if sa.subagents:
+            spec[SUBAGENTS_KEY] = [self._subagent(child, parent_mcp) for child in sa.subagents]  # type: ignore[literal-required]
+        return spec
 
     def _resolve_subagent_tools(self, sa: SubAgentSpec, parent_mcp: Mapping[str, Any]) -> list[Any]:
         """A sub-agent's explicit tool subset, never wider than its parent.

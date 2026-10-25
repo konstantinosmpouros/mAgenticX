@@ -1,0 +1,4570 @@
+{
+ "description": "AG-UI events from a real nested deepagents run (main -> researcher -> fact-checker -> source-verifier, plus citation-formatter as a level-3 sibling), streamed with stream_mode=[\"messages\", \"updates\", \"tasks\"], subgraphs=True, through AGUIStreamNormalizer.",
+ "note": "Recorded once against the real model with the tasks-stream binding but before the normalizer sent BEFORE_AGENT from the tasks stream: only the researcher (deepagents default stack) has a BEFORE_AGENT marker; the nested levels start on their first event.",
+ "mode": "real",
+ "variant": "middleware",
+ "model": "gpt-4.1-mini",
+ "versions": {
+  "deepagents": "0.7.32",
+  "langchain": "1.4.7",
+  "langchain-core": "1.7.0",
+  "langgraph": "1.2.17",
+  "langchain-openai": "1.7.2"
+ },
+ "events": [
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876910309,
+   "name": "TOKEN_USAGE",
+   "value": {
+    "input_tokens": 2045,
+    "output_tokens": 38,
+    "total_tokens": 2083,
+    "input_token_details": {
+     "audio": 0,
+     "cache_read": 0
+    },
+    "output_token_details": {
+     "audio": 0,
+     "reasoning": 0
+    },
+    "message_id": "lc_run--01a16fca-8d9e-7545-86f3-52cc695f4026",
+    "model": "gpt-4.1-mini",
+    "latency_ms": 2375,
+    "context_window": 1047576,
+    "context_tokens": 2045,
+    "context_percent": 0.2,
+    "finish_reason": "tool_calls",
+    "truncated": false
+   },
+   "namespace": null
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876910309,
+   "name": "TASK_SUBAGENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "subagent_type": "researcher",
+    "description": "Research and verify the height of the Eiffel Tower from reliable sources and provide the verified height in meters."
+   },
+   "namespace": null
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876910321,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792876910321,
+     "name": "BEFORE_AGENT_EVENT",
+     "value": {
+      "message": "",
+      "metadata": {
+       "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+      }
+     },
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876911843,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792876911843,
+     "name": "TOKEN_USAGE",
+     "value": {
+      "input_tokens": 2042,
+      "output_tokens": 18,
+      "total_tokens": 2060,
+      "input_token_details": {
+       "audio": 0,
+       "cache_read": 0
+      },
+      "output_token_details": {
+       "audio": 0,
+       "reasoning": 0
+      },
+      "message_id": "lc_run--01a16fca-9708-75de-99af-fe0496cfc2e0",
+      "model": "gpt-4.1-mini",
+      "latency_ms": 1500,
+      "context_window": 1047576,
+      "context_tokens": 2042,
+      "context_percent": 0.2,
+      "finish_reason": "tool_calls",
+      "truncated": false
+     },
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876911843,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TOOL_CALL_START",
+     "timestamp": 1792876911843,
+     "toolCallId": "call_ePld2r1wirVE1wg7BItiigZO",
+     "toolCallName": "web_search",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876911843,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TOOL_CALL_ARGS",
+     "timestamp": 1792876911843,
+     "toolCallId": "call_ePld2r1wirVE1wg7BItiigZO",
+     "delta": "{\"name\": \"web_search\", \"args\": {\"query\": \"height of the Eiffel Tower\"}}",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876911985,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TOOL_CALL_RESULT",
+     "timestamp": 1792876911985,
+     "messageId": "nested-run-1",
+     "toolCallId": "call_ePld2r1wirVE1wg7BItiigZO",
+     "content": "snippets for 'height of the Eiffel Tower': The Eiffel Tower is 330 m tall (2022 survey). Completed in 1889.",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876911985,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TOOL_CALL_END",
+     "timestamp": 1792876911985,
+     "toolCallId": "call_ePld2r1wirVE1wg7BItiigZO",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876911985,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792876911985,
+     "name": "TOOL_USAGE",
+     "value": {
+      "tool_call_id": "call_ePld2r1wirVE1wg7BItiigZO",
+      "tool_name": "web_search",
+      "duration_ms": 141,
+      "status": "ok",
+      "output_chars": 107
+     },
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876913654,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792876913653,
+     "name": "TOKEN_USAGE",
+     "value": {
+      "input_tokens": 2100,
+      "output_tokens": 99,
+      "total_tokens": 2199,
+      "input_token_details": {
+       "audio": 0,
+       "cache_read": 1920
+      },
+      "output_token_details": {
+       "audio": 0,
+       "reasoning": 0
+      },
+      "message_id": "lc_run--01a16fca-9d7a-7227-8a03-6b41274d85d8",
+      "model": "gpt-4.1-mini",
+      "latency_ms": 1656,
+      "context_window": 1047576,
+      "context_tokens": 2100,
+      "context_percent": 0.2,
+      "finish_reason": "tool_calls",
+      "truncated": false
+     },
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876913654,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792876913653,
+     "name": "TASK_SUBAGENT",
+     "value": {
+      "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+      "subagent_type": "fact-checker",
+      "description": "Verify the factual claim that the Eiffel Tower is 330 meters tall based on the 2022 survey."
+     },
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876913654,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792876913653,
+     "name": "TASK_SUBAGENT",
+     "value": {
+      "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+      "subagent_type": "citation-formatter",
+      "description": "Format a citation for the source that states the Eiffel Tower is 330 meters tall based on the 2022 survey."
+     },
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876914825,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792876914825,
+     "name": "TOKEN_USAGE",
+     "value": {
+      "input_tokens": 400,
+      "output_tokens": 29,
+      "total_tokens": 429,
+      "input_token_details": {
+       "audio": 0,
+       "cache_read": 0
+      },
+      "output_token_details": {
+       "audio": 0,
+       "reasoning": 0
+      },
+      "message_id": "lc_run--01a16fca-a40b-7489-82fc-e0f315ad7830",
+      "model": "gpt-4.1-mini",
+      "latency_ms": 1157,
+      "context_window": 1047576,
+      "context_tokens": 400,
+      "context_percent": 0.0,
+      "finish_reason": "tool_calls",
+      "truncated": false
+     },
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876914825,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TOOL_CALL_START",
+     "timestamp": 1792876914825,
+     "toolCallId": "call_mVQ0iZXMzWYtPFH0CkjuNxki",
+     "toolCallName": "lookup_fact",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876914825,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TOOL_CALL_ARGS",
+     "timestamp": 1792876914825,
+     "toolCallId": "call_mVQ0iZXMzWYtPFH0CkjuNxki",
+     "delta": "{\"name\": \"lookup_fact\", \"args\": {\"claim\": \"The Eiffel Tower is 330 meters tall based on the 2022 survey.\"}}",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876914923,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TOOL_CALL_RESULT",
+     "timestamp": 1792876914923,
+     "messageId": "nested-run-1",
+     "toolCallId": "call_mVQ0iZXMzWYtPFH0CkjuNxki",
+     "content": "reference db: 'The Eiffel Tower is 330 meters tall based on the 2022 survey.' -> height 330 m confirmed (Société d'Exploitation de la Tour Eiffel).",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876914923,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TOOL_CALL_END",
+     "timestamp": 1792876914923,
+     "toolCallId": "call_mVQ0iZXMzWYtPFH0CkjuNxki",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876914923,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792876914923,
+     "name": "TOOL_USAGE",
+     "value": {
+      "tool_call_id": "call_mVQ0iZXMzWYtPFH0CkjuNxki",
+      "tool_name": "lookup_fact",
+      "duration_ms": 92,
+      "status": "ok",
+      "output_chars": 147
+     },
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876914940,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_START",
+     "timestamp": 1792876914940,
+     "messageId": "nested-run-1",
+     "role": "assistant",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876914940,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876914940,
+     "messageId": "nested-run-1",
+     "delta": "E",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876914940,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876914940,
+     "messageId": "nested-run-1",
+     "delta": "iffel",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876914955,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876914955,
+     "messageId": "nested-run-1",
+     "delta": " Tower",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876914955,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876914955,
+     "messageId": "nested-run-1",
+     "delta": " height",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876914965,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876914965,
+     "messageId": "nested-run-1",
+     "delta": " confirmed",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876914965,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876914965,
+     "messageId": "nested-run-1",
+     "delta": " at",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876914971,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876914971,
+     "messageId": "nested-run-1",
+     "delta": " ",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876914971,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876914971,
+     "messageId": "nested-run-1",
+     "delta": "330",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876914987,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876914987,
+     "messageId": "nested-run-1",
+     "delta": " meters",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876914987,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876914987,
+     "messageId": "nested-run-1",
+     "delta": " in",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876914995,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876914995,
+     "messageId": "nested-run-1",
+     "delta": " ",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876914995,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876914995,
+     "messageId": "nested-run-1",
+     "delta": "202",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876915005,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876915005,
+     "messageId": "nested-run-1",
+     "delta": "2",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876915005,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876915005,
+     "messageId": "nested-run-1",
+     "delta": " survey",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876915027,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876915027,
+     "messageId": "nested-run-1",
+     "delta": ".",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876915027,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876915027,
+     "messageId": "nested-run-1",
+     "delta": " (",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876915074,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876915074,
+     "messageId": "nested-run-1",
+     "delta": "202",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876915074,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876915074,
+     "messageId": "nested-run-1",
+     "delta": "2",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876915074,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876915074,
+     "messageId": "nested-run-1",
+     "delta": ").",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876915074,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876915074,
+     "messageId": "nested-run-1",
+     "delta": " Retrieved",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876915074,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876915074,
+     "messageId": "nested-run-1",
+     "delta": " from",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876915074,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876915074,
+     "messageId": "nested-run-1",
+     "delta": " https",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876915074,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876915074,
+     "messageId": "nested-run-1",
+     "delta": "://",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876915074,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876915074,
+     "messageId": "nested-run-1",
+     "delta": "www",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876915074,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876915074,
+     "messageId": "nested-run-1",
+     "delta": ".t",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876915074,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876915074,
+     "messageId": "nested-run-1",
+     "delta": "oure",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876915074,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876915074,
+     "messageId": "nested-run-1",
+     "delta": "iffel",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876915074,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876915074,
+     "messageId": "nested-run-1",
+     "delta": ".par",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876915088,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876915088,
+     "messageId": "nested-run-1",
+     "delta": "is",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876915088,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876915088,
+     "messageId": "nested-run-1",
+     "delta": "/en",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876915107,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876915105,
+     "messageId": "nested-run-1",
+     "delta": "/news",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876915107,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876915107,
+     "messageId": "nested-run-1",
+     "delta": "/",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876915112,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876915112,
+     "messageId": "nested-run-1",
+     "delta": "130",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876915112,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876915112,
+     "messageId": "nested-run-1",
+     "delta": "-years",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876915124,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876915124,
+     "messageId": "nested-run-1",
+     "delta": "-e",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876915125,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876915124,
+     "messageId": "nested-run-1",
+     "delta": "iffel",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876915128,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876915128,
+     "messageId": "nested-run-1",
+     "delta": "-t",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876915137,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876915137,
+     "messageId": "nested-run-1",
+     "delta": "ower",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876915160,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876915160,
+     "messageId": "nested-run-1",
+     "delta": "-height",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876915171,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_END",
+     "timestamp": 1792876915171,
+     "messageId": "nested-run-1",
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876915171,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792876915171,
+     "name": "TOKEN_USAGE",
+     "value": {
+      "input_tokens": 51,
+      "output_tokens": 39,
+      "total_tokens": 90,
+      "input_token_details": {
+       "audio": 0,
+       "cache_read": 0
+      },
+      "output_token_details": {
+       "audio": 0,
+       "reasoning": 0
+      },
+      "message_id": "lc_run--01a16fca-a406-711b-a991-24b18dda1b00",
+      "model": "gpt-4.1-mini",
+      "latency_ms": 1500,
+      "context_window": 1047576,
+      "context_tokens": 51,
+      "context_percent": 0.0,
+      "finish_reason": "stop",
+      "truncated": false
+     },
+     "namespace": "call_yCwLpvytCOlEmLwjXQhkWOyn"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876915183,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792876915183,
+     "name": "SUBAGENT_COMPLETED",
+     "value": {
+      "task_id": "call_yCwLpvytCOlEmLwjXQhkWOyn",
+      "status": "completed",
+      "namespace": [
+       "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+       "tools:b2da3d54-fcc1-ba61-f236-0850386b188f"
+      ],
+      "started_at": 1792876914940,
+      "ended_at": 1792876915183
+     },
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876915782,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792876915782,
+     "name": "TOKEN_USAGE",
+     "value": {
+      "input_tokens": 480,
+      "output_tokens": 54,
+      "total_tokens": 534,
+      "input_token_details": {
+       "audio": 0,
+       "cache_read": 0
+      },
+      "output_token_details": {
+       "audio": 0,
+       "reasoning": 0
+      },
+      "message_id": "lc_run--01a16fca-a8ee-72b2-8a85-bd39e49951ff",
+      "model": "gpt-4.1-mini",
+      "latency_ms": 858,
+      "context_window": 1047576,
+      "context_tokens": 480,
+      "context_percent": 0.0,
+      "finish_reason": "tool_calls",
+      "truncated": false
+     },
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876915782,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792876915782,
+     "name": "TASK_SUBAGENT",
+     "value": {
+      "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+      "subagent_type": "source-verifier",
+      "description": "Find a primary source from the Société d'Exploitation de la Tour Eiffel or an official 2022 survey document confirming the height of the Eiffel Tower as 330 meters."
+     },
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876916503,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792876916502,
+     "name": "TOKEN_USAGE",
+     "value": {
+      "input_tokens": 99,
+      "output_tokens": 24,
+      "total_tokens": 123,
+      "input_token_details": {
+       "audio": 0,
+       "cache_read": 0
+      },
+      "output_token_details": {
+       "audio": 0,
+       "reasoning": 0
+      },
+      "message_id": "lc_run--01a16fca-ac52-7665-a59e-66262088f38c",
+      "model": "gpt-4.1-mini",
+      "latency_ms": 704,
+      "context_window": 1047576,
+      "context_tokens": 99,
+      "context_percent": 0.0,
+      "finish_reason": "tool_calls",
+      "truncated": false
+     },
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876916503,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TOOL_CALL_START",
+     "timestamp": 1792876916502,
+     "toolCallId": "call_Bf4yVb7oZgUWpoOh0Bi454CF",
+     "toolCallName": "find_source",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876916503,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TOOL_CALL_ARGS",
+     "timestamp": 1792876916502,
+     "toolCallId": "call_Bf4yVb7oZgUWpoOh0Bi454CF",
+     "delta": "{\"name\": \"find_source\", \"args\": {\"claim\": \"The height of the Eiffel Tower is 330 meters.\"}}",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876916561,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TOOL_CALL_RESULT",
+     "timestamp": 1792876916561,
+     "messageId": "nested-run-1",
+     "toolCallId": "call_Bf4yVb7oZgUWpoOh0Bi454CF",
+     "content": "primary source: https://www.toureiffel.paris/en/the-monument/key-figures",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876916561,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TOOL_CALL_END",
+     "timestamp": 1792876916561,
+     "toolCallId": "call_Bf4yVb7oZgUWpoOh0Bi454CF",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876916561,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792876916561,
+     "name": "TOOL_USAGE",
+     "value": {
+      "tool_call_id": "call_Bf4yVb7oZgUWpoOh0Bi454CF",
+      "tool_name": "find_source",
+      "duration_ms": 46,
+      "status": "ok",
+      "output_chars": 72
+     },
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917428,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_START",
+     "timestamp": 1792876917428,
+     "messageId": "nested-run-1",
+     "role": "assistant",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917428,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917428,
+     "messageId": "nested-run-1",
+     "delta": "The",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917428,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917428,
+     "messageId": "nested-run-1",
+     "delta": " official",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917441,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917441,
+     "messageId": "nested-run-1",
+     "delta": " height",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917441,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917441,
+     "messageId": "nested-run-1",
+     "delta": " of",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917454,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917454,
+     "messageId": "nested-run-1",
+     "delta": " the",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917454,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917454,
+     "messageId": "nested-run-1",
+     "delta": " Eiffel",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917458,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917458,
+     "messageId": "nested-run-1",
+     "delta": " Tower",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917458,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917458,
+     "messageId": "nested-run-1",
+     "delta": " as",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917473,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917473,
+     "messageId": "nested-run-1",
+     "delta": " ",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917474,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917473,
+     "messageId": "nested-run-1",
+     "delta": "330",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917479,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917479,
+     "messageId": "nested-run-1",
+     "delta": " meters",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917479,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917479,
+     "messageId": "nested-run-1",
+     "delta": " is",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917507,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917491,
+     "messageId": "nested-run-1",
+     "delta": " confirmed",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917507,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917507,
+     "messageId": "nested-run-1",
+     "delta": " by",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917507,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917507,
+     "messageId": "nested-run-1",
+     "delta": " the",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917507,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917507,
+     "messageId": "nested-run-1",
+     "delta": " Société",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917543,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917543,
+     "messageId": "nested-run-1",
+     "delta": " d",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917543,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917543,
+     "messageId": "nested-run-1",
+     "delta": "'",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917543,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917543,
+     "messageId": "nested-run-1",
+     "delta": "Ex",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917543,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917543,
+     "messageId": "nested-run-1",
+     "delta": "ploitation",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917543,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917543,
+     "messageId": "nested-run-1",
+     "delta": " de",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917543,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917543,
+     "messageId": "nested-run-1",
+     "delta": " la",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917559,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917559,
+     "messageId": "nested-run-1",
+     "delta": " Tour",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917559,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917559,
+     "messageId": "nested-run-1",
+     "delta": " Eiffel",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917581,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917581,
+     "messageId": "nested-run-1",
+     "delta": " on",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917581,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917581,
+     "messageId": "nested-run-1",
+     "delta": " their",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917593,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917593,
+     "messageId": "nested-run-1",
+     "delta": " official",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917593,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917593,
+     "messageId": "nested-run-1",
+     "delta": " website",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917608,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917608,
+     "messageId": "nested-run-1",
+     "delta": ":",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917608,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917608,
+     "messageId": "nested-run-1",
+     "delta": " https",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917608,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917608,
+     "messageId": "nested-run-1",
+     "delta": "://",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917608,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917608,
+     "messageId": "nested-run-1",
+     "delta": "www",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917608,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917608,
+     "messageId": "nested-run-1",
+     "delta": ".t",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917608,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917608,
+     "messageId": "nested-run-1",
+     "delta": "oure",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917608,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917608,
+     "messageId": "nested-run-1",
+     "delta": "iffel",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917624,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917624,
+     "messageId": "nested-run-1",
+     "delta": ".par",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917628,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917628,
+     "messageId": "nested-run-1",
+     "delta": "is",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917628,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917628,
+     "messageId": "nested-run-1",
+     "delta": "/en",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917638,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917638,
+     "messageId": "nested-run-1",
+     "delta": "/the",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917638,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917638,
+     "messageId": "nested-run-1",
+     "delta": "-mon",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917656,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917656,
+     "messageId": "nested-run-1",
+     "delta": "ument",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917657,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917656,
+     "messageId": "nested-run-1",
+     "delta": "/key",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917658,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917658,
+     "messageId": "nested-run-1",
+     "delta": "-",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917658,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917658,
+     "messageId": "nested-run-1",
+     "delta": "fig",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917667,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917667,
+     "messageId": "nested-run-1",
+     "delta": "ures",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917667,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876917667,
+     "messageId": "nested-run-1",
+     "delta": ".",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917708,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_END",
+     "timestamp": 1792876917708,
+     "messageId": "nested-run-1",
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917708,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+     "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792876917708,
+     "name": "TOKEN_USAGE",
+     "value": {
+      "input_tokens": 154,
+      "output_tokens": 47,
+      "total_tokens": 201,
+      "input_token_details": {
+       "audio": 0,
+       "cache_read": 0
+      },
+      "output_token_details": {
+       "audio": 0,
+       "reasoning": 0
+      },
+      "message_id": "lc_run--01a16fca-af55-726f-94bd-c5310c511185",
+      "model": "gpt-4.1-mini",
+      "latency_ms": 1156,
+      "context_window": 1047576,
+      "context_tokens": 154,
+      "context_percent": 0.0,
+      "finish_reason": "stop",
+      "truncated": false
+     },
+     "namespace": "call_gI3E1AXYTJ0VqHHLWLTV4FOV"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876917708,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792876917708,
+     "name": "SUBAGENT_COMPLETED",
+     "value": {
+      "task_id": "call_gI3E1AXYTJ0VqHHLWLTV4FOV",
+      "status": "completed",
+      "namespace": [
+       "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+       "tools:9420d669-7144-0088-b026-2aae256cd3bc",
+       "tools:788ca1d7-9f19-dd1c-027b-1370b7649f35"
+      ],
+      "started_at": 1792876916366,
+      "ended_at": 1792876917708
+     },
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918247,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_START",
+     "timestamp": 1792876918247,
+     "messageId": "nested-run-1",
+     "role": "assistant",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918247,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876918247,
+     "messageId": "nested-run-1",
+     "delta": "TRUE",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918247,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876918247,
+     "messageId": "nested-run-1",
+     "delta": ".",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918259,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876918259,
+     "messageId": "nested-run-1",
+     "delta": " The",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918259,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876918259,
+     "messageId": "nested-run-1",
+     "delta": " Eiffel",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918274,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876918274,
+     "messageId": "nested-run-1",
+     "delta": " Tower",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918274,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876918274,
+     "messageId": "nested-run-1",
+     "delta": " is",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918280,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876918280,
+     "messageId": "nested-run-1",
+     "delta": " ",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918280,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876918280,
+     "messageId": "nested-run-1",
+     "delta": "330",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918295,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876918295,
+     "messageId": "nested-run-1",
+     "delta": " meters",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918295,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876918295,
+     "messageId": "nested-run-1",
+     "delta": " tall",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918307,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876918307,
+     "messageId": "nested-run-1",
+     "delta": " according",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918307,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876918307,
+     "messageId": "nested-run-1",
+     "delta": " to",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918329,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876918329,
+     "messageId": "nested-run-1",
+     "delta": " the",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918329,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876918329,
+     "messageId": "nested-run-1",
+     "delta": " ",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918334,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876918334,
+     "messageId": "nested-run-1",
+     "delta": "202",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918339,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876918339,
+     "messageId": "nested-run-1",
+     "delta": "2",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918377,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876918376,
+     "messageId": "nested-run-1",
+     "delta": " survey",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918377,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876918377,
+     "messageId": "nested-run-1",
+     "delta": ",",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918377,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876918377,
+     "messageId": "nested-run-1",
+     "delta": " as",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918378,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876918378,
+     "messageId": "nested-run-1",
+     "delta": " confirmed",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918378,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876918378,
+     "messageId": "nested-run-1",
+     "delta": " by",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918379,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876918379,
+     "messageId": "nested-run-1",
+     "delta": " the",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918379,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876918379,
+     "messageId": "nested-run-1",
+     "delta": " Société",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918379,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876918379,
+     "messageId": "nested-run-1",
+     "delta": " d",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918393,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876918393,
+     "messageId": "nested-run-1",
+     "delta": "'",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918393,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876918393,
+     "messageId": "nested-run-1",
+     "delta": "Ex",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918398,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876918398,
+     "messageId": "nested-run-1",
+     "delta": "ploitation",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918398,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876918398,
+     "messageId": "nested-run-1",
+     "delta": " de",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918415,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876918415,
+     "messageId": "nested-run-1",
+     "delta": " la",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918415,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876918415,
+     "messageId": "nested-run-1",
+     "delta": " Tour",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918425,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876918425,
+     "messageId": "nested-run-1",
+     "delta": " Eiffel",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918425,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876918425,
+     "messageId": "nested-run-1",
+     "delta": " on",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918431,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876918431,
+     "messageId": "nested-run-1",
+     "delta": " their",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918431,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876918431,
+     "messageId": "nested-run-1",
+     "delta": " official",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918445,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876918445,
+     "messageId": "nested-run-1",
+     "delta": " website",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918445,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876918445,
+     "messageId": "nested-run-1",
+     "delta": ".",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918486,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_END",
+     "timestamp": 1792876918486,
+     "messageId": "nested-run-1",
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918486,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+     "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792876918486,
+     "name": "TOKEN_USAGE",
+     "value": {
+      "input_tokens": 591,
+      "output_tokens": 37,
+      "total_tokens": 628,
+      "input_token_details": {
+       "audio": 0,
+       "cache_read": 0
+      },
+      "output_token_details": {
+       "audio": 0,
+       "reasoning": 0
+      },
+      "message_id": "lc_run--01a16fca-b3d4-744a-ad84-57da5596845b",
+      "model": "gpt-4.1-mini",
+      "latency_ms": 766,
+      "context_window": 1047576,
+      "context_tokens": 591,
+      "context_percent": 0.1,
+      "finish_reason": "stop",
+      "truncated": false
+     },
+     "namespace": "call_2qVjuGXmU0Rv0skNfS8jUbgv"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876918491,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792876918491,
+     "name": "SUBAGENT_COMPLETED",
+     "value": {
+      "task_id": "call_2qVjuGXmU0Rv0skNfS8jUbgv",
+      "status": "completed",
+      "namespace": [
+       "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb",
+       "tools:9420d669-7144-0088-b026-2aae256cd3bc"
+      ],
+      "started_at": 1792876914671,
+      "ended_at": 1792876918491
+     },
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919312,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_START",
+     "timestamp": 1792876919312,
+     "messageId": "nested-run-1",
+     "role": "assistant",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919312,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919312,
+     "messageId": "nested-run-1",
+     "delta": "The",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919312,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919312,
+     "messageId": "nested-run-1",
+     "delta": " verified",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919327,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919327,
+     "messageId": "nested-run-1",
+     "delta": " height",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919327,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919327,
+     "messageId": "nested-run-1",
+     "delta": " of",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919333,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919333,
+     "messageId": "nested-run-1",
+     "delta": " the",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919333,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919333,
+     "messageId": "nested-run-1",
+     "delta": " Eiffel",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919461,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919461,
+     "messageId": "nested-run-1",
+     "delta": " Tower",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919461,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919461,
+     "messageId": "nested-run-1",
+     "delta": " is",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919502,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919502,
+     "messageId": "nested-run-1",
+     "delta": " ",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919503,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919502,
+     "messageId": "nested-run-1",
+     "delta": "330",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919516,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919516,
+     "messageId": "nested-run-1",
+     "delta": " meters",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919516,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919516,
+     "messageId": "nested-run-1",
+     "delta": " according",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919529,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919529,
+     "messageId": "nested-run-1",
+     "delta": " to",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919529,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919529,
+     "messageId": "nested-run-1",
+     "delta": " a",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919531,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919531,
+     "messageId": "nested-run-1",
+     "delta": " ",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919531,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919531,
+     "messageId": "nested-run-1",
+     "delta": "202",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919531,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919531,
+     "messageId": "nested-run-1",
+     "delta": "2",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919531,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919531,
+     "messageId": "nested-run-1",
+     "delta": " survey",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919531,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919531,
+     "messageId": "nested-run-1",
+     "delta": " by",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919531,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919531,
+     "messageId": "nested-run-1",
+     "delta": " the",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919547,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919547,
+     "messageId": "nested-run-1",
+     "delta": " Société",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919547,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919547,
+     "messageId": "nested-run-1",
+     "delta": " d",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919549,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919549,
+     "messageId": "nested-run-1",
+     "delta": "'",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919549,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919549,
+     "messageId": "nested-run-1",
+     "delta": "Ex",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919549,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919549,
+     "messageId": "nested-run-1",
+     "delta": "ploitation",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919549,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919549,
+     "messageId": "nested-run-1",
+     "delta": " de",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919582,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919582,
+     "messageId": "nested-run-1",
+     "delta": " la",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919594,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919594,
+     "messageId": "nested-run-1",
+     "delta": " Tour",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919594,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919594,
+     "messageId": "nested-run-1",
+     "delta": " Eiffel",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919594,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919594,
+     "messageId": "nested-run-1",
+     "delta": ".",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919594,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919594,
+     "messageId": "nested-run-1",
+     "delta": " This",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919595,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919595,
+     "messageId": "nested-run-1",
+     "delta": " information",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919678,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919677,
+     "messageId": "nested-run-1",
+     "delta": " is",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919678,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919678,
+     "messageId": "nested-run-1",
+     "delta": " cited",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919680,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919680,
+     "messageId": "nested-run-1",
+     "delta": " from",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919680,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919680,
+     "messageId": "nested-run-1",
+     "delta": " the",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919703,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919703,
+     "messageId": "nested-run-1",
+     "delta": " official",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919709,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919709,
+     "messageId": "nested-run-1",
+     "delta": " Eiffel",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919716,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919716,
+     "messageId": "nested-run-1",
+     "delta": " Tower",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919716,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919716,
+     "messageId": "nested-run-1",
+     "delta": " website",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919748,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792876919748,
+     "messageId": "nested-run-1",
+     "delta": ".",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919764,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_END",
+     "timestamp": 1792876919764,
+     "messageId": "nested-run-1",
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919764,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792876919764,
+     "name": "TOKEN_USAGE",
+     "value": {
+      "input_tokens": 2290,
+      "output_tokens": 42,
+      "total_tokens": 2332,
+      "input_token_details": {
+       "audio": 0,
+       "cache_read": 0
+      },
+      "output_token_details": {
+       "audio": 0,
+       "reasoning": 0
+      },
+      "message_id": "lc_run--01a16fca-b6e5-74c0-be5f-ad027ba48187",
+      "model": "gpt-4.1-mini",
+      "latency_ms": 1265,
+      "context_window": 1047576,
+      "context_tokens": 2290,
+      "context_percent": 0.2,
+      "finish_reason": "stop",
+      "truncated": false
+     },
+     "namespace": "call_4KMe7ddqO9eSwQAbjLxRCkUd"
+    }
+   },
+   "namespace": "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876919764,
+   "name": "SUBAGENT_COMPLETED",
+   "value": {
+    "task_id": "call_4KMe7ddqO9eSwQAbjLxRCkUd",
+    "status": "completed",
+    "namespace": [
+     "tools:72f3061c-bc05-a0bc-b76c-6d0fd2c447bb"
+    ],
+    "started_at": 1792876910321,
+    "ended_at": 1792876919764
+   },
+   "namespace": null
+  },
+  {
+   "type": "TEXT_MESSAGE_START",
+   "timestamp": 1792876920768,
+   "messageId": "nested-run-1",
+   "role": "assistant",
+   "namespace": null
+  },
+  {
+   "type": "TEXT_MESSAGE_CHUNK",
+   "timestamp": 1792876920768,
+   "messageId": "nested-run-1",
+   "delta": "The",
+   "namespace": null
+  },
+  {
+   "type": "TEXT_MESSAGE_CHUNK",
+   "timestamp": 1792876920768,
+   "messageId": "nested-run-1",
+   "delta": " Eiffel",
+   "namespace": null
+  },
+  {
+   "type": "TEXT_MESSAGE_CHUNK",
+   "timestamp": 1792876920768,
+   "messageId": "nested-run-1",
+   "delta": " Tower",
+   "namespace": null
+  },
+  {
+   "type": "TEXT_MESSAGE_CHUNK",
+   "timestamp": 1792876920768,
+   "messageId": "nested-run-1",
+   "delta": " is",
+   "namespace": null
+  },
+  {
+   "type": "TEXT_MESSAGE_CHUNK",
+   "timestamp": 1792876920768,
+   "messageId": "nested-run-1",
+   "delta": " ",
+   "namespace": null
+  },
+  {
+   "type": "TEXT_MESSAGE_CHUNK",
+   "timestamp": 1792876920816,
+   "messageId": "nested-run-1",
+   "delta": "330",
+   "namespace": null
+  },
+  {
+   "type": "TEXT_MESSAGE_CHUNK",
+   "timestamp": 1792876920816,
+   "messageId": "nested-run-1",
+   "delta": " meters",
+   "namespace": null
+  },
+  {
+   "type": "TEXT_MESSAGE_CHUNK",
+   "timestamp": 1792876920835,
+   "messageId": "nested-run-1",
+   "delta": " tall",
+   "namespace": null
+  },
+  {
+   "type": "TEXT_MESSAGE_CHUNK",
+   "timestamp": 1792876920835,
+   "messageId": "nested-run-1",
+   "delta": ",",
+   "namespace": null
+  },
+  {
+   "type": "TEXT_MESSAGE_CHUNK",
+   "timestamp": 1792876920835,
+   "messageId": "nested-run-1",
+   "delta": " as",
+   "namespace": null
+  },
+  {
+   "type": "TEXT_MESSAGE_CHUNK",
+   "timestamp": 1792876920835,
+   "messageId": "nested-run-1",
+   "delta": " verified",
+   "namespace": null
+  },
+  {
+   "type": "TEXT_MESSAGE_CHUNK",
+   "timestamp": 1792876920838,
+   "messageId": "nested-run-1",
+   "delta": " by",
+   "namespace": null
+  },
+  {
+   "type": "TEXT_MESSAGE_CHUNK",
+   "timestamp": 1792876920838,
+   "messageId": "nested-run-1",
+   "delta": " a",
+   "namespace": null
+  },
+  {
+   "type": "TEXT_MESSAGE_CHUNK",
+   "timestamp": 1792876920854,
+   "messageId": "nested-run-1",
+   "delta": " ",
+   "namespace": null
+  },
+  {
+   "type": "TEXT_MESSAGE_CHUNK",
+   "timestamp": 1792876920854,
+   "messageId": "nested-run-1",
+   "delta": "202",
+   "namespace": null
+  },
+  {
+   "type": "TEXT_MESSAGE_CHUNK",
+   "timestamp": 1792876920854,
+   "messageId": "nested-run-1",
+   "delta": "2",
+   "namespace": null
+  },
+  {
+   "type": "TEXT_MESSAGE_CHUNK",
+   "timestamp": 1792876920854,
+   "messageId": "nested-run-1",
+   "delta": " survey",
+   "namespace": null
+  },
+  {
+   "type": "TEXT_MESSAGE_CHUNK",
+   "timestamp": 1792876920869,
+   "messageId": "nested-run-1",
+   "delta": " from",
+   "namespace": null
+  },
+  {
+   "type": "TEXT_MESSAGE_CHUNK",
+   "timestamp": 1792876920869,
+   "messageId": "nested-run-1",
+   "delta": " the",
+   "namespace": null
+  },
+  {
+   "type": "TEXT_MESSAGE_CHUNK",
+   "timestamp": 1792876920878,
+   "messageId": "nested-run-1",
+   "delta": " Société",
+   "namespace": null
+  },
+  {
+   "type": "TEXT_MESSAGE_CHUNK",
+   "timestamp": 1792876920878,
+   "messageId": "nested-run-1",
+   "delta": " d",
+   "namespace": null
+  },
+  {
+   "type": "TEXT_MESSAGE_CHUNK",
+   "timestamp": 1792876920878,
+   "messageId": "nested-run-1",
+   "delta": "'",
+   "namespace": null
+  },
+  {
+   "type": "TEXT_MESSAGE_CHUNK",
+   "timestamp": 1792876920893,
+   "messageId": "nested-run-1",
+   "delta": "Ex",
+   "namespace": null
+  },
+  {
+   "type": "TEXT_MESSAGE_CHUNK",
+   "timestamp": 1792876920893,
+   "messageId": "nested-run-1",
+   "delta": "ploitation",
+   "namespace": null
+  },
+  {
+   "type": "TEXT_MESSAGE_CHUNK",
+   "timestamp": 1792876920893,
+   "messageId": "nested-run-1",
+   "delta": " de",
+   "namespace": null
+  },
+  {
+   "type": "TEXT_MESSAGE_CHUNK",
+   "timestamp": 1792876920893,
+   "messageId": "nested-run-1",
+   "delta": " la",
+   "namespace": null
+  },
+  {
+   "type": "TEXT_MESSAGE_CHUNK",
+   "timestamp": 1792876920902,
+   "messageId": "nested-run-1",
+   "delta": " Tour",
+   "namespace": null
+  },
+  {
+   "type": "TEXT_MESSAGE_CHUNK",
+   "timestamp": 1792876920902,
+   "messageId": "nested-run-1",
+   "delta": " Eiffel",
+   "namespace": null
+  },
+  {
+   "type": "TEXT_MESSAGE_CHUNK",
+   "timestamp": 1792876920924,
+   "messageId": "nested-run-1",
+   "delta": ".",
+   "namespace": null
+  },
+  {
+   "type": "TEXT_MESSAGE_END",
+   "timestamp": 1792876920945,
+   "messageId": "nested-run-1",
+   "namespace": null
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792876920945,
+   "name": "TOKEN_USAGE",
+   "value": {
+    "input_tokens": 2135,
+    "output_tokens": 30,
+    "total_tokens": 2165,
+    "input_token_details": {
+     "audio": 0,
+     "cache_read": 1920
+    },
+    "output_token_details": {
+     "audio": 0,
+     "reasoning": 0
+    },
+    "message_id": "lc_run--01a16fca-bbe4-74a4-a7ff-ff0063bd9a30",
+    "model": "gpt-4.1-mini",
+    "latency_ms": 1171,
+    "context_window": 1047576,
+    "context_tokens": 2135,
+    "context_percent": 0.2,
+    "finish_reason": "stop",
+    "truncated": false
+   },
+   "namespace": null
+  }
+ ]
+}

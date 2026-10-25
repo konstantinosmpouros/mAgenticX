@@ -337,6 +337,12 @@ export type SubagentCardProps = {
    * card stays a row and a click calls this instead of expanding it.
    */
   onOpen?: () => void;
+  /**
+   * Its own sub-agents' cards, drawn inside this card under its row on the
+   * agent map's connector rail — a sub-agent that delegated in turn reads as
+   * one tree. `active` lights the child's elbow while it works.
+   */
+  nested?: { key: string; active: boolean; node: React.ReactNode }[];
 };
 
 /**
@@ -352,6 +358,7 @@ export function SubagentCard({
   status = null,
   defaultCollapsedSections = false,
   onOpen,
+  nested,
 }: SubagentCardProps) {
   const transcript = getSubagentTranscript(subagent);
   const title = getSubagentTitle(subagent, index);
@@ -576,6 +583,25 @@ export function SubagentCard({
             ) : null}
           </div>
         </SmoothCollapse>
+
+        {nested?.length ? (
+          <div className="relative border-t border-border/60 px-3 pb-3 pt-1.5 sm:px-3.5">
+            <ul
+              aria-label={`${title}'s sub-agents`}
+              className="agent-map-group [--am-indent:0.875rem] [--am-gap:0.75rem]"
+            >
+              {nested.map((child) => (
+                <li
+                  key={child.key}
+                  className="agent-map-branch [--am-elbow:2.125rem] pt-1.5"
+                  data-active={child.active ? "true" : "false"}
+                >
+                  {child.node}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </div>
     </div>
   );

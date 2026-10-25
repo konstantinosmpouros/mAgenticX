@@ -435,7 +435,56 @@ def register_subagents(self):
 
 Sub-agent delegation emits `TASK_SUBAGENT` and `SUBAGENT_EVENT` AG-UI events automatically via the normalizer — no manual event emission is needed.
 
-**What `tools` means.** Passing `tools=` gives the sub-agent exactly that list; **leaving the key out** makes deepagents hand it the parent's full tool list. `tools=[]` therefore means *no* tools, not "the parent's". A **declarative** agent (`agent.yaml`) spells it the friendly way round: an empty `subagents[].tools` means *inherit*, a non-empty list is a restriction that must be a subset of the agent's own `tools:`, and each entry may set its own `model:` — see [tool-harness § Sub-agent tools](tool-harness.md#sub-agent-tools). The builder (Settings → Agents → Team) exposes both: a model picker defaulting to **Inherit**, and a tool picker offering only the agent's own tools.
+**What `tools` means.** Passing `tools=` gives the sub-agent exactly that list; **leaving the key out** makes it inherit the parent's full tool list (minus `ask_user` — see below). `tools=[]` therefore means *no* tools beyond the built-in file and planning tools, not "the parent's". A **declarative** agent (`agent.yaml`) spells it the friendly way round: an empty `subagents[].tools` means *inherit*, a non-empty list is a restriction that must be a subset of the agent's own `tools:`, and each entry may set its own `model:` — see [tool-harness § Sub-agent tools](tool-harness.md#sub-agent-tools). The builder (Settings → Agents → Team) exposes both: a model picker defaulting to **Inherit**, and a tool picker offering only the agent's own tools.
+
+##### Nested sub-agents (a sub-agent with sub-agents of its own)
+
+A sub-agent may delegate in turn: give its spec a `subagents` list and it gets its own `task` tool, exactly as the main agent has. In code, use the helper (the `subagents` key is ours — `build_deep_agent` turns it into a `SubAgentMiddleware` for that sub-agent; deepagents never sees it):
+
+```python
+from harness.abstractions.subagent_tree import subagent
+
+def register_subagents(self):
+    return [
+        subagent(
+            "researcher", "Researches a question; has key facts checked.", RESEARCHER_PROMPT,
+            model="openai:gpt-4o",
+            subagents=[subagent("fact-checker", "Verifies one claim.", CHECKER_PROMPT)],
+        ),
+    ]
+```
+
+In `agent.yaml` the same tree is a nested `subagents:` list under a sub-agent (see `tests/agents/fixtures/agents/nested-research-demo/agent.yaml`):
+
+```yaml
+subagents:
+  - name: researcher
+    description: Researches a question and has every key fact checked.
+    prompt: ./subagents/researcher.md
+    subagents:
+      - name: fact-checker
+        description: Verifies one factual claim.
+        prompt: ./subagents/fact-checker.md
+```
+
+**Rules** — enforced by `AgentSpec` for platform and user-authored YAML, and by `validate_subagent_tree` when a code agent is built (a violation fails the build):
+
+| Rule | Why |
+|---|---|
+| At most `MAX_SUBAGENT_DEPTH` = **3** levels below the main agent (`harness/abstractions/agent_spec.py`) | every level is a model-call chain of its own: depth multiplies cost and latency, and a deeper tree is hard to follow in the chat |
+| Sibling names unique | the model picks a sub-agent by name |
+| No name repeated below itself (`researcher > checker > researcher`); no spec nested inside itself | reads as a loop to the model and to a person |
+| A sub-agent's `tools` only narrow the tools of the agent **above it** (empty = inherit what that agent may use) | delegating must not reach a tool the delegating agent was never given |
+| `model` defaults to `model.subagents[name]`, then the main model (YAML); to the agent above it (code) | — |
+
+**What every level gets** (`DeepAgent._prepare_subagents` / `_nested_subagent`). deepagents builds the main agent's own sub-agents (depth 1) with its base stack; below that `SubAgentMiddleware` runs a spec as given, so our build adds, at depth ≥ 2, the same stack in the same order — `TodoListMiddleware`, `FilesystemMiddleware` with the workspace's `workspace_write_deny` (+ slash-command) rules, deepagents' summarization, `PatchToolCallsMiddleware`, the spec's own middleware, its own `SubAgentMiddleware` if it has sub-agents, prompt caching. At **every** depth (and on deepagents' general-purpose sub-agent, which the build now declares itself):
+
+- the platform middleware — `ToolErrorMiddleware`, `ToolMetricsMiddleware`, `RetryOnRateLimitMiddleware`, `UsageMetricsMiddleware` (`_ensure_platform_middleware`); the first-token callback rides the run config;
+- the run's approval gates: `interrupt_on` re-resolved through `resolve_interrupt_on` for that sub-agent's tools (builtin defaults → the agent's `hitl`/`hitl_gates` → a code spec's own `interrupt_on` → the user's choices → locked gates last), so a spec can add a gate but never clear `execute`; the builtin `task` gate means each nested delegation pauses for approval too unless the agent clears it;
+- **never `ask_user`**: inheriting tool lists drop it and explicit ones are filtered (the tool still refuses a sub-agent's call by namespace);
+- a sub-agent that has sub-agents gets deepagents' `task` guidance from its `SubAgentMiddleware` plus `DELEGATING_SUBAGENT_PROMPT` (`harness/prompt_engineering/prompts/capabilities_prompt.py`): wait for every result, fold them into its single reply, pass on file paths.
+
+**Streaming.** A deep agent streams `["messages", "updates", "tasks"]`. The `tasks` stream carries each tool-node task's id — the `tools:<id>` segment of the sub-agent's namespace — with the `task` call it runs, so `AGUIStreamNormalizer._handle_tasks_payload` binds every sub-agent to its call exactly (parallel siblings, any depth, a `/resume` stream that never saw the call) and emits its `BEFORE_AGENT_EVENT` (with the task description) the moment it starts. Nested `TASK_SUBAGENT` / `SUBAGENT_COMPLETED` arrive inside the delegating sub-agent's `SUBAGENT_EVENT` envelope; the bridge books nested usage under the nested type; the UI draws the tree (inline cards nest children inside the parent's card, the sub-agents panel and the agent map show the same tree, and a sub-agent's transcript has a "Delegated to …" row where it delegated).
 
 #### 6. Use persistent directories
 

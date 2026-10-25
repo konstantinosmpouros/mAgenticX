@@ -59,6 +59,12 @@ export type AgentDraftSubAgent = {
    * every tool the agent has, which is the runtime's behaviour for an omitted list.
    */
   tools: string[];
+  /**
+   * Its own sub-agents (nested delegation, at most 3 levels below the agent).
+   * The builder does not edit them yet; it keeps them — with their prompts —
+   * so saving an agent whose definition has them never drops them.
+   */
+  subagents?: AgentDraftSubAgent[];
 };
 
 // A reference file the user adds to an agent folder, beyond the prompts the form

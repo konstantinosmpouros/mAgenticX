@@ -68,6 +68,29 @@ _ORCHESTRATOR = """\
   sees the file."""
 
 
+#: For a sub-agent that has sub-agents of its own. deepagents' `task` guidance
+#: (when to delegate, how a sub-agent's life goes) reaches it through its own
+#: SubAgentMiddleware, exactly as it reaches the main agent; this adds what is
+#: different one level down: its reply is not the user's answer, and it cannot
+#: hand a document to the user itself.
+DELEGATING_SUBAGENT_PROMPT = """\
+## Your Own Sub-agents
+
+You are a sub-agent, and you can delegate parts of your task to sub-agents of
+your own with the `task` tool. Each one starts with nothing but the task you
+give it: put everything it needs in the description and say exactly what it
+should return. Launch independent tasks together, and wait for every result
+before you reply. Only your final message goes back to the agent that called
+you, so fold your sub-agents' findings into it — including the paths of any
+files they wrote; neither you nor they can present a file to the user."""
+
+
+def delegating_subagent_prompt(system_prompt: str | None) -> str:
+    """A sub-agent's own instructions, plus how to use its sub-agents."""
+    base = (system_prompt or "").strip()
+    return f"{base}\n\n{DELEGATING_SUBAGENT_PROMPT}" if base else DELEGATING_SUBAGENT_PROMPT
+
+
 def capabilities_prompt(context: PromptContext) -> str:
     """The non-obvious tool verbs for this run. Empty without a conversation."""
     if not context.has_conversation:
@@ -82,4 +105,4 @@ def capabilities_prompt(context: PromptContext) -> str:
     return f"{_HEADER}\n\n{body}"
 
 
-__all__ = ["capabilities_prompt"]
+__all__ = ["DELEGATING_SUBAGENT_PROMPT", "capabilities_prompt", "delegating_subagent_prompt"]

@@ -1,0 +1,1141 @@
+{
+ "description": "AG-UI events from a real nested deepagents run (main -> researcher -> fact-checker -> source-verifier, plus citation-formatter as a level-3 sibling), streamed with stream_mode=[\"messages\", \"updates\", \"tasks\"], subgraphs=True, through AGUIStreamNormalizer.",
+ "mode": "fake",
+ "variant": "middleware",
+ "model": "scripted-fake",
+ "versions": {
+  "deepagents": "0.7.32",
+  "langchain": "1.4.7",
+  "langchain-core": "1.7.0",
+  "langgraph": "1.2.17",
+  "langchain-openai": "1.7.2"
+ },
+ "events": [
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877830599,
+   "name": "TOKEN_USAGE",
+   "value": {
+    "input_tokens": 100,
+    "output_tokens": 10,
+    "total_tokens": 110,
+    "message_id": "msg-main-1",
+    "latency_ms": 31,
+    "context_tokens": 100
+   },
+   "namespace": null
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877830606,
+   "name": "TASK_SUBAGENT",
+   "value": {
+    "task_id": "call-research",
+    "subagent_type": "researcher",
+    "description": "Research the Eiffel Tower's height and verify it."
+   },
+   "namespace": null
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877830607,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-research",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792877830607,
+     "name": "BEFORE_AGENT_EVENT",
+     "value": {
+      "message": "Research the Eiffel Tower's height and verify it.",
+      "metadata": {
+       "namespace": "call-research"
+      }
+     },
+     "namespace": "call-research"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877830681,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-research",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792877830681,
+     "name": "TOKEN_USAGE",
+     "value": {
+      "input_tokens": 300,
+      "output_tokens": 30,
+      "total_tokens": 330,
+      "message_id": "msg-researcher-3",
+      "latency_ms": 47,
+      "context_tokens": 300
+     },
+     "namespace": "call-research"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877830681,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-research",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+    ],
+    "event": {
+     "type": "TOOL_CALL_START",
+     "timestamp": 1792877830681,
+     "toolCallId": "call-search",
+     "toolCallName": "web_search",
+     "namespace": "call-research"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877830681,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-research",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+    ],
+    "event": {
+     "type": "TOOL_CALL_ARGS",
+     "timestamp": 1792877830681,
+     "toolCallId": "call-search",
+     "delta": "{\"name\": \"web_search\", \"args\": {\"query\": \"Eiffel Tower height\"}}",
+     "namespace": "call-research"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877830811,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-research",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+    ],
+    "event": {
+     "type": "TOOL_CALL_RESULT",
+     "timestamp": 1792877830811,
+     "messageId": "nested-run-1",
+     "toolCallId": "call-search",
+     "content": "snippets for 'Eiffel Tower height': The Eiffel Tower is 330 m tall (2022 survey). Completed in 1889.",
+     "namespace": "call-research"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877830811,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-research",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+    ],
+    "event": {
+     "type": "TOOL_CALL_END",
+     "timestamp": 1792877830811,
+     "toolCallId": "call-search",
+     "namespace": "call-research"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877830811,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-research",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792877830811,
+     "name": "TOOL_USAGE",
+     "value": {
+      "tool_call_id": "call-search",
+      "tool_name": "web_search",
+      "duration_ms": 125,
+      "status": "ok",
+      "output_chars": 100
+     },
+     "namespace": "call-research"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877830863,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-research",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792877830863,
+     "name": "TOKEN_USAGE",
+     "value": {
+      "input_tokens": 400,
+      "output_tokens": 40,
+      "total_tokens": 440,
+      "message_id": "msg-researcher-4",
+      "latency_ms": 45,
+      "context_tokens": 400
+     },
+     "namespace": "call-research"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877830863,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-research",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792877830863,
+     "name": "TASK_SUBAGENT",
+     "value": {
+      "task_id": "call-factcheck",
+      "subagent_type": "fact-checker",
+      "description": "Verify: the Eiffel Tower is 330 m tall."
+     },
+     "namespace": "call-research"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877830863,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-research",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792877830863,
+     "name": "TASK_SUBAGENT",
+     "value": {
+      "task_id": "call-cite",
+      "subagent_type": "citation-formatter",
+      "description": "Format a citation for the 2022 height survey."
+     },
+     "namespace": "call-research"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877830863,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-factcheck",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0",
+     "tools:06504240-0e1d-13a9-bdc0-084596eac1ab"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792877830863,
+     "name": "BEFORE_AGENT_EVENT",
+     "value": {
+      "message": "Verify: the Eiffel Tower is 330 m tall.",
+      "metadata": {
+       "namespace": "call-factcheck"
+      }
+     },
+     "namespace": "call-factcheck"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877830863,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-cite",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0",
+     "tools:e2a0d5b0-81fb-926b-22a0-afbe91aa8472"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792877830863,
+     "name": "BEFORE_AGENT_EVENT",
+     "value": {
+      "message": "Format a citation for the 2022 height survey.",
+      "metadata": {
+       "namespace": "call-cite"
+      }
+     },
+     "namespace": "call-cite"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877830907,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-cite",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0",
+     "tools:e2a0d5b0-81fb-926b-22a0-afbe91aa8472"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_START",
+     "timestamp": 1792877830907,
+     "messageId": "nested-run-1",
+     "role": "assistant",
+     "namespace": "call-cite"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877830907,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-cite",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0",
+     "tools:e2a0d5b0-81fb-926b-22a0-afbe91aa8472"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792877830907,
+     "messageId": "nested-run-1",
+     "delta": "Citation: SETE (2022). Key figures. toureiffel.paris.",
+     "namespace": "call-cite"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877830910,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-cite",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0",
+     "tools:e2a0d5b0-81fb-926b-22a0-afbe91aa8472"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_END",
+     "timestamp": 1792877830910,
+     "messageId": "nested-run-1",
+     "namespace": "call-cite"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877830910,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-cite",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0",
+     "tools:e2a0d5b0-81fb-926b-22a0-afbe91aa8472"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792877830910,
+     "name": "TOKEN_USAGE",
+     "value": {
+      "input_tokens": 1100,
+      "output_tokens": 110,
+      "total_tokens": 1210,
+      "message_id": "msg-citation-formatter-11",
+      "latency_ms": 47,
+      "context_tokens": 1100
+     },
+     "namespace": "call-cite"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877830913,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-factcheck",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0",
+     "tools:06504240-0e1d-13a9-bdc0-084596eac1ab"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792877830913,
+     "name": "TOKEN_USAGE",
+     "value": {
+      "input_tokens": 600,
+      "output_tokens": 60,
+      "total_tokens": 660,
+      "message_id": "msg-fact-checker-6",
+      "latency_ms": 47,
+      "context_tokens": 600
+     },
+     "namespace": "call-factcheck"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877830913,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-factcheck",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0",
+     "tools:06504240-0e1d-13a9-bdc0-084596eac1ab"
+    ],
+    "event": {
+     "type": "TOOL_CALL_START",
+     "timestamp": 1792877830913,
+     "toolCallId": "call-lookup",
+     "toolCallName": "lookup_fact",
+     "namespace": "call-factcheck"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877830913,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-factcheck",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0",
+     "tools:06504240-0e1d-13a9-bdc0-084596eac1ab"
+    ],
+    "event": {
+     "type": "TOOL_CALL_ARGS",
+     "timestamp": 1792877830913,
+     "toolCallId": "call-lookup",
+     "delta": "{\"name\": \"lookup_fact\", \"args\": {\"claim\": \"Eiffel Tower 330 m\"}}",
+     "namespace": "call-factcheck"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877830914,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-research",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792877830914,
+     "name": "SUBAGENT_COMPLETED",
+     "value": {
+      "task_id": "call-cite",
+      "status": "completed",
+      "namespace": [
+       "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0",
+       "tools:e2a0d5b0-81fb-926b-22a0-afbe91aa8472"
+      ],
+      "started_at": 1792877830863,
+      "ended_at": 1792877830914
+     },
+     "namespace": "call-research"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877831004,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-factcheck",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0",
+     "tools:06504240-0e1d-13a9-bdc0-084596eac1ab"
+    ],
+    "event": {
+     "type": "TOOL_CALL_RESULT",
+     "timestamp": 1792877831004,
+     "messageId": "nested-run-1",
+     "toolCallId": "call-lookup",
+     "content": "reference db: 'Eiffel Tower 330 m' -> height 330 m confirmed (Société d'Exploitation de la Tour Eiffel).",
+     "namespace": "call-factcheck"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877831004,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-factcheck",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0",
+     "tools:06504240-0e1d-13a9-bdc0-084596eac1ab"
+    ],
+    "event": {
+     "type": "TOOL_CALL_END",
+     "timestamp": 1792877831004,
+     "toolCallId": "call-lookup",
+     "namespace": "call-factcheck"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877831004,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-factcheck",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0",
+     "tools:06504240-0e1d-13a9-bdc0-084596eac1ab"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792877831004,
+     "name": "TOOL_USAGE",
+     "value": {
+      "tool_call_id": "call-lookup",
+      "tool_name": "lookup_fact",
+      "duration_ms": 93,
+      "status": "ok",
+      "output_chars": 104
+     },
+     "namespace": "call-factcheck"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877831056,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-factcheck",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0",
+     "tools:06504240-0e1d-13a9-bdc0-084596eac1ab"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792877831056,
+     "name": "TOKEN_USAGE",
+     "value": {
+      "input_tokens": 700,
+      "output_tokens": 70,
+      "total_tokens": 770,
+      "message_id": "msg-fact-checker-7",
+      "latency_ms": 47,
+      "context_tokens": 700
+     },
+     "namespace": "call-factcheck"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877831056,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-factcheck",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0",
+     "tools:06504240-0e1d-13a9-bdc0-084596eac1ab"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792877831056,
+     "name": "TASK_SUBAGENT",
+     "value": {
+      "task_id": "call-verify",
+      "subagent_type": "source-verifier",
+      "description": "Find the primary source for 330 m."
+     },
+     "namespace": "call-factcheck"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877831056,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-verify",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0",
+     "tools:06504240-0e1d-13a9-bdc0-084596eac1ab",
+     "tools:85909835-1b66-eb72-4b27-6ba45e176164"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792877831056,
+     "name": "BEFORE_AGENT_EVENT",
+     "value": {
+      "message": "Find the primary source for 330 m.",
+      "metadata": {
+       "namespace": "call-verify"
+      }
+     },
+     "namespace": "call-verify"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877831103,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-verify",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0",
+     "tools:06504240-0e1d-13a9-bdc0-084596eac1ab",
+     "tools:85909835-1b66-eb72-4b27-6ba45e176164"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792877831101,
+     "name": "TOKEN_USAGE",
+     "value": {
+      "input_tokens": 900,
+      "output_tokens": 90,
+      "total_tokens": 990,
+      "message_id": "msg-source-verifier-9",
+      "latency_ms": 47,
+      "context_tokens": 900
+     },
+     "namespace": "call-verify"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877831103,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-verify",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0",
+     "tools:06504240-0e1d-13a9-bdc0-084596eac1ab",
+     "tools:85909835-1b66-eb72-4b27-6ba45e176164"
+    ],
+    "event": {
+     "type": "TOOL_CALL_START",
+     "timestamp": 1792877831103,
+     "toolCallId": "call-source",
+     "toolCallName": "find_source",
+     "namespace": "call-verify"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877831103,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-verify",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0",
+     "tools:06504240-0e1d-13a9-bdc0-084596eac1ab",
+     "tools:85909835-1b66-eb72-4b27-6ba45e176164"
+    ],
+    "event": {
+     "type": "TOOL_CALL_ARGS",
+     "timestamp": 1792877831103,
+     "toolCallId": "call-source",
+     "delta": "{\"name\": \"find_source\", \"args\": {\"claim\": \"Eiffel Tower 330 m\"}}",
+     "namespace": "call-verify"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877831165,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-verify",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0",
+     "tools:06504240-0e1d-13a9-bdc0-084596eac1ab",
+     "tools:85909835-1b66-eb72-4b27-6ba45e176164"
+    ],
+    "event": {
+     "type": "TOOL_CALL_RESULT",
+     "timestamp": 1792877831165,
+     "messageId": "nested-run-1",
+     "toolCallId": "call-source",
+     "content": "primary source: https://www.toureiffel.paris/en/the-monument/key-figures",
+     "namespace": "call-verify"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877831165,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-verify",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0",
+     "tools:06504240-0e1d-13a9-bdc0-084596eac1ab",
+     "tools:85909835-1b66-eb72-4b27-6ba45e176164"
+    ],
+    "event": {
+     "type": "TOOL_CALL_END",
+     "timestamp": 1792877831165,
+     "toolCallId": "call-source",
+     "namespace": "call-verify"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877831165,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-verify",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0",
+     "tools:06504240-0e1d-13a9-bdc0-084596eac1ab",
+     "tools:85909835-1b66-eb72-4b27-6ba45e176164"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792877831165,
+     "name": "TOOL_USAGE",
+     "value": {
+      "tool_call_id": "call-source",
+      "tool_name": "find_source",
+      "duration_ms": 61,
+      "status": "ok",
+      "output_chars": 72
+     },
+     "namespace": "call-verify"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877831213,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-verify",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0",
+     "tools:06504240-0e1d-13a9-bdc0-084596eac1ab",
+     "tools:85909835-1b66-eb72-4b27-6ba45e176164"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_START",
+     "timestamp": 1792877831213,
+     "messageId": "nested-run-1",
+     "role": "assistant",
+     "namespace": "call-verify"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877831213,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-verify",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0",
+     "tools:06504240-0e1d-13a9-bdc0-084596eac1ab",
+     "tools:85909835-1b66-eb72-4b27-6ba45e176164"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792877831213,
+     "messageId": "nested-run-1",
+     "delta": "Source: toureiffel.paris key figures page.",
+     "namespace": "call-verify"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877831215,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-verify",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0",
+     "tools:06504240-0e1d-13a9-bdc0-084596eac1ab",
+     "tools:85909835-1b66-eb72-4b27-6ba45e176164"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_END",
+     "timestamp": 1792877831215,
+     "messageId": "nested-run-1",
+     "namespace": "call-verify"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877831215,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-verify",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0",
+     "tools:06504240-0e1d-13a9-bdc0-084596eac1ab",
+     "tools:85909835-1b66-eb72-4b27-6ba45e176164"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792877831215,
+     "name": "TOKEN_USAGE",
+     "value": {
+      "input_tokens": 1000,
+      "output_tokens": 100,
+      "total_tokens": 1100,
+      "message_id": "msg-source-verifier-10",
+      "latency_ms": 47,
+      "context_tokens": 1000
+     },
+     "namespace": "call-verify"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877831218,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-factcheck",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0",
+     "tools:06504240-0e1d-13a9-bdc0-084596eac1ab"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792877831218,
+     "name": "SUBAGENT_COMPLETED",
+     "value": {
+      "task_id": "call-verify",
+      "status": "completed",
+      "namespace": [
+       "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0",
+       "tools:06504240-0e1d-13a9-bdc0-084596eac1ab",
+       "tools:85909835-1b66-eb72-4b27-6ba45e176164"
+      ],
+      "started_at": 1792877831056,
+      "ended_at": 1792877831218
+     },
+     "namespace": "call-factcheck"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877831260,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-factcheck",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0",
+     "tools:06504240-0e1d-13a9-bdc0-084596eac1ab"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_START",
+     "timestamp": 1792877831260,
+     "messageId": "nested-run-1",
+     "role": "assistant",
+     "namespace": "call-factcheck"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877831260,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-factcheck",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0",
+     "tools:06504240-0e1d-13a9-bdc0-084596eac1ab"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792877831260,
+     "messageId": "nested-run-1",
+     "delta": "Fact-check: TRUE (330 m), source verified.",
+     "namespace": "call-factcheck"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877831263,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-factcheck",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0",
+     "tools:06504240-0e1d-13a9-bdc0-084596eac1ab"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_END",
+     "timestamp": 1792877831263,
+     "messageId": "nested-run-1",
+     "namespace": "call-factcheck"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877831263,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-factcheck",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0",
+     "tools:06504240-0e1d-13a9-bdc0-084596eac1ab"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792877831263,
+     "name": "TOKEN_USAGE",
+     "value": {
+      "input_tokens": 800,
+      "output_tokens": 80,
+      "total_tokens": 880,
+      "message_id": "msg-fact-checker-8",
+      "latency_ms": 30,
+      "context_tokens": 800
+     },
+     "namespace": "call-factcheck"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877831265,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-research",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792877831265,
+     "name": "SUBAGENT_COMPLETED",
+     "value": {
+      "task_id": "call-factcheck",
+      "status": "completed",
+      "namespace": [
+       "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0",
+       "tools:06504240-0e1d-13a9-bdc0-084596eac1ab"
+      ],
+      "started_at": 1792877830863,
+      "ended_at": 1792877831265
+     },
+     "namespace": "call-research"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877831306,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-research",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_START",
+     "timestamp": 1792877831306,
+     "messageId": "nested-run-1",
+     "role": "assistant",
+     "namespace": "call-research"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877831306,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-research",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_CHUNK",
+     "timestamp": 1792877831306,
+     "messageId": "nested-run-1",
+     "delta": "Research: 330 m, verified by the fact-checker; citation formatted.",
+     "namespace": "call-research"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877831308,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-research",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+    ],
+    "event": {
+     "type": "TEXT_MESSAGE_END",
+     "timestamp": 1792877831308,
+     "messageId": "nested-run-1",
+     "namespace": "call-research"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877831308,
+   "name": "SUBAGENT_EVENT",
+   "value": {
+    "task_id": "call-research",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+    ],
+    "event": {
+     "type": "CUSTOM",
+     "timestamp": 1792877831308,
+     "name": "TOKEN_USAGE",
+     "value": {
+      "input_tokens": 500,
+      "output_tokens": 50,
+      "total_tokens": 550,
+      "message_id": "msg-researcher-5",
+      "latency_ms": 31,
+      "context_tokens": 500
+     },
+     "namespace": "call-research"
+    }
+   },
+   "namespace": "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877831308,
+   "name": "SUBAGENT_COMPLETED",
+   "value": {
+    "task_id": "call-research",
+    "status": "completed",
+    "namespace": [
+     "tools:15e2ab51-7d7b-d139-5b1e-818200bc4ed0"
+    ],
+    "started_at": 1792877830607,
+    "ended_at": 1792877831308
+   },
+   "namespace": null
+  },
+  {
+   "type": "TEXT_MESSAGE_START",
+   "timestamp": 1792877831353,
+   "messageId": "nested-run-1",
+   "role": "assistant",
+   "namespace": null
+  },
+  {
+   "type": "TEXT_MESSAGE_CHUNK",
+   "timestamp": 1792877831353,
+   "messageId": "nested-run-1",
+   "delta": "The Eiffel Tower is 330 m tall (verified, with a primary source).",
+   "namespace": null
+  },
+  {
+   "type": "TEXT_MESSAGE_END",
+   "timestamp": 1792877831353,
+   "messageId": "nested-run-1",
+   "namespace": null
+  },
+  {
+   "type": "CUSTOM",
+   "timestamp": 1792877831353,
+   "name": "TOKEN_USAGE",
+   "value": {
+    "input_tokens": 200,
+    "output_tokens": 20,
+    "total_tokens": 220,
+    "message_id": "msg-main-2",
+    "latency_ms": 31,
+    "context_tokens": 200
+   },
+   "namespace": null
+  }
+ ]
+}

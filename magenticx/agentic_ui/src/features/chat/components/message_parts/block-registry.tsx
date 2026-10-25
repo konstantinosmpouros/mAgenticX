@@ -12,13 +12,12 @@ import type {
   TimelineBlock,
   TimelineTerminalStatus,
 } from "@/shared/lib/types";
-import { subagentBlockToItem } from "@/features/inference";
 import { ArtifactCard } from "./ArtifactCard";
 import { ChartCard } from "./ChartCard";
 import { CompactionDivider } from "./CompactionDivider";
 import { ContentBlockView } from "./Content";
 import { CoTBlock } from "./CoTBlock";
-import { SubagentCard } from "./SubagentContainer";
+import { SubagentTreeCard } from "./SubagentTreeCard";
 
 // Cross-block state the sequencer computes and threads to each object. The
 // data model deliberately doesn't carry these — they depend on a block's
@@ -32,7 +31,14 @@ export type BlockRenderContext = {
   subagentStatus?: SubagentRunStatus | null;
   // Set where a sub-agent card opens the sub-agent elsewhere (the agent map)
   // instead of expanding in place.
-  onOpenSubagent?: () => void;
+  onOpenSubagent?: (block: SubagentBlock) => void;
+  // The run's delegation tree: a sub-agent card draws its own sub-agents
+  // inside it. Every card's status comes from the same function.
+  subagentChildrenOf?: (block: SubagentBlock) => SubagentBlock[];
+  subagentStatusOf?: (block: SubagentBlock) => SubagentRunStatus | null;
+  // Opens a sub-agent a thinking block's agent delegated to (the agent map's
+  // transcript), from its "Delegated to" row.
+  onOpenDelegation?: (taskId: string) => void;
   doneStatus?: TimelineTerminalStatus;
   fallbackDurationSeconds?: number | null;
   open: boolean;
@@ -82,10 +88,11 @@ export const BLOCK_REGISTRY: Record<
     />
   ),
   subagent: (block, ctx) => (
-    <SubagentCard
-      subagent={subagentBlockToItem(block as SubagentBlock)}
+    <SubagentTreeCard
+      block={block as SubagentBlock}
       index={ctx.subagentIndex}
-      status={ctx.subagentStatus}
+      childrenOf={ctx.subagentChildrenOf ?? (() => [])}
+      statusOf={ctx.subagentStatusOf ?? (() => ctx.subagentStatus ?? null)}
       onOpen={ctx.onOpenSubagent}
     />
   ),
@@ -98,6 +105,7 @@ export const BLOCK_REGISTRY: Record<
       fallbackDurationSeconds={ctx.fallbackDurationSeconds}
       open={ctx.open}
       onOpenChange={ctx.onOpenChange}
+      onOpenDelegation={ctx.onOpenDelegation}
     />
   ),
 };

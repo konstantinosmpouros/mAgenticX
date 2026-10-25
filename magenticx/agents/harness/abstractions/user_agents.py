@@ -203,8 +203,9 @@ def validate_write(
         errors.append(f"The definition exceeds the {_MAX_TOTAL_BYTES // 1024} KiB total limit.")
 
     # --- prompt references must resolve to an included file ---------------
+    # Every sub-agent's, at every depth (the tree's limits are AgentSpec's).
     for label, raw_ref in [("prompt", spec.prompt), *[
-        (f"sub-agent {sa.name!r} prompt", sa.prompt) for sa in spec.subagents
+        (f"sub-agent {' > '.join(path)!r} prompt", sa.prompt) for path, sa in spec.walk_subagents()
     ]]:
         rel = _normalise_prompt_ref(raw_ref)
         if rel is None:

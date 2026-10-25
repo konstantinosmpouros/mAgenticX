@@ -43,14 +43,29 @@ const beforeAgent = (taskId: string, namespace: string[], at: number): Event =>
   inside(
     taskId,
     namespace,
-    { type: "CUSTOM", name: "BEFORE_AGENT_EVENT", value: { message: "", metadata: { namespace: taskId } } },
+    {
+      type: "CUSTOM",
+      name: "BEFORE_AGENT_EVENT",
+      value: { message: "", metadata: { namespace: taskId } },
+    },
     at,
   );
 
-const completedEvent = (taskId: string, namespace: string[], startedAt: number, endedAt: number): Event => ({
+const completedEvent = (
+  taskId: string,
+  namespace: string[],
+  startedAt: number,
+  endedAt: number,
+): Event => ({
   type: "CUSTOM",
   name: "SUBAGENT_COMPLETED",
-  value: { task_id: taskId, status: "completed", namespace, started_at: startedAt, ended_at: endedAt },
+  value: {
+    task_id: taskId,
+    status: "completed",
+    namespace,
+    started_at: startedAt,
+    ended_at: endedAt,
+  },
 });
 
 /** main → researcher → checker; the checker has returned, the researcher works on. */
@@ -61,7 +76,11 @@ const checkerReturned = (): Event[] => [
   beforeAgent("call-check", C_NS, 2_000),
   inside("call-check", C_NS, { type: "TOOL_CALL_START", toolCallId: "s1", toolCallName: "search" }),
   inside("call-check", C_NS, { type: "TOOL_CALL_RESULT", toolCallId: "s1", content: "ok" }),
-  inside("call-check", C_NS, { type: "TEXT_MESSAGE_CHUNK", messageId: "m", delta: "checked: prices ok" }),
+  inside("call-check", C_NS, {
+    type: "TEXT_MESSAGE_CHUNK",
+    messageId: "m",
+    delta: "checked: prices ok",
+  }),
   inside("call-research", R_NS, completedEvent("call-check", C_NS, 2_000, 5_000)),
 ];
 
@@ -110,27 +129,42 @@ describe("a sub-agent of a sub-agent", () => {
   });
 
   it("keeps the nested sub-agent's own end time when the run settles", () => {
-    const events = [
-      ...checkerReturned(),
-      completedEvent("call-research", R_NS, 1_000, 9_000),
-    ];
+    const events = [...checkerReturned(), completedEvent("call-research", R_NS, 1_000, 9_000)];
     const timeline = finalizeTimeline(reduceTimelineEvents(createTimeline(), events), "completed");
     const checker = subagent(timeline, "call-check");
 
     expect(checker.status).toBe("done");
     expect(checker.endedByRun).toBeUndefined();
     expect(checker.endedAt).toBe(5_000);
-    // The completion is not a step of the parent's own reply.
+    // The completion is not a step of the parent's own reply; the delegation
+    // is — one "Delegated to" mark, and nothing else.
     const researcher = subagent(timeline, "call-research");
     expect(researcher.status).toBe("done");
-    expect(researcher.blocks).toEqual([]);
+    expect(researcher.blocks).toHaveLength(1);
+    expect(researcher.blocks[0]).toMatchObject({
+      kind: "thinking",
+      items: [
+        {
+          kind: "delegation",
+          taskId: "call-check",
+          type: "checker",
+          description: "Check the prices",
+        },
+      ],
+    });
   });
 
   it("reports a failed nested sub-agent as failed", () => {
     const events = checkerReturned();
     events[events.length - 1] = inside("call-research", R_NS, {
       ...completedEvent("call-check", C_NS, 2_000, 4_000),
-      value: { task_id: "call-check", status: "error", namespace: C_NS, started_at: 2_000, ended_at: 4_000 },
+      value: {
+        task_id: "call-check",
+        status: "error",
+        namespace: C_NS,
+        started_at: 2_000,
+        ended_at: 4_000,
+      },
     });
     const timeline = reduceTimelineEvents(createTimeline(), events);
 

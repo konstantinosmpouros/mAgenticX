@@ -72,6 +72,14 @@ export const slugify = (value: string): string =>
 export const subagentPromptPath = (name: string) =>
   `${SUBAGENT_DIR}/${slugify(name) || "subagent"}.md`;
 
+/**
+ * A nested sub-agent's prompt file, named by its path of names
+ * (`subagents/researcher--fact-checker.md`). A slug never holds `--`, so two
+ * paths can never share a file; a top-level sub-agent keeps its plain name.
+ */
+export const nestedSubagentPromptPath = (names: string[]) =>
+  `${SUBAGENT_DIR}/${names.map((name) => slugify(name) || "subagent").join("--")}.md`;
+
 export const emptyDraft = (): AgentDraft => ({
   slug: "",
   name: "",
@@ -94,6 +102,7 @@ type SpecSubAgent = {
   prompt?: unknown;
   model?: unknown;
   tools?: unknown;
+  subagents?: unknown;
 };
 
 /** A new, empty sub-agent: inherits the agent's model and all of its tools. */
@@ -138,6 +147,48 @@ export const buildAgentPayload = (draft: AgentDraft): CustomAgentWritePayload =>
     { path: PROMPT_FILE, content: draft.prompt },
     ...named.map((sa) => ({ path: subagentPromptPath(sa.name), content: sa.prompt })),
   ];
+  // A sub-agent's own sub-agents, kept from the definition (the form does not
+  // edit them yet): their prompts are written back, and their tools stay
+  // inside what the sub-agent above them may use.
+  const nestedSpecs = (
+    children: AgentDraftSubAgent[] | undefined,
+    above: string[],
+    allowed: string[],
+  ): Record<string, unknown>[] =>
+    (children ?? [])
+      .filter((sa) => sa.name.trim() && sa.prompt.trim())
+      .map((sa) => {
+        const names = [...above, sa.name];
+        const path = nestedSubagentPromptPath(names);
+        generated.push({ path, content: sa.prompt });
+        const tools = sa.tools.filter((key) => allowed.includes(key));
+        const nested = nestedSpecs(sa.subagents, names, tools.length ? tools : allowed);
+        return {
+          name: slugify(sa.name),
+          description: sa.description.trim() || sa.name.trim(),
+          prompt: `./${path}`,
+          ...(sa.model ? { model: sa.model } : {}),
+          ...(tools.length ? { tools: tools.map(toolRef) } : {}),
+          ...(nested.length ? { subagents: nested } : {}),
+        };
+      });
+  const subagentSpecs = named.map((sa) => {
+    // Only tools the agent still declares: the server refuses a sub-agent
+    // tool its agent lacks, and removing a tool from the agent must not
+    // leave a sub-agent pointing at it.
+    const tools = sa.tools.filter((key) => draft.tools.includes(key));
+    const nested = nestedSpecs(sa.subagents, [sa.name], tools.length ? tools : draft.tools);
+    return {
+      name: slugify(sa.name),
+      description: sa.description.trim() || sa.name.trim(),
+      prompt: `./${subagentPromptPath(sa.name)}`,
+      // Omitted, not blank, to inherit: the runtime reads a missing model
+      // and a missing tool list as "use the agent's".
+      ...(sa.model ? { model: sa.model } : {}),
+      ...(tools.length ? { tools: tools.map(toolRef) } : {}),
+      ...(nested.length ? { subagents: nested } : {}),
+    };
+  });
   // Generated paths win: a reference file can never shadow a prompt the form is
   // responsible for, however the draft got into that state.
   const owned = new Set(generated.map((file) => file.path));
@@ -156,21 +207,7 @@ export const buildAgentPayload = (draft: AgentDraft): CustomAgentWritePayload =>
       memory: draft.memory,
       tools: draft.tools.map(toolRef),
       skills: draft.skills,
-      subagents: named.map((sa) => {
-        // Only tools the agent still declares: the server refuses a sub-agent
-        // tool its agent lacks, and removing a tool from the agent must not
-        // leave a sub-agent pointing at it.
-        const tools = sa.tools.filter((key) => draft.tools.includes(key));
-        return {
-          name: slugify(sa.name),
-          description: sa.description.trim() || sa.name.trim(),
-          prompt: `./${subagentPromptPath(sa.name)}`,
-          // Omitted, not blank, to inherit: the runtime reads a missing model
-          // and a missing tool list as "use the agent's".
-          ...(sa.model ? { model: sa.model } : {}),
-          ...(tools.length ? { tools: tools.map(toolRef) } : {}),
-        };
-      }),
+      subagents: subagentSpecs,
       hitl: Object.fromEntries(REQUIRED_GATES.map((gate) => [gate, true])),
     },
     files: [...generated, ...extras].map((file) => ({
@@ -195,19 +232,25 @@ export const draftFromDetail = (detail: CustomAgentDetail): AgentDraft => {
   const fileFor = (path: string) => detail.files.find((f) => f.path === path)?.content ?? "";
   // Paths the form regenerates from prompt fields; the rest are the user's own.
   const claimed = new Set<string>([PROMPT_FILE, MANIFEST_FILE]);
-  const subagents: AgentDraftSubAgent[] = Array.isArray(spec.subagents)
-    ? (spec.subagents as SpecSubAgent[]).map((sa) => {
-        const path = String(sa?.prompt ?? "").replace(/^\.\//, "");
-        claimed.add(path);
-        return {
-          name: String(sa?.name ?? ""),
-          description: String(sa?.description ?? ""),
-          prompt: fileFor(path),
-          model: typeof sa?.model === "string" ? sa.model : "",
-          tools: toolKeys(sa?.tools),
-        };
-      })
-    : [];
+  // At every depth: a nested sub-agent's prompt is claimed too, and the
+  // sub-agent is kept under its parent.
+  const readSubagents = (raw: unknown): AgentDraftSubAgent[] =>
+    Array.isArray(raw)
+      ? (raw as SpecSubAgent[]).map((sa) => {
+          const path = String(sa?.prompt ?? "").replace(/^\.\//, "");
+          claimed.add(path);
+          const nested = readSubagents(sa?.subagents);
+          return {
+            name: String(sa?.name ?? ""),
+            description: String(sa?.description ?? ""),
+            prompt: fileFor(path),
+            model: typeof sa?.model === "string" ? sa.model : "",
+            tools: toolKeys(sa?.tools),
+            ...(nested.length ? { subagents: nested } : {}),
+          };
+        })
+      : [];
+  const subagents = readSubagents(spec.subagents);
   const files: AgentDraftFile[] = detail.files
     .filter((file) => !claimed.has(file.path) && file.encoding !== "base64")
     .map((file) => ({ path: file.path, content: file.content }));

@@ -1,0 +1,6883 @@
+{
+ "description": "The nested-research-demo example agent on a real model (gpt-4.1-mini), streamed through YamlDeepAgent/build_deep_agent/BaseAgent.astream and the AG-UI normalizer; one list of events per stream, approving the `task` gate in between on a fresh agent instance.",
+ "legs": [
+  [
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881441292,
+    "name": "TOKEN_USAGE",
+    "value": {
+     "input_tokens": 10160,
+     "output_tokens": 50,
+     "total_tokens": 10210,
+     "input_token_details": {
+      "cache_read": 0
+     },
+     "output_token_details": {
+      "reasoning": 0
+     },
+     "message_id": "resp_037c008d6208562a006add331f571487d1a431a547803004c5",
+     "model": "gpt-4.1-mini",
+     "latency_ms": 3391,
+     "context_window": 1047576,
+     "context_tokens": 10160,
+     "context_percent": 1.0,
+     "compaction_percent": 95.0,
+     "ttft_ms": 2516
+    },
+    "namespace": null
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881441292,
+    "name": "TASK_SUBAGENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "subagent_type": "researcher",
+     "description": "Research the height of the Eiffel Tower from reliable sources, including its official dimensions and any variations due to antennas or adaptations. Provide a verified and concise answer."
+    },
+    "namespace": null
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881441294,
+    "name": "HITL_INTERRUPT",
+    "value": {
+     "thread_id": "demo-run",
+     "interrupt": {
+      "id": "c08469ac662a48673710a5d83dc421c9",
+      "value": {
+       "action_requests": [
+        {
+         "name": "task",
+         "args": {
+          "description": "Research the height of the Eiffel Tower from reliable sources, including its official dimensions and any variations due to antennas or adaptations. Provide a verified and concise answer.",
+          "subagent_type": "researcher"
+         },
+         "description": "Tool execution requires approval\n\nTool: task\nArgs: {'description': 'Research the height of the Eiffel Tower from reliable sources, including its official dimensions and any variations due to antennas or adaptations. Provide a verified and concise answer.', 'subagent_type': 'researcher'}"
+        }
+       ],
+       "review_configs": [
+        {
+         "action_name": "task",
+         "allowed_decisions": [
+          "approve",
+          "edit",
+          "reject",
+          "respond"
+         ]
+        }
+       ]
+      }
+     },
+     "metadata": {
+      "namespace": null
+     }
+    },
+    "namespace": null
+   }
+  ],
+  [
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881441344,
+    "name": "TOKEN_USAGE",
+    "value": {
+     "input_tokens": 10160,
+     "output_tokens": 50,
+     "total_tokens": 10210,
+     "input_token_details": {
+      "cache_read": 0
+     },
+     "output_token_details": {
+      "reasoning": 0
+     },
+     "message_id": "resp_037c008d6208562a006add331f571487d1a431a547803004c5",
+     "model": "gpt-4.1-mini",
+     "latency_ms": 3391,
+     "context_window": 1047576,
+     "context_tokens": 10160,
+     "context_percent": 1.0,
+     "compaction_percent": 95.0,
+     "ttft_ms": 2516
+    },
+    "namespace": null
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881441353,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "CUSTOM",
+      "timestamp": 1792881441344,
+      "name": "BEFORE_AGENT_EVENT",
+      "value": {
+       "message": "Research the height of the Eiffel Tower from reliable sources, including its official dimensions and any variations due to antennas or adaptations. Provide a verified and concise answer.",
+       "metadata": {
+        "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+       }
+      },
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881443594,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "CUSTOM",
+      "timestamp": 1792881443594,
+      "name": "TOKEN_USAGE",
+      "value": {
+       "input_tokens": 6993,
+       "output_tokens": 78,
+       "total_tokens": 7071,
+       "input_token_details": {
+        "cache_read": 0
+       },
+       "output_token_details": {
+        "reasoning": 0
+       },
+       "message_id": "resp_09c2889b79095e60006add3321e5bc87d1bf62fe5a6aaaa0ce",
+       "model": "gpt-4.1-mini",
+       "latency_ms": 2233,
+       "context_window": 1047576,
+       "context_tokens": 6993,
+       "context_percent": 0.7,
+       "ttft_ms": 1702
+      },
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881443594,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "CUSTOM",
+      "timestamp": 1792881443594,
+      "name": "TASK_SUBAGENT",
+      "value": {
+       "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+       "subagent_type": "fact-checker",
+       "description": "Research the verified official height of the Eiffel Tower including its original dimensions and any variations due to antennas or adaptations. Return a concise summary with the official height and mention any changes due to antennas or modifications over time, citing reliable authoritative sources such as official Eiffel Tower websites or reputable encyclopedias."
+      },
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881443594,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "CUSTOM",
+      "timestamp": 1792881443594,
+      "name": "HITL_INTERRUPT",
+      "value": {
+       "thread_id": "demo-run",
+       "interrupt": {
+        "id": "40174bf63c943a4a666696cf12966fe1",
+        "value": {
+         "action_requests": [
+          {
+           "name": "task",
+           "args": {
+            "description": "Research the verified official height of the Eiffel Tower including its original dimensions and any variations due to antennas or adaptations. Return a concise summary with the official height and mention any changes due to antennas or modifications over time, citing reliable authoritative sources such as official Eiffel Tower websites or reputable encyclopedias.",
+            "subagent_type": "fact-checker"
+           },
+           "description": "Tool execution requires approval\n\nTool: task\nArgs: {'description': 'Research the verified official height of the Eiffel Tower including its original dimensions and any variations due to antennas or adaptations. Return a concise summary with the official height and mention any changes due to antennas or modifications over time, citing reliable authoritative sources such as official Eiffel Tower websites or reputable encyclopedias.', 'subagent_type': 'fact-checker'}"
+          }
+         ],
+         "review_configs": [
+          {
+           "action_name": "task",
+           "allowed_decisions": [
+            "approve",
+            "edit",
+            "reject",
+            "respond"
+           ]
+          }
+         ]
+        }
+       },
+       "metadata": {
+        "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+       }
+      },
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881443594,
+    "name": "HITL_INTERRUPT",
+    "value": {
+     "thread_id": "demo-run",
+     "interrupt": {
+      "id": "40174bf63c943a4a666696cf12966fe1",
+      "value": {
+       "action_requests": [
+        {
+         "name": "task",
+         "args": {
+          "description": "Research the verified official height of the Eiffel Tower including its original dimensions and any variations due to antennas or adaptations. Return a concise summary with the official height and mention any changes due to antennas or modifications over time, citing reliable authoritative sources such as official Eiffel Tower websites or reputable encyclopedias.",
+          "subagent_type": "fact-checker"
+         },
+         "description": "Tool execution requires approval\n\nTool: task\nArgs: {'description': 'Research the verified official height of the Eiffel Tower including its original dimensions and any variations due to antennas or adaptations. Return a concise summary with the official height and mention any changes due to antennas or modifications over time, citing reliable authoritative sources such as official Eiffel Tower websites or reputable encyclopedias.', 'subagent_type': 'fact-checker'}"
+        }
+       ],
+       "review_configs": [
+        {
+         "action_name": "task",
+         "allowed_decisions": [
+          "approve",
+          "edit",
+          "reject",
+          "respond"
+         ]
+        }
+       ]
+      }
+     },
+     "metadata": {
+      "namespace": null
+     }
+    },
+    "namespace": null
+   }
+  ],
+  [
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881443639,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "CUSTOM",
+      "timestamp": 1792881443639,
+      "name": "BEFORE_AGENT_EVENT",
+      "value": {
+       "message": "Research the height of the Eiffel Tower from reliable sources, including its official dimensions and any variations due to antennas or adaptations. Provide a verified and concise answer.",
+       "metadata": {
+        "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+       }
+      },
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881443639,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "CUSTOM",
+      "timestamp": 1792881443639,
+      "name": "TOKEN_USAGE",
+      "value": {
+       "input_tokens": 6993,
+       "output_tokens": 78,
+       "total_tokens": 7071,
+       "input_token_details": {
+        "cache_read": 0
+       },
+       "output_token_details": {
+        "reasoning": 0
+       },
+       "message_id": "resp_09c2889b79095e60006add3321e5bc87d1bf62fe5a6aaaa0ce",
+       "model": "gpt-4.1-mini",
+       "latency_ms": 2233,
+       "context_window": 1047576,
+       "context_tokens": 6993,
+       "context_percent": 0.7,
+       "ttft_ms": 1702
+      },
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881443639,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "CUSTOM",
+      "timestamp": 1792881443639,
+      "name": "TASK_SUBAGENT",
+      "value": {
+       "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+       "subagent_type": "fact-checker",
+       "description": "Research the verified official height of the Eiffel Tower including its original dimensions and any variations due to antennas or adaptations. Return a concise summary with the official height and mention any changes due to antennas or modifications over time, citing reliable authoritative sources such as official Eiffel Tower websites or reputable encyclopedias."
+      },
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881443639,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "CUSTOM",
+      "timestamp": 1792881443639,
+      "name": "BEFORE_AGENT_EVENT",
+      "value": {
+       "message": "Research the verified official height of the Eiffel Tower including its original dimensions and any variations due to antennas or adaptations. Return a concise summary with the official height and mention any changes due to antennas or modifications over time, citing reliable authoritative sources such as official Eiffel Tower websites or reputable encyclopedias.",
+       "metadata": {
+        "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+       }
+      },
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881445528,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "CUSTOM",
+      "timestamp": 1792881445528,
+      "name": "TOKEN_USAGE",
+      "value": {
+       "input_tokens": 4908,
+       "output_tokens": 110,
+       "total_tokens": 5018,
+       "input_token_details": {
+        "cache_read": 0
+       },
+       "output_token_details": {
+        "reasoning": 0
+       },
+       "message_id": "resp_0ee40501d425fdc2006add3324244c87d1905bddbe02277151",
+       "model": "gpt-4.1-mini",
+       "latency_ms": 1843,
+       "context_window": 1047576,
+       "context_tokens": 4908,
+       "context_percent": 0.5,
+       "ttft_ms": 1172
+      },
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881445528,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "CUSTOM",
+      "timestamp": 1792881445528,
+      "name": "PLAN_SNAPSHOT",
+      "value": {
+       "items": [
+        {
+         "content": "Locate official and reliable sources for the Eiffel Tower's height such as the official Eiffel Tower website or reputable encyclopedias.",
+         "status": "in_progress",
+         "metadata": null
+        },
+        {
+         "content": "Extract the original height of the Eiffel Tower from construction.",
+         "status": "pending",
+         "metadata": null
+        },
+        {
+         "content": "Identify any height variations caused by the addition of antennas or other modifications over time.",
+         "status": "pending",
+         "metadata": null
+        },
+        {
+         "content": "Summarize the official height including any changes due to antennas or adaptations with sources cited.",
+         "status": "pending",
+         "metadata": null
+        }
+       ],
+       "updated_at": 1792881445528,
+       "metadata": {
+        "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+       }
+      },
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881447878,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "CUSTOM",
+      "timestamp": 1792881447877,
+      "name": "TOKEN_USAGE",
+      "value": {
+       "input_tokens": 5142,
+       "output_tokens": 143,
+       "total_tokens": 5285,
+       "input_token_details": {
+        "cache_read": 4864
+       },
+       "output_token_details": {
+        "reasoning": 0
+       },
+       "message_id": "resp_0ee40501d425fdc2006add33261f3487d1b40d8b58bb32ba87",
+       "model": "gpt-4.1-mini",
+       "latency_ms": 2311,
+       "context_window": 1047576,
+       "context_tokens": 5142,
+       "context_percent": 0.5,
+       "ttft_ms": 2141
+      },
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881447878,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TOOL_CALL_START",
+      "timestamp": 1792881447877,
+      "toolCallId": "call_6gJgbmIfcbyEIPQzu5lIC4ki",
+      "toolCallName": "grep",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881447878,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TOOL_CALL_ARGS",
+      "timestamp": 1792881447877,
+      "toolCallId": "call_6gJgbmIfcbyEIPQzu5lIC4ki",
+      "delta": "{\"name\": \"grep\", \"args\": {\"pattern\": \"height\", \"path\": \"/\", \"glob\": \"**/*eiffel*.txt\", \"output_mode\": \"content\"}}",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881447878,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TOOL_CALL_START",
+      "timestamp": 1792881447877,
+      "toolCallId": "call_IYR4caDM4yDXRetYTyPQlaJd",
+      "toolCallName": "grep",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881447878,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TOOL_CALL_ARGS",
+      "timestamp": 1792881447877,
+      "toolCallId": "call_IYR4caDM4yDXRetYTyPQlaJd",
+      "delta": "{\"name\": \"grep\", \"args\": {\"pattern\": \"height\", \"path\": \"/\", \"glob\": \"**/*eiffel*.md\", \"output_mode\": \"content\"}}",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881447878,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TOOL_CALL_START",
+      "timestamp": 1792881447878,
+      "toolCallId": "call_OGa8kCnMEqmNmNRWC8PlliVT",
+      "toolCallName": "grep",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881447878,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TOOL_CALL_ARGS",
+      "timestamp": 1792881447878,
+      "toolCallId": "call_OGa8kCnMEqmNmNRWC8PlliVT",
+      "delta": "{\"name\": \"grep\", \"args\": {\"pattern\": \"Eiffel Tower\", \"path\": \"/\", \"glob\": \"**/*.txt\", \"output_mode\": \"content\"}}",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881447878,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TOOL_CALL_START",
+      "timestamp": 1792881447878,
+      "toolCallId": "call_2AX3azdHCuYz2pOAmBN9iR1p",
+      "toolCallName": "grep",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881447878,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TOOL_CALL_ARGS",
+      "timestamp": 1792881447878,
+      "toolCallId": "call_2AX3azdHCuYz2pOAmBN9iR1p",
+      "delta": "{\"name\": \"grep\", \"args\": {\"pattern\": \"Eiffel Tower\", \"path\": \"/\", \"glob\": \"**/*.md\", \"output_mode\": \"content\"}}",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881447891,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TOOL_CALL_RESULT",
+      "timestamp": 1792881447891,
+      "messageId": "demo-run",
+      "toolCallId": "call_6gJgbmIfcbyEIPQzu5lIC4ki",
+      "content": "No matches found",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881447891,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TOOL_CALL_END",
+      "timestamp": 1792881447891,
+      "toolCallId": "call_6gJgbmIfcbyEIPQzu5lIC4ki",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881447891,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "CUSTOM",
+      "timestamp": 1792881447891,
+      "name": "TOOL_USAGE",
+      "value": {
+       "tool_call_id": "call_6gJgbmIfcbyEIPQzu5lIC4ki",
+       "tool_name": "grep",
+       "duration_ms": 16,
+       "status": "ok",
+       "output_chars": 16
+      },
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881447892,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TOOL_CALL_RESULT",
+      "timestamp": 1792881447892,
+      "messageId": "demo-run",
+      "toolCallId": "call_IYR4caDM4yDXRetYTyPQlaJd",
+      "content": "No matches found",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881447892,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TOOL_CALL_END",
+      "timestamp": 1792881447892,
+      "toolCallId": "call_IYR4caDM4yDXRetYTyPQlaJd",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881447892,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "CUSTOM",
+      "timestamp": 1792881447892,
+      "name": "TOOL_USAGE",
+      "value": {
+       "tool_call_id": "call_IYR4caDM4yDXRetYTyPQlaJd",
+       "tool_name": "grep",
+       "duration_ms": 16,
+       "status": "ok",
+       "output_chars": 16
+      },
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881447893,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TOOL_CALL_RESULT",
+      "timestamp": 1792881447893,
+      "messageId": "demo-run",
+      "toolCallId": "call_OGa8kCnMEqmNmNRWC8PlliVT",
+      "content": "No matches found",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881447893,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TOOL_CALL_END",
+      "timestamp": 1792881447893,
+      "toolCallId": "call_OGa8kCnMEqmNmNRWC8PlliVT",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881447893,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "CUSTOM",
+      "timestamp": 1792881447893,
+      "name": "TOOL_USAGE",
+      "value": {
+       "tool_call_id": "call_OGa8kCnMEqmNmNRWC8PlliVT",
+       "tool_name": "grep",
+       "duration_ms": 16,
+       "status": "ok",
+       "output_chars": 16
+      },
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881447893,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TOOL_CALL_RESULT",
+      "timestamp": 1792881447893,
+      "messageId": "demo-run",
+      "toolCallId": "call_2AX3azdHCuYz2pOAmBN9iR1p",
+      "content": "No matches found",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881447893,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TOOL_CALL_END",
+      "timestamp": 1792881447893,
+      "toolCallId": "call_2AX3azdHCuYz2pOAmBN9iR1p",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881447893,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "CUSTOM",
+      "timestamp": 1792881447893,
+      "name": "TOOL_USAGE",
+      "value": {
+       "tool_call_id": "call_2AX3azdHCuYz2pOAmBN9iR1p",
+       "tool_name": "grep",
+       "duration_ms": 16,
+       "status": "ok",
+       "output_chars": 16
+      },
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881449596,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "CUSTOM",
+      "timestamp": 1792881449596,
+      "name": "TOKEN_USAGE",
+      "value": {
+       "input_tokens": 5304,
+       "output_tokens": 15,
+       "total_tokens": 5319,
+       "input_token_details": {
+        "cache_read": 4992
+       },
+       "output_token_details": {
+        "reasoning": 0
+       },
+       "message_id": "resp_0ee40501d425fdc2006add332873c087d1b960c4dbaf54d686",
+       "model": "gpt-4.1-mini",
+       "latency_ms": 1672,
+       "context_window": 1047576,
+       "context_tokens": 5304,
+       "context_percent": 0.5,
+       "ttft_ms": 1593
+      },
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881449596,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TOOL_CALL_START",
+      "timestamp": 1792881449596,
+      "toolCallId": "call_FsPhbaenuOxg9e0iliiuRMdb",
+      "toolCallName": "ls",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881449596,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TOOL_CALL_ARGS",
+      "timestamp": 1792881449596,
+      "toolCallId": "call_FsPhbaenuOxg9e0iliiuRMdb",
+      "delta": "{\"name\": \"ls\", \"args\": {\"path\": \"/\"}}",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881449599,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TOOL_CALL_RESULT",
+      "timestamp": 1792881449599,
+      "messageId": "demo-run",
+      "toolCallId": "call_FsPhbaenuOxg9e0iliiuRMdb",
+      "content": "[]",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881449599,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TOOL_CALL_END",
+      "timestamp": 1792881449599,
+      "toolCallId": "call_FsPhbaenuOxg9e0iliiuRMdb",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881449599,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "CUSTOM",
+      "timestamp": 1792881449599,
+      "name": "TOOL_USAGE",
+      "value": {
+       "tool_call_id": "call_FsPhbaenuOxg9e0iliiuRMdb",
+       "tool_name": "ls",
+       "duration_ms": 0,
+       "status": "ok",
+       "output_chars": 2
+      },
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450684,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_START",
+      "timestamp": 1792881450684,
+      "messageId": "demo-run",
+      "role": "assistant",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450684,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450684,
+      "messageId": "demo-run",
+      "delta": "It",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450684,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450684,
+      "messageId": "demo-run",
+      "delta": " appears",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450684,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450684,
+      "messageId": "demo-run",
+      "delta": " there",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450684,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450684,
+      "messageId": "demo-run",
+      "delta": " are",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450684,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450684,
+      "messageId": "demo-run",
+      "delta": " no",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450684,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450684,
+      "messageId": "demo-run",
+      "delta": " local",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450684,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450684,
+      "messageId": "demo-run",
+      "delta": " files",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450684,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450684,
+      "messageId": "demo-run",
+      "delta": " or",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450684,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450684,
+      "messageId": "demo-run",
+      "delta": " documents",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450684,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450684,
+      "messageId": "demo-run",
+      "delta": " available",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450684,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450684,
+      "messageId": "demo-run",
+      "delta": " in",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450684,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450684,
+      "messageId": "demo-run",
+      "delta": " the",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450686,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450686,
+      "messageId": "demo-run",
+      "delta": " workspace",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450688,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450688,
+      "messageId": "demo-run",
+      "delta": " related",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450719,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450719,
+      "messageId": "demo-run",
+      "delta": " to",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450719,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450719,
+      "messageId": "demo-run",
+      "delta": " the",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450750,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450750,
+      "messageId": "demo-run",
+      "delta": " Eiffel",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450750,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450750,
+      "messageId": "demo-run",
+      "delta": " Tower",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450754,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450754,
+      "messageId": "demo-run",
+      "delta": " or",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450758,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450758,
+      "messageId": "demo-run",
+      "delta": " its",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450761,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450761,
+      "messageId": "demo-run",
+      "delta": " height",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450770,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450770,
+      "messageId": "demo-run",
+      "delta": ".",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450770,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450770,
+      "messageId": "demo-run",
+      "delta": " Therefore",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450770,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450770,
+      "messageId": "demo-run",
+      "delta": ",",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450770,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450770,
+      "messageId": "demo-run",
+      "delta": " I",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450772,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450772,
+      "messageId": "demo-run",
+      "delta": " cannot",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450779,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450778,
+      "messageId": "demo-run",
+      "delta": " retrieve",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450779,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450779,
+      "messageId": "demo-run",
+      "delta": " official",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450779,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450779,
+      "messageId": "demo-run",
+      "delta": " or",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450779,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450779,
+      "messageId": "demo-run",
+      "delta": " encycl",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450779,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450779,
+      "messageId": "demo-run",
+      "delta": "opedic",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450779,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450779,
+      "messageId": "demo-run",
+      "delta": " information",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450779,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450779,
+      "messageId": "demo-run",
+      "delta": " from",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450779,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450779,
+      "messageId": "demo-run",
+      "delta": " internal",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450785,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450785,
+      "messageId": "demo-run",
+      "delta": " files",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450785,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450785,
+      "messageId": "demo-run",
+      "delta": " here",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450795,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450795,
+      "messageId": "demo-run",
+      "delta": ".\n\n",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450795,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450795,
+      "messageId": "demo-run",
+      "delta": "However",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450811,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450811,
+      "messageId": "demo-run",
+      "delta": ",",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450811,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450811,
+      "messageId": "demo-run",
+      "delta": " based",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450825,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450825,
+      "messageId": "demo-run",
+      "delta": " on",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450825,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450825,
+      "messageId": "demo-run",
+      "delta": " my",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450839,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450839,
+      "messageId": "demo-run",
+      "delta": " training",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450839,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450839,
+      "messageId": "demo-run",
+      "delta": " and",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450846,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450846,
+      "messageId": "demo-run",
+      "delta": " knowledge",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450846,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450846,
+      "messageId": "demo-run",
+      "delta": ":\n\n",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450860,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450860,
+      "messageId": "demo-run",
+      "delta": "The",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450860,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450860,
+      "messageId": "demo-run",
+      "delta": " original",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450878,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450878,
+      "messageId": "demo-run",
+      "delta": " official",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450878,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450878,
+      "messageId": "demo-run",
+      "delta": " height",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450878,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450878,
+      "messageId": "demo-run",
+      "delta": " of",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450878,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450878,
+      "messageId": "demo-run",
+      "delta": " the",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450892,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450892,
+      "messageId": "demo-run",
+      "delta": " Eiffel",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450896,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450896,
+      "messageId": "demo-run",
+      "delta": " Tower",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450896,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450896,
+      "messageId": "demo-run",
+      "delta": " when",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450896,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450896,
+      "messageId": "demo-run",
+      "delta": " completed",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450908,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450908,
+      "messageId": "demo-run",
+      "delta": " in",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450908,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450908,
+      "messageId": "demo-run",
+      "delta": " ",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450964,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450964,
+      "messageId": "demo-run",
+      "delta": "188",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450964,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450964,
+      "messageId": "demo-run",
+      "delta": "9",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450982,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450982,
+      "messageId": "demo-run",
+      "delta": " was",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450982,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450982,
+      "messageId": "demo-run",
+      "delta": " approximately",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450990,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450990,
+      "messageId": "demo-run",
+      "delta": " ",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881450990,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881450990,
+      "messageId": "demo-run",
+      "delta": "300",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451004,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451004,
+      "messageId": "demo-run",
+      "delta": " meters",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451004,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451004,
+      "messageId": "demo-run",
+      "delta": " (",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451025,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451025,
+      "messageId": "demo-run",
+      "delta": "984",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451025,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451025,
+      "messageId": "demo-run",
+      "delta": " feet",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451025,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451025,
+      "messageId": "demo-run",
+      "delta": ").",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451025,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451025,
+      "messageId": "demo-run",
+      "delta": " Over",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451036,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451035,
+      "messageId": "demo-run",
+      "delta": " time",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451036,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451036,
+      "messageId": "demo-run",
+      "delta": ",",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451046,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451042,
+      "messageId": "demo-run",
+      "delta": " various",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451047,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451047,
+      "messageId": "demo-run",
+      "delta": " antennas",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451053,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451053,
+      "messageId": "demo-run",
+      "delta": " and",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451053,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451053,
+      "messageId": "demo-run",
+      "delta": " broadcasting",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451062,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451062,
+      "messageId": "demo-run",
+      "delta": " equipment",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451062,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451062,
+      "messageId": "demo-run",
+      "delta": " have",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451078,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451078,
+      "messageId": "demo-run",
+      "delta": " been",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451080,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451080,
+      "messageId": "demo-run",
+      "delta": " added",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451082,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451082,
+      "messageId": "demo-run",
+      "delta": " to",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451082,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451082,
+      "messageId": "demo-run",
+      "delta": " its",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451094,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451094,
+      "messageId": "demo-run",
+      "delta": " top",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451094,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451094,
+      "messageId": "demo-run",
+      "delta": ",",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451104,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451104,
+      "messageId": "demo-run",
+      "delta": " which",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451104,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451104,
+      "messageId": "demo-run",
+      "delta": " have",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451178,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451178,
+      "messageId": "demo-run",
+      "delta": " increased",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451178,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451178,
+      "messageId": "demo-run",
+      "delta": " its",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451191,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451191,
+      "messageId": "demo-run",
+      "delta": " height",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451191,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451191,
+      "messageId": "demo-run",
+      "delta": ".",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451191,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451191,
+      "messageId": "demo-run",
+      "delta": " With",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451191,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451191,
+      "messageId": "demo-run",
+      "delta": " these",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451191,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451191,
+      "messageId": "demo-run",
+      "delta": " additions",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451201,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451201,
+      "messageId": "demo-run",
+      "delta": ",",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451201,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451201,
+      "messageId": "demo-run",
+      "delta": " its",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451201,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451201,
+      "messageId": "demo-run",
+      "delta": " current",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451201,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451201,
+      "messageId": "demo-run",
+      "delta": " height",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451201,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451201,
+      "messageId": "demo-run",
+      "delta": " can",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451218,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451218,
+      "messageId": "demo-run",
+      "delta": " reach",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451225,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451225,
+      "messageId": "demo-run",
+      "delta": " approximately",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451225,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451225,
+      "messageId": "demo-run",
+      "delta": " ",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451225,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451225,
+      "messageId": "demo-run",
+      "delta": "330",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451225,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451225,
+      "messageId": "demo-run",
+      "delta": " meters",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451225,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451225,
+      "messageId": "demo-run",
+      "delta": " (",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451225,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451225,
+      "messageId": "demo-run",
+      "delta": "1",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451225,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451225,
+      "messageId": "demo-run",
+      "delta": ",",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451225,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451225,
+      "messageId": "demo-run",
+      "delta": "083",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451225,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451225,
+      "messageId": "demo-run",
+      "delta": " feet",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451225,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451225,
+      "messageId": "demo-run",
+      "delta": "),",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451225,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451225,
+      "messageId": "demo-run",
+      "delta": " although",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451233,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451233,
+      "messageId": "demo-run",
+      "delta": " the",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451233,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451233,
+      "messageId": "demo-run",
+      "delta": " exact",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451233,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451233,
+      "messageId": "demo-run",
+      "delta": " height",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451233,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451233,
+      "messageId": "demo-run",
+      "delta": " can",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451250,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451250,
+      "messageId": "demo-run",
+      "delta": " vary",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451250,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451250,
+      "messageId": "demo-run",
+      "delta": " with",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451265,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451265,
+      "messageId": "demo-run",
+      "delta": " different",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451265,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451265,
+      "messageId": "demo-run",
+      "delta": " installations",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451265,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451265,
+      "messageId": "demo-run",
+      "delta": " and",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451265,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451265,
+      "messageId": "demo-run",
+      "delta": " modifications",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451281,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451281,
+      "messageId": "demo-run",
+      "delta": ".\n\n",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451281,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451281,
+      "messageId": "demo-run",
+      "delta": "The",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451281,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451281,
+      "messageId": "demo-run",
+      "delta": " most",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451281,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451281,
+      "messageId": "demo-run",
+      "delta": " reliable",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451306,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451306,
+      "messageId": "demo-run",
+      "delta": " sources",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451306,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451306,
+      "messageId": "demo-run",
+      "delta": " for",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451315,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451315,
+      "messageId": "demo-run",
+      "delta": " confirming",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451315,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451315,
+      "messageId": "demo-run",
+      "delta": " these",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451329,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451329,
+      "messageId": "demo-run",
+      "delta": " details",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451329,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451329,
+      "messageId": "demo-run",
+      "delta": " would",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451342,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451342,
+      "messageId": "demo-run",
+      "delta": " be",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451342,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451342,
+      "messageId": "demo-run",
+      "delta": " the",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451353,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451344,
+      "messageId": "demo-run",
+      "delta": " official",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451353,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451353,
+      "messageId": "demo-run",
+      "delta": " Eiffel",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451359,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451359,
+      "messageId": "demo-run",
+      "delta": " Tower",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451359,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451359,
+      "messageId": "demo-run",
+      "delta": " website",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451368,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451368,
+      "messageId": "demo-run",
+      "delta": " and",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451368,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451368,
+      "messageId": "demo-run",
+      "delta": " recognized",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451382,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451382,
+      "messageId": "demo-run",
+      "delta": " encycl",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451382,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451382,
+      "messageId": "demo-run",
+      "delta": "oped",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451393,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451393,
+      "messageId": "demo-run",
+      "delta": "ias",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451393,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451393,
+      "messageId": "demo-run",
+      "delta": " such",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451403,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451403,
+      "messageId": "demo-run",
+      "delta": " as",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451406,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451403,
+      "messageId": "demo-run",
+      "delta": " Britannica",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451412,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451412,
+      "messageId": "demo-run",
+      "delta": ".\n\n",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451420,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451420,
+      "messageId": "demo-run",
+      "delta": "Would",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451426,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451426,
+      "messageId": "demo-run",
+      "delta": " you",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451426,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451426,
+      "messageId": "demo-run",
+      "delta": " like",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451431,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451431,
+      "messageId": "demo-run",
+      "delta": " me",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451431,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451431,
+      "messageId": "demo-run",
+      "delta": " to",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451445,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451445,
+      "messageId": "demo-run",
+      "delta": " summarize",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451445,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451445,
+      "messageId": "demo-run",
+      "delta": " this",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451456,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451456,
+      "messageId": "demo-run",
+      "delta": " information",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451456,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451456,
+      "messageId": "demo-run",
+      "delta": " based",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451468,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451468,
+      "messageId": "demo-run",
+      "delta": " on",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451468,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451468,
+      "messageId": "demo-run",
+      "delta": " general",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451476,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451476,
+      "messageId": "demo-run",
+      "delta": " knowledge",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451476,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451476,
+      "messageId": "demo-run",
+      "delta": ",",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451486,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451486,
+      "messageId": "demo-run",
+      "delta": " or",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451486,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451486,
+      "messageId": "demo-run",
+      "delta": " do",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451503,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451503,
+      "messageId": "demo-run",
+      "delta": " you",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451503,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451503,
+      "messageId": "demo-run",
+      "delta": " have",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451511,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451511,
+      "messageId": "demo-run",
+      "delta": " access",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451511,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451511,
+      "messageId": "demo-run",
+      "delta": " to",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451522,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451522,
+      "messageId": "demo-run",
+      "delta": " external",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451522,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451522,
+      "messageId": "demo-run",
+      "delta": " sources",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451529,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451529,
+      "messageId": "demo-run",
+      "delta": " for",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451534,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451534,
+      "messageId": "demo-run",
+      "delta": " me",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451534,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451534,
+      "messageId": "demo-run",
+      "delta": " to",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451534,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451534,
+      "messageId": "demo-run",
+      "delta": " consult",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451556,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881451556,
+      "messageId": "demo-run",
+      "delta": "?",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451742,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_END",
+      "timestamp": 1792881451741,
+      "messageId": "demo-run",
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451742,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+      "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+     ],
+     "event": {
+      "type": "CUSTOM",
+      "timestamp": 1792881451741,
+      "name": "TOKEN_USAGE",
+      "value": {
+       "input_tokens": 5328,
+       "output_tokens": 173,
+       "total_tokens": 5501,
+       "input_token_details": {
+        "cache_read": 5248
+       },
+       "output_token_details": {
+        "reasoning": 0
+       },
+       "message_id": "resp_0ee40501d425fdc2006add332a1c3487d183a6b1eceff3444a",
+       "model": "gpt-4.1-mini",
+       "latency_ms": 2110,
+       "context_window": 1047576,
+       "context_tokens": 5328,
+       "context_percent": 0.5,
+       "ttft_ms": 1047
+      },
+      "namespace": "call_Hm9FwbJcl892WdWsQBOIJLzM"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881451745,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "CUSTOM",
+      "timestamp": 1792881451745,
+      "name": "SUBAGENT_COMPLETED",
+      "value": {
+       "task_id": "call_Hm9FwbJcl892WdWsQBOIJLzM",
+       "status": "completed",
+       "namespace": [
+        "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a",
+        "tools:e9454875-ef49-bb80-9400-3fd06706fd7c"
+       ],
+       "started_at": 1792881443639,
+       "ended_at": 1792881451745
+      },
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453406,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_START",
+      "timestamp": 1792881453406,
+      "messageId": "demo-run",
+      "role": "assistant",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453406,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453406,
+      "messageId": "demo-run",
+      "delta": "The",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453409,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453409,
+      "messageId": "demo-run",
+      "delta": " Eiffel",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453409,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453409,
+      "messageId": "demo-run",
+      "delta": " Tower",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453409,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453409,
+      "messageId": "demo-run",
+      "delta": "'s",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453409,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453409,
+      "messageId": "demo-run",
+      "delta": " original",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453409,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453409,
+      "messageId": "demo-run",
+      "delta": " official",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453409,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453409,
+      "messageId": "demo-run",
+      "delta": " height",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453409,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453409,
+      "messageId": "demo-run",
+      "delta": " when",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453409,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453409,
+      "messageId": "demo-run",
+      "delta": " completed",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453409,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453409,
+      "messageId": "demo-run",
+      "delta": " in",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453409,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453409,
+      "messageId": "demo-run",
+      "delta": " ",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453409,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453409,
+      "messageId": "demo-run",
+      "delta": "188",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453409,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453409,
+      "messageId": "demo-run",
+      "delta": "9",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453409,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453409,
+      "messageId": "demo-run",
+      "delta": " was",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453411,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453411,
+      "messageId": "demo-run",
+      "delta": " about",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453411,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453411,
+      "messageId": "demo-run",
+      "delta": " ",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453419,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453419,
+      "messageId": "demo-run",
+      "delta": "300",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453419,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453419,
+      "messageId": "demo-run",
+      "delta": " meters",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453430,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453430,
+      "messageId": "demo-run",
+      "delta": " (",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453430,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453430,
+      "messageId": "demo-run",
+      "delta": "984",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453433,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453433,
+      "messageId": "demo-run",
+      "delta": " feet",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453433,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453433,
+      "messageId": "demo-run",
+      "delta": ").",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453449,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453449,
+      "messageId": "demo-run",
+      "delta": " Over",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453449,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453449,
+      "messageId": "demo-run",
+      "delta": " time",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453460,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453460,
+      "messageId": "demo-run",
+      "delta": ",",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453460,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453460,
+      "messageId": "demo-run",
+      "delta": " the",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453471,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453471,
+      "messageId": "demo-run",
+      "delta": " addition",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453471,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453471,
+      "messageId": "demo-run",
+      "delta": " of",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453481,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453481,
+      "messageId": "demo-run",
+      "delta": " antennas",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453481,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453481,
+      "messageId": "demo-run",
+      "delta": " and",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453483,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453483,
+      "messageId": "demo-run",
+      "delta": " broadcasting",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453483,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453483,
+      "messageId": "demo-run",
+      "delta": " equipment",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453496,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453496,
+      "messageId": "demo-run",
+      "delta": " has",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453496,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453496,
+      "messageId": "demo-run",
+      "delta": " increased",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453504,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453504,
+      "messageId": "demo-run",
+      "delta": " its",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453504,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453504,
+      "messageId": "demo-run",
+      "delta": " height",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453512,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453512,
+      "messageId": "demo-run",
+      "delta": " to",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453512,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453512,
+      "messageId": "demo-run",
+      "delta": " approximately",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453512,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453512,
+      "messageId": "demo-run",
+      "delta": " ",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453527,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453527,
+      "messageId": "demo-run",
+      "delta": "330",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453527,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453527,
+      "messageId": "demo-run",
+      "delta": " meters",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453527,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453527,
+      "messageId": "demo-run",
+      "delta": " (",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453545,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453545,
+      "messageId": "demo-run",
+      "delta": "1",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453545,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453545,
+      "messageId": "demo-run",
+      "delta": ",",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453545,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453545,
+      "messageId": "demo-run",
+      "delta": "083",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453545,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453545,
+      "messageId": "demo-run",
+      "delta": " feet",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453567,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453567,
+      "messageId": "demo-run",
+      "delta": ").",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453567,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453567,
+      "messageId": "demo-run",
+      "delta": " The",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453575,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453575,
+      "messageId": "demo-run",
+      "delta": " exact",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453575,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453575,
+      "messageId": "demo-run",
+      "delta": " height",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453583,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453583,
+      "messageId": "demo-run",
+      "delta": " can",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453583,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453583,
+      "messageId": "demo-run",
+      "delta": " vary",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453594,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453594,
+      "messageId": "demo-run",
+      "delta": " depending",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453594,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453594,
+      "messageId": "demo-run",
+      "delta": " on",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453616,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453616,
+      "messageId": "demo-run",
+      "delta": " the",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453619,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453619,
+      "messageId": "demo-run",
+      "delta": " installations",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453619,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453619,
+      "messageId": "demo-run",
+      "delta": ".",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453619,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453619,
+      "messageId": "demo-run",
+      "delta": " These",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453623,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453623,
+      "messageId": "demo-run",
+      "delta": " figures",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453623,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453623,
+      "messageId": "demo-run",
+      "delta": " are",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453630,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453630,
+      "messageId": "demo-run",
+      "delta": " from",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453630,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453630,
+      "messageId": "demo-run",
+      "delta": " well",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453648,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453648,
+      "messageId": "demo-run",
+      "delta": "-established",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453648,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453648,
+      "messageId": "demo-run",
+      "delta": " and",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453656,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453656,
+      "messageId": "demo-run",
+      "delta": " reputable",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453656,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453656,
+      "messageId": "demo-run",
+      "delta": " sources",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453656,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453656,
+      "messageId": "demo-run",
+      "delta": ",",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453670,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453670,
+      "messageId": "demo-run",
+      "delta": " including",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453670,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453670,
+      "messageId": "demo-run",
+      "delta": " the",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453677,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453677,
+      "messageId": "demo-run",
+      "delta": " official",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453677,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453677,
+      "messageId": "demo-run",
+      "delta": " Eiffel",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453687,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453687,
+      "messageId": "demo-run",
+      "delta": " Tower",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453687,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453687,
+      "messageId": "demo-run",
+      "delta": " site",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453700,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453700,
+      "messageId": "demo-run",
+      "delta": " and",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453700,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453700,
+      "messageId": "demo-run",
+      "delta": " recognized",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453709,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453709,
+      "messageId": "demo-run",
+      "delta": " encycl",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453709,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453709,
+      "messageId": "demo-run",
+      "delta": "oped",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453719,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453719,
+      "messageId": "demo-run",
+      "delta": "ias",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453719,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453719,
+      "messageId": "demo-run",
+      "delta": ".",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453719,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453719,
+      "messageId": "demo-run",
+      "delta": " If",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453719,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453719,
+      "messageId": "demo-run",
+      "delta": " you",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453738,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453738,
+      "messageId": "demo-run",
+      "delta": " want",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453738,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453738,
+      "messageId": "demo-run",
+      "delta": ",",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453742,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453742,
+      "messageId": "demo-run",
+      "delta": " I",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453742,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453742,
+      "messageId": "demo-run",
+      "delta": " can",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453749,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453749,
+      "messageId": "demo-run",
+      "delta": " help",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453749,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453749,
+      "messageId": "demo-run",
+      "delta": " find",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453766,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453766,
+      "messageId": "demo-run",
+      "delta": " or",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453766,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453766,
+      "messageId": "demo-run",
+      "delta": " verify",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453776,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453776,
+      "messageId": "demo-run",
+      "delta": " the",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453776,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453776,
+      "messageId": "demo-run",
+      "delta": " latest",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453787,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453787,
+      "messageId": "demo-run",
+      "delta": " official",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453787,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453787,
+      "messageId": "demo-run",
+      "delta": " measurement",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453795,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453795,
+      "messageId": "demo-run",
+      "delta": " from",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453799,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453799,
+      "messageId": "demo-run",
+      "delta": " current",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453799,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453799,
+      "messageId": "demo-run",
+      "delta": " external",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453799,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453799,
+      "messageId": "demo-run",
+      "delta": " sources",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881453803,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_CHUNK",
+      "timestamp": 1792881453803,
+      "messageId": "demo-run",
+      "delta": ".",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881454016,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "TEXT_MESSAGE_END",
+      "timestamp": 1792881454016,
+      "messageId": "demo-run",
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881454016,
+    "name": "SUBAGENT_EVENT",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "event": {
+      "type": "CUSTOM",
+      "timestamp": 1792881454016,
+      "name": "TOKEN_USAGE",
+      "value": {
+       "input_tokens": 7249,
+       "output_tokens": 100,
+       "total_tokens": 7349,
+       "input_token_details": {
+        "cache_read": 6912
+       },
+       "output_token_details": {
+        "reasoning": 0
+       },
+       "message_id": "resp_09c2889b79095e60006add332ccab087d1bfd00165c731103d",
+       "model": "gpt-4.1-mini",
+       "latency_ms": 2280,
+       "context_window": 1047576,
+       "context_tokens": 7249,
+       "context_percent": 0.7,
+       "ttft_ms": 1655
+      },
+      "namespace": "call_L9RLmkxxFfAcxTgPa78EOigO"
+     }
+    },
+    "namespace": "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881454016,
+    "name": "SUBAGENT_COMPLETED",
+    "value": {
+     "task_id": "call_L9RLmkxxFfAcxTgPa78EOigO",
+     "status": "completed",
+     "namespace": [
+      "tools:91bb14e0-b95c-1075-ea9c-71ad2bcd338a"
+     ],
+     "started_at": 1792881441344,
+     "ended_at": 1792881454016
+    },
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_START",
+    "timestamp": 1792881455783,
+    "messageId": "demo-run",
+    "role": "assistant",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455785,
+    "messageId": "demo-run",
+    "delta": "The",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455785,
+    "messageId": "demo-run",
+    "delta": " Eiffel",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455785,
+    "messageId": "demo-run",
+    "delta": " Tower",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455785,
+    "messageId": "demo-run",
+    "delta": " is",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455785,
+    "messageId": "demo-run",
+    "delta": " originally",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455785,
+    "messageId": "demo-run",
+    "delta": " ",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455785,
+    "messageId": "demo-run",
+    "delta": "300",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455785,
+    "messageId": "demo-run",
+    "delta": " meters",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455785,
+    "messageId": "demo-run",
+    "delta": " (",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455785,
+    "messageId": "demo-run",
+    "delta": "984",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455790,
+    "messageId": "demo-run",
+    "delta": " feet",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455790,
+    "messageId": "demo-run",
+    "delta": ")",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455801,
+    "messageId": "demo-run",
+    "delta": " tall",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455801,
+    "messageId": "demo-run",
+    "delta": ",",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455801,
+    "messageId": "demo-run",
+    "delta": " but",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455801,
+    "messageId": "demo-run",
+    "delta": " with",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455811,
+    "messageId": "demo-run",
+    "delta": " added",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455817,
+    "messageId": "demo-run",
+    "delta": " antennas",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455817,
+    "messageId": "demo-run",
+    "delta": ",",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455826,
+    "messageId": "demo-run",
+    "delta": " its",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455826,
+    "messageId": "demo-run",
+    "delta": " height",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455826,
+    "messageId": "demo-run",
+    "delta": " is",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455826,
+    "messageId": "demo-run",
+    "delta": " about",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455826,
+    "messageId": "demo-run",
+    "delta": " ",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455826,
+    "messageId": "demo-run",
+    "delta": "330",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455835,
+    "messageId": "demo-run",
+    "delta": " meters",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455843,
+    "messageId": "demo-run",
+    "delta": " (",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455843,
+    "messageId": "demo-run",
+    "delta": "1",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455858,
+    "messageId": "demo-run",
+    "delta": ",",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455858,
+    "messageId": "demo-run",
+    "delta": "083",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455858,
+    "messageId": "demo-run",
+    "delta": " feet",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455858,
+    "messageId": "demo-run",
+    "delta": ").",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455874,
+    "messageId": "demo-run",
+    "delta": " This",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455874,
+    "messageId": "demo-run",
+    "delta": " information",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455895,
+    "messageId": "demo-run",
+    "delta": " is",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455898,
+    "messageId": "demo-run",
+    "delta": " verified",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455904,
+    "messageId": "demo-run",
+    "delta": " from",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455910,
+    "messageId": "demo-run",
+    "delta": " official",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455910,
+    "messageId": "demo-run",
+    "delta": " and",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455918,
+    "messageId": "demo-run",
+    "delta": " reputable",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455928,
+    "messageId": "demo-run",
+    "delta": " sources",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_CHUNK",
+    "timestamp": 1792881455959,
+    "messageId": "demo-run",
+    "delta": ".",
+    "namespace": null
+   },
+   {
+    "type": "TEXT_MESSAGE_END",
+    "timestamp": 1792881456189,
+    "messageId": "demo-run",
+    "namespace": null
+   },
+   {
+    "type": "CUSTOM",
+    "timestamp": 1792881456190,
+    "name": "TOKEN_USAGE",
+    "value": {
+     "input_tokens": 10315,
+     "output_tokens": 44,
+     "total_tokens": 10359,
+     "input_token_details": {
+      "cache_read": 10112
+     },
+     "output_token_details": {
+      "reasoning": 0
+     },
+     "message_id": "resp_037c008d6208562a006add332ec95087d182b34380feddee08",
+     "model": "gpt-4.1-mini",
+     "latency_ms": 2141,
+     "context_window": 1047576,
+     "context_tokens": 10315,
+     "context_percent": 1.0,
+     "compaction_percent": 95.0,
+     "ttft_ms": 1734
+    },
+    "namespace": null
+   }
+  ]
+ ]
+}

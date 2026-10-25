@@ -188,7 +188,7 @@ flowchart LR
 | Models are allowlisted | `settings.registry.allowed_agent_models`, not free text — a user cannot select something nonexistent or costly. |
 | Definitions are config, never code | `extra="forbid"` on every spec model; the agent folder accepts `.md/.txt/.yaml/.yml` only, ≤20 files, ≤256 KiB each, ≤1 MiB total, depth ≤3. |
 | Overrides work identically | The rows are keyed on `(user_id, agent_slug, tool_key)`, so a user agent and a platform one are handled the same way and two users' same-named agents cannot alias. |
-| Sub-agents can only narrow | A sub-agent's `tools:` must be a **subset of the agent's own declared tools** — `AgentSpec` refuses anything else at parse time, for platform and user agents alike, so delegating is never a route to a tool the agent was not given. At run time the sub-agent's MCP tools are picked from the parent's **already-filtered** set, so a tool the user switched off for the agent is absent for its sub-agents too. |
+| Sub-agents can only narrow | A sub-agent's `tools:` must be a **subset of the tools of the agent above it** (the agent's own declared tools for a top-level one) — `AgentSpec` refuses anything else at parse time, for platform and user agents alike, so delegating is never a route to a tool the agent was not given. At run time the sub-agent's MCP tools are picked from the parent's **already-filtered** set, so a tool the user switched off for the agent is absent for its sub-agents too. |
 | Skills are references too | `skills:` must name skills already in the user's pool. Nothing is copied: the names ride in the `/default_skills/` mount's store namespace and resolve against the pool on each read, so the mount cannot drift from what the user actually holds. It is write-denied and layered *after* the user-enabled tier, so skills can be added to but never removed. See [agent-development](agent-development.md). |
 
 The agent's own definition folder is additionally mounted read-only at `/reference/`, so prompt-adjacent material (notes, checklists, examples) is readable on demand — but a run cannot rewrite its own definition, and therefore cannot edit its next system prompt.
@@ -199,11 +199,12 @@ The agent's own definition folder is additionally mounted read-only at `/referen
 
 | Spec | What the sub-agent gets |
 | --- | --- |
-| `tools:` empty or absent | **Everything the parent has in this run** — declared MCP tools (after the user's overrides), native tools and the always-on builtins. The `tools` key is left off the `SubAgent`, which is deepagents' "inherit" signal. |
+| `tools:` empty or absent | **Everything the agent above it has in this run** — declared MCP tools (after the user's overrides), native tools and the always-on builtins, **minus `ask_user`** (only the main agent may pause the run on a question). The `tools` key is left off the `SubAgent`; `build_deep_agent` fills in the inherited list. |
 | `tools:` non-empty | **Exactly those, never more.** Natives are resolved fresh; MCP refs are picked from the parent's filtered tools. A ref the parent does not have this run (switched off, or not served by the gateway) is skipped and logged as `yaml_subagent_tools_unavailable` — the list stays a restriction rather than widening to "inherit". |
 | `model:` | The sub-agent's model; absent falls back to `model.subagents[name]`, then the main model. Allowlisted like every model id. |
+| `subagents:` | Its own sub-agents (same keys, recursively), reached through its own `task` tool — at most 3 levels below the agent, unique sibling names, no name repeated below itself, and each level's `tools:` a subset of what the level above may use. See [agent-development § Nested sub-agents](agent-development.md#nested-sub-agents-a-sub-agent-with-sub-agents-of-its-own). |
 
-Approval gates are **never set per sub-agent**, so each one inherits the parent's resolved `interrupt_on` — giving a sub-agent a tool cannot route around that tool's gate.
+Approval gates are **never set per sub-agent**, so each one — at every depth — inherits the agent's resolved `interrupt_on` (re-resolved for its own tools, locked gates last) — giving a sub-agent a tool cannot route around that tool's gate.
 
 > Until plan 20 (2026-09-27) a sub-agent always received an explicit list: an empty one meant *no* tools, and MCP refs were ignored with `yaml_subagent_mcp_tools_ignored`. Existing sub-agents that declared none — `omni-yaml-v1`'s `researcher` and `writer` — now inherit their parent's tools.
 

@@ -648,7 +648,7 @@ function resolveInterrupt(
 // ------------------------------------------------------
 // Subagents
 // ------------------------------------------------------
-function toTitleCase(value?: string): string | undefined {
+export function toTitleCase(value?: string): string | undefined {
   if (!value) return undefined;
   return value
     .split(/[-_\s]+/)
@@ -821,7 +821,8 @@ function resolveCompletedSubagent(
     (remapped !== undefined ? fold.subagentIndexByKey[remapped] : undefined);
   const nsKey = namespace?.length ? fold.namespaceToKey[namespace.join(" / ")] : undefined;
   const byNamespace = nsKey !== undefined ? fold.subagentIndexByKey[nsKey] : undefined;
-  const spawned = (index: number) => Boolean((session.state.blocks[index] as SubagentBlock).spawned);
+  const spawned = (index: number) =>
+    Boolean((session.state.blocks[index] as SubagentBlock).spawned);
   if (byId !== undefined && spawned(byId)) return { index: byId };
   if (byNamespace !== undefined) {
     return byId !== undefined && byId !== byNamespace
@@ -1036,7 +1037,30 @@ function applySubagentInnerEvent(session: Session, key: string, inner: RawEvent)
     };
     const nestedIndex = fold.subagentIndexByKey[parsed.data.task_id];
     if (nestedIndex !== undefined) {
-      applyNestedTask(blockForWrite<SubagentBlock>(session, nestedIndex), fold, parsed.data.task_id);
+      applyNestedTask(
+        blockForWrite<SubagentBlock>(session, nestedIndex),
+        fold,
+        parsed.data.task_id,
+      );
+    }
+    // Mark the moment in the delegating sub-agent's own steps — once: a resume
+    // replays the step that made the call.
+    const parent = session.state.blocks[parentIndex] as SubagentBlock;
+    const marked = parent.blocks.some(
+      (nested) =>
+        nested.kind === "thinking" &&
+        nested.items.some(
+          (item) => item.kind === "delegation" && item.taskId === parsed.data.task_id,
+        ),
+    );
+    if (!marked) {
+      subEnsureThinking(session, parentIndex, subFold, eventTimestamp(inner)).items.push({
+        kind: "delegation",
+        id: nextItemId(session),
+        taskId: parsed.data.task_id,
+        type: parsed.data.subagent_type,
+        description: parsed.data.description,
+      });
     }
     return;
   }
@@ -1447,6 +1471,94 @@ export function subagentRunStatus(
   if (status !== "running" && status !== "pending") return status;
   if (live && !timeline.terminal) return "running";
   return pending ? "awaiting_approval" : "cancelled";
+}
+
+const NAMESPACE_SEPARATOR = " / ";
+
+/**
+ * The parent of each sub-agent block, by index into `blocks` (-1: the main
+ * agent's own, or a parent that is not among `blocks`). The namespace path is
+ * the primary link — a nested sub-agent's LangGraph namespace extends its
+ * parent's, so the parent is the block with the longest namespace that is a
+ * strict prefix of it (acyclic by construction). The `task` call the fold saw
+ * inside a parent (`parentTaskId`) is the fallback when a namespace is missing
+ * (a nested call not started yet), accepted only if it does not close a loop.
+ */
+export function resolveSubagentParents(blocks: SubagentBlock[]): number[] {
+  const segments = blocks.map((block) =>
+    block.namespace ? block.namespace.split(NAMESPACE_SEPARATOR) : null,
+  );
+  const indexByTask = new Map(blocks.map((block, index) => [block.taskId, index]));
+  const parents = blocks.map((_, index) => {
+    const own = segments[index];
+    let best = -1;
+    let bestLength = 0;
+    if (own) {
+      segments.forEach((candidate, other) => {
+        if (other === index || !candidate || candidate.length >= own.length) return;
+        if (candidate.length <= bestLength) return;
+        if (candidate.every((part, i) => part === own[i])) {
+          best = other;
+          bestLength = candidate.length;
+        }
+      });
+    }
+    return best;
+  });
+  blocks.forEach((block, index) => {
+    if (parents[index] !== -1 || !block.parentTaskId) return;
+    const parent = indexByTask.get(block.parentTaskId);
+    if (parent === undefined || parent === index) return;
+    // Walk up from the would-be parent; reaching this block would be a loop.
+    let cursor = parent;
+    for (let guard = 0; cursor !== -1 && guard <= blocks.length; guard += 1) {
+      if (cursor === index) return;
+      cursor = parents[cursor];
+    }
+    parents[index] = parent;
+  });
+  return parents;
+}
+
+export type SubagentTree = {
+  /** The sub-agent blocks with no parent among the timeline's blocks. */
+  roots: SubagentBlock[];
+  /** Each block's own sub-agents, in the order they appear. */
+  childrenOf: (block: SubagentBlock) => SubagentBlock[];
+  /** Whether a block sits under another block of the same timeline. */
+  isNested: (block: SubagentBlock) => boolean;
+};
+
+/**
+ * A timeline's sub-agents as a tree: what the inline cards nest and the side
+ * panel lists. Every sub-agent block is a top-level block of the timeline (a
+ * nested one's events arrive in an envelope of their own); this says which of
+ * them belong inside which.
+ */
+export function subagentTree(timeline: Pick<RunTimeline, "blocks">): SubagentTree {
+  const blocks = timeline.blocks.filter(
+    (block): block is SubagentBlock => block.kind === "subagent",
+  );
+  const parents = resolveSubagentParents(blocks);
+  const children = new Map<SubagentBlock, SubagentBlock[]>();
+  const nested = new Set<SubagentBlock>();
+  const roots: SubagentBlock[] = [];
+  blocks.forEach((block, index) => {
+    const parent = parents[index];
+    if (parent === -1) {
+      roots.push(block);
+      return;
+    }
+    nested.add(block);
+    const list = children.get(blocks[parent]) ?? [];
+    list.push(block);
+    children.set(blocks[parent], list);
+  });
+  return {
+    roots,
+    childrenOf: (block) => children.get(block) ?? [],
+    isNested: (block) => nested.has(block),
+  };
 }
 
 export const TERMINAL_TIMELINE_STATUSES = new Set(["completed", "cancelled", "failed"]);
