@@ -276,6 +276,7 @@ export default function ProfileSidebar({ normalizedActiveTab, setActiveTab }: Pr
           {/* The settings shell is dark in every theme (PremiumModalShell). */}
           <BrandLogo
             on="dark"
+            animated="gentle"
             label="mAgenticX mark"
             className="h-7 w-7 drop-shadow-[0_4px_12px_rgba(255,0,123,0.45)]"
           />

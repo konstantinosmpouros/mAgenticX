@@ -1,0 +1,139 @@
+/* The animated mAgenticX logo (shared/ui/brand-logo.tsx, `animated`): the
+   theme's cubes stacked as four layers (public/brand/logos/magenticx/layers/),
+   each a full square canvas, so at rest they are the logo exactly. The
+   cluster floats; the three small cubes break loose up and out, turn and
+   settle back, each on its own rhythm so they never move as one.
+
+   Two levels share the same paths, scaled by each layer's --x / --y / --r
+   (how far it goes) and --t (how long a round takes):
+   - .brand-logo-gentle: the app's chrome (sidebar, panels) — a small, slow
+     drift that stays inside the logo's box.
+   - .brand-logo-lively: the sign-in page — the cubes wander further, faster.
+   Static under reduced motion.
+
+   Markup: .brand-logo-animated.brand-logo-{gentle,lively} (square, sized by
+   the caller) > img.brand-logo-layer.brand-logo-{base,cube1,cube2,cube3} */
+
+.brand-logo-animated {
+  flex-shrink: 0;
+}
+
+.brand-logo-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+  will-change: translate, rotate;
+  animation: brand-logo-drift var(--t) ease-in-out var(--delay, 0s) infinite;
+}
+
+/* Each cube turns about its own centre (measured on the layers; the same in
+   every theme). Smaller cubes go further and faster, like the lighter pieces
+   they are; the negative delays start them out of step. */
+.brand-logo-cube1 {
+  transform-origin: 79% 16%;
+}
+.brand-logo-cube2 {
+  transform-origin: 84% 38%;
+  --delay: -1.6s;
+}
+.brand-logo-cube3 {
+  transform-origin: 89% 57%;
+  --delay: -3.1s;
+}
+
+.brand-logo-gentle .brand-logo-base {
+  --x: 0%;
+  --y: -1.2%;
+  --r: 0deg;
+  --t: 10s;
+}
+.brand-logo-gentle .brand-logo-cube1 {
+  --x: 1.4%;
+  --y: -2.4%;
+  --r: 4deg;
+  --t: 9s;
+}
+.brand-logo-gentle .brand-logo-cube2 {
+  --x: 2%;
+  --y: -1.3%;
+  --r: -5deg;
+  --t: 8s;
+}
+.brand-logo-gentle .brand-logo-cube3 {
+  --x: 2.4%;
+  --y: 0.8%;
+  --r: 7deg;
+  --t: 7s;
+}
+
+/* The sign-in page: a longer, rounder path (out, along, half back, home). */
+.brand-logo-lively .brand-logo-layer {
+  animation-name: brand-logo-wander;
+}
+.brand-logo-lively .brand-logo-base {
+  --x: 0%;
+  --y: -4%;
+  --r: -2deg;
+  --t: 7s;
+}
+.brand-logo-lively .brand-logo-cube1 {
+  --x: 5%;
+  --y: -8%;
+  --r: 14deg;
+  --t: 6s;
+}
+.brand-logo-lively .brand-logo-cube2 {
+  --x: 7.5%;
+  --y: -4%;
+  --r: -18deg;
+  --t: 5.2s;
+}
+.brand-logo-lively .brand-logo-cube3 {
+  --x: 8.5%;
+  --y: 2.5%;
+  --r: 24deg;
+  --t: 4.6s;
+}
+
+@keyframes brand-logo-drift {
+  0%,
+  100% {
+    translate: 0 0;
+    rotate: 0deg;
+  }
+  50% {
+    translate: var(--x) var(--y);
+    rotate: var(--r);
+  }
+}
+
+@keyframes brand-logo-wander {
+  0%,
+  100% {
+    translate: 0 0;
+    rotate: 0deg;
+  }
+  30% {
+    translate: calc(var(--x) * 0.7) var(--y);
+    rotate: calc(var(--r) * 0.6);
+  }
+  55% {
+    translate: var(--x) calc(var(--y) * 0.6);
+    rotate: var(--r);
+  }
+  80% {
+    translate: calc(var(--x) * 0.35) calc(var(--y) * 0.4);
+    rotate: calc(var(--r) * 0.3);
+  }
+}
+
+/* Reduced motion: the logo holds still, exactly as drawn. */
+@media (prefers-reduced-motion: reduce) {
+  .brand-logo-layer {
+    animation: none;
+  }
+}

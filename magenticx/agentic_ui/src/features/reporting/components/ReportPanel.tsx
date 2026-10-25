@@ -234,11 +234,12 @@ export default function ReportConversationDialog({
             </Button>
           </div>
 
-          {/* The card is dark in every theme. */}
+          {/* The card is dark in every theme. Mirrored: at the right edge the cubes break inward, toward the buttons, not off the card. */}
           <BrandLogo
             on="dark"
+            animated="gentle"
             label="mAgenticX logo"
-            className="h-9 w-9 opacity-95 md:h-10 md:w-10"
+            className="h-9 w-9 -scale-x-100 opacity-95 md:h-10 md:w-10"
           />
         </div>
       </Card>

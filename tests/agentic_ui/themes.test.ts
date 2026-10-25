@@ -3,12 +3,14 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  BRAND_LOGO_LAYERS,
   BRAND_LOGOS,
   DEFAULT_LOGOS,
   THEME_ATTRIBUTE_VALUES,
   THEME_IDS,
   THEMES,
   brandLogoFor,
+  brandLogoLayersFor,
   logoFor,
   markFor,
   orbFor,
@@ -85,26 +87,44 @@ describe("theme registry", () => {
   });
 
   it("gives every theme a logo and an orb", () => {
-    expect(logoFor("midnight")).toBe(DEFAULT_LOGOS.dark);
-    expect(logoFor("citrus")).toBe(DEFAULT_LOGOS.light);
-    expect(orbFor("daylight")).toBe("/orbital-hub-transparent.webp");
-    expect(orbFor("dark")).toBe("/orbital-hub-midnight.webp");
-    for (const theme of THEMES) expect(orbFor(theme.id)).toMatch(/^\/orbital-hub-[a-z]+\.webp$/);
+    // Each theme draws the mAgenticX cubes in its own colours.
+    for (const theme of THEMES) {
+      expect(logoFor(theme.id)).toBe(`/brand/logos/magenticx/${theme.id}-mark.webp`);
+    }
+    expect(logoFor("dark")).toBe(logoFor("midnight"));
+    expect(DEFAULT_LOGOS.dark).toBe("/brand/logos/magenticx/midnight-mark.webp");
+    expect(orbFor("daylight")).toBe("/brand/logos/orb/daylight-orb.webp");
+    expect(orbFor("dark")).toBe("/brand/logos/orb/midnight-orb.webp");
+    for (const theme of THEMES) {
+      expect(orbFor(theme.id)).toBe(`/brand/logos/orb/${theme.id}-orb.webp`);
+      expect(() => readFileSync(path.join(UI, "public", orbFor(theme.id)))).not.toThrow();
+    }
   });
 
-  it("draws the mAgenticX logo from the one registry, in the ink for its background", () => {
-    // The theme's mode by default; `on` names a surface that keeps its own colour.
-    expect(brandLogoFor("mark", "sage")).toBe(BRAND_LOGOS.mark.light);
-    expect(brandLogoFor("mark", "midnight")).toBe(BRAND_LOGOS.mark.dark);
-    expect(brandLogoFor("mark", "daylight", "dark")).toBe(BRAND_LOGOS.mark.dark);
-    expect(brandLogoFor("full", "midnight", "light")).toBe(BRAND_LOGOS.full.light);
+  it("draws the mAgenticX logo from the one registry, the theme's own on any background", () => {
+    // The glass reads on light and dark alike, so `on` never swaps a theme's own logo.
+    expect(brandLogoFor("mark", "sage")).toBe(logoFor("sage"));
+    expect(brandLogoFor("mark", "daylight", "dark")).toBe(logoFor("daylight"));
+    expect(brandLogoFor("full", "midnight", "light")).toBe(logoFor("midnight"));
     // The sidebar's logo and the slot's mark are the same artwork.
     for (const theme of THEMES) expect(brandLogoFor("mark", theme.id)).toBe(logoFor(theme.id));
-    // Every path it names ships in public/.
-    for (const inks of Object.values(BRAND_LOGOS)) {
-      for (const file of Object.values(inks)) {
-        expect(() => readFileSync(path.join(UI, "public", file))).not.toThrow();
-      }
+    // Every path it names — the themes' own and the fallbacks — ships in public/.
+    const files = [
+      ...THEMES.map((theme) => theme.logo!),
+      ...Object.values(BRAND_LOGOS).flatMap((inks) => Object.values(inks)),
+    ];
+    for (const file of files) {
+      expect(() => readFileSync(path.join(UI, "public", file))).not.toThrow();
+    }
+  });
+
+  it("splits every theme's logo into the layers the animated logo moves, shipped in public/", () => {
+    expect(BRAND_LOGO_LAYERS).toEqual(["base", "cube1", "cube2", "cube3"]);
+    expect(brandLogoLayersFor("dark")).toEqual(brandLogoLayersFor("midnight"));
+    for (const theme of THEMES) {
+      const layers = brandLogoLayersFor(theme.id)!;
+      expect(layers).toEqual(BRAND_LOGO_LAYERS.map((part) => `/brand/logos/magenticx/layers/${theme.id}-${part}.webp`));
+      for (const file of layers) expect(() => readFileSync(path.join(UI, "public", file))).not.toThrow();
     }
   });
 

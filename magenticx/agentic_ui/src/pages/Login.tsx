@@ -322,7 +322,7 @@ export default function Login({ decorative = false }: LoginProps = {}) {
             <motion.div variants={itemVariants} className="login-logo">
               <span aria-hidden="true" className="login-logo-glow" />
               {/* Decorative: the product name is right below it. */}
-              <BrandLogo on="dark" className="h-14 w-auto max-w-[9rem] lg:h-20 lg:max-w-[12rem]" />
+              <BrandLogo on="dark" animated="lively" className="h-14 w-14 lg:h-20 lg:w-20" />
             </motion.div>
             <motion.p
               variants={itemVariants}

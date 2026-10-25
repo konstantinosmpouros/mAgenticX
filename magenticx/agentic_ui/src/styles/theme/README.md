@@ -62,8 +62,8 @@ Each theme file says which swatch it uses and why. The orb's halo uses
 All three are optional fields of the theme's `THEMES` entry; without them a
 theme gets the default (`DEFAULT_LOGOS[mode]`, `DEFAULT_ORB` (the Daylight
 orb), `DEFAULT_MARK` (the Daylight mark)).
-Every theme has its own orb today (`public/orbital-hub-<id>.webp`, Daylight's
-is `orbital-hub-transparent.webp`) and its own mark
+Every theme has its own orb today (`public/brand/logos/orb/<id>-orb.webp`;
+full-size sources in `brand-sources/orb/`) and its own mark
 (`public/brand/logos/soft-node/<id>-mark.webp`); the logo is still the shared
 one per mode.
 

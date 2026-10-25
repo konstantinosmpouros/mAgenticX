@@ -194,7 +194,7 @@ export default function SharedConversationPage() {
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04]">
               {/* The header is the theme's background: the logo takes its ink. */}
-              <BrandLogo label="mAgenticX" className="h-6 w-6" />
+              <BrandLogo label="mAgenticX" animated="gentle" className="h-6 w-6" />
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">

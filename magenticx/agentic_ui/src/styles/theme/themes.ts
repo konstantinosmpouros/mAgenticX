@@ -24,8 +24,9 @@ export type ThemeDefinition = {
   /** Colors for the theme's card in Settings → General: background, surface, accent. */
   preview: { background: string; surface: string; accent: string };
   /**
-   * The sidebar logo drawn for this theme (a path under `public/`). Optional:
-   * without one the theme gets the default logo for its mode (DEFAULT_LOGOS).
+   * The mAgenticX logo (the liquid-glass cubes) in this theme's colours — a
+   * square WebP under `public/brand/logos/magenticx/`. Optional: without one
+   * the theme gets the default logo for its mode (DEFAULT_LOGOS).
    */
   logo?: string;
   /**
@@ -48,31 +49,36 @@ export type ThemeDefinition = {
  * settings rail, the shared-conversation header, the theme cards) draws it
  * through `BrandLogo` (src/shared/ui/brand-logo.tsx), which reads it here.
  *
- * - `mark`: the symbol on its own (square-ish; the sidebar, small badges).
- * - `full`: the symbol with the "mAgenticX" wordmark (headers, the sign-in page).
+ * The logo is the liquid-glass cubes, drawn once per theme in its colours
+ * (`public/brand/logos/magenticx/<theme>-mark.webp`, 512px; full-size sources
+ * in `brand-sources/magenticx/`). Each theme names its own as `logo`; the
+ * entries below are the fallbacks for a theme without one. The glass glows on
+ * light and dark backgrounds alike, so one artwork serves both inks.
  *
- * Each comes in two inks: `light` is drawn for light backgrounds, `dark` for
- * dark ones. The new logo goes in `public/brand/logos/magenticx/`:
+ * - `mark`: the symbol on its own (every place today).
+ * - `full`: the symbol with a "mAgenticX" wordmark — there is no wordmark
+ *   artwork yet, so it is the mark (the sign-in page sets the name as text).
  *
- *   mark-on-light.svg  mark-on-dark.svg  full-on-light.svg  full-on-dark.svg
- *
- * (SVG preferred; otherwise transparent WebP/PNG at 2x: the mark 512x512, the
- * full logo about 1200x320.) Point the paths below at them; nothing else
- * changes. Until then both variants are the current "MAX" logo, which has no
- * wordmark of its own. The favicon is separate: index.html → /magenticx-favicon.svg.
+ * The favicon is made from the Daylight cubes (index.html → favicon-64.png).
  */
 export type BrandLogoVariant = "mark" | "full";
 
 export const BRAND_LOGOS: Record<BrandLogoVariant, Record<ThemeMode, string>> = {
-  mark: { light: "/logo2.png", dark: "/logo2_white_magentaX.png" },
-  full: { light: "/logo2.png", dark: "/logo2_white_magentaX.png" },
+  mark: {
+    light: "/brand/logos/magenticx/daylight-mark.webp",
+    dark: "/brand/logos/magenticx/midnight-mark.webp",
+  },
+  full: {
+    light: "/brand/logos/magenticx/daylight-mark.webp",
+    dark: "/brand/logos/magenticx/midnight-mark.webp",
+  },
 };
 
 /** The logo a theme without its own `logo` gets: the mark, in the ink for its mode. */
 export const DEFAULT_LOGOS: Record<ThemeMode, string> = BRAND_LOGOS.mark;
 
 /** The orb a theme without its own `orb` gets (the Daylight artwork). */
-export const DEFAULT_ORB = "/orbital-hub-transparent.webp";
+export const DEFAULT_ORB = "/brand/logos/orb/daylight-orb.webp";
 
 /** The brand mark a theme without its own `mark` gets (the Daylight artwork). */
 export const DEFAULT_MARK = "/brand/logos/soft-node/daylight-mark.webp";
@@ -84,7 +90,8 @@ export const THEMES: readonly ThemeDefinition[] = [
     description: "Clear. Modern. Open.",
     mode: "light",
     preview: { background: "#f1f8fd", surface: "#dcebf7", accent: "#0277cd" },
-    orb: "/orbital-hub-transparent.webp",
+    orb: "/brand/logos/orb/daylight-orb.webp",
+    logo: "/brand/logos/magenticx/daylight-mark.webp",
     mark: "/brand/logos/soft-node/daylight-mark.webp",
   },
   {
@@ -93,7 +100,8 @@ export const THEMES: readonly ThemeDefinition[] = [
     description: "Sophisticated. Secure. Powerful.",
     mode: "dark",
     preview: { background: "#081028", surface: "#111a36", accent: "#a576fa" },
-    orb: "/orbital-hub-midnight.webp",
+    orb: "/brand/logos/orb/midnight-orb.webp",
+    logo: "/brand/logos/magenticx/midnight-mark.webp",
     mark: "/brand/logos/soft-node/midnight-mark.webp",
   },
   {
@@ -102,7 +110,8 @@ export const THEMES: readonly ThemeDefinition[] = [
     description: "Bold. Dynamic. Inspiring.",
     mode: "light",
     preview: { background: "#f0f6fd", surface: "#dde9f8", accent: "#8a45f6" },
-    orb: "/orbital-hub-aurora.webp",
+    orb: "/brand/logos/orb/aurora-orb.webp",
+    logo: "/brand/logos/magenticx/aurora-mark.webp",
     mark: "/brand/logos/soft-node/aurora-mark.webp",
   },
   {
@@ -111,7 +120,8 @@ export const THEMES: readonly ThemeDefinition[] = [
     description: "Warm. Creative. Optimistic.",
     mode: "light",
     preview: { background: "#faf7f8", surface: "#f1e6ea", accent: "#dd0374" },
-    orb: "/orbital-hub-sunset.webp",
+    orb: "/brand/logos/orb/sunset-orb.webp",
+    logo: "/brand/logos/magenticx/sunset-mark.webp",
     mark: "/brand/logos/soft-node/sunset-mark.webp",
   },
   {
@@ -120,7 +130,8 @@ export const THEMES: readonly ThemeDefinition[] = [
     description: "Balanced. Natural. Sustainable.",
     mode: "light",
     preview: { background: "#f1f9f9", surface: "#dcefef", accent: "#024d58" },
-    orb: "/orbital-hub-sage.webp",
+    orb: "/brand/logos/orb/sage-orb.webp",
+    logo: "/brand/logos/magenticx/sage-mark.webp",
     mark: "/brand/logos/soft-node/sage-mark.webp",
   },
   {
@@ -129,7 +140,8 @@ export const THEMES: readonly ThemeDefinition[] = [
     description: "Vibrant. Creative. Positive.",
     mode: "light",
     preview: { background: "#f9f8f7", surface: "#efebe6", accent: "#c74b05" },
-    orb: "/orbital-hub-citrus.webp",
+    orb: "/brand/logos/orb/citrus-orb.webp",
+    logo: "/brand/logos/magenticx/citrus-mark.webp",
     mark: "/brand/logos/soft-node/citrus-mark.webp",
   },
 ];
@@ -174,10 +186,25 @@ export function logoFor(name: string | undefined | null): string {
   return theme.logo ?? DEFAULT_LOGOS[theme.mode];
 }
 
+/** The parts the animated logo moves: the cluster, then the three small cubes top to bottom. */
+export const BRAND_LOGO_LAYERS = ["base", "cube1", "cube2", "cube3"] as const;
+
 /**
- * The mAgenticX logo to draw: a theme's own `logo` (it only overrides the
- * mark), else the registry's artwork for the variant, in the ink for `on` —
- * the background it sits on — or, without one, for the theme's mode.
+ * The theme's logo split into those parts (`public/brand/logos/magenticx/layers/`,
+ * each a full 512px canvas, transparent outside its part; stacked they are the
+ * logo exactly), or null when the theme has no split logo of its own.
+ */
+export function brandLogoLayersFor(name: string | undefined | null): string[] | null {
+  const theme = themeFor(name);
+  if (!theme.logo?.startsWith("/brand/logos/magenticx/")) return null;
+  return BRAND_LOGO_LAYERS.map((part) => `/brand/logos/magenticx/layers/${theme.id}-${part}.webp`);
+}
+
+/**
+ * The mAgenticX logo to draw: the theme's own `logo` (its cubes read on any
+ * background, so `on` does not override it), else the registry's artwork for
+ * the variant, in the ink for `on` — the background it sits on — or, without
+ * one, for the theme's mode.
  */
 export function brandLogoFor(
   variant: BrandLogoVariant,
@@ -185,10 +212,7 @@ export function brandLogoFor(
   on?: ThemeMode,
 ): string {
   const theme = themeFor(name);
-  if (variant === "mark" && theme.logo && (on === undefined || on === theme.mode)) {
-    return theme.logo;
-  }
-  return BRAND_LOGOS[variant][on ?? theme.mode];
+  return theme.logo ?? BRAND_LOGOS[variant][on ?? theme.mode];
 }
 
 /** The orb artwork for a theme name: its own, or the default. */
@@ -208,7 +232,10 @@ export function markFor(name: string | undefined | null): string {
  * the device's preference now. `public/theme-init.js` does the same before the
  * first paint; keep the two in step.
  */
-export function resolveStoredTheme(stored: string | null | undefined, prefersDark: boolean): string {
+export function resolveStoredTheme(
+  stored: string | null | undefined,
+  prefersDark: boolean,
+): string {
   if (stored && THEME_IDS.includes(stored)) return stored;
   if (stored && LEGACY_THEME_ALIASES[stored]) return LEGACY_THEME_ALIASES[stored];
   return prefersDark ? DEFAULT_DARK_THEME : DEFAULT_LIGHT_THEME;

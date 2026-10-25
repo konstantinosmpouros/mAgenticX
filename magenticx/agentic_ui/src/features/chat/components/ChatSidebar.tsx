@@ -851,6 +851,7 @@ export default function ChatSidebar({
               <div className="relative flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg transition bg-transparent">
                 <BrandLogo
                   label="mAgenticX logo"
+                  animated="gentle"
                   className={cn(
                     "h-full w-full transition-opacity",
                     isCollapsed && isLogoHovered ? "opacity-0" : "opacity-100",
