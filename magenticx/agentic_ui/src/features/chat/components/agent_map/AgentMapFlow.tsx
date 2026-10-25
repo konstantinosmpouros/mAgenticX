@@ -2,16 +2,21 @@ import "@xyflow/react/dist/style.css";
 import "@/styles/agent-map-flow.css";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import {
   Background,
   BackgroundVariant,
+  BaseEdge,
   Controls,
   Handle,
   Panel,
   Position,
   ReactFlow,
   ReactFlowProvider,
+  getSmoothStepPath,
   useReactFlow,
+  type EdgeProps,
+  type EdgeTypes,
   type NodeProps,
   type NodeTypes,
 } from "@xyflow/react";
@@ -30,7 +35,12 @@ import {
   answerFlowNodeIds,
   buildAgentMapFlow,
   flowFrameNodeIds,
+  plural,
+  previewText,
+  questionPreview,
+  TASK_PREVIEW_LENGTH,
   type AgentFlowAnswerNode,
+  type AgentFlowEdge,
   type AgentFlowNode,
   type AgentFlowSavedView,
   type AgentFlowRootNode,
@@ -41,8 +51,10 @@ import { STATUS_META } from "@/features/chat/components/message_parts/subagentSt
 // The agent map's flow view: the tree view's map as a top-down graph, drawn
 // with React Flow (lazy: this module, the library and its stylesheet load
 // the first time the flow view shows). Laid out by lib/agentMapFlow — the main
-// agent on top, its answers under it, their sub-agents below — and styled by
-// the theme (styles/agent-map-flow.css). Pan and zoom, no dragging or joining.
+// agent on top, its answers under it (a Q label each, on the edge), their
+// sub-agents below — and styled by the theme (styles/agent-map-flow.css).
+// Pan and zoom, no dragging or joining. Hover or keyboard focus shows a tip
+// above a node: an answer's question, a sub-agent's instructions.
 // A sub-agent opens the same detail as in the tree, by click or by Enter on
 // its focused node; an answer (or the main agent) frames its own branch (or
 // the whole map). It fits itself on open and again when a node arrives or
@@ -101,35 +113,23 @@ function RootFlowNode({ data }: NodeProps<AgentFlowRootNode>) {
   );
 }
 
+/**
+ * An answer: only its label (Q1) on the edge, no card — lit while it is live.
+ * Its question shows in the hover tip (FlowTip); the node's aria-label
+ * carries the whole question.
+ */
 function AnswerFlowNode({ data }: NodeProps<AgentFlowAnswerNode>) {
   const { answer } = data;
   return (
     <>
-      <div
-        title={answer.question || undefined}
-        className="agent-map-flow-card flex h-full w-full items-center gap-2 rounded-xl border border-border/70 bg-card px-2.5"
-      >
-        <span className="flex-shrink-0 rounded-md bg-primary/[0.1] px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-primary">
-          Q{answer.number}
-        </span>
-        <span className="min-w-0 flex-1 truncate text-[13px] text-foreground/90">
-          {answer.question || "Untitled question"}
-        </span>
-        {answer.live ? (
-          <span
-            className="relative flex h-1.5 w-1.5 flex-shrink-0 text-[hsl(var(--subagent-active))]"
-            title="Live"
-          >
-            <span className="absolute inline-flex h-full w-full rounded-full bg-current opacity-70 motion-safe:animate-ping" />
-            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-current" />
-          </span>
-        ) : null}
+      <div className="flex h-full w-full items-center justify-center">
         <span
-          className="flex flex-shrink-0 items-center gap-1 text-[11px] tabular-nums text-muted-foreground"
-          title={`${answer.subagentCount} sub-agent${answer.subagentCount === 1 ? "" : "s"}`}
+          className={cn(
+            "text-xs font-semibold leading-none tabular-nums",
+            answer.live ? "text-[hsl(var(--subagent-active))]" : "text-primary",
+          )}
         >
-          <Bot className="h-3 w-3" aria-hidden />
-          {answer.subagentCount}
+          Q{answer.number}
         </span>
       </div>
       <Handles />
@@ -150,7 +150,6 @@ function SubagentFlowNode({ data }: NodeProps<AgentFlowSubagentNode>) {
       <div
         className="subagent-card group/node h-full w-full rounded-2xl"
         data-active={active ? "true" : "false"}
-        title={node.task || undefined}
       >
         <div
           className={cn(
@@ -219,6 +218,90 @@ const NODE_TYPES: NodeTypes = {
   agentAnswer: AnswerFlowNode,
   agentSubagent: SubagentFlowNode,
 };
+
+/**
+ * A parent → child edge, between the layout's anchors (lib/agentMapFlow):
+ * straight down to a child right under its parent, else one split halfway
+ * down the gap, its corners rounded (no `offset` stub, which would leave the
+ * bends a pixel or two to round in).
+ */
+function AgentEdge({ data, style, markerEnd }: EdgeProps<AgentFlowEdge>) {
+  if (!data) return null;
+  const [path] = getSmoothStepPath({
+    sourceX: data.from.x,
+    sourceY: data.from.y,
+    sourcePosition: Position.Bottom,
+    targetX: data.to.x,
+    targetY: data.to.y,
+    targetPosition: Position.Top,
+    borderRadius: 14,
+    offset: 0,
+  });
+  return <BaseEdge path={path} style={style} markerEnd={markerEnd} interactionWidth={0} />;
+}
+
+const EDGE_TYPES: EdgeTypes = { agentEdge: AgentEdge };
+
+// ------------------------------------------------------
+// The hover tip
+// ------------------------------------------------------
+
+type FlowTipContent = { caption?: string; text: string; detail?: string };
+
+/** What a node's tip says: an answer's question, a sub-agent's instructions. */
+function tipFor(node: AgentFlowNode): FlowTipContent | null {
+  if (node.type === "agentAnswer") {
+    const { answer } = node.data;
+    return {
+      text: questionPreview(answer.question),
+      detail: plural(answer.subagentCount, "sub-agent"),
+    };
+  }
+  if (node.type === "agentSubagent" && node.data.node.task) {
+    return { caption: "Instructions", text: previewText(node.data.node.task, TASK_PREVIEW_LENGTH) };
+  }
+  return null;
+}
+
+const TIP_GAP = 8;
+const TIP_MARGIN = 8;
+
+/**
+ * A node's tip, above it — below when there is no room — drawn in a portal at
+ * the screen's size: never clipped by the canvas, readable at any zoom, and
+ * transparent to the pointer so it never gets in the way of a pan. Hidden from
+ * screen readers: the node's aria-label already says the whole text.
+ */
+function FlowTip({ anchor, content }: { anchor: DOMRect; content: FlowTipContent }) {
+  const ref = React.useRef<HTMLDivElement>(null);
+  React.useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const { width, height } = element.getBoundingClientRect();
+    const above = anchor.top - TIP_GAP - height >= TIP_MARGIN;
+    const left = Math.min(
+      Math.max(anchor.left + anchor.width / 2 - width / 2, TIP_MARGIN),
+      window.innerWidth - width - TIP_MARGIN,
+    );
+    element.style.left = `${Math.round(left)}px`;
+    element.style.top = `${Math.round(above ? anchor.top - TIP_GAP - height : anchor.bottom + TIP_GAP)}px`;
+    element.dataset.side = above ? "top" : "bottom";
+  }, [anchor, content]);
+  return createPortal(
+    <div ref={ref} className="agent-map-flow-tip" aria-hidden>
+      {content.caption ? (
+        <span className="block text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+          {content.caption}
+        </span>
+      ) : null}
+      <span className="block">{content.text}</span>
+      {content.detail ? (
+        <span className="block tabular-nums text-muted-foreground">{content.detail}</span>
+      ) : null}
+    </div>,
+    document.body,
+  );
+}
 
 const ARIA_LABELS = {
   "node.a11yDescription.default":
@@ -307,6 +390,7 @@ function FlowCanvas({
   }, [count, duration, fitView]);
 
   const activate = (node: AgentFlowNode) => {
+    setTip(null);
     onFocusChange(node.id);
     if (node.type === "agentSubagent") {
       onOpenNode(node.id);
@@ -320,11 +404,29 @@ function FlowCanvas({
     });
   };
 
+  // The tip of the node under the pointer or the keyboard focus, anchored
+  // to where that node is on screen now; a pan or zoom hides it.
+  const [tip, setTip] = React.useState<{ anchor: DOMRect; content: FlowTipContent } | null>(null);
+  const showTip = (node: AgentFlowNode, element: Element) => {
+    const content = tipFor(node);
+    setTip(content ? { anchor: element.getBoundingClientRect(), content } : null);
+  };
+  const hideTip = () => setTip(null);
+
   const nodeFromEvent = (event: React.SyntheticEvent) => {
     const target = event.target as HTMLElement;
     if (!target.classList?.contains("react-flow__node")) return null;
     const id = target.getAttribute("data-id");
     return nodes.find((node) => node.id === id) ?? null;
+  };
+
+  // A tip on keyboard focus, not on the focus a click leaves behind.
+  const focusVisible = (element: HTMLElement) => {
+    try {
+      return element.matches(":focus-visible");
+    } catch {
+      return true;
+    }
   };
 
   return (
@@ -341,16 +443,25 @@ function FlowCanvas({
         }}
         onFocus={(event) => {
           const node = nodeFromEvent(event);
-          if (node) onFocusChange(node.id);
+          if (!node) return;
+          onFocusChange(node.id);
+          if (focusVisible(event.target)) showTip(node, event.target);
+        }}
+        onBlur={(event) => {
+          if (nodeFromEvent(event)) hideTip();
         }}
       >
         {initialFit ? (
-          <ReactFlow<AgentFlowNode>
+          <ReactFlow<AgentFlowNode, AgentFlowEdge>
             className="agent-map-flow"
             nodes={nodes}
             edges={edges}
             nodeTypes={NODE_TYPES}
+            edgeTypes={EDGE_TYPES}
             onNodeClick={(_, node) => activate(node)}
+            onNodeMouseEnter={(event, node) => showTip(node, event.currentTarget)}
+            onNodeMouseLeave={hideTip}
+            onMoveStart={hideTip}
             fitView={!restore}
             fitViewOptions={initialFit}
             defaultViewport={
@@ -398,6 +509,7 @@ function FlowCanvas({
             ) : null}
           </ReactFlow>
         ) : null}
+        {tip ? <FlowTip anchor={tip.anchor} content={tip.content} /> : null}
       </div>
     </FlowContext.Provider>
   );

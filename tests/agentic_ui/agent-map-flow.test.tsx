@@ -19,9 +19,13 @@ import {
 import {
   FLOW_LAYOUT,
   FLOW_NODE_SIZE,
+  QUESTION_PREVIEW_LENGTH,
+  TASK_PREVIEW_LENGTH,
   buildAgentMapFlow,
   flowFrameNodeIds,
   layoutTree,
+  previewText,
+  questionPreview,
   type LayoutTree,
 } from "@/features/chat/lib/agentMapFlow";
 import { createTimeline, foldTimeline, reduceTimelineEvents } from "@/features/inference/timeline";
@@ -56,12 +60,16 @@ vi.mock("@xyflow/react", () => {
     edges,
     nodeTypes,
     onNodeClick,
+    onNodeMouseEnter,
+    onNodeMouseLeave,
     children,
   }: {
     nodes: MockNode[];
     edges: MockEdge[];
     nodeTypes: Record<string, (props: { id: string; data: unknown }) => JSX.Element>;
     onNodeClick?: (event: unknown, node: MockNode) => void;
+    onNodeMouseEnter?: (event: unknown, node: MockNode) => void;
+    onNodeMouseLeave?: (event: unknown, node: MockNode) => void;
     children?: unknown;
   }) => (
     <div data-testid="react-flow">
@@ -76,6 +84,8 @@ vi.mock("@xyflow/react", () => {
             role="group"
             aria-label={node.ariaLabel}
             onClick={(event) => onNodeClick?.(event, node)}
+            onMouseEnter={(event) => onNodeMouseEnter?.(event, node)}
+            onMouseLeave={(event) => onNodeMouseLeave?.(event, node)}
           >
             <NodeView id={node.id} data={node.data} />
           </div>
@@ -326,7 +336,7 @@ describe("the map as a flow graph", () => {
     const { edges } = buildAgentMapFlow(realisticMap(), { agentName: "Atlas" });
     const byId = new Map(edges.map((edge) => [edge.id, edge]));
     expect(edges).toHaveLength(9);
-    expect(byId.get("answer:a1->a1/r")).toMatchObject({ type: "smoothstep", animated: false });
+    expect(byId.get("answer:a1->a1/r")).toMatchObject({ type: "agentEdge", animated: false });
     expect(byId.get("answer:a1->a1/r")?.data?.tone).toBe("done");
     expect(byId.get("a1/r->a1/f")?.data?.tone).toBe("done");
     expect(byId.get("answer:a2->a2/l")?.data?.tone).toBe("failed");
@@ -349,10 +359,61 @@ describe("the map as a flow graph", () => {
     ]);
   });
 
+  it("draws each edge from the parent's bottom centre to the child's top centre", () => {
+    const { nodes, edges } = buildAgentMapFlow(realisticMap(), { agentName: "Atlas" });
+    const byId = new Map(nodes.map((node) => [node.id, node]));
+    const centre = (id: string) => byId.get(id)!.position.x + byId.get(id)!.width! / 2;
+    for (const edge of edges) {
+      const parent = byId.get(edge.source)!;
+      expect(edge.data?.from).toEqual({
+        x: centre(edge.source),
+        y: parent.position.y + parent.height!,
+      });
+      expect(edge.data?.to).toEqual({
+        x: centre(edge.target),
+        y: byId.get(edge.target)!.position.y,
+      });
+    }
+    // A lone child hangs straight under its parent, through the narrow Q
+    // label too: one vertical line, no elbows (main agent → Q2 → reviewer).
+    const single = buildAgentMapFlow(realisticMap(), {
+      agentName: "Atlas",
+      answers: realisticMap().answers.slice(1, 2),
+    });
+    const centres = new Map(
+      single.nodes.map((node) => [node.id, node.position.x + node.width! / 2]),
+    );
+    expect(new Set(centres.values()).size).toBe(1);
+    for (const edge of single.edges) expect(edge.data?.from.x).toBe(edge.data?.to.x);
+    // Under one parent the siblings share one split: the same start, the
+    // same row.
+    const split = edges.filter((edge) => edge.source === "answer:a3");
+    expect(split).toHaveLength(2);
+    expect(split[0].data?.from).toEqual(split[1].data?.from);
+    expect(split[0].data?.to.y).toBe(split[1].data?.to.y);
+  });
+
   it("keeps running edges lit but still under reduced motion", () => {
     const { edges } = buildAgentMapFlow(realisticMap(), { agentName: "Atlas", animate: false });
     expect(edges.some((edge) => edge.animated)).toBe(false);
     expect(edges.find((edge) => edge.id === "answer:a3->a3/p")?.data?.tone).toBe("running");
+  });
+
+  it("previews a question for its answer's tip: one line, cut with an ellipsis", () => {
+    expect(questionPreview("Check the\n  liability caps ")).toBe("Check the liability caps");
+    expect(questionPreview("")).toBe("Untitled question");
+    const long = `${"word ".repeat(40)}end`;
+    const preview = questionPreview(long);
+    expect(preview.endsWith("…")).toBe(true);
+    expect(Array.from(preview).length).toBeLessThanOrEqual(QUESTION_PREVIEW_LENGTH + 1);
+    expect(long.startsWith(preview.slice(0, -1))).toBe(true);
+    expect(previewText("x".repeat(TASK_PREVIEW_LENGTH + 5), TASK_PREVIEW_LENGTH)).toBe(
+      `${"x".repeat(TASK_PREVIEW_LENGTH)}…`,
+    );
+    // The answer's accessible name keeps the whole question.
+    const map = buildAgentMap([{ ...inputs()[0], question: long }]);
+    const { nodes } = buildAgentMapFlow(map, { agentName: "Atlas" });
+    expect(nodes.find((node) => node.id === "answer:a1")?.ariaLabel).toContain(long);
   });
 
   it("draws only the answers shown", () => {
@@ -499,9 +560,15 @@ describe("agent map panel: tree | flow", () => {
     const root = flow.querySelector<HTMLElement>(`[data-id="${AGENT_MAP_ROOT_ID}"]`)!;
     expect(root).toHaveTextContent("Atlas");
     expect(root).toHaveTextContent("1 working");
+    // An answer is only its label on the canvas, no card; the whole question
+    // is in its name (the hover tip: below).
     const answer = flow.querySelector<HTMLElement>('[data-id="answer:a2"]')!;
-    expect(answer).toHaveTextContent("Q2");
-    expect(answer).toHaveTextContent("Check the liability caps");
+    expect(answer.querySelector(".agent-map-flow-card")).toBeNull();
+    expect(answer.textContent).toBe("Q2");
+    expect(answer).toHaveAttribute(
+      "aria-label",
+      "Question 2: Check the liability caps, 1 sub-agent",
+    );
     const planner = flow.querySelector<HTMLElement>('[data-id="a3/p"]')!;
     expect(planner).toHaveTextContent("Planner");
     expect(planner).toHaveTextContent("Running");
@@ -515,6 +582,42 @@ describe("agent map panel: tree | flow", () => {
       .getAllByTestId("flow-edge")
       .filter((edge) => edge.dataset.animated === "true");
     expect(animated).toHaveLength(2);
+  });
+
+  it("shows a tip above a node on hover: the question, or the sub-agent's instructions", async () => {
+    saveAgentMapView("flow");
+    const user = userEvent.setup();
+    render(<PanelHarness map={realisticMap()} />);
+    const flow = await screen.findByTestId("react-flow");
+    const tip = () => document.body.querySelector<HTMLElement>(".agent-map-flow-tip");
+    expect(tip()).toBeNull();
+
+    await user.hover(flow.querySelector<HTMLElement>('[data-id="answer:a2"]')!);
+    // In a portal on <body>, outside the canvas, hidden from screen readers
+    // (the node's name says it all).
+    expect(flow.contains(tip())).toBe(false);
+    expect(tip()).toHaveAttribute("aria-hidden", "true");
+    expect(tip()).toHaveTextContent("Check the liability caps");
+    expect(tip()).toHaveTextContent("1 sub-agent");
+
+    await user.hover(flow.querySelector<HTMLElement>('[data-id="a1/r"]')!);
+    expect(tip()).toHaveTextContent("Instructions");
+    expect(tip()).toHaveTextContent("Collect the prices");
+    expect(flow.querySelector('[data-id="a1/r"]')).toHaveAttribute(
+      "aria-label",
+      "Researcher, done: Collect the prices",
+    );
+
+    // (The modal panel leaves <body> to pointer-events: none, so no unhover.)
+    fireEvent.mouseLeave(flow.querySelector<HTMLElement>('[data-id="a1/r"]')!);
+    expect(tip()).toBeNull();
+
+    // On keyboard focus too, gone on blur.
+    const writer = flow.querySelector<HTMLElement>('[data-id="a1/w"]')!;
+    act(() => writer.focus());
+    expect(tip()).toHaveTextContent("Draft the comparison");
+    act(() => writer.blur());
+    expect(tip()).toBeNull();
   });
 
   it("opens a sub-agent's detail on click and on Enter; an answer frames its branch", async () => {

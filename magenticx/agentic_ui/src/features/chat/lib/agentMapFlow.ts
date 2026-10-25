@@ -28,10 +28,14 @@ import {
 // Layout
 // ------------------------------------------------------
 
-/** A node's box, as the flow view draws it. */
+/**
+ * A node's box, as the flow view draws it. An answer is only its label (Q1)
+ * on the edge, so its box is the label's: the edges end just above and below
+ * the letters instead of running through them.
+ */
 export const FLOW_NODE_SIZE = {
   root: { width: 264, height: 56 },
-  answer: { width: 208, height: 42 },
+  answer: { width: 40, height: 22 },
   subagent: { width: 200, height: 62 },
 } as const;
 
@@ -141,17 +145,44 @@ export type AgentFlowNode = AgentFlowRootNode | AgentFlowAnswerNode | AgentFlowS
 
 /** How an edge reads: by the sub-agent (or answer) it leads into. */
 export type AgentFlowEdgeTone = "running" | "done" | "failed" | "idle";
-/** A smooth-step edge (its `pathOptions` are the built-in smooth-step edge's). */
-export type AgentFlowEdge = Edge<{ tone: AgentFlowEdgeTone }, "smoothstep"> & {
-  pathOptions?: { borderRadius?: number; offset?: number };
+export type AgentFlowEdgeData = {
+  tone: AgentFlowEdgeTone;
+  /** The parent's bottom centre and the child's top centre, from the layout. */
+  from: { x: number; y: number };
+  to: { x: number; y: number };
 };
+/**
+ * A smooth-step edge drawn between the layout's own anchors, not React Flow's
+ * measured handles: those are read once, through any CSS scale still settling
+ * on the panel (it opens from 96.5%), so boxes of different widths came out a
+ * few pixels apart and a straight line under the narrow Q label grew elbows.
+ */
+export type AgentFlowEdge = Edge<AgentFlowEdgeData, "agentEdge">;
 
 export type AgentMapFlow = { nodes: AgentFlowNode[]; edges: AgentFlowEdge[] };
 
 /** The flow view's pan and zoom, and how many nodes it showed then. */
 export type AgentFlowSavedView = { x: number; y: number; zoom: number; count: number };
 
-const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
+export const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
+
+/** How much of a question an answer's hover tip shows. */
+export const QUESTION_PREVIEW_LENGTH = 120;
+/** How much of a sub-agent's instructions its card's hover tip shows. */
+export const TASK_PREVIEW_LENGTH = 200;
+
+/** A text's start for a hover tip: one line, an ellipsis when cut. */
+export function previewText(value: string, max: number): string {
+  const text = value.replace(/\s+/g, " ").trim();
+  // By code point, so an emoji is never cut in half.
+  const chars = Array.from(text);
+  return chars.length > max ? `${chars.slice(0, max).join("").trimEnd()}…` : text;
+}
+
+/** A question's start for the answer's tip. */
+export function questionPreview(question: string, max = QUESTION_PREVIEW_LENGTH): string {
+  return previewText(question, max) || "Untitled question";
+}
 
 function toneOf(node: AgentMapNode): AgentFlowEdgeTone {
   if (node.status === "running") return "running";
@@ -216,18 +247,32 @@ export function buildAgentMapFlow(
     },
   ];
   const edges: AgentFlowEdge[] = [];
-  const edge = (source: string, target: string, tone: AgentFlowEdgeTone): AgentFlowEdge => ({
-    id: `${source}->${target}`,
-    source,
-    target,
-    type: "smoothstep",
-    pathOptions: { borderRadius: 14 },
-    animated: animate && tone === "running",
-    focusable: false,
-    selectable: false,
-    className: `agent-map-flow-edge is-${tone}`,
-    data: { tone },
-  });
+  const edge = (source: string, target: string, tone: AgentFlowEdgeTone): AgentFlowEdge => {
+    const parent = boxes.get(source);
+    const child = boxes.get(target);
+    const from = {
+      x: (parent?.x ?? 0) + (parent?.width ?? 0) / 2,
+      y: (parent?.y ?? 0) + (parent?.height ?? 0),
+    };
+    const childX = (child?.x ?? 0) + (child?.width ?? 0) / 2;
+    return {
+      id: `${source}->${target}`,
+      source,
+      target,
+      type: "agentEdge",
+      animated: animate && tone === "running",
+      focusable: false,
+      selectable: false,
+      className: `agent-map-flow-edge is-${tone}`,
+      data: {
+        tone,
+        from,
+        // A child within a pixel of straight under its parent (rounding) is
+        // joined by a straight line, never a hairline step.
+        to: { x: Math.abs(childX - from.x) < 1 ? from.x : childX, y: child?.y ?? 0 },
+      },
+    };
+  };
 
   const visit = (list: AgentMapNode[], parent: string) => {
     for (const node of list) {
