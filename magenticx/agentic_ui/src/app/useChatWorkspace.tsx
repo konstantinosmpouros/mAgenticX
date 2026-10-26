@@ -328,7 +328,7 @@ export function useChatWorkspace({
     beginRun: beginInferenceRun,
     stopRun: stopInferenceRun,
     resumeRun: resumeInferenceRunHandler,
-    isInterruptResolved,
+    isDecisionInFlight,
     deriveBranchSelectionsForActiveRun,
     getRunForConversation,
     isConversationStreaming,
@@ -1216,8 +1216,10 @@ export function useChatWorkspace({
   );
   // Pending HITL approvals of the active run drive the input-bar takeover.
   // The timeline's own resolution state (BRIDGE_HITL_RESOLVED markers) is
-  // overlaid with the client-side resolved set so the surface swaps back the
-  // instant the bridge confirms the resume, before the next WS frame lands.
+  // overlaid with the decisions the bridge just accepted, so the surface moves
+  // on to the next approval the instant the bridge confirms — but only while
+  // that decision is in flight: one that never resolves brings its approval
+  // back (decisionsInFlight.ts), so a pending approval always has a card.
   //
   // Branch-scoped, like the transition dot: a run lives on ONE branch, so its
   // approval belongs there. Without this the takeover replaced the composer
@@ -1228,9 +1230,9 @@ export function useChatWorkspace({
     if (!run?.timeline) return [];
     if (!isBranchPathVisible(run.messagePath, activeBranchPath)) return [];
     return pendingTimelineInterrupts(run.timeline).filter(
-      (item) => !isInterruptResolved(run.id, item.id),
+      (item) => !isDecisionInFlight(run.id, item.id),
     );
-  }, [activeConversationRun, activeBranchPath, isInterruptResolved]);
+  }, [activeConversationRun, activeBranchPath, isDecisionInFlight]);
   const activeHitlInterrupt = pendingRunInterrupts[0] ?? null;
   const canShareCurrentConversation = Boolean(
     currentConversation?.id && !currentConversation.id.startsWith("shared:"),
@@ -1402,7 +1404,7 @@ export function useChatWorkspace({
     voiceSession,
     scheduledTasks,
     resumeInferenceRunHandler,
-    isInterruptResolved,
+    isDecisionInFlight,
     resolvedPreferences,
     toast,
     isSearchOpen,

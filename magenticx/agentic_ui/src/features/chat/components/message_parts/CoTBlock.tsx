@@ -134,11 +134,11 @@ const TimelineToolItem = memo(
       tool.state === "output-error" ? undefined : toolMeta(tool.name, args, tool.result, serverId);
 
     const approval = tool.approval;
-    const clientResolved = approval && hitl ? hitl.isInterruptResolved(runId, approval.id) : false;
+    const decisionSent = approval && hitl ? hitl.isDecisionInFlight(runId, approval.id) : false;
     const face: ToolApprovalFace = !approval
       ? null
       : approval.status === "pending"
-        ? clientResolved
+        ? decisionSent
           ? "decision-sent"
           : "pending"
         : approval.status;
@@ -258,7 +258,7 @@ const TimelineHitlItem = memo(
   }) => {
     const [open, setOpen] = useState(false);
     const hitl = useHitl();
-    const clientResolved = hitl ? hitl.isInterruptResolved(runId, approval.id) : false;
+    const decisionSent = hitl ? hitl.isDecisionInFlight(runId, approval.id) : false;
     const summaries = useApprovalSummaries(approval.content);
     // A batch bound to one record shows only its own action.
     const own =
@@ -268,7 +268,7 @@ const TimelineHitlItem = memo(
     const headline = approvalHeadline(own);
     const hasDetail = own.some(hasApprovalDetail);
 
-    if (approval.status === "pending" && !clientResolved) {
+    if (approval.status === "pending" && !decisionSent) {
       return null;
     }
     const rejected = approval.status === "rejected";
@@ -394,8 +394,8 @@ const TimelineAskUserItem = memo(
   }) => {
     const [open, setOpen] = useState<boolean | null>(null);
     const hitl = useHitl();
-    const clientResolved = hitl ? hitl.isInterruptResolved(runId, approval.id) : false;
-    if (approval.status === "pending" && !clientResolved) return null;
+    const decisionSent = hitl ? hitl.isDecisionInFlight(runId, approval.id) : false;
+    if (approval.status === "pending" && !decisionSent) return null;
 
     const skipped = approval.status === "rejected";
     const count = questions.length;

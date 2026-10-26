@@ -27,6 +27,7 @@ from utils.inference_runs import (
     stream_run_events,
     SNAPSHOT_SEQ_SENTINEL,
 )
+from utils.hitl_decisions import ResumeOutcome
 from utils.inference_start import start_inference_flow
 
 
@@ -237,12 +238,17 @@ async def resumeInferenceRun(
     """Send a HITL approve/reject decision to a paused inference run.
 
     Looks up the AI message, validates the requesting user owns the
-    conversation, and signals the manager's per-run resume event with the
-    payload. The manager's ``_run`` task races this event against the cancel
-    event; on resume it POSTs to the agents service ``/agents/{slug}/resume``
-    endpoint, which feeds a ``Command(resume=...)`` into the saved LangGraph
-    checkpoint. Resulting events flow through the same Redis stream + WS
-    observers as the original run.
+    conversation, and queues the decision under the interrupt it answers. The
+    manager's ``_run`` task dispatches queued decisions to the agents service
+    ``/agents/{slug}/resume`` endpoint, which feeds a ``Command(resume=...)``
+    into the saved LangGraph checkpoint. Resulting events flow through the
+    same Redis stream + WS observers as the original run.
+
+    A 200 means the decision is queued for an interrupt the run is paused on
+    (or is an identical repeat of one already received) — it is applied when
+    the run's ``BRIDGE_HITL_RESOLVED`` marker for it appears. Anything else is
+    a 409 that says why: not paused, not a pending approval, or a different
+    decision already received for it.
     """
     run = await get_active_run_for_user(db, user_id, run_id)
     if not run:
@@ -255,17 +261,24 @@ async def resumeInferenceRun(
         "interrupt_id": payload.interruptId,
         "decisions": [d.model_dump() for d in payload.decisions] if payload.decisions else None,
     }
-    accepted = await request_run_resume(run, resume_payload)
-    if not accepted:
-        raise HTTPException(
-            status_code=409,
-            detail="Run is not paused on a HITL interrupt.",
+    outcome = await request_run_resume(run, resume_payload)
+    if not outcome.accepted:
+        logger.warning(
+            "inference_run_resume_refused",
+            "Inference run resume refused",
+            run_id=run.id,
+            interrupt_id=payload.interruptId,
+            decision=payload.decision,
+            failure_reason=outcome.value,
         )
+        raise HTTPException(status_code=409, detail=outcome.detail)
 
     logger.info(
         "inference_run_resume_received",
         "Inference run resume signalled from bridge",
         run_id=run.id,
+        interrupt_id=payload.interruptId,
         decision=payload.decision,
+        repeat=outcome is not ResumeOutcome.ACCEPTED,
     )
     return build_run_out_from_message(run, user_id=user_id)

@@ -18,6 +18,7 @@ from typing import Any, AsyncIterator, Awaitable, Callable
 import redis.asyncio as aioredis
 
 from core.cache import create_redis_client
+from core.cache.client import stream_read_socket_timeout
 from core.settings import settings
 from core.logging import get_logger
 
@@ -32,11 +33,18 @@ def _stream_key(run_id: str) -> str:
 class RedisEventLog:
     """Thin wrapper over Redis Streams for inference run events.
 
-    Single shared connection pool per process; created lazily on first use.
+    Two connection pools per process, created lazily on first use: one for
+    ordinary commands (append, expire, range — redis-py's default 5 s socket
+    timeout, so a stuck server fails a publish fast instead of stalling the
+    run), and one for the blocking ``XREAD`` of the live tail, whose socket
+    timeout outlasts the block time (see
+    :func:`core.cache.client.stream_read_socket_timeout`). With the default
+    timeout every idle read died after 5 s and dropped the WebSocket.
     """
 
     def __init__(self) -> None:
         self._client: aioredis.Redis | None = None
+        self._reader: aioredis.Redis | None = None
         self._lock = asyncio.Lock()
 
     async def _get_client(self) -> aioredis.Redis:
@@ -46,6 +54,15 @@ class RedisEventLog:
             if self._client is None:
                 self._client = create_redis_client()
         return self._client
+
+    async def _get_reader(self) -> aioredis.Redis:
+        """The client for blocking stream reads only."""
+        if self._reader is not None:
+            return self._reader
+        async with self._lock:
+            if self._reader is None:
+                self._reader = create_redis_client(socket_timeout=stream_read_socket_timeout())
+        return self._reader
 
     async def append(self, run_id: str, event: dict[str, Any]) -> str:
         """Append an event to the run's stream. Returns the Redis entry ID
@@ -82,7 +99,7 @@ class RedisEventLog:
           without its terminal frame reaching this consumer (publish racing
           the subscribe, trimmed stream). Without it the loop blocks forever.
         """
-        client = await self._get_client()
+        client = await self._get_reader()
         key = _stream_key(run_id)
         cursor = since if since else "0"
         while True:
@@ -148,13 +165,14 @@ class RedisEventLog:
         await client.expire(_stream_key(run_id), settings.redis.terminal_ttl_seconds)
 
     async def close(self) -> None:
-        if self._client is not None:
+        clients, self._client, self._reader = (self._client, self._reader), None, None
+        for client in clients:
+            if client is None:
+                continue
             try:
-                await self._client.aclose()
+                await client.aclose()
             except Exception:
                 logger.warning("redis_close_failed", "Redis client close failed", exc_info=True)
-            finally:
-                self._client = None
 
 
 event_log = RedisEventLog()

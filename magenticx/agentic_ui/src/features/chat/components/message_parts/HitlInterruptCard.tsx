@@ -24,7 +24,10 @@ type HitlInterruptCardProps = {
   interrupt: HitlInterrupt;
   resolved: boolean;
   // How the interrupt was resolved, when the event log knows it. Falls back
-  // to a neutral "Decision sent" when only the client-side marker is set.
+  // to a neutral "Decision sent" while the bridge holds an accepted decision
+  // the log has not resolved yet — a temporary state (decisionsInFlight.ts):
+  // pass `resolved` from the log or from `isDecisionInFlight`, never from a
+  // marker that outlives a lost decision.
   resolution?: "approved" | "rejected" | null;
   onResolve: (decision: "approve" | "reject", reason?: string) => Promise<void>;
   className?: string;

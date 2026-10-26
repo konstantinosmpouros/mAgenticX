@@ -153,7 +153,8 @@ async def resume_agent(agent_slug: str, req: AgentResumeRequest):
 
     Two kinds of pause share it: an approval gate (approve/reject decisions)
     and an ``ask_user`` question panel (``value.answers``, or ``reject`` to
-    skip), told apart by the pending interrupt's value.
+    skip), told apart by the pending interrupt's value. One request answers
+    one pending interrupt, or several at once through ``resumes``.
     """
     context_data = req.config.get("context", {}) if isinstance(req.config, dict) else {}
     run_config = req.config.get("run_config", {}) if isinstance(req.config, dict) else {}
@@ -173,6 +174,8 @@ async def resume_agent(agent_slug: str, req: AgentResumeRequest):
         decision=req.decision,
         has_value=req.value is not None,
         has_reason=bool(req.reason),
+        interrupt_id=req.interrupt_id,
+        batched=len(req.resumes) if req.resumes else 1,
     )
 
     if not effective_thread_id:
@@ -249,9 +252,17 @@ async def resume_agent(agent_slug: str, req: AgentResumeRequest):
         # The cached checkpointer exists but no interrupt is parked on it.
         # This happens if the previous resume already drained the queue or the
         # cache was warmed without ever pausing. Treat as "not paused".
+        # Listed like a stale interrupt (with nothing pending), so the bridge
+        # can tell "the agent has nothing left to resume" from a lost run.
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="No pending interrupt found on the checkpoint.",
+            detail={
+                "message": "No pending interrupt found on the checkpoint.",
+                "stale_interrupt_ids": [
+                    str(item.interrupt_id) for item in (req.resumes or [req]) if item.interrupt_id
+                ],
+                "pending_interrupt_ids": [],
+            },
         )
 
     # The resume stream runs through a fresh normalizer: re-teach it the `task`
@@ -263,25 +274,11 @@ async def resume_agent(agent_slug: str, req: AgentResumeRequest):
     if normalizer is not None and isinstance(values, dict):
         normalizer.seed_pending_tasks(values.get("messages"))
 
-    pending_interrupt = pending_interrupts[0]
-    pending_id = getattr(pending_interrupt, "id", None)
-    # When the bridge passes the interrupt_id the user clicked, verify it
-    # matches the graph's currently-pending interrupt. A mismatch means the
-    # user clicked a stale card (e.g. the run already advanced past that
-    # interrupt) — better to 409 than silently resolve the wrong one.
-    if req.interrupt_id and pending_id and req.interrupt_id != str(pending_id):
-        agent_logger.warning(
-            "agent_resume_stale_interrupt",
-            "Resume request targets an interrupt that is no longer pending",
-            requested_interrupt_id=req.interrupt_id,
-            pending_interrupt_id=str(pending_id),
-        )
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="The targeted interrupt is no longer pending.",
-        )
-
-    resume_command = build_resume_command(req, pending_interrupt.value, pending_interrupts, agent_logger)
+    # Each decision targets the interrupt the user clicked, which must be one of
+    # the checkpoint's pending interrupts (409 for a stale card). Several
+    # pending at once — parallel sub-agents — are answered by id, together
+    # (`resumes`) or one at a time; never by position.
+    resume_command = build_resume_command(req, pending_interrupts, agent_logger)
 
     resume_run_id = context_data.get("run_id") or effective_thread_id
 

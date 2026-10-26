@@ -99,7 +99,7 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
     closeSearchPanel,
     handleSearchResultSelect,
     resumeInferenceRunHandler,
-    isInterruptResolved,
+    isDecisionInFlight,
     activeProfileTab,
     handleSetActiveProfileTab,
     handleLogout,
@@ -284,7 +284,7 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
           {/* The incognito card's breathing edge light (styles/private.css). */}
           <div aria-hidden="true" className="private-card-glow" />
           <TooltipProvider>
-            <HitlProvider value={{ resumeRun: resumeInferenceRunHandler, isInterruptResolved }}>
+            <HitlProvider value={{ resumeRun: resumeInferenceRunHandler, isDecisionInFlight }}>
               {/* Fills the card on desktop (md:h-full) and the screen on mobile;
                   the overlays mounted here stay inside the card's rounded edge. */}
               <div

@@ -67,6 +67,8 @@ class ToolErrorMiddleware(AgentMiddleware):
             "Tool call failed; returning an error result so the run continues",
             tool=name,
             exception_type=type(exc).__name__,
+            # The message itself: the type alone ("ValueError") hid what broke.
+            exception_message=str(exc)[:500],
         )
         return ToolMessage(
             tool_call_id=tool_call["id"],

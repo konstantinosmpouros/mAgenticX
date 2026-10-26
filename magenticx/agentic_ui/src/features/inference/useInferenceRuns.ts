@@ -17,8 +17,18 @@ import {
 import { toastError } from "@/shared/lib/toast";
 import { sortByUpdatedAtDesc } from "@/shared/lib/utils";
 import {
+  dropDecision,
+  isDecisionInFlight as decisionInFlightAt,
+  markDecisionSent,
+  nextDecisionDeadline,
+  pruneExpiredDecisions,
+  settleDecisionsForRun,
+  type DecisionsInFlight,
+} from "./decisionsInFlight";
+import {
   createTimeline,
   foldTimeline,
+  pendingTimelineInterrupts,
   reduceTimelineEvents,
   timelineThoughtStrings,
 } from "./timeline";
@@ -139,10 +149,10 @@ export function useInferenceRuns({
   toast,
 }: UseInferenceRunsOptions) {
   const [runsByConversation, setRunsByConversation] = useState<Record<string, InferenceRun>>({});
-  // Per-(run,thread) marker that a HITL interrupt has been resolved client-side
-  // so the Confirmation card flips to its resolved state instantly. Cleared
-  // automatically on rollback if the resume HTTP call fails.
-  const [resolvedInterrupts, setResolvedInterrupts] = useState<Set<string>>(new Set());
+  // Approvals whose decision the bridge accepted (200) but whose
+  // BRIDGE_HITL_RESOLVED marker has not arrived: shown as "Decision sent" for
+  // a bounded window, never hidden for good (see decisionsInFlight.ts).
+  const [decisionsInFlight, setDecisionsInFlight] = useState<DecisionsInFlight>(() => new Map());
   const controllersRef = useRef<Record<string, AbortController>>({});
   // Mirror of runsByConversation so incremental "events" frames fold onto the
   // latest run state synchronously — WS callbacks arrive in order and must
@@ -177,6 +187,17 @@ export function useInferenceRuns({
         runsRef.current = next;
         setRunsByConversation(next);
       }
+
+      // The event log is the truth about a sent decision: resolved there (or
+      // the run ended) → stop saying "Decision sent"; still streaming → the
+      // marker may yet come, keep waiting.
+      const progress = {
+        runId: run.id,
+        active,
+        pendingInterruptIds: pendingTimelineInterrupts(run.timeline).map((item) => item.id),
+        streamed: event.type === "events" && (event.events?.length ?? 0) > 0,
+      };
+      setDecisionsInFlight((prev) => settleDecisionsForRun(prev, progress, Date.now()));
 
       if (resolvedSummary) {
         setConversations((prev) =>
@@ -544,40 +565,59 @@ export function useInferenceRuns({
       // Keyed by interruptId — every HITL in a conversation shares the same
       // thread_id, so threadId would mark every subsequent interrupt as already
       // resolved and the modal would never re-open for the next one.
-      const key = `${runId}:${body.interruptId}`;
-      // We deliberately do NOT optimistically flip resolved here — the modal
-      // filters its cards by `isResolved`, so an optimistic flip would unmount
-      // the card mid-click and steal the spinner feedback. Mark resolved only
-      // after the bridge confirms the resume signal landed.
+      const interruptId = body.interruptId;
+      // We deliberately do NOT optimistically mark the decision sent here — the
+      // takeover filters its approvals by it, so an optimistic flip would
+      // unmount the card mid-click and steal the spinner feedback. Mark it only
+      // after the bridge accepted it, and only as "sent": it counts as applied
+      // once the run's BRIDGE_HITL_RESOLVED marker arrives.
       let run;
       try {
         run = await resumeInferenceRun(userId, runId, body);
       } catch (error) {
-        // Surface as a toast, not only as the takeover's inline error: a failed
-        // resume usually means the run already moved on (409 — the interrupt
-        // the user was looking at is stale), which drives the run terminal and
-        // unmounts the takeover, taking its inline message with it. Without
-        // this the run just stopped showing "Failed" and said nothing.
+        // The approval must stay actionable: forget any earlier "sent" state
+        // so its card shows again.
+        if (interruptId) setDecisionsInFlight((prev) => dropDecision(prev, runId, interruptId));
+        // Surface as a toast, not only as the takeover's inline error: the
+        // takeover may unmount (a stale approval usually means the run moved
+        // on), taking its inline message with it. A 409 carries the bridge's
+        // reason — not pending any more, or a different decision already
+        // received — which is what the user needs to read.
+        const conflict = (error as { status?: number } | null)?.status === 409;
         toastError(toast, "Could not send your decision", error, {
-          description:
-            "The run may have already moved past this approval. Reload the conversation to see its current state.",
+          ...(conflict
+            ? {}
+            : {
+                description:
+                  "The run may have already moved past this approval. Reload the conversation to see its current state.",
+              }),
         });
         throw error;
       }
       applyRunEvent({ type: "update", run });
-      setResolvedInterrupts((prev) => {
-        if (prev.has(key)) return prev;
-        const next = new Set(prev);
-        next.add(key);
-        return next;
-      });
+      if (interruptId) {
+        setDecisionsInFlight((prev) => markDecisionSent(prev, runId, interruptId, Date.now()));
+      }
     },
     [applyRunEvent, toast, userId],
   );
 
-  const isInterruptResolved = useCallback(
-    (runId: string, interruptId: string) => resolvedInterrupts.has(`${runId}:${interruptId}`),
-    [resolvedInterrupts],
+  // A sent decision whose window ran out shows its approval again: re-render
+  // when the earliest window closes.
+  useEffect(() => {
+    const deadline = nextDecisionDeadline(decisionsInFlight);
+    if (deadline === null) return undefined;
+    const timer = window.setTimeout(
+      () => setDecisionsInFlight((prev) => pruneExpiredDecisions(prev, Date.now())),
+      Math.max(0, deadline - Date.now()) + 50,
+    );
+    return () => window.clearTimeout(timer);
+  }, [decisionsInFlight]);
+
+  const isDecisionInFlight = useCallback(
+    (runId: string, interruptId: string) =>
+      decisionInFlightAt(decisionsInFlight, runId, interruptId, Date.now()),
+    [decisionsInFlight],
   );
 
   // Derive the branch-selections map that places the active run's
@@ -621,7 +661,7 @@ export function useInferenceRuns({
     beginRun,
     stopRun,
     resumeRun,
-    isInterruptResolved,
+    isDecisionInFlight,
     deriveBranchSelectionsForActiveRun,
     getRunForConversation: useCallback(
       (conversationId?: string | null) =>

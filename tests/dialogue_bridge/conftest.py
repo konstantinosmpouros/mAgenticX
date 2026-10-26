@@ -139,10 +139,13 @@ async def _in_process_redis():
         holder._client = _app_redis
     oidc_module._redis = _app_redis
     yield
+    # The event log's second pool, for its blocking live-tail reads.
+    run_event_log._reader = _app_redis
     for holder in _REDIS_HOLDERS:
         holder._client = None
     oidc_module._redis = None
 
+    run_event_log._reader = None
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)

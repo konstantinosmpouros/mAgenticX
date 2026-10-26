@@ -36,11 +36,14 @@ async def fake_redis():
 @pytest_asyncio.fixture
 async def event_log(fake_redis):
     log = RedisEventLog()
+    # One fake behind both pools: commands and the blocking live-tail reads.
     log._client = fake_redis
+    log._reader = fake_redis
     try:
         yield log
     finally:
         log._client = None
+        log._reader = None
 
 
 async def test_append_returns_monotonic_sequence_ids(event_log):

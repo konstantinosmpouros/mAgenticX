@@ -63,8 +63,13 @@ class AgentServiceExceptionHandler:
 
 
     @staticmethod
-    def _public_http_detail(exc: HTTPException) -> str:
+    def _public_http_detail(exc: HTTPException) -> str | dict[str, Any]:
         if isinstance(exc.detail, str) and exc.detail.strip():
+            return exc.detail
+        # A structured client error the caller acts on (a resume's stale and
+        # pending interrupt ids): kept whole. Only for 4xx with a message, so a
+        # server error can never leak structured internals.
+        if exc.status_code < 500 and isinstance(exc.detail, dict) and isinstance(exc.detail.get("message"), str):
             return exc.detail
         return "Request could not be completed. Please try again."
 

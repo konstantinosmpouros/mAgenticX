@@ -47,7 +47,31 @@ def redis_tls_kwargs() -> dict[str, Any]:
     }
 
 
-def create_redis_client() -> aioredis.Redis:
+#: Headroom over the XREAD BLOCK time before the socket read gives up.
+STREAM_READ_TIMEOUT_MARGIN_SECONDS = 5.0
+
+
+def stream_read_socket_timeout() -> float:
+    """The socket timeout of the client that blocks on ``XREAD BLOCK``.
+
+    redis-py (8.x) gives every client ``socket_timeout=5`` by default, and the
+    event log blocks for ``REDIS_STREAM_READ_BLOCK_MS`` (30 s): every idle read
+    then died with a timeout after 5 s and dropped the run's WebSocket
+    (``ws_stream_failed`` every ~5 s). The reading socket has to outlast the
+    block time, with a margin for the server's reply.
+    """
+    return settings.redis.read_block_ms / 1000 + STREAM_READ_TIMEOUT_MARGIN_SECONDS
+
+
+def create_redis_client(*, socket_timeout: float | None = None) -> aioredis.Redis:
+    """A client with the shared connection configuration.
+
+    ``socket_timeout`` is left to redis-py's default (5 s) unless given: an
+    ordinary command must fail fast rather than hang on a stuck server. Only a
+    client dedicated to blocking reads passes a longer one (see
+    :func:`stream_read_socket_timeout`); the connect timeout keeps its own
+    default either way.
+    """
     password = settings.redis.password.get_secret_value() or None
     connect_kwargs: dict[str, Any] = dict(
         password=password,
@@ -55,4 +79,6 @@ def create_redis_client() -> aioredis.Redis:
         decode_responses=True,
         **redis_tls_kwargs(),
     )
+    if socket_timeout is not None:
+        connect_kwargs["socket_timeout"] = socket_timeout
     return aioredis.from_url(settings.redis.url, **connect_kwargs)

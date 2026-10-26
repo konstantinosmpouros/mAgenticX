@@ -484,6 +484,11 @@ class InferenceSettings(BaseSettings):
     # results are cut and flagged with "truncated": true so the UI can say so.
     tool_result_max_chars: int = Field(16000, validation_alias="INFERENCE_TOOL_RESULT_MAX_CHARS")
     ws_subscribe_timeout_seconds: float = Field(10.0, validation_alias="INFERENCE_WS_SUBSCRIBE_TIMEOUT_SECONDS")
+    # Several approvals pending at once (parallel sub-agents) and answered
+    # together go to the agents service in ONE resume, keyed by interrupt id.
+    # Off: one resume per decision, in the order the run surfaced them — still
+    # lossless, only slower. Needs an agents service that accepts `resumes`.
+    batch_hitl_resume: bool = Field(True, validation_alias="INFERENCE_BATCH_HITL_RESUME")
 
 
 class PricingSettings(BaseSettings):

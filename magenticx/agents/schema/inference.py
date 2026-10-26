@@ -19,6 +19,16 @@ class ResumeActionDecision(BaseModel):
     reason: Optional[str] = None
 
 
+class ResumeItem(BaseModel):
+    """One pending interrupt's decision inside a batched resume: the same
+    fields as the single-decision shape, keyed by the interrupt it answers."""
+    interrupt_id: str = Field(min_length=1, max_length=128)
+    decision: Literal["approve", "reject"]
+    reason: Optional[str] = None
+    value: Optional[Any] = None
+    decisions: Optional[List[ResumeActionDecision]] = None
+
+
 class AgentResumeRequest(BaseModel):
     """Resume payload for a LangGraph run paused on a HITL interrupt.
 
@@ -34,9 +44,15 @@ class AgentResumeRequest(BaseModel):
 
     ``interrupt_id`` is the LangGraph interrupt's unique id from the
     ``HITL_INTERRUPT`` event the user acted on. When supplied the agents
-    service verifies it matches the checkpoint's currently-pending interrupt
-    so a stale click (e.g. the user clicked the second card while the first
-    was still in flight) can be 409'd instead of resolving the wrong one.
+    service verifies it is one of the checkpoint's pending interrupts — and
+    resumes exactly that
+    one — so a stale click can be 409'd instead of resolving the wrong one.
+
+    ``resumes`` answers several pending interrupts in one go (parallel
+    sub-agents each paused on an approval, answered together): one entry per
+    interrupt, applied as ``Command(resume={interrupt_id: value, ...})``. When
+    present it is the whole request and the top-level decision fields (the
+    bridge mirrors its first entry there) are not read.
     """
     config: Dict[str, Any]
     thread_id: str
@@ -45,6 +61,7 @@ class AgentResumeRequest(BaseModel):
     value: Optional[Any] = None
     interrupt_id: Optional[str] = None
     decisions: Optional[List[ResumeActionDecision]] = None
+    resumes: Optional[List[ResumeItem]] = Field(default=None, min_length=1, max_length=64)
 
 
 class CompactRequest(BaseModel):

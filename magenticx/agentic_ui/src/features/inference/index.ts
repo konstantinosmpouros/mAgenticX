@@ -4,5 +4,6 @@ export * from "./planTiming";
 export * from "./useInferenceRuns";
 export * from "./useRunTimeline";
 export * from "./hitl-context";
+export * from "./decisionsInFlight";
 export * from "./inferenceErrors";
 export * from "./hitl";

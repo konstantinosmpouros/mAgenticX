@@ -6,8 +6,8 @@ Three layers are exercised:
    the orchestrator level *and* wrapped inside ``SUBAGENT_EVENT``. The pause
    logic on the manager depends on this counter being accurate.
 2. ``InferenceRunManager.request_resume`` only accepts a payload when a live
-   ``_run`` task is registered for the run, and exposes that state via the
-   resume event + payload dicts so ``_do_resume`` can pick it up.
+   ``_run`` task is paused on the interrupt it answers, and queues it under
+   that interrupt (see ``test_parallel_hitl_resume.py`` for the full run).
 3. The ``POST /v1/inference/runs/{user}/{run}/resume`` route translates 404 /
    409 / 200 outcomes cleanly and forwards the request body verbatim to the
    manager.
@@ -22,6 +22,7 @@ import pytest_asyncio
 
 from core.database import ConversationTable, MessageTable, UserTable
 from router import inference as inference_router
+from utils.hitl_decisions import HitlDecisionQueue, ResumeOutcome
 from utils.inference_runs import (
     InferenceRunRuntime,
     hitl_resolved_value,
@@ -148,9 +149,12 @@ def test_a_value_without_answers_adds_nothing_to_the_marker():
 
 @pytest_asyncio.fixture
 async def parked_manager_run():
-    """Register a long-lived task on the manager so request_resume sees a 'live' run."""
+    """Register a long-lived task on the manager so request_resume sees a 'live'
+    run, paused on one interrupt (``int-1``)."""
     run_id = f"resume-test-{id(object())}"
     event = asyncio.Event()
+    runtime = InferenceRunRuntime()
+    runtime.register_interrupt({"interrupt": {"id": "int-1"}})
 
     async def _park() -> None:
         try:
@@ -161,6 +165,8 @@ async def parked_manager_run():
     task = asyncio.create_task(_park())
     inference_run_manager._tasks[run_id] = task
     inference_run_manager._resume_events[run_id] = event
+    inference_run_manager._resume_queues[run_id] = HitlDecisionQueue()
+    inference_run_manager._runtimes[run_id] = runtime
     try:
         yield run_id, event
     finally:
@@ -171,30 +177,33 @@ async def parked_manager_run():
             pass
         inference_run_manager._tasks.pop(run_id, None)
         inference_run_manager._resume_events.pop(run_id, None)
-        inference_run_manager._resume_payloads.pop(run_id, None)
+        inference_run_manager._resume_queues.pop(run_id, None)
+        inference_run_manager._runtimes.pop(run_id, None)
 
 
-async def test_request_resume_returns_false_for_unknown_run():
-    assert inference_run_manager.request_resume("does-not-exist", {"decision": "approve"}) is False
+async def test_request_resume_is_refused_for_unknown_run():
+    outcome = inference_run_manager.request_resume("does-not-exist", {"decision": "approve"})
+    assert outcome is ResumeOutcome.NOT_PAUSED
+    assert not outcome.accepted
 
 
-async def test_request_resume_stores_payload_and_flips_event(parked_manager_run):
+async def test_request_resume_queues_payload_and_flips_event(parked_manager_run):
     run_id, resume_event = parked_manager_run
     assert resume_event.is_set() is False
+    payload = {"interrupt_id": "int-1", "decision": "approve", "reason": "Looks good", "value": None}
 
-    accepted = inference_run_manager.request_resume(run_id, {
-        "decision": "approve",
-        "reason": "Looks good",
-        "value": None,
-    })
+    outcome = inference_run_manager.request_resume(run_id, payload)
 
-    assert accepted is True
+    assert outcome is ResumeOutcome.ACCEPTED
     assert resume_event.is_set()
-    assert inference_run_manager._resume_payloads[run_id] == {
-        "decision": "approve",
-        "reason": "Looks good",
-        "value": None,
-    }
+    assert inference_run_manager._resume_queues[run_id].take_ready(["int-1"]) == [("int-1", payload)]
+
+
+async def test_request_resume_refuses_an_interrupt_the_run_is_not_paused_on(parked_manager_run):
+    run_id, resume_event = parked_manager_run
+    outcome = inference_run_manager.request_resume(run_id, {"interrupt_id": "int-other", "decision": "approve"})
+    assert outcome is ResumeOutcome.UNKNOWN_INTERRUPT
+    assert not resume_event.is_set()
 
 
 # ---------------------------------------------------------------------------
@@ -241,7 +250,7 @@ async def test_resume_route_returns_404_for_unknown_run(client, seeded_user):
 
 
 async def test_resume_route_returns_409_when_not_paused(client, seeded_user, streaming_message):
-    # No task has been launched on the manager so request_resume() returns False.
+    # No task has been launched on the manager, so request_resume() refuses it.
     response = await client.post(
         f"/v1/inference/runs/{seeded_user.id}/{streaming_message['message_id']}/resume",
         json={"decision": "approve"},
@@ -255,10 +264,10 @@ async def test_resume_route_dispatches_to_manager_when_paused(
 ):
     captured: dict[str, object] = {}
 
-    def fake_request_resume(run_id: str, payload: dict) -> bool:
+    def fake_request_resume(run_id: str, payload: dict) -> ResumeOutcome:
         captured["run_id"] = run_id
         captured["payload"] = payload
-        return True
+        return ResumeOutcome.ACCEPTED
 
     monkeypatch.setattr(
         inference_router.inference_run_manager,
@@ -294,9 +303,9 @@ async def test_resume_route_forwards_per_action_decisions(
     # manager verbatim (one entry per action_request, in order).
     captured: dict[str, object] = {}
 
-    def fake_request_resume(run_id: str, payload: dict) -> bool:
+    def fake_request_resume(run_id: str, payload: dict) -> ResumeOutcome:
         captured["payload"] = payload
-        return True
+        return ResumeOutcome.ACCEPTED
 
     monkeypatch.setattr(
         inference_router.inference_run_manager,

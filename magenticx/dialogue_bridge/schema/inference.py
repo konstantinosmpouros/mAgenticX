@@ -102,9 +102,12 @@ class InferenceRunResumeIn(BaseModel):
     legacy path).
 
     ``interruptId`` is the LangGraph interrupt's unique id from the
-    ``HITL_INTERRUPT`` event the user acted on; the agents service uses it
-    to verify the request resolves the right pending interrupt when multiple
-    HITLs fire in sequence on the same conversation.
+    ``HITL_INTERRUPT`` event the user acted on. The bridge queues each decision
+    under it — several approvals pending at once (parallel sub-agents) each
+    keep their own — and answers 409 for an interrupt the run is not paused
+    on, or for a different decision on one already answered (the identical
+    decision again is accepted once). The agents service resumes exactly that
+    interrupt.
     """
     model_config = ConfigDict(populate_by_name=True)
 

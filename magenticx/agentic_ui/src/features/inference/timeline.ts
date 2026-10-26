@@ -568,7 +568,11 @@ function resolveInterrupt(
   const interrupts = session.state.interrupts;
   const targetId = interruptId ?? interrupts.find((item) => item.status === "pending")?.id ?? null;
   if (!targetId) return;
-  const status: TimelineHitlApproval["status"] = decision === "reject" ? "rejected" : "approved";
+  // "expired": the bridge's marker for an approval the agent no longer had
+  // pending — the decision was not applied, so it reads as not run (with the
+  // marker's reason), never as approved.
+  const status: TimelineHitlApproval["status"] =
+    decision === "reject" || decision === "expired" ? "rejected" : "approved";
 
   // For a batched interrupt, each bound tool resolves to ITS action's outcome
   // (decisions[actionIndex]); single-action / legacy interrupts use the overall
