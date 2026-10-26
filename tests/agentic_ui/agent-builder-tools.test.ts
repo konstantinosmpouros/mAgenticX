@@ -32,6 +32,8 @@ const draft = (over: Partial<AgentDraft> = {}): AgentDraft => ({
   skills: [],
   subagents: [],
   files: [],
+  hitl: {},
+  approvals: {},
   ...over,
 });
 

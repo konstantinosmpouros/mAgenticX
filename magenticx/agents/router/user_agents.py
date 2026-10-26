@@ -1,7 +1,8 @@
 """User-authored agent endpoints (the agent builder's backend).
 
 Thin handlers over ``harness.abstractions.user_agents``: list, read, validate,
-write, delete, import and export the agent definitions of one user.
+write, delete, import and export the agent definitions of one user, and render
+an unsaved draft as ``agent.yaml`` for the builder's YAML view.
 Internal-caller only — the bridge proxies these and owns the session/CSRF
 checks, exactly like the per-user skill endpoints.
 
@@ -25,6 +26,7 @@ from harness.abstractions.user_agents import (
     get_user_agent,
     list_user_agents,
     parse_agent_yaml,
+    render_agent_yaml,
     validate_definition,
     write_user_agent,
 )
@@ -35,6 +37,7 @@ from schema import (
     CustomAgentImportResult,
     CustomAgentValidation,
     CustomAgentWrite,
+    RenderedAgentYaml,
     UserAgentDetail,
     UserAgentSummary,
 )
@@ -154,6 +157,21 @@ async def import_custom_agent(user_id: str, payload: CustomAgentImport) -> Custo
     return CustomAgentImportResult(
         valid=spec is not None and not errors, errors=errors, issues=issues, spec=spec, files=files
     )
+
+
+@router.post(
+    "/users/{user_id}/custom-agents/render",
+    response_model=RenderedAgentYaml,
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_internal_caller)],
+)
+async def render_custom_agent(user_id: str, payload: CustomAgentWrite) -> RenderedAgentYaml:
+    """A draft as ``agent.yaml``, for the builder's YAML view — before it is saved.
+
+    Rendered as it stands, valid or not: the view shows what the builder would
+    send, and the builder's own checks say what is wrong with it. Writes nothing.
+    """
+    return RenderedAgentYaml(yaml=render_agent_yaml(payload.spec))
 
 
 @router.get(

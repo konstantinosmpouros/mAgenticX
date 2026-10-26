@@ -265,13 +265,68 @@ export const CustomAgentDetailSchema = z.record(z.unknown()).transform((raw) => 
 }));
 export type CustomAgentDetail = z.infer<typeof CustomAgentDetailSchema>;
 
+// One problem with a definition, pinned to where it is: a dotted path into the
+// spec (`subagents.0.subagents.1.name`), a file (`files[AGENT.md]`), or "" for
+// the definition as a whole. A warning never blocks a save.
+export const AgentIssueSchema = z.object({
+  path: z.string().catch(""),
+  message: z.string().catch(""),
+  severity: z.enum(["error", "warning"]).catch("error"),
+});
+export type AgentIssue = z.infer<typeof AgentIssueSchema>;
+
 // Dry-run result. `valid` defaults false so a malformed response fails closed —
 // the builder must never enable Save because validation returned nonsense.
+// `issues` is absent from an older bridge; `errors` alone still reads.
 export const CustomAgentValidationSchema = z.object({
   valid: z.boolean().catch(false),
   errors: z.array(z.string()).catch([]),
+  issues: z.array(AgentIssueSchema).catch([]),
 });
 export type CustomAgentValidation = z.infer<typeof CustomAgentValidationSchema>;
+
+// An uploaded agent.yaml, parsed and checked but never saved. `spec` is what
+// the YAML became — set whenever it parsed, valid or not, so the builder can
+// open it to fix — and `files` the prompt files to send with it.
+export const CustomAgentImportResultSchema = CustomAgentValidationSchema.extend({
+  spec: z.record(z.unknown()).nullable().catch(null),
+  files: z
+    .array(z.unknown())
+    .catch([])
+    .transform((rows) =>
+      rows.map((f) => toAgentFile((f ?? {}) as Record<string, unknown>)).filter((f) => f.path),
+    ),
+});
+export type CustomAgentImportResult = z.infer<typeof CustomAgentImportResultSchema>;
+
+// A draft rendered as agent.yaml text (the builder's YAML view).
+export const RenderedAgentYamlSchema = z.object({ yaml: z.string().catch("") });
+
+// The models a user agent may run on, in the server's order, with the one the
+// builder preselects. Replaces the UI's own copy of the allowlist.
+export const AgentModelOptionSchema = z.object({
+  id: z.string(),
+  label: z.string().catch(""),
+  default: z.boolean().catch(false),
+});
+export const AgentModelOptionListSchema = z.array(AgentModelOptionSchema).catch([]);
+export type AgentModelOption = z.infer<typeof AgentModelOptionSchema>;
+
+// The built-in tools every agent has, with how each one's approval behaves:
+// `hitlDefault` (asks before anyone chooses), `locked` (can't be changed:
+// `execute`), `gateable` (false for `ask_user`, itself a question), `mainOnly`
+// (only the top-level agent has it).
+export const BuiltinToolInfoSchema = z.object({
+  name: z.string(),
+  description: z.string().catch(""),
+  group: z.string().catch(""),
+  hitlDefault: z.boolean().catch(false),
+  locked: z.boolean().catch(false),
+  gateable: z.boolean().catch(true),
+  mainOnly: z.boolean().catch(false),
+});
+export const BuiltinToolInfoListSchema = z.array(BuiltinToolInfoSchema).catch([]);
+export type BuiltinToolInfo = z.infer<typeof BuiltinToolInfoSchema>;
 
 // ---------------------------------------------------------------------------
 // Agent long-term memory (snake_case wire → camelCase app)

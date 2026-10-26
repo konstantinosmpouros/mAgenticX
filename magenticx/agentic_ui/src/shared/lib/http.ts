@@ -43,16 +43,28 @@ export class ApiError extends Error {
   readonly status: number;
   readonly detail?: string;
   readonly retryAfterSeconds?: number;
+  /**
+   * A structured `detail` object, when the backend sent one instead of a
+   * string — e.g. an invalid agent's 422 `{message, errors, issues}`, whose
+   * issues the builder pins to fields. Its `message` is the error's message.
+   */
+  readonly detailObject?: Record<string, unknown>;
 
   constructor(
     message: string,
-    init: { status: number; detail?: string; retryAfterSeconds?: number },
+    init: {
+      status: number;
+      detail?: string;
+      retryAfterSeconds?: number;
+      detailObject?: Record<string, unknown>;
+    },
   ) {
     super(message);
     this.name = "ApiError";
     this.status = init.status;
     this.detail = init.detail;
     this.retryAfterSeconds = init.retryAfterSeconds;
+    this.detailObject = init.detailObject;
   }
 }
 
@@ -112,22 +124,27 @@ function buildInit(opts: ApiRequestOptions): RequestInit {
   };
 }
 
-// Pull the backend `detail` string out of a JSON error body, tolerating
-// non-JSON payloads (nginx HTML, empty bodies) by returning undefined.
-async function extractDetail(res: Response): Promise<string | undefined> {
+// Pull the backend `detail` out of a JSON error body: a string as is, or an
+// object with a `message` (kept whole too, for callers that read its fields).
+// Tolerates non-JSON payloads (nginx HTML, empty bodies) by returning nothing.
+async function extractDetail(
+  res: Response,
+): Promise<{ detail?: string; detailObject?: Record<string, unknown> }> {
   try {
     const data = await res.json();
-    if (
-      data &&
-      typeof data === "object" &&
-      typeof (data as { detail?: unknown }).detail === "string"
-    ) {
-      return (data as { detail: string }).detail;
+    const detail = data && typeof data === "object" ? (data as { detail?: unknown }).detail : null;
+    if (typeof detail === "string") return { detail };
+    if (detail && typeof detail === "object" && !Array.isArray(detail)) {
+      const object = detail as Record<string, unknown>;
+      return {
+        detail: typeof object.message === "string" && object.message ? object.message : undefined,
+        detailObject: object,
+      };
     }
   } catch {
     // Non-JSON or empty error body — no detail to surface.
   }
-  return undefined;
+  return {};
 }
 
 /**
@@ -172,7 +189,7 @@ export async function requestRaw(path: string, opts: ApiRequestOptions = {}): Pr
     emitUnauthorized();
   }
 
-  const detail = await extractDetail(res);
+  const { detail, detailObject } = await extractDetail(res);
 
   let retryAfterSeconds: number | undefined;
   if (opts.captureRetryAfter) {
@@ -187,7 +204,7 @@ export async function requestRaw(path: string, opts: ApiRequestOptions = {}): Pr
     opts.fallbackMessage ??
     `Request failed: ${res.status}`;
 
-  throw new ApiError(message, { status: res.status, detail, retryAfterSeconds });
+  throw new ApiError(message, { status: res.status, detail, retryAfterSeconds, detailObject });
 }
 
 /**

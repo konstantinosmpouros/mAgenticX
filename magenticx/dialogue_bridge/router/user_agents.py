@@ -6,7 +6,7 @@ handler additionally verifies the target agent is owned by that user (a 404, not
 a 403, so someone else's id is indistinguishable from a nonexistent one).
 Mutations require a CSRF token.
 
-Literal segments (``validate``, ``import``) are declared before the
+Literal segments (``validate``, ``render``, ``import``) are declared before the
 ``{agent_id}`` routes, and this router is mounted before the tools router
 (``main.py``), so a literal is never read as an agent id.
 
@@ -28,6 +28,7 @@ from schema import (
     CustomAgentImportResult,
     CustomAgentValidation,
     CustomAgentWrite,
+    RenderedAgentYaml,
 )
 from utils import validate_userId
 from utils.user_agents import (
@@ -37,6 +38,7 @@ from utils.user_agents import (
     get_custom_agent_definition,
     import_custom_agent,
     list_custom_agent_definitions,
+    render_custom_agent_yaml,
     update_custom_agent,
     validate_custom_agent_definition,
 )
@@ -82,6 +84,23 @@ async def validate_my_agent(
     set_context(user_id=user_id)
     result = await validate_custom_agent_definition(user_id, payload.model_dump(mode="json"))
     return CustomAgentValidation.model_validate(result)
+
+
+@router.post(
+    "/{user_id}/custom/render",
+    response_model=RenderedAgentYaml,
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_csrf_protection)],
+)
+async def render_my_agent(
+    user_id: str,
+    payload: CustomAgentWrite,
+    _: AuthUser = Depends(validate_userId),
+) -> RenderedAgentYaml:
+    """A draft as ``agent.yaml`` for the builder's YAML view — saved or not."""
+    set_context(user_id=user_id)
+    result = await render_custom_agent_yaml(user_id, payload.model_dump(mode="json"))
+    return RenderedAgentYaml.model_validate(result)
 
 
 @router.post(

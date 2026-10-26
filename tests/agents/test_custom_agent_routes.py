@@ -9,7 +9,9 @@ tools). The tree and prompt rules themselves are covered at the model level in
 import base64
 import importlib
 import io
+import json
 import zipfile
+from pathlib import Path
 
 import pytest
 
@@ -334,6 +336,50 @@ async def test_export_of_an_unknown_agent_is_404(client, internal_headers, build
 
 
 # ---------------------------------------------------------------------------
+# Render (the builder's YAML view of an unsaved draft)
+# ---------------------------------------------------------------------------
+async def test_render_writes_a_draft_as_yaml_in_the_seed_order_and_saves_nothing(
+    client, internal_headers, builder
+):
+    spec = _spec(
+        memory=True,
+        tools=[],
+        subagents=[_sub("researcher", model="openai:gpt-4o", subagents=[_sub("fact-checker")])],
+        hitl={"write_file": False},
+    )
+    body = {"spec": spec, "files": _files()}
+    response = await client.post(f"{BASE}/render", json=body, headers=internal_headers)
+    assert response.status_code == 200
+    text = response.json()["yaml"]
+    assert text.startswith("id: helper-v1\nslug: helper\nname: Helper\n")
+    # Empty lists are left out; nested sub-agents keep their own key order.
+    assert "tools:" not in text
+    assert "  - name: fact-checker\n    description: The fact-checker.\n" in text
+    assert text.index("subagents:") < text.index("hitl:")
+    # It reads back as the same draft.
+    again = (await client.post(f"{BASE}/import", json={"yaml": text, "files": _files(
+        {"path": "subagents/researcher.md", "content": "R."},
+        {"path": "subagents/fact-checker.md", "content": "F."},
+    )}, headers=internal_headers)).json()
+    assert again["spec"]["subagents"][0]["subagents"][0]["name"] == "fact-checker"
+    assert (await client.get(BASE, headers=internal_headers)).json() == []
+
+
+async def test_render_shows_an_invalid_draft_as_it_is(client, internal_headers, builder):
+    """The YAML view renders what the builder would send; the checks report it."""
+    spec = _spec(name="", subagents=[{"name": "", "prompt": "./subagents/x.md"}, "not-a-node"])
+    response = await client.post(f"{BASE}/render", json={"spec": spec}, headers=internal_headers)
+    assert response.status_code == 200
+    text = response.json()["yaml"]
+    assert "name: ''" in text and "- not-a-node" in text
+
+
+async def test_render_needs_an_internal_caller(client):
+    response = await client.post(f"{BASE}/render", json={"spec": _spec()})
+    assert response.status_code in (401, 403)
+
+
+# ---------------------------------------------------------------------------
 # The runtime
 # ---------------------------------------------------------------------------
 def test_a_tool_listed_twice_reaches_the_model_once(agents_service):
@@ -345,3 +391,22 @@ def test_a_tool_listed_twice_reaches_the_model_once(agents_service):
 
     first, again, other = Named("render_chart"), Named("render_chart"), Named("ls")
     assert deep_agent._unique_by_name([first, other, again]) == [first, other]
+
+
+# ---------------------------------------------------------------------------
+# The team rules, against the builder's mirror (one table for both)
+# ---------------------------------------------------------------------------
+_TREE_CASES = json.loads(
+    (Path(__file__).resolve().parents[1] / "agentic_ui" / "fixtures" / "agent-tree-cases.json").read_text(
+        encoding="utf-8"
+    )
+)["cases"]
+
+
+@pytest.mark.parametrize("case", _TREE_CASES, ids=[case["name"] for case in _TREE_CASES])
+def test_tree_rules_match_the_builders_mirror(agents_service, case):
+    """The builder checks the same table (tests/agentic_ui/agent-rules.test.ts), so
+    the two mirrors of the tree rules can't drift apart unnoticed."""
+    user_agents = importlib.import_module("harness.abstractions.user_agents")
+    issues = user_agents._tree_issues({"tools": case["tools"], "subagents": case["subagents"]})
+    assert {issue.path for issue in issues if issue.severity == "error"} == set(case["errors"])

@@ -78,6 +78,12 @@ class CustomAgentImportResult(CustomAgentValidation):
     files: List[AgentFile] = Field(default_factory=list)
 
 
+class RenderedAgentYaml(BaseModel):
+    """A draft definition as ``agent.yaml`` text — the builder's YAML view."""
+
+    yaml: str
+
+
 class UserAgentSummary(BaseModel):
     """A user-authored agent as the listing sees it (mirrors the registry manifest)."""
 

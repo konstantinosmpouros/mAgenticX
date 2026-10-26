@@ -9,7 +9,8 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { slugify } from "@/features/agents/lib/agentSpec";
+import { emptyDraft, slugify } from "@/features/agents/lib/agentSpec";
+import { checkDraft } from "@/features/agents/lib/agentRules";
 
 describe("slugify", () => {
   it("lowercases and hyphenates a plain name", () => {
@@ -44,37 +45,34 @@ describe("slugify", () => {
 });
 
 /**
- * Mirrors the builder's `slugError` ordering. Kept here as a pure rule so the
- * distinction between the two failures can be driven without mounting the form.
+ * The builder's own name rule (lib/agentRules), driven without mounting it: an
+ * empty field is a missing name, a filled one with no Latin letter is an
+ * identifier problem, and a slug you already have is taken.
  */
-const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-
-function slugError(name: string, taken: Set<string> = new Set()): string | null {
-  const slug = slugify(name);
-  if (!name.trim()) return "A name is required.";
-  if (!slug) return "identifier";
-  if (!SLUG_RE.test(slug)) return "format";
-  if (taken.has(slug)) return "taken";
-  return null;
-}
+const nameIssue = (name: string, taken: Set<string> = new Set()) =>
+  checkDraft(
+    { ...emptyDraft(), name, slug: slugify(name), prompt: "Help." },
+    { mode: "create", takenSlugs: taken },
+  ).find((issue) => issue.path === "name");
 
 describe("the two different name failures", () => {
-  it("reports an empty field as a missing name", () => {
-    expect(slugError("")).toBe("A name is required.");
-    expect(slugError("   ")).toBe("A name is required.");
+  it("reports an empty field as a missing name, shown once touched", () => {
+    expect(nameIssue("")).toMatchObject({ message: "Give the agent a name.", required: true });
+    expect(nameIssue("   ")?.required).toBe(true);
   });
 
   it("reports a filled but unslugifiable name as an identifier problem", () => {
     // The bug the user hit: this said "A name is required" over a filled field.
-    expect(slugError("Βοηθός")).toBe("identifier");
-    expect(slugError("助手")).toBe("identifier");
+    expect(nameIssue("Βοηθός")?.message).toMatch(/identifier/);
+    expect(nameIssue("助手")?.message).toMatch(/identifier/);
+    expect(nameIssue("助手")?.required).toBeFalsy();
   });
 
   it("accepts an ordinary name", () => {
-    expect(slugError("Research Bot")).toBeNull();
+    expect(nameIssue("Research Bot")).toBeUndefined();
   });
 
   it("still catches a duplicate", () => {
-    expect(slugError("Research Bot", new Set(["research-bot"]))).toBe("taken");
+    expect(nameIssue("Research Bot", new Set(["research-bot"]))?.message).toMatch(/already have/);
   });
 });

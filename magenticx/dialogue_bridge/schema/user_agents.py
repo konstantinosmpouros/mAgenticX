@@ -60,6 +60,15 @@ class CustomAgentImportResult(CustomAgentValidation):
     files: list[AgentFile] = Field(default_factory=list)
 
 
+class RenderedAgentYaml(BaseModel):
+    """A draft definition as ``agent.yaml`` text, for the builder's YAML view.
+
+    Rendered by the agents service from whatever the builder sends — saved or
+    not, valid or not — so the view works before the agent exists.
+    """
+    yaml: str
+
+
 class CustomAgentDetail(BaseModel):
     """A user-authored agent's full definition, for the edit view.
 

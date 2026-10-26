@@ -27,6 +27,7 @@ export {
   getAgents,
   getAgentTools,
   setAgentToolApproval,
+  setAgentToolApprovals,
   setAgentToolEnabled,
   getMyAgents,
   getMyAgentDetail,
@@ -35,9 +36,11 @@ export {
   updateMyAgent,
   deleteMyAgent,
   exportMyAgent,
+  importMyAgent,
+  renderMyAgentYaml,
 } from "./agents";
 
-export { getTools, getSuggestions } from "./catalog";
+export { getTools, getAgentModels, getBuiltinTools, getSuggestions } from "./catalog";
 
 export {
   searchCatalogue,

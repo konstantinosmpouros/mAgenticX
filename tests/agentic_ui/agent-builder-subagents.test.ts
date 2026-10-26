@@ -39,6 +39,8 @@ const draft = (over: Partial<AgentDraft> = {}): AgentDraft => ({
   skills: [],
   subagents: [],
   files: [],
+  hitl: {},
+  approvals: {},
   ...over,
 });
 
@@ -69,14 +71,18 @@ const detail = (
 });
 
 describe("a new sub-agent", () => {
-  it("starts out inheriting the agent's model and tools", () => {
-    expect(emptySubagent()).toEqual({
+  it("starts out inheriting the agent's model and tools, with its own uid", () => {
+    const { uid, ...rest } = emptySubagent();
+    expect(rest).toEqual({
       name: "",
       description: "",
       prompt: "",
       model: "",
       tools: [],
+      subagents: [],
     });
+    expect(uid).toMatch(/\S/);
+    expect(emptySubagent().uid).not.toBe(uid);
   });
 });
 

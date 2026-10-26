@@ -149,6 +149,7 @@ from schema.user_agents import (
     CustomAgentIssue,
     CustomAgentValidation,
     CustomAgentWrite,
+    RenderedAgentYaml,
 )
 from schema.voice import (
     DictationResponse,
@@ -205,6 +206,7 @@ __all__ = [
     "CustomAgentIssue",
     "CustomAgentValidation",
     "CustomAgentWrite",
+    "RenderedAgentYaml",
     "CustomInstructions",
     "CatalogueSearchPage",
     "CatalogueSkill",

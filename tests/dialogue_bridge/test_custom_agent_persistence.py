@@ -21,6 +21,7 @@ import json
 
 import httpx
 import pytest
+from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from core.database import AgentTable
@@ -354,6 +355,56 @@ async def test_a_list_detail_is_not_forwarded(client, agents_service, seeded_use
 
     assert response.status_code == 422
     assert response.json() == {"detail": "The agent could not be created. Please try again."}
+
+
+@pytest.mark.asyncio
+async def test_render_returns_the_draft_as_yaml_without_a_catalog_row(
+    client, agents_service, seeded_user, session_factory
+):
+    """The builder's YAML view renders an unsaved draft: the body goes upstream
+    as it is, the text comes back, and no catalog row is read or written."""
+    rendered = {"yaml": "id: research-bot-v1\nslug: research-bot\nname: Research Bot\n"}
+    agents_service.on("POST", _custom_path(seeded_user.id, "/render"), httpx.Response(200, json=rendered))
+
+    async def row_count() -> int:
+        async with session_factory() as session:
+            return (await session.execute(select(func.count()).select_from(AgentTable))).scalar_one()
+
+    before = await row_count()
+    response = await client.post(f"/v1/agents/{seeded_user.id}/custom/render", json=_WRITE_BODY)
+
+    assert response.status_code == 200
+    assert response.json() == rendered
+    sent = agents_service.called("POST", _custom_path(seeded_user.id, "/render"))[0]
+    assert json.loads(sent.content) == _WRITE_BODY
+    assert await row_count() == before
+
+
+@pytest.mark.asyncio
+async def test_render_upstream_failure_is_a_generic_502(client, agents_service, seeded_user):
+    agents_service.on(
+        "POST", _custom_path(seeded_user.id, "/render"),
+        httpx.Response(500, json={"detail": "Traceback: secret internals"}),
+    )
+
+    response = await client.post(f"/v1/agents/{seeded_user.id}/custom/render", json=_WRITE_BODY)
+
+    assert response.status_code == 502
+    assert "secret" not in response.text
+
+
+def test_render_is_session_scoped_and_csrf_protected():
+    """Mounted like validate: the path user must be the session's, and it is a POST
+    carrying a CSRF token — a literal segment declared before ``{agent_id}``."""
+    from core.auth.session import require_csrf_protection
+    from router import user_agents as routes
+    from utils import validate_userId
+
+    paths = [route.path for route in routes.router.routes]
+    assert paths.index("/{user_id}/custom/render") < paths.index("/{user_id}/custom/{agent_id}")
+    route = next(r for r in routes.router.routes if r.path == "/{user_id}/custom/render")
+    calls = {dep.call for dep in route.dependant.dependencies}
+    assert require_csrf_protection in calls and validate_userId in calls
 
 
 @pytest.mark.asyncio

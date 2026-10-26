@@ -2,7 +2,8 @@
  * The Agents section's URLs, in one place.
  *
  *   /agents                     the gallery
- *   /agents/new                 create (`?from=<agentId>` duplicates that agent)
+ *   /agents/new                 create: a start screen (the canvas, or import a YAML);
+ *                               `?from=<agentId>` duplicates that agent on the canvas
  *   /agents/:agentId            an agent's page (`?section=overview|tools|approvals`)
  *   /agents/:agentId/edit       edit (`?section=identity|…`)
  *
@@ -30,17 +31,26 @@ export const newAgentPath = (fromAgentId?: string | null) =>
     ? `${AGENTS_PATH}/new?from=${encodeURIComponent(fromAgentId)}`
     : `${AGENTS_PATH}/new`;
 
+/**
+ * How a new agent is being started (`/agents/new?via=`): on the canvas, or
+ * from an imported YAML. Absent, the page shows the start screen.
+ */
+export const START_VIAS = ["canvas", "import"] as const;
+export type StartVia = (typeof START_VIAS)[number];
+
 /** The sections of an agent's page, in tab order. */
 export const DETAIL_SECTIONS = ["overview", "tools", "approvals"] as const;
 export type DetailSection = (typeof DETAIL_SECTIONS)[number];
 
-/** The builder's sections, in nav order. */
+/**
+ * The main agent's tabs in the builder's inspector, in order. The team is the
+ * canvas itself, so it is not one of them.
+ */
 export const BUILDER_SECTIONS = [
   "identity",
   "instructions",
   "tools",
   "skills",
-  "team",
   "files",
   "approvals",
 ] as const;

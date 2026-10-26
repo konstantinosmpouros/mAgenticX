@@ -47,11 +47,22 @@ export type UserAgentsHandlers = {
   refreshMyAgents: () => Promise<void>;
   getAgentDefinition: (agentId: string) => Promise<CustomAgentDetail | null>;
   validateAgent: (payload: CustomAgentWritePayload) => Promise<CustomAgentValidation | null>;
-  createAgent: (payload: CustomAgentWritePayload) => Promise<Agent | null>;
-  updateAgent: (agentId: string, payload: CustomAgentWritePayload) => Promise<Agent | null>;
+  createAgent: (payload: CustomAgentWritePayload, options?: WriteOptions) => Promise<Agent | null>;
+  updateAgent: (
+    agentId: string,
+    payload: CustomAgentWritePayload,
+    options?: WriteOptions,
+  ) => Promise<Agent | null>;
   deleteAgent: (agentId: string) => Promise<boolean>;
   busyAgentId: string | null;
 };
+
+/**
+ * `quiet` leaves out the success toast, for a caller that says so itself (the
+ * builder lands on the agent's page with its own "Created" notice). Failures
+ * are always toasted.
+ */
+export type WriteOptions = { quiet?: boolean };
 
 type UserAgentsCtx = {
   userId: string | null;
@@ -155,13 +166,15 @@ export function useUserAgents({
   );
 
   const createAgent = useCallback(
-    async (payload: CustomAgentWritePayload): Promise<Agent | null> => {
+    async (payload: CustomAgentWritePayload, options?: WriteOptions): Promise<Agent | null> => {
       if (!requireUser() || !userId || busyAgentId) return null;
       setBusyAgentId("__create__");
       try {
         const created = await createMyAgent(userId, payload);
         setMyAgents((prev) => [...prev, { ...created, kind: "custom", ...NO_SUMMARY }]);
-        toast({ title: "Agent created", description: `${created.name} is ready to use.` });
+        if (!options?.quiet) {
+          toast({ title: "Agent created", description: `${created.name} is ready to use.` });
+        }
         // The catalog first (the new agent's page resolves it from there), then
         // this list again for the new card's counts.
         await refreshAgentCatalog();
@@ -180,14 +193,20 @@ export function useUserAgents({
   );
 
   const updateAgent = useCallback(
-    async (agentId: string, payload: CustomAgentWritePayload): Promise<Agent | null> => {
+    async (
+      agentId: string,
+      payload: CustomAgentWritePayload,
+      options?: WriteOptions,
+    ): Promise<Agent | null> => {
       if (!requireUser() || !userId || busyAgentId) return null;
       setBusyAgentId(agentId);
       try {
         const saved = await updateMyAgent(userId, agentId, payload);
         // Keep the old counts until the re-pull below replaces them.
         setMyAgents((prev) => prev.map((a) => (a.id === saved.id ? { ...a, ...saved, kind: "custom" } : a)));
-        toast({ title: "Agent saved", description: `${saved.name} was updated.` });
+        if (!options?.quiet) {
+          toast({ title: "Agent saved", description: `${saved.name} was updated.` });
+        }
         await refreshAgentCatalog();
         void refreshMyAgents();
         return saved;

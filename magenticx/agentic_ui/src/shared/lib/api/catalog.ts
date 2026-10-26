@@ -1,10 +1,16 @@
 /**
- * Catalog reads that are not agent-specific: the tool registry and the
+ * Catalog reads that are not agent-specific: the tool registry, the models and
+ * built-in tools an agent may have (the builder's pickers), and the
  * personalized new-chat starter suggestions.
  */
-import type { ToolMetadata } from "../types";
+import type { AgentModelOption, BuiltinToolInfo, ToolMetadata } from "../types";
 import { requestJson } from "../http";
-import { SuggestionsSchema, ToolMetadataListSchema } from "../schemas";
+import {
+  AgentModelOptionListSchema,
+  BuiltinToolInfoListSchema,
+  SuggestionsSchema,
+  ToolMetadataListSchema,
+} from "../schemas";
 import { CATALOG_BASE_PATH } from "./paths";
 
 // Fetch available tools from backend
@@ -12,6 +18,22 @@ export async function getTools(): Promise<ToolMetadata[]> {
   return requestJson(`${CATALOG_BASE_PATH}/tools`, {
     schema: ToolMetadataListSchema,
     fallbackMessage: "Failed to fetch tools",
+  });
+}
+
+// The models a user agent may run on, in the server's order; one is the default.
+export async function getAgentModels(): Promise<AgentModelOption[]> {
+  return requestJson(`${CATALOG_BASE_PATH}/models`, {
+    schema: AgentModelOptionListSchema,
+    fallbackMessage: "Failed to fetch the models",
+  });
+}
+
+// The built-in tools every agent has, with how each one's approval behaves.
+export async function getBuiltinTools(): Promise<BuiltinToolInfo[]> {
+  return requestJson(`${CATALOG_BASE_PATH}/builtin-tools`, {
+    schema: BuiltinToolInfoListSchema,
+    fallbackMessage: "Failed to fetch the built-in tools",
   });
 }
 

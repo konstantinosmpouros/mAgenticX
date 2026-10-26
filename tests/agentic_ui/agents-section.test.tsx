@@ -20,6 +20,8 @@ vi.mock("@/shared/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/shared/lib/api")>()),
   getAgentTools: vi.fn(async () => ({ agentSlug: "x", tools: [] })),
   getTools: vi.fn(async () => []),
+  getAgentModels: vi.fn(async () => []),
+  getBuiltinTools: vi.fn(async () => []),
 }));
 
 import AgentsGallery from "@/features/agents/pages/AgentsGallery";
@@ -69,7 +71,7 @@ const userAgents = (over: Partial<UserAgentsHandlers> = {}): UserAgentsHandlers 
   loadingMyAgents: false,
   refreshMyAgents: vi.fn(async () => {}),
   getAgentDefinition: vi.fn(async () => null),
-  validateAgent: vi.fn(async () => ({ valid: true, errors: [] })),
+  validateAgent: vi.fn(async () => ({ valid: true, errors: [], issues: [] })),
   createAgent: vi.fn(async () => null),
   updateAgent: vi.fn(async () => null),
   deleteAgent: vi.fn(async () => true),

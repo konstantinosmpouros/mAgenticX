@@ -4,6 +4,7 @@
 import type {
   Agent,
   CustomAgentDetail,
+  CustomAgentImportResult,
   CustomAgentValidation,
   CustomAgentWritePayload,
   MyAgent,
@@ -14,8 +15,10 @@ import { getFilenameFromDisposition, triggerBrowserDownload } from "../download"
 import {
   AgentToolsResponseSchema,
   CustomAgentDetailSchema,
+  CustomAgentImportResultSchema,
   CustomAgentSummarySchema,
   CustomAgentValidationSchema,
+  RenderedAgentYamlSchema,
   WireObjectArraySchema,
   WireObjectSchema,
 } from "../schemas";
@@ -80,6 +83,24 @@ export async function setAgentToolApproval(
   });
 }
 
+// Every approval choice at once — the builder's save, after the agent itself.
+// `null` clears a stored choice so the tool follows the agent's default again.
+// All or nothing on the bridge; returns the refreshed rows.
+export async function setAgentToolApprovals(
+  userId: string,
+  agentId: string,
+  approvals: Record<string, boolean | null>,
+) {
+  const url = `${AGENTS_BASE_PATH}/${encodeURIComponent(userId)}/${encodeURIComponent(agentId)}/tools/approvals`;
+  return requestJson(url, {
+    method: "PUT",
+    csrf: true,
+    body: { approvals },
+    schema: AgentToolsResponseSchema,
+    fallbackMessage: "Failed to save the approval choices",
+  });
+}
+
 // ---------------------------------------------------------------------------
 // User-authored agents (the agent builder)
 // ---------------------------------------------------------------------------
@@ -131,6 +152,45 @@ export async function validateMyAgent(
     body: payload,
     schema: CustomAgentValidationSchema,
     fallbackMessage: "Failed to validate the agent",
+  });
+}
+
+// A draft as agent.yaml text — the builder's YAML view, saved or not.
+export async function renderMyAgentYaml(
+  userId: string,
+  payload: CustomAgentWritePayload,
+): Promise<string> {
+  const data = await requestJson(`${customAgentsUrl(userId)}/render`, {
+    method: "POST",
+    csrf: true,
+    body: payload,
+    schema: RenderedAgentYamlSchema,
+    fallbackMessage: "Failed to show the agent as YAML",
+  });
+  return data.yaml;
+}
+
+// Check an agent.yaml without saving it: pasted text, or files — `agent.yaml`
+// with its `.md`/`.txt` prompts, or one `.zip` of the folder (unpacked by the
+// bridge). The answer carries the parsed spec whenever the YAML parsed, valid
+// or not, so the builder can open it to fix.
+export async function importMyAgent(
+  userId: string,
+  { yaml, files = [] }: { yaml?: string; files?: File[] },
+): Promise<CustomAgentImportResult> {
+  const form = new FormData();
+  if (yaml !== undefined) form.append("yaml", yaml);
+  for (const file of files) form.append("files", file, file.name);
+  return requestJson(`${customAgentsUrl(userId)}/import`, {
+    method: "POST",
+    csrf: true,
+    body: form,
+    schema: CustomAgentImportResultSchema,
+    errorMessages: {
+      413: `These files are too large to import (limit ${PROXY_LIMIT_MB} MB).`,
+      429: "Too many imports in a short time. Wait a minute and try again.",
+    },
+    fallbackMessage: "Failed to check the agent file",
   });
 }
 

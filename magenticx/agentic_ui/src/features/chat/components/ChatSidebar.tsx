@@ -162,6 +162,8 @@ const ROW_SPRING = { type: "spring", stiffness: 520, damping: 42, mass: 0.8 } as
 // label reads as selected like the open conversation's title.
 const PAGE_ENTRY_ACTIVE =
   "data-[active=true]:bg-transparent data-[active=true]:font-medium data-[active=true]:text-foreground";
+/** The active page's icon takes the theme's colour, on its pill. */
+const PAGE_ICON_ACTIVE = "group-data-[active=true]/nav:text-[hsl(var(--primary))]";
 const rowMotion = (reduceMotion: boolean | null, index: number) => ({
   layout: "position" as const,
   initial: reduceMotion ? { opacity: 0 } : { opacity: 0, y: 4 },
@@ -360,17 +362,14 @@ export default function ChatSidebar({
   // animate independently.
   const pageHighlight = (page: "schedules" | "agents") =>
     activePage === page ? (
+      // A soft pill in the theme's colour (no side bar): it reads at a glance in
+      // the open rail and in the collapsed one, and glides between the pages.
       <motion.span
         layoutId="sidebar-active-page"
         aria-hidden
-        className="absolute inset-0 z-0 rounded-xl bg-[hsl(var(--hover-surface))]"
+        className="absolute inset-0 z-0 rounded-xl bg-[hsl(var(--primary)/0.1)] ring-1 ring-inset ring-[hsl(var(--primary)/0.16)]"
         transition={reduceMotion ? { duration: 0 } : ROW_SPRING}
-      >
-        <span
-          className="absolute left-[3px] top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-full"
-          style={{ background: "var(--gradient-primary)" }}
-        />
-      </motion.span>
+      />
     ) : null;
 
   // Profile popover (the ChatGPT-style menu on the footer account button).
@@ -992,7 +991,12 @@ export default function ChatSidebar({
               tooltip="Schedules"
             >
               {pageHighlight("schedules")}
-              <div className="relative z-[1] grid size-9 flex-shrink-0 place-items-center">
+              <div
+                className={cn(
+                  "relative z-[1] grid size-9 flex-shrink-0 place-items-center",
+                  PAGE_ICON_ACTIVE,
+                )}
+              >
                 <MdOutlineSchedule className={`!h-[18px] !w-[18px] ${NAV_ICON_MOTION}`} />
                 {scheduledTasksRunningCount > 0 ? (
                   <span
@@ -1019,7 +1023,12 @@ export default function ChatSidebar({
               tooltip="Agents"
             >
               {pageHighlight("agents")}
-              <div className="relative z-[1] grid size-9 flex-shrink-0 place-items-center">
+              <div
+                className={cn(
+                  "relative z-[1] grid size-9 flex-shrink-0 place-items-center",
+                  PAGE_ICON_ACTIVE,
+                )}
+              >
                 <AgentsIcon className={`!h-[18px] !w-[18px] ${NAV_ICON_MOTION}`} />
               </div>
               <span className={cn("relative z-[1]", RAIL_LABEL)}>Agents</span>

@@ -1,0 +1,122 @@
+{
+  "_about": "The team rules, one table for both mirrors: the builder's lib/agentRules.ts (tests/agentic_ui/agent-rules.test.ts) and the agents service's _tree_issues (tests/agents/test_custom_agent_routes.py). Each case is the agent's MCP tools and its sub-agents as the spec writes them; `errors` are the paths that must carry an issue, and no other sub-agent path may.",
+  "cases": [
+    {
+      "name": "a valid three-level team",
+      "tools": [{ "server_id": "web", "tool_name": "search" }, { "server_id": "web", "tool_name": "fetch" }],
+      "subagents": [
+        {
+          "name": "researcher",
+          "description": "Finds sources.",
+          "tools": [{ "server_id": "web", "tool_name": "search" }],
+          "subagents": [
+            {
+              "name": "fact-checker",
+              "description": "Checks one claim.",
+              "subagents": [{ "name": "source-checker", "description": "Rates a source." }]
+            }
+          ]
+        },
+        { "name": "writer", "description": "Writes the brief." }
+      ],
+      "errors": []
+    },
+    {
+      "name": "a fourth level",
+      "tools": [],
+      "subagents": [
+        {
+          "name": "a",
+          "description": "A.",
+          "subagents": [
+            {
+              "name": "b",
+              "description": "B.",
+              "subagents": [
+                { "name": "c", "description": "C.", "subagents": [{ "name": "d", "description": "D." }] }
+              ]
+            }
+          ]
+        }
+      ],
+      "errors": ["subagents.0.subagents.0.subagents.0.subagents.0"]
+    },
+    {
+      "name": "two siblings with one name",
+      "tools": [],
+      "subagents": [
+        { "name": "helper", "description": "One." },
+        { "name": "helper", "description": "Two." }
+      ],
+      "errors": ["subagents.0.name", "subagents.1.name"]
+    },
+    {
+      "name": "a name repeated down a branch",
+      "tools": [],
+      "subagents": [
+        { "name": "researcher", "description": "R.", "subagents": [{ "name": "researcher", "description": "Again." }] }
+      ],
+      "errors": ["subagents.0.subagents.0.name"]
+    },
+    {
+      "name": "the same name in two branches is fine",
+      "tools": [],
+      "subagents": [
+        { "name": "left", "description": "L.", "subagents": [{ "name": "checker", "description": "C." }] },
+        { "name": "right", "description": "R.", "subagents": [{ "name": "checker", "description": "C." }] }
+      ],
+      "errors": []
+    },
+    {
+      "name": "a name that isn't a slug",
+      "tools": [],
+      "subagents": [{ "name": "Fact Checker", "description": "Checks." }],
+      "errors": ["subagents.0.name"]
+    },
+    {
+      "name": "a name over 48 characters",
+      "tools": [],
+      "subagents": [{ "name": "a-very-long-sub-agent-name-that-goes-on-and-on-and-on", "description": "Long." }],
+      "errors": ["subagents.0.name"]
+    },
+    {
+      "name": "a missing description",
+      "tools": [],
+      "subagents": [{ "name": "quiet", "description": "" }],
+      "errors": ["subagents.0.description"]
+    },
+    {
+      "name": "a tool its parent does not have",
+      "tools": [{ "server_id": "web", "tool_name": "search" }, { "server_id": "web", "tool_name": "fetch" }],
+      "subagents": [
+        {
+          "name": "researcher",
+          "description": "R.",
+          "tools": [{ "server_id": "web", "tool_name": "search" }],
+          "subagents": [
+            { "name": "fetcher", "description": "F.", "tools": [{ "server_id": "web", "tool_name": "fetch" }] }
+          ]
+        }
+      ],
+      "errors": ["subagents.0.subagents.0.tools"]
+    },
+    {
+      "name": "a tool the agent does not have",
+      "tools": [{ "server_id": "web", "tool_name": "search" }],
+      "subagents": [{ "name": "r", "description": "R.", "tools": [{ "server_id": "db", "tool_name": "query" }] }],
+      "errors": ["subagents.0.tools"]
+    },
+    {
+      "name": "an inheriting node passes its parent's tools down",
+      "tools": [{ "server_id": "web", "tool_name": "search" }],
+      "subagents": [
+        {
+          "name": "r",
+          "description": "R.",
+          "subagents": [{ "name": "s", "description": "S.", "tools": [{ "server_id": "web", "tool_name": "search" }] }]
+        }
+      ],
+      "errors": []
+    }
+  ]
+}

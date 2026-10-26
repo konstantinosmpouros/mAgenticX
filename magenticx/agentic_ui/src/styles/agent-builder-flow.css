@@ -1,0 +1,117 @@
+/* The agent builder's canvas (features/agents/components/builder/canvas/BuilderCanvas.tsx).
+
+   Loaded in the canvas's lazy chunk after React Flow's stylesheet and the agent
+   map's (agent-map-flow.css), whose canvas, dot grid, controls and attribution
+   it shares through the `agent-map-flow` class. These rules add what an
+   editable graph needs: a selection, the per-node actions that come up on
+   hover, focus or selection, the + under each node, the ghost node, and calm
+   motion when the tree re-lays itself out. */
+
+.agent-builder-flow.react-flow {
+  --xy-edge-stroke: hsl(var(--primary) / 0.34);
+}
+
+/* ---- Nodes ------------------------------------------------------------- */
+
+.agent-builder-flow .react-flow__node {
+  cursor: pointer;
+}
+
+/* A node glides to its new place when the tree re-lays itself out (a sibling
+   added or removed), and its edge follows. */
+.agent-builder-flow .react-flow__node {
+  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.agent-builder-flow .react-flow__edge-path {
+  transition:
+    d 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+    stroke 0.2s ease;
+}
+
+.agent-builder-card {
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background-color 0.2s ease;
+  animation: agent-builder-node-in 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes agent-builder-node-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+}
+
+.agent-builder-node[data-selected="true"] .agent-builder-card {
+  border-color: hsl(var(--primary) / 0.7);
+  box-shadow:
+    0 0 0 3px hsl(var(--primary) / 0.16),
+    0 12px 28px -16px hsl(var(--primary) / 0.55);
+}
+
+.agent-builder-node[data-errors="true"] .agent-builder-card {
+  border-color: hsl(var(--destructive) / 0.5);
+}
+
+.agent-builder-node[data-errors="true"][data-selected="true"] .agent-builder-card {
+  box-shadow:
+    0 0 0 3px hsl(var(--destructive) / 0.14),
+    0 12px 28px -16px hsl(var(--destructive) / 0.45);
+}
+
+/* The per-node actions and the +: out of the way until the node is hovered,
+   focused or selected — always reachable, never clutter. */
+.agent-builder-reveal {
+  opacity: 0;
+  transform: translateY(2px);
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
+  pointer-events: none;
+}
+
+.agent-builder-node:hover .agent-builder-reveal,
+.agent-builder-node:focus-within .agent-builder-reveal,
+.react-flow__node:focus-visible .agent-builder-reveal,
+.agent-builder-node[data-selected="true"] .agent-builder-reveal {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+.agent-builder-flow .react-flow__node:focus-visible {
+  outline: none;
+}
+
+.agent-builder-flow .react-flow__node:focus-visible .agent-builder-card {
+  outline: 2px solid hsl(var(--primary) / 0.75);
+  outline-offset: 3px;
+}
+
+.agent-builder-ghost {
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease;
+}
+
+/* ---- Edges ------------------------------------------------------------- */
+
+.agent-builder-flow .agent-builder-edge.is-ghost .react-flow__edge-path {
+  stroke: hsl(var(--primary) / 0.3);
+  stroke-dasharray: 4 5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-builder-flow .react-flow__node,
+  .agent-builder-flow .react-flow__edge-path,
+  .agent-builder-reveal,
+  .agent-builder-ghost {
+    transition: none;
+  }
+  .agent-builder-card {
+    animation: none;
+  }
+}

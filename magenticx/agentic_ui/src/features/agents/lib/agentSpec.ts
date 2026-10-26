@@ -2,57 +2,44 @@
  * The `agent.yaml` shape, and the two functions that cross into and out of it.
  *
  * `buildAgentPayload` is the single place that knows the spec's structure, so
- * the builder's form fields never encode YAML; `draftFromDetail` is its inverse.
- * They live here rather than inside the builder component for two reasons: a
- * `*_parts/` file holds components only, and the pair has to round-trip
- * losslessly — an edit that quietly drops a field saves it away — which is only
- * checkable with both halves importable on their own.
+ * the builder's fields never encode YAML; `draftFromDetail` is its inverse.
+ * They live apart from the builder's components because the pair has to
+ * round-trip losslessly — an edit that quietly drops a field saves it away —
+ * which is only checkable with both halves importable on their own.
  */
 import type {
   AgentDraft,
   AgentDraftFile,
   AgentDraftSubAgent,
   CustomAgentDetail,
+  CustomAgentImportResult,
   CustomAgentWritePayload,
 } from "@/shared/lib/types";
 
 /**
- * Models a user may pick. Mirrors the agents service's ALLOWED_AGENT_MODELS;
- * the server re-validates, so a drift here surfaces as a validation error
- * rather than a broken agent.
+ * The models a user may pick when `/catalog/models` cannot be read (an older
+ * bridge, a blip). The server's list wins whenever it loads, and re-validates
+ * every save, so a drift here surfaces as an issue rather than a broken agent.
  */
 export const MODEL_CHOICES = [
-  { id: "openai:gpt-6-luna", label: "GPT-6 Luna", hint: "Newest, efficient" },
-  { id: "openai:gpt-5", label: "GPT-5", hint: "Most capable" },
-  { id: "openai:gpt-4o", label: "GPT-4o", hint: "Balanced" },
-  { id: "openai:gpt-4o-mini", label: "GPT-4o mini", hint: "Fastest" },
+  { id: "openai:gpt-6-luna", label: "GPT-6 Luna" },
+  { id: "openai:gpt-5", label: "GPT-5" },
+  { id: "openai:gpt-4o", label: "GPT-4o" },
+  { id: "openai:gpt-4o-mini", label: "GPT-4o mini" },
 ] as const;
 
-/**
- * A model id as people read it: its label when it is one of the choices above,
- * otherwise the id without its provider prefix (`openai:gpt-x` → `gpt-x`), so a
- * model the server allows but this list does not know yet still reads cleanly.
- */
-export const modelLabel = (id: string): string =>
-  MODEL_CHOICES.find((m) => m.id === id)?.label ?? id.replace(/^[a-z0-9_-]+:/i, "");
+/** The model a new agent starts on when the server has not said otherwise. */
+export const FALLBACK_MODEL = MODEL_CHOICES[1].id;
 
 /**
- * Approval gates the platform mandates, written into every spec this builder
- * saves. MUST mirror `_HITL_FLOOR` in the agents service: a gate present there
- * but missing here makes *every* save fail validation.
- *
- * These are the floor, not the whole story — which tools ask for approval
- * beyond it is a per-account choice made under Agents → Approvals, not part of
- * the definition, so that it works the same for an agent you built and one you
- * did not.
+ * A model id as people read it: the server's label when one is given, else the
+ * fallback list's, else the id without its provider prefix (`openai:gpt-x` →
+ * `gpt-x`), so a model nobody has a label for still reads cleanly.
  */
-export const REQUIRED_GATES = [
-  "write_file",
-  "edit_file",
-  "execute",
-  "task",
-  "create_skill",
-] as const;
+export const modelLabel = (id: string, models?: ReadonlyArray<{ id: string; label: string }>) =>
+  models?.find((m) => m.id === id)?.label ||
+  MODEL_CHOICES.find((m) => m.id === id)?.label ||
+  id.replace(/^[a-z0-9_-]+:/i, "");
 
 export const PROMPT_FILE = "AGENT.md";
 export const MANIFEST_FILE = "agent.yaml";
@@ -77,29 +64,65 @@ export const slugify = (value: string): string =>
     .replace(/^-+|-+$/g, "")
     .slice(0, 48);
 
+/**
+ * A sub-agent name as it is typed: the slug's alphabet, kept live so the field
+ * never holds something the server would refuse. Unlike `slugify` it keeps a
+ * trailing hyphen, so "fact-" can still become "fact-checker".
+ */
+export const toSubagentName = (value: string): string =>
+  value
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[\s_]+/g, "-")
+    .replace(/[^a-z0-9-]/g, "")
+    .replace(/-{2,}/g, "-")
+    .replace(/^-+/, "")
+    .slice(0, 48);
+
 export const subagentPromptPath = (name: string) =>
   `${SUBAGENT_DIR}/${slugify(name) || "subagent"}.md`;
 
 /**
- * A nested sub-agent's prompt file, named by its path of names
+ * A sub-agent's prompt file, named by its path of names
  * (`subagents/researcher--fact-checker.md`). A slug never holds `--`, so two
  * paths can never share a file; a top-level sub-agent keeps its plain name.
  */
 export const nestedSubagentPromptPath = (names: string[]) =>
   `${SUBAGENT_DIR}/${names.map((name) => slugify(name) || "subagent").join("--")}.md`;
 
-export const emptyDraft = (): AgentDraft => ({
+let uidCounter = 0;
+/** A fresh node id — unique for the page's life, never saved. */
+export const newUid = (): string => {
+  uidCounter += 1;
+  return `n${uidCounter.toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+};
+
+export const emptyDraft = (model: string = FALLBACK_MODEL): AgentDraft => ({
   slug: "",
   name: "",
   description: "",
   icon: "Bot",
-  model: MODEL_CHOICES[1].id,
+  model,
   prompt: "",
   memory: true,
   tools: [],
   skills: [],
   subagents: [],
   files: [],
+  hitl: {},
+  approvals: {},
+});
+
+/** A new, empty sub-agent: inherits the model and every tool of the agent above it. */
+export const emptySubagent = (): AgentDraftSubAgent => ({
+  uid: newUid(),
+  name: "",
+  description: "",
+  prompt: "",
+  model: "",
+  tools: [],
+  subagents: [],
 });
 
 /** One MCP entry in the spec's `tools` list. A native ref has neither field. */
@@ -113,15 +136,6 @@ type SpecSubAgent = {
   subagents?: unknown;
 };
 
-/** A new, empty sub-agent: inherits the agent's model and all of its tools. */
-export const emptySubagent = (): AgentDraftSubAgent => ({
-  name: "",
-  description: "",
-  prompt: "",
-  model: "",
-  tools: [],
-});
-
 /**
  * A `server/tool` key in the spec's MCP form. The split is on the FIRST slash
  * only: a server id cannot contain one, a tool name can.
@@ -131,9 +145,15 @@ const toolRef = (key: string) => {
   return { server_id: key.slice(0, slash), tool_name: key.slice(slash + 1) };
 };
 
+/** The tool's own name in a `server/tool` key — what `hitl` is keyed by. */
+export const toolNameOf = (key: string): string => {
+  const slash = key.indexOf("/");
+  return slash >= 0 ? key.slice(slash + 1) : key;
+};
+
 /**
- * The spec's tool list back to `server/tool` keys. Native refs are skipped: the
- * form does not manage them, so round-tripping one would drop it on save.
+ * The spec's tool list back to `server/tool` keys. Native refs are skipped:
+ * built-ins are on for every agent, so listing one changes nothing.
  */
 const toolKeys = (raw: unknown): string[] =>
   Array.isArray(raw)
@@ -145,62 +165,48 @@ const toolKeys = (raw: unknown): string[] =>
 /**
  * Assemble the agent.yaml document + its prompt files from the draft.
  *
- * `version` is fixed at 1.0.0 for a first release and `id` is derived from the
- * slug — neither is a user concern.
+ * Every sub-agent is written, in the draft's order, even one still missing its
+ * name or instructions: the server's issue paths (`subagents.0.subagents.1.name`)
+ * are indices into this list, and they must land on the node the user sees.
+ * The server reports what is missing; nothing is dropped behind the user's back.
+ *
+ * A sub-agent's tools are clamped to what the agent above it may use — the
+ * server refuses anything wider, and removing a tool higher up must not leave a
+ * node below pointing at it. `version` is fixed at 1.0.0 and `id` is derived
+ * from the slug — neither is a user concern.
  */
 export const buildAgentPayload = (draft: AgentDraft): CustomAgentWritePayload => {
-  const named = draft.subagents.filter((sa) => sa.name.trim() && sa.prompt.trim());
-  // Files the form owns, written from the draft's prompt fields.
-  const generated: AgentDraftFile[] = [
-    { path: PROMPT_FILE, content: draft.prompt },
-    ...named.map((sa) => ({ path: subagentPromptPath(sa.name), content: sa.prompt })),
-  ];
-  // A sub-agent's own sub-agents, kept from the definition (the form does not
-  // edit them yet): their prompts are written back, and their tools stay
-  // inside what the sub-agent above them may use.
-  const nestedSpecs = (
-    children: AgentDraftSubAgent[] | undefined,
+  // Files the builder owns, written from the draft's prompt fields.
+  const generated = new Map<string, string>([[PROMPT_FILE, draft.prompt]]);
+  const specsOf = (
+    children: AgentDraftSubAgent[],
     above: string[],
     allowed: string[],
   ): Record<string, unknown>[] =>
-    (children ?? [])
-      .filter((sa) => sa.name.trim() && sa.prompt.trim())
-      .map((sa) => {
-        const names = [...above, sa.name];
-        const path = nestedSubagentPromptPath(names);
-        generated.push({ path, content: sa.prompt });
-        const tools = sa.tools.filter((key) => allowed.includes(key));
-        const nested = nestedSpecs(sa.subagents, names, tools.length ? tools : allowed);
-        return {
-          name: slugify(sa.name),
-          description: sa.description.trim() || sa.name.trim(),
-          prompt: `./${path}`,
-          ...(sa.model ? { model: sa.model } : {}),
-          ...(tools.length ? { tools: tools.map(toolRef) } : {}),
-          ...(nested.length ? { subagents: nested } : {}),
-        };
-      });
-  const subagentSpecs = named.map((sa) => {
-    // Only tools the agent still declares: the server refuses a sub-agent
-    // tool its agent lacks, and removing a tool from the agent must not
-    // leave a sub-agent pointing at it.
-    const tools = sa.tools.filter((key) => draft.tools.includes(key));
-    const nested = nestedSpecs(sa.subagents, [sa.name], tools.length ? tools : draft.tools);
-    return {
-      name: slugify(sa.name),
-      description: sa.description.trim() || sa.name.trim(),
-      prompt: `./${subagentPromptPath(sa.name)}`,
-      // Omitted, not blank, to inherit: the runtime reads a missing model
-      // and a missing tool list as "use the agent's".
-      ...(sa.model ? { model: sa.model } : {}),
-      ...(tools.length ? { tools: tools.map(toolRef) } : {}),
-      ...(nested.length ? { subagents: nested } : {}),
-    };
-  });
-  // Generated paths win: a reference file can never shadow a prompt the form is
-  // responsible for, however the draft got into that state.
-  const owned = new Set(generated.map((file) => file.path));
-  const extras = draft.files.filter((file) => !owned.has(file.path));
+    children.map((sa) => {
+      const names = [...above, sa.name.trim()];
+      const path = nestedSubagentPromptPath(names);
+      // Two nodes that share a path share a name — an issue the checks
+      // report on the name; the first keeps the file.
+      if (!generated.has(path)) generated.set(path, sa.prompt);
+      const tools = sa.tools.filter((key) => allowed.includes(key));
+      const nested = specsOf(sa.subagents ?? [], names, tools.length ? tools : allowed);
+      return {
+        name: sa.name.trim(),
+        description: sa.description.trim(),
+        prompt: `./${path}`,
+        // Omitted, not blank, to inherit: the runtime reads a missing model
+        // and a missing tool list as "use the agent's above".
+        ...(sa.model ? { model: sa.model } : {}),
+        ...(tools.length ? { tools: tools.map(toolRef) } : {}),
+        ...(nested.length ? { subagents: nested } : {}),
+      };
+    });
+  const subagentSpecs = specsOf(draft.subagents, [], draft.tools);
+  // Generated paths win: a reference file can never shadow a prompt the
+  // builder is responsible for, however the draft got into that state.
+  const extras = draft.files.filter((file) => !generated.has(file.path));
+  const hitl = draft.hitl ?? {};
   return {
     spec: {
       id: `${draft.slug}-v1`,
@@ -216,45 +222,59 @@ export const buildAgentPayload = (draft: AgentDraft): CustomAgentWritePayload =>
       tools: draft.tools.map(toolRef),
       skills: draft.skills,
       subagents: subagentSpecs,
-      hitl: Object.fromEntries(REQUIRED_GATES.map((gate) => [gate, true])),
+      // The definition's own defaults, only as they came (an import, a saved
+      // spec). What the user picks in Approvals is saved as their preference.
+      ...(Object.keys(hitl).length ? { hitl } : {}),
     },
-    files: [...generated, ...extras].map((file) => ({
-      path: file.path,
-      content: file.content,
-      encoding: "utf-8" as const,
-    })),
+    files: [
+      ...[...generated].map(([path, content]) => ({ path, content })),
+      ...extras,
+    ].map((file) => ({ path: file.path, content: file.content, encoding: "utf-8" as const })),
   };
 };
 
 /**
  * Recover a draft from a saved definition so editing round-trips.
  *
- * Every file must be accounted for: the ones the form generates are folded back
- * into their prompt fields, and everything else becomes a reference file. A save
- * rewrites the whole folder, so a file this function dropped would be deleted by
- * the next edit.
+ * Every file must be accounted for: the ones the builder generates are folded
+ * back into their prompt fields, and everything else becomes a reference file.
+ * A save rewrites the whole folder, so a file this function dropped would be
+ * deleted by the next edit.
+ *
+ * An older spec names sub-agent models in `model.subagents{name}`; each node
+ * now carries its own, so those are folded into the nodes they name (an
+ * explicit `model` on the node still wins, as at runtime).
  */
 export const draftFromDetail = (detail: CustomAgentDetail): AgentDraft => {
   const spec = (detail.spec ?? {}) as Record<string, unknown>;
-  const model = spec.model as { main?: unknown } | undefined;
+  const model = (spec.model ?? {}) as { main?: unknown; subagents?: unknown };
+  const legacyModels =
+    model.subagents && typeof model.subagents === "object"
+      ? (model.subagents as Record<string, unknown>)
+      : {};
   const fileFor = (path: string) => detail.files.find((f) => f.path === path)?.content ?? "";
-  // Paths the form regenerates from prompt fields; the rest are the user's own.
+  // Paths the builder regenerates from prompt fields; the rest are the user's own.
   const claimed = new Set<string>([PROMPT_FILE, MANIFEST_FILE]);
-  // At every depth: a nested sub-agent's prompt is claimed too, and the
-  // sub-agent is kept under its parent.
   const readSubagents = (raw: unknown): AgentDraftSubAgent[] =>
     Array.isArray(raw)
       ? (raw as SpecSubAgent[]).map((sa) => {
           const path = String(sa?.prompt ?? "").replace(/^\.\//, "");
           claimed.add(path);
-          const nested = readSubagents(sa?.subagents);
+          const name = String(sa?.name ?? "");
+          const legacy = legacyModels[name];
           return {
-            name: String(sa?.name ?? ""),
+            uid: newUid(),
+            name,
             description: String(sa?.description ?? ""),
             prompt: fileFor(path),
-            model: typeof sa?.model === "string" ? sa.model : "",
+            model:
+              typeof sa?.model === "string"
+                ? sa.model
+                : typeof legacy === "string"
+                  ? legacy
+                  : "",
             tools: toolKeys(sa?.tools),
-            ...(nested.length ? { subagents: nested } : {}),
+            subagents: readSubagents(sa?.subagents),
           };
         })
       : [];
@@ -262,19 +282,50 @@ export const draftFromDetail = (detail: CustomAgentDetail): AgentDraft => {
   const files: AgentDraftFile[] = detail.files
     .filter((file) => !claimed.has(file.path) && file.encoding !== "base64")
     .map((file) => ({ path: file.path, content: file.content }));
+  const hitl =
+    spec.hitl && typeof spec.hitl === "object"
+      ? Object.fromEntries(
+          Object.entries(spec.hitl as Record<string, unknown>).filter(
+            (entry): entry is [string, boolean] => typeof entry[1] === "boolean",
+          ),
+        )
+      : {};
   return {
     files,
     slug: detail.slug,
     name: detail.name,
     description: detail.description,
     icon: detail.icon || "Bot",
-    model: String(model?.main ?? MODEL_CHOICES[1].id),
+    model: typeof model.main === "string" && model.main ? model.main : FALLBACK_MODEL,
     prompt: fileFor(PROMPT_FILE),
     memory: spec.memory !== false,
     tools: toolKeys(spec.tools),
     skills: Array.isArray(spec.skills) ? spec.skills.map(String) : [],
     subagents,
+    hitl,
+    approvals: {},
   };
+};
+
+/**
+ * An imported agent.yaml as a draft, for the import result's canvas and for
+ * "Open in the builder". Null when the YAML did not parse into a spec.
+ */
+export const draftFromImport = (result: CustomAgentImportResult): AgentDraft | null => {
+  const spec = result.spec;
+  if (!spec) return null;
+  const text = (key: string) => (typeof spec[key] === "string" ? (spec[key] as string) : "");
+  return draftFromDetail({
+    id: "",
+    slug: text("slug"),
+    name: text("name"),
+    description: text("description"),
+    icon: text("icon"),
+    version: undefined,
+    type: "deep agent",
+    spec,
+    files: result.files,
+  });
 };
 
 /**

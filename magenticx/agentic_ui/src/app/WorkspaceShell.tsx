@@ -28,6 +28,7 @@ import ChatView from "@/pages/ChatView";
 import { ImageLightbox } from "@/shared/ui/ImageLightbox";
 
 import { OVERLAY_HOST_ID } from "@/shared/lib/overlay-host";
+import { guarded } from "@/shared/lib/leaveGuard";
 import { useWorkspaceStore } from "@/shared/stores/workspaceStore";
 import { Loader } from "@/shared/ui/shadcn-io/loader";
 import { SidebarProvider, SidebarInset } from "@/shared/ui/sidebar";
@@ -240,20 +241,22 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
           onLogoutAllAccounts={accountSwitching.onLogoutAllAccounts}
           conversations={conversations}
           currentConversationId={currentConversation?.id || null}
-          onSelectConversation={handleConversationSelect}
+          // The sidebar's ways off the page ask a page with unsaved work
+          // first (the agent builder); everything else goes straight through.
+          onSelectConversation={guarded(handleConversationSelect)}
           onDeleteConversation={handleDeleteConversation}
           onRenameConversation={handleRenameConversation}
           onArchiveConversation={handleArchiveConversation}
           onTogglePinConversation={(conversation) => void handleToggleConversationPin(conversation)}
           onReportConversation={handleReportConversationFromSidebar}
           onLoadMore={handleLoadMoreConversations}
-          onTitleClick={handleTitleClick}
-          onNewChat={handleNewChat}
+          onTitleClick={guarded(handleTitleClick)}
+          onNewChat={guarded(handleNewChat)}
           onOpenSearch={handleOpenSearch}
-          onVoiceMode={triggerVoiceMode}
-          onOpenScheduledTasks={() => navigate("/tasks")}
+          onVoiceMode={guarded(triggerVoiceMode)}
+          onOpenScheduledTasks={guarded(() => navigate("/tasks"))}
           scheduledTasksRunningCount={scheduledTasks.runningCount}
-          onOpenAgents={() => navigate(AGENTS_PATH)}
+          onOpenAgents={guarded(() => navigate(AGENTS_PATH))}
           activePage={isAgentsPage ? "agents" : isTasksPage ? "schedules" : null}
           onOpenSettings={(tab) => openProfilePanel(tab)}
           onEditProfile={settingsPanels.openEditProfile}
@@ -277,7 +280,7 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
           error={searchError}
           onQueryChange={setSearchQuery}
           onClose={closeSearchPanel}
-          onSelectResult={handleSearchResultSelect}
+          onSelectResult={guarded(handleSearchResultSelect)}
         />
         <SidebarInset
           data-testid="chat-card"

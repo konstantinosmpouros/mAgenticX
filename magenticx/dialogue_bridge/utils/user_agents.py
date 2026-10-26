@@ -24,8 +24,9 @@ not make a user's own agents vanish; only the gallery's counts
 (``include_summary``) and opening one agent's definition call upstream.
 
 The bridge sends the spec as JSON and stores none of it. ``agent.yaml`` text
-only passes through on **import** (forwarded for the agents service to parse)
-and **export** (a zip streamed back), so the bridge needs no YAML dependency.
+only passes through on **import** (forwarded for the agents service to parse),
+**render** (a draft as text, for the builder's YAML view) and **export** (a zip
+streamed back), so the bridge needs no YAML dependency.
 
 Delete is a **soft** delete of the row (``is_active=False``) plus removal of the
 definition: ``agents.id`` is referenced by conversations with ``ON DELETE
@@ -344,6 +345,23 @@ async def validate_custom_agent_definition(
         "POST", f"{_base_url(user_id)}/validate",
         operation="custom_agent_validate",
         public_detail="The agent definition could not be validated. Please try again.",
+        json_body=payload,
+    )
+
+
+async def render_custom_agent_yaml(
+    user_id: str, payload: Dict[str, Any]
+) -> Dict[str, Any]:
+    """A draft as ``agent.yaml`` (the builder's YAML view). Writes nothing.
+
+    Stateless and keyed by the caller like validate: the draft need not be
+    saved, so there is no catalog row to check — only the session's own user
+    can ask, and the agents service renders exactly what it is sent.
+    """
+    return await _proxy(
+        "POST", f"{_base_url(user_id)}/render",
+        operation="custom_agent_render",
+        public_detail="The agent could not be shown as YAML. Please try again.",
         json_body=payload,
     )
 

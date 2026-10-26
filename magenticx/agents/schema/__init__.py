@@ -51,6 +51,7 @@ from schema.user_agents import (
     CustomAgentImportResult,
     CustomAgentValidation,
     CustomAgentWrite,
+    RenderedAgentYaml,
     UserAgentDetail,
     UserAgentSummary,
 )
@@ -89,6 +90,7 @@ __all__ = [
     "ConversationTitle",
     "CustomAgentValidation",
     "CustomAgentWrite",
+    "RenderedAgentYaml",
     "CustomSkillCreate",
     "EmbedRequest",
     "EmbedResponse",

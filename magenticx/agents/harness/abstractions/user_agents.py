@@ -671,14 +671,18 @@ def render_agent_yaml(raw: Dict[str, Any]) -> str:
     """A stored spec as ``agent.yaml``, in the seed agent's key order.
 
     Unset values and empty lists are left out; :func:`parse_agent_yaml` reads
-    the result back to the same definition.
+    the result back to the same definition. Also renders an unsaved draft (the
+    builder's YAML view), so a malformed node is written as it is, not refused.
     """
     data = _clean(raw)
 
-    def order_subagents(nodes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def order_subagents(nodes: Any) -> Any:
+        if not isinstance(nodes, list):
+            return nodes
         return [
             _ordered({**n, **({"subagents": order_subagents(n["subagents"])} if n.get("subagents") else {})},
                      _SUBAGENT_KEY_ORDER)
+            if isinstance(n, dict) else n
             for n in nodes
         ]
 
