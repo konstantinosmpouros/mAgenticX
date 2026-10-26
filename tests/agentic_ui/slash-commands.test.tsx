@@ -157,7 +157,7 @@ describe("useSlashCommands", () => {
 describe("the actions", () => {
   const ctx = (overrides = {}) => ({
     conversationId: "c1", compaction: null, handleNewChat: vi.fn(), openProfilePanel: vi.fn(),
-    handleRenameConversation: vi.fn(), openFullConversationShareDialog: vi.fn(), exportConversationPdf: vi.fn(),
+    openAgentMemory: vi.fn(), handleRenameConversation: vi.fn(), openFullConversationShareDialog: vi.fn(), exportConversationPdf: vi.fn(),
     notify: vi.fn(), ...overrides,
   });
 
@@ -167,7 +167,7 @@ describe("the actions", () => {
     run("compact", "");
     expect(c.notify).toHaveBeenCalledWith("Can't compact right now", "Not yet.");
     run("memories", "");
-    expect(c.openProfilePanel).toHaveBeenCalledWith("memories");
+    expect(c.openAgentMemory).toHaveBeenCalled();     // the agent's own page, not Settings
     run("rename", "");
     expect(c.notify).toHaveBeenCalledWith("Type the new title after /rename");
     run("rename", "New title");

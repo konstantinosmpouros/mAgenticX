@@ -7,6 +7,7 @@ import { AgentNotFound, KindBadge, PageHeader } from "@/features/agents/componen
 import { useEscapeTo, usePageTitle } from "@/features/agents/hooks/usePageChrome";
 import { PRIMARY_BUTTON, SECONDARY_BUTTON } from "@/features/agents/lib/styles";
 import { AgentDetail } from "@/features/agents/components/detail/AgentDetail";
+import { AgentMemory } from "@/features/agents/components/detail/AgentMemory";
 import { useAgentTools } from "@/features/agents/hooks/useAgentTools";
 import { useExportAgent } from "@/features/agents/hooks/useExportAgent";
 import { useResolvedAgent } from "@/features/agents/hooks/useResolvedAgent";
@@ -38,7 +39,7 @@ export default function AgentPage() {
   const { agent, resolving } = useResolvedAgent(agentId);
   const { exportAgent, exportingId } = useExportAgent(userId);
 
-  const section = parseSection<DetailSection>(
+  const requested = parseSection<DetailSection>(
     searchParams.get("section"),
     DETAIL_SECTIONS,
     "overview",
@@ -55,6 +56,8 @@ export default function AgentPage() {
   const custom = agent?.kind === "custom";
   // Only deep agents have a per-agent tool model to load.
   const configurable = agent?.type === "deep agent";
+  // Memory, like tools, is a deep-agent concept: another agent opens on Overview.
+  const section: DetailSection = requested === "memory" && !configurable ? "overview" : requested;
   const tools = useAgentTools({ userId, agentId: agent?.id ?? null, enabled: configurable });
   const summary = useMemo(() => {
     const mine = custom ? userAgents.myAgents.find((a) => a.id === agentId) : undefined;
@@ -154,6 +157,11 @@ export default function AgentPage() {
             onSectionChange={setSection}
             notice={notice}
             summary={summary}
+            memory={
+              section === "memory" ? (
+                <AgentMemory userId={userId} agentId={agent.id} agentName={agent.name} />
+              ) : null
+            }
           />
         </div>
       </div>

@@ -221,7 +221,7 @@ export default function PersonalizationTab({
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-foreground">Manage memories</p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Review and delete what each deep agent has remembered about you.
+                  Each agent's memories are on its page: Agents → an agent → Memory.
                 </p>
               </div>
             </div>

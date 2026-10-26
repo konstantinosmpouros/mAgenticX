@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { type ReactNode, useMemo } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { AlertCircle, CheckCircle2, ShieldCheck, Wrench } from "lucide-react";
 
@@ -53,6 +53,7 @@ export function AgentDetail({
   onSectionChange,
   notice,
   summary = null,
+  memory = null,
 }: {
   agent: Agent;
   mine: boolean;
@@ -75,6 +76,8 @@ export function AgentDetail({
   notice?: string | null;
   /** A custom agent's model and counts, when the list summary has them. */
   summary?: CustomAgentSummary | null;
+  /** The Memory section's body (the page owns its data); deep agents only. */
+  memory?: ReactNode;
 }) {
   const reduceMotion = useReducedMotion();
 
@@ -85,6 +88,8 @@ export function AgentDetail({
     { id: "overview", label: "Overview" },
     { id: "tools", label: "Tools", count: enabledCount },
     { id: "approvals", label: "Approvals", count: gatedCount },
+    // What it remembers about the user — a deep-agent concept, like its tools.
+    ...(configurable ? [{ id: "memory" as const, label: "Memory" }] : []),
   ];
 
   return (
@@ -200,17 +205,19 @@ export function AgentDetail({
 
               {mine ? (
                 <p className="px-1 text-xs leading-relaxed text-muted-foreground">
-                  This is your agent — its prompt, model and sub-agents are changed by editing
-                  it. Tools and approvals are set here, per your account.
+                  This is your agent — its prompt, model and sub-agents are changed by editing it.
+                  Tools and approvals are set here, per your account.
                 </p>
               ) : (
                 <p className="px-1 text-xs leading-relaxed text-muted-foreground">
-                  A built-in agent. Its definition is fixed, but the tools it may use and which
-                  of them ask for approval are yours to set, for your account only.
+                  A built-in agent. Its definition is fixed, but the tools it may use and which of
+                  them ask for approval are yours to set, for your account only.
                 </p>
               )}
             </div>
           ) : null}
+
+          {section === "memory" && configurable ? memory : null}
 
           {section === "approvals" ? (
             configurable ? (
@@ -224,9 +231,9 @@ export function AgentDetail({
                   emptyHint="This agent has no tools to gate."
                 />
                 <p className="px-1 text-xs leading-relaxed text-muted-foreground">
-                  A tool set to ask pauses the run every time it is called, so gating one the
-                  agent uses constantly will interrupt you a lot. Scheduled runs have nobody to
-                  ask and will time out instead.
+                  A tool set to ask pauses the run every time it is called, so gating one the agent
+                  uses constantly will interrupt you a lot. Scheduled runs have nobody to ask and
+                  will time out instead.
                 </p>
               </div>
             ) : (
@@ -236,8 +243,8 @@ export function AgentDetail({
                 </span>
                 <p className="text-sm font-semibold text-foreground">Nothing to approve</p>
                 <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
-                  {agent.name} is a {agent.type ?? "non-deep"} agent, so it has no per-tool
-                  approval model. Any pause it asks for comes from its own graph.
+                  {agent.name} is a {agent.type ?? "non-deep"} agent, so it has no per-tool approval
+                  model. Any pause it asks for comes from its own graph.
                 </p>
               </SoftPanel>
             )

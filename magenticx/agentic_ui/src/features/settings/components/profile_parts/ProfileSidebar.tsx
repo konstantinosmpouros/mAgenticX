@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
 import {
   Bell,
-  Brain,
   Database,
   Gauge,
   HardDrive,
@@ -59,7 +58,6 @@ export const SETTINGS_NAV_ITEMS: readonly NavItem[] = [
 export const WORKSPACE_NAV_ITEMS: readonly NavItem[] = [
   { id: "skills", label: "Skills", icon: Sparkles },
   { id: "mcp", label: "MCP Servers" }, // custom McpIcon, rendered specially
-  { id: "memories", label: "Memory", icon: Brain },
 ] as const;
 
 export const NAV_ITEMS: readonly NavItem[] = [...SETTINGS_NAV_ITEMS, ...WORKSPACE_NAV_ITEMS];

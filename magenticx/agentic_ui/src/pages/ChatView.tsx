@@ -16,7 +16,7 @@ import { createCommandActions } from "@/features/chat/handlers/commandActions";
 import { useSlashCommands } from "@/features/chat/hooks/useSlashCommands";
 import { Loader } from "@/shared/ui/shadcn-io/loader";
 
-import { AGENTS_PATH } from "@/features/agents/lib/routes";
+import { AGENTS_PATH, agentPath } from "@/features/agents/lib/routes";
 import { useChatWorkspaceContext } from "@/app/workspaceContext";
 import { useWorkspaceStore } from "@/shared/stores/workspaceStore";
 
@@ -125,6 +125,8 @@ export default function ChatView() {
         compaction: conversationCompaction,
         handleNewChat,
         openProfilePanel,
+        openAgentMemory: () =>
+          navigate(inputBarAgent ? agentPath(inputBarAgent.id, "memory") : AGENTS_PATH),
         handleRenameConversation,
         openFullConversationShareDialog,
         exportConversationPdf,
@@ -135,6 +137,8 @@ export default function ChatView() {
       conversationCompaction,
       handleNewChat,
       openProfilePanel,
+      navigate,
+      inputBarAgent,
       handleRenameConversation,
       openFullConversationShareDialog,
       exportConversationPdf,

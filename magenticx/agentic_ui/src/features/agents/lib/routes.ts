@@ -39,7 +39,7 @@ export const START_VIAS = ["canvas", "import"] as const;
 export type StartVia = (typeof START_VIAS)[number];
 
 /** The sections of an agent's page, in tab order. */
-export const DETAIL_SECTIONS = ["overview", "tools", "approvals"] as const;
+export const DETAIL_SECTIONS = ["overview", "tools", "approvals", "memory"] as const;
 export type DetailSection = (typeof DETAIL_SECTIONS)[number];
 
 /**

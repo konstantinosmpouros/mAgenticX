@@ -9,6 +9,9 @@ export const LEGACY_TAB_MAP: Record<string, string> = {
   // "agents" tab opens on General: the panel cannot take you to a route, and
   // the sidebar's Agents entry is one click away.
   agents: "general",
+  // Memories moved to each agent's page too (Agents → an agent → Memory); the
+  // switches for memory stay in Personalization, so a stored tab opens there.
+  memories: "personalization",
 };
 
 const VALID_SECTION_IDS = new Set<string>(NAV_ITEMS.map((item) => item.id));

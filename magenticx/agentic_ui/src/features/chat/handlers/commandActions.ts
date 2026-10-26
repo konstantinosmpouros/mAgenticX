@@ -6,6 +6,8 @@ type CommandActionsCtx = {
   compaction: ContextCompactionControl | null;
   handleNewChat: () => void;
   openProfilePanel: (tab?: string) => void;
+  /** The current agent's page, on its Memory section (the agents gallery without one). */
+  openAgentMemory: () => void;
   handleRenameConversation: (conversationId: string, newTitle: string) => void | Promise<void>;
   openFullConversationShareDialog: () => void;
   exportConversationPdf: () => void | Promise<void>;
@@ -34,7 +36,7 @@ export function createCommandActions(ctx: CommandActionsCtx) {
       }
     },
     new: () => ctx.handleNewChat(),
-    memories: () => ctx.openProfilePanel("memories"),
+    memories: () => ctx.openAgentMemory(),
     skills: () => ctx.openProfilePanel("skills"),
     usage: () => ctx.openProfilePanel("usage"),
     share: () => ctx.openFullConversationShareDialog(),

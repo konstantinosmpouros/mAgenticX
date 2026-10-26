@@ -33,7 +33,6 @@ import {
 import { useConversationRouting } from "@/features/chat/hooks/useConversationRouting";
 import { useShareDialogState } from "@/features/sharing/hooks/useShareDialogState";
 import { useReportDialogState } from "@/features/reporting/hooks/useReportDialogState";
-import { useMemories } from "@/features/settings/hooks/useMemories";
 import {
   useEnsureDefaultAgentEffect,
   useHeaderDividerEffect,
@@ -571,12 +570,6 @@ export function useChatWorkspace({
     active: isAgentsRoute,
     refreshAgentCatalog,
   });
-
-  // Per-(user, agent) long-term memory inspector for the ProfilePanel "Memories"
-  // tab — read + delete only (the agent owns writes via its `remember` tool).
-  // Not snapshot-persisted: memory lives on the agents filesystem, not the UI
-  // snapshot, so it needs no requestPersist plumbing.
-  const memoryInspector = useMemories({ userId: workspaceUserId, toast: toastWrapper });
 
   // Keep ChatPage's myRegistrySkills mirrored from the hook so the snapshot
   // persistence path sees the live pool. The hook is the source of truth;
@@ -1452,7 +1445,6 @@ export function useChatWorkspace({
     refreshAgentCatalog,
     // multi-account switcher — one key; the shell reads what it needs off it
     accountSwitching,
-    memoryInspector,
     // derived
     inputBarAgent,
     settledVoiceActive,

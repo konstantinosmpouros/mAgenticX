@@ -35,12 +35,10 @@ import SecurityTab from "./profile_parts/SecurityTab";
 import DataControlsTab from "./profile_parts/DataControlsTab";
 import McpServersTab from "./profile_parts/McpServersTab";
 import SkillsTab from "./profile_parts/SkillsTab";
-import MemoriesTab from "./profile_parts/MemoriesTab";
 import UsageTab from "./profile_parts/UsageTab";
 import { PanelHeaderAction } from "./PanelHeaderAction";
 import ComingSoon from "./profile_parts/ComingSoon";
 import CustomInstructionsDialog from "./profile_parts/CustomInstructionsDialog";
-import type { MemoriesHandlers } from "@/features/settings/hooks/useMemories";
 import { useUsageSummary } from "@/features/settings/hooks/useUsageSummary";
 
 /** Header copy per section — title + one-line description under it. */
@@ -96,10 +94,6 @@ const SECTION_META: Record<string, { eyebrow?: string; title: string; descriptio
   mcp: {
     title: "MCP Servers",
     description: "Choose which MCP-powered tools stay available inside conversations.",
-  },
-  memories: {
-    title: "Memory",
-    description: "Review and delete what each deep agent remembers about you.",
   },
 };
 
@@ -165,10 +159,6 @@ type ProfilePanelProps = {
   onToggleUserAgentSkill?: (agentId: string, skillName: string) => Promise<void>;
   isAgentSkillLoading?: (agentId: string) => boolean;
   isSkillToggling?: (agentId: string, skillName: string) => boolean;
-  // Per-(user, agent) long-term memory inspector (useMemories output). The
-  // Memories tab drills into a deep agent and lists/previews/deletes the
-  // memories it has saved about the user.
-  memoryInspector?: MemoriesHandlers;
   userPreferences: UserPreferences;
   archivedConversations: ConversationSummary[];
   archivedConversationsLoading?: boolean;
@@ -223,7 +213,6 @@ export default function ProfilePanel({
   onToggleUserAgentSkill,
   isAgentSkillLoading,
   isSkillToggling,
-  memoryInspector,
   userPreferences,
   archivedConversations,
   archivedConversationsLoading = false,
@@ -375,7 +364,8 @@ export default function ProfilePanel({
                         preferencesSaving={preferencesSaving}
                         onToggleSearchPastConvs={onToggleSearchPastConvs}
                         onToggleUseMemory={onToggleUseMemory}
-                        onOpenMemories={() => setActiveTab("memories")}
+                        // Memories moved to each agent's page (Agents → an agent → Memory).
+                        onOpenMemories={onManageAgents ?? onClose}
                         onOpenCustomInstructions={() => setShowCustomInstructions(true)}
                         onSelectPersonality={onSelectPersonality}
                       />
@@ -442,10 +432,6 @@ export default function ProfilePanel({
                         isAgentSkillLoading={isAgentSkillLoading}
                         isSkillToggling={isSkillToggling}
                       />
-                    ) : null}
-
-                    {normalizedActiveTab === "memories" && memoryInspector ? (
-                      <MemoriesTab agents={agents} {...memoryInspector} />
                     ) : null}
 
                     {normalizedActiveTab === "usage" ? (

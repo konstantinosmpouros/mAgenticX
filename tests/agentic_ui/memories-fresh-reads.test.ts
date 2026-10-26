@@ -2,7 +2,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useMemories } from "@/features/settings/hooks/useMemories";
+import { useMemories } from "@/features/agents/hooks/useMemories";
 
 /**
  * The Memories tab holds no cache, and that is the whole design.

@@ -3,7 +3,7 @@ import { deleteAgentMemory, getAgentMemory, listAgentMemories } from "@/shared/l
 import { toastError } from "@/shared/lib/toast";
 import type { MemoryDetail, MemorySummary } from "@/shared/lib/types";
 
-// Owns the read + delete state for the ProfilePanel "Memories" tab. Memory is
+// Owns the read + delete state for an agent page's Memory section. Memory is
 // per-(user, agent) in Postgres; the bridge proxies. The agent owns *writes*
 // (via its `remember` tool) — here the user only inspects and deletes.
 //

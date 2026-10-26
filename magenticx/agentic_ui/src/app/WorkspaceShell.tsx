@@ -121,7 +121,6 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
     toggleUserAgentSkill,
     isAgentSkillLoading,
     isSkillToggling,
-    memoryInspector,
     resolvedPreferences,
     archivedConversations,
     archivedConvIsLoading,
@@ -354,7 +353,6 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
                   onToggleUserAgentSkill={toggleUserAgentSkill}
                   isAgentSkillLoading={isAgentSkillLoading}
                   isSkillToggling={isSkillToggling}
-                  memoryInspector={memoryInspector}
                   userPreferences={resolvedPreferences}
                   archivedConversations={archivedConversations}
                   archivedConversationsLoading={archivedConvIsLoading}
