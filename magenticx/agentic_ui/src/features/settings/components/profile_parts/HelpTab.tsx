@@ -34,7 +34,7 @@ export default function HelpTab({ archivedConversations, availableTools }: HelpT
   const { resolvedTheme } = useTheme();
   const currentTheme = themeFor(resolvedTheme);
   // Tools are no longer globally enabled/disabled — this is the size of the
-  // available MCP catalog (per-agent enablement lives in Settings → Agents).
+  // available MCP catalog (per-agent enablement lives on each agent's page under Agents).
   const toolCount = availableTools.length;
 
   const handleHelpCardClick = (card: HelpCard) => {

@@ -37,6 +37,13 @@ type ScheduledTasksPageProps = {
   onOpenResult: (conversationId: string, agentId?: string | null) => void;
   /** Re-fetch after a load error; the "Try again" button hides without it. */
   onRetry?: () => void;
+  /**
+   * Open the new-task form with this agent chosen — an agent's "Schedule it".
+   * Read once per id; `onCreateForAgentHandled` lets the route drop it, so a
+   * refresh or Back does not open the form again.
+   */
+  createForAgentId?: string | null;
+  onCreateForAgentHandled?: () => void;
 };
 
 type FormState =
@@ -207,6 +214,8 @@ export default function ScheduledTasksPage({
   onDelete,
   onOpenResult,
   onRetry,
+  createForAgentId = null,
+  onCreateForAgentHandled,
 }: ScheduledTasksPageProps) {
   const reduceMotion = useReducedMotion() ?? false;
   const { toast } = useToast();
@@ -237,6 +246,24 @@ export default function ScheduledTasksPage({
     setSubmitError(null);
     setForm({ open: true, mode: "create", key: `create-${Date.now()}` });
   };
+  // "Schedule it" from an agent's page. An id the form's list does not have
+  // (deleted since) still opens the form, on its default agent.
+  React.useEffect(() => {
+    if (!createForAgentId) return;
+    const known = agents.some((agent) => agent.id === createForAgentId);
+    setSubmitError(null);
+    setTab("tasks");
+    setForm({
+      open: true,
+      mode: "create",
+      key: `create-${createForAgentId}-${Date.now()}`,
+      initial: known ? { agentId: createForAgentId } : undefined,
+    });
+    onCreateForAgentHandled?.();
+    // Once per id: the agent list or the callback changing must not reopen it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [createForAgentId]);
+
   const openEdit = (task: ScheduledTask) => {
     setSubmitError(null);
     setForm({

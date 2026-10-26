@@ -13,8 +13,8 @@ import {
   isToolOn,
   type ToolAxis,
   type ToolFilter,
-} from "@/features/settings/lib/agentTools";
-import { SoftPanel, ToggleSwitch } from "../shared";
+} from "@/features/agents/lib/agentTools";
+import { SoftPanel, ToggleSwitch } from "@/features/settings/components/profile_parts/shared";
 
 /**
  * The agent's tool list: one line per tool, grouped by source, searchable.

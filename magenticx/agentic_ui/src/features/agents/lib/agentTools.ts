@@ -1,7 +1,8 @@
 import type { AgentToolRow } from "@/shared/lib/types";
 
 /**
- * Grouping, filtering and tallying for the Agents tab's tool lists.
+ * Grouping, filtering and tallying for an agent's tool lists (its page's Tools and
+ * Approvals, and the builder's Approvals).
  *
  * A tool has two independent switches — whether the agent may use it, and
  * whether it pauses for approval first — so every helper takes the axis it is

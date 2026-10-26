@@ -1,14 +1,18 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { AlertCircle, CheckCircle2, Pencil, ShieldCheck, Wrench } from "lucide-react";
+import { AlertCircle, CheckCircle2, ShieldCheck, Wrench } from "lucide-react";
 
-import type { Agent, AgentToolRow } from "@/shared/lib/types";
+import type { Agent, AgentToolRow, CustomAgentSummary } from "@/shared/lib/types";
+import { modelLabel } from "@/features/agents/lib/agentSpec";
+import type { DetailSection } from "@/features/agents/lib/routes";
 import { SectionTabs, type SectionTab } from "./SectionTabs";
 import { ToolList } from "./ToolList";
-import { SoftPanel } from "../shared";
+import { SoftPanel } from "@/features/settings/components/profile_parts/shared";
 
 /**
- * One agent's configuration, as sections rather than a stack of cards.
+ * One agent's configuration, as sections rather than a stack of cards — the
+ * body of the agent's page (`/agents/:agentId`), which owns the header, the
+ * actions and which section is open (`?section=`).
  *
  * This is where the old tool-toggle screen lives now. It used to be the tab's
  * landing page, which put a secondary task (switching individual tools on and
@@ -21,13 +25,13 @@ import { SoftPanel } from "../shared";
  * control that silently does nothing.
  */
 
-export type DetailSection = "overview" | "tools" | "approvals";
+export type { DetailSection };
 
 /**
  * The manifest's raw lifecycle type, in sentence case.
  *
  * The server speaks in lowercase internal names ("deep agent") because they are
- * registry keys; rendering them verbatim in a settings panel reads like a leaked
+ * registry keys; rendering them verbatim on the page reads like a leaked
  * implementation detail.
  */
 const agentTypeLabel = (raw?: string): string => {
@@ -45,9 +49,10 @@ export function AgentDetail({
   togglingKey,
   onToggleTool,
   onToggleApproval,
-  onEdit,
-  initialSection = "tools",
+  section,
+  onSectionChange,
   notice,
+  summary = null,
 }: {
   agent: Agent;
   mine: boolean;
@@ -63,14 +68,15 @@ export function AgentDetail({
   togglingKey: string | null;
   onToggleTool: (row: AgentToolRow) => void;
   onToggleApproval: (row: AgentToolRow) => void;
-  onEdit?: () => void;
-  /** The section to open on — Approvals right after the agent was created. */
-  initialSection?: DetailSection;
+  /** The open section; the page keeps it in the URL. */
+  section: DetailSection;
+  onSectionChange: (section: DetailSection) => void;
   /** A one-line confirmation above the sections, e.g. after creating the agent. */
   notice?: string | null;
+  /** A custom agent's model and counts, when the list summary has them. */
+  summary?: CustomAgentSummary | null;
 }) {
   const reduceMotion = useReducedMotion();
-  const [section, setSection] = useState<DetailSection>(initialSection);
 
   const enabledCount = useMemo(() => tools.filter((t) => t.enabled).length, [tools]);
   const gatedCount = useMemo(() => tools.filter((t) => t.approval).length, [tools]);
@@ -83,17 +89,13 @@ export function AgentDetail({
 
   return (
     <section className="space-y-5">
-      <div className="flex items-center justify-between gap-3 border-b border-border/50">
-        <SectionTabs tabs={tabs} active={section} onSelect={setSection} idPrefix="agent-detail" />
-        {mine && onEdit ? (
-          <button
-            type="button"
-            onClick={onEdit}
-            className="mb-1 inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-border/60 bg-background/60 px-3 py-1.5 text-xs font-medium text-foreground transition-all hover:bg-background active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
-          >
-            <Pencil size={13} aria-hidden /> Edit
-          </button>
-        ) : null}
+      <div className="border-b border-border/50">
+        <SectionTabs
+          tabs={tabs}
+          active={section}
+          onSelect={onSectionChange}
+          idPrefix="agent-detail"
+        />
       </div>
 
       {notice ? (
@@ -171,6 +173,15 @@ export function AgentDetail({
               <SoftPanel className="divide-y divide-border/40 overflow-hidden">
                 {[
                   { label: "Type", value: agentTypeLabel(agent.type) },
+                  // A custom agent's definition, from the list summary; absent
+                  // when the bridge did not send it, rather than shown as "—".
+                  ...(summary?.model ? [{ label: "Model", value: modelLabel(summary.model) }] : []),
+                  ...(typeof summary?.skillCount === "number"
+                    ? [{ label: "Skills", value: String(summary.skillCount) }]
+                    : []),
+                  ...(typeof summary?.subagentCount === "number"
+                    ? [{ label: "Sub-agents", value: String(summary.subagentCount) }]
+                    : []),
                   { label: "Version", value: agent.version ?? "—" },
                   { label: "Source", value: mine ? "Yours" : "Built in" },
                   { label: "Status", value: agent.isActive ? "Available" : "Unavailable" },
@@ -187,7 +198,7 @@ export function AgentDetail({
                 ))}
               </SoftPanel>
 
-              {mine && onEdit ? (
+              {mine ? (
                 <p className="px-1 text-xs leading-relaxed text-muted-foreground">
                   This is your agent — its prompt, model and sub-agents are changed by editing
                   it. Tools and approvals are set here, per your account.

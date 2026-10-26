@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { slugify } from "@/features/settings/lib/agentSpec";
+import { slugify } from "@/features/agents/lib/agentSpec";
 
 describe("slugify", () => {
   it("lowercases and hyphenates a plain name", () => {

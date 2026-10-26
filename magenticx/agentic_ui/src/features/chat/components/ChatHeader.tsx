@@ -1,6 +1,17 @@
 ﻿import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/ui/select";
 import { Archive, BookmarkPlus, Flag, Trash2, MoreHorizontal, HelpCircle, Loader2, X } from "lucide-react";
+import { AgentsIcon } from "@/shared/ui/agents-icon";
+import { MANAGE_AGENTS_VALUE, groupPickerAgents } from "@/features/chat/lib/agentPicker";
 import type { Agent } from "@/shared/lib/types";
 import React from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
@@ -20,7 +31,6 @@ const TAP_PULSE_TRANSITION: Transition = { duration: 0.36, ease: [0.34, 1.56, 0.
 // with a short fade-and-scale; reduced motion keeps only the fade.
 const PRIVATE_SWAP: Transition = { duration: 0.24, ease: [0.22, 1, 0.36, 1] };
 const PRIVATE_HINT = "Hidden from your chat list, search and memory";
-
 type ChatHeaderProps = {
   agents: Agent[];
   inactiveAgent?: Agent | null;
@@ -50,6 +60,8 @@ type ChatHeaderProps = {
   canShareConversation?: boolean;
   onNewChat?: () => void;
   isStreaming?: boolean;
+  /** Adds "Manage agents…" at the bottom of the picker, opening the Agents section. */
+  onManageAgents?: () => void;
 };
 
 export default function ChatHeader({
@@ -78,6 +90,7 @@ export default function ChatHeader({
   canShareConversation = false,
   onNewChat,
   isStreaming = false,
+  onManageAgents,
 }: ChatHeaderProps) {
 
   const moreMenuPulse = useAnimationControls();
@@ -107,6 +120,14 @@ export default function ChatHeader({
     () => displayAgents.find((a) => a.id === selectedAgent),
     [displayAgents, selectedAgent],
   );
+  const agentGroups = React.useMemo(() => groupPickerAgents(displayAgents), [displayAgents]);
+  const handleAgentValueChange = (value: string) => {
+    if (value === MANAGE_AGENTS_VALUE) {
+      onManageAgents?.();
+      return;
+    }
+    onAgentChange(value);
+  };
   // Keyed to the agent currently *shown in the picker*, not to the conversation's
   // agent: the warning sits next to the trigger and describes what it displays,
   // so deriving it from `inactiveAgent` left it stuck on after switching to a
@@ -140,7 +161,7 @@ export default function ChatHeader({
             value={selectedAgent}
             open={agentPickerOpen}
             onOpenChange={onAgentPickerOpenChange}
-            onValueChange={onAgentChange}
+            onValueChange={handleAgentValueChange}
           >
             <SelectTrigger
               ref={agentTriggerRef}
@@ -170,35 +191,61 @@ export default function ChatHeader({
             </SelectTrigger>
 
             <SelectContent className="w-[18rem] rounded-xl border border-border/60 bg-background text-foreground shadow-lg">
-              {displayAgents.map((agent) => (
-                <SelectItem
-                  key={agent.id}
-                  value={agent.id}
-                  className="cursor-pointer text-sm transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground data-[state=checked]:bg-muted data-[state=checked]:text-foreground"
-                >
-                  <div className="flex items-center gap-2">
-                    {(() => {
-                      const Icon = agent.icon;
-                      return (
-                        <div className="flex h-5 w-5 items-center justify-center rounded-md text-muted-foreground">
-                          <Icon className="h-4 w-4" aria-hidden="true" />
-                        </div>
-                      );
-                    })()}
-                    <div className="flex flex-col">
-                      <span className="font-medium text-sm text-foreground">
-                        {agent.name}
-                        {!agent.isActive && (
-                          <span className="ml-1 text-xs uppercase tracking-wide text-amber-500">
-                            inactive
+              {agentGroups.map((group, index) => (
+                <SelectGroup key={group.label ?? "agents"}>
+                  {index > 0 ? <SelectSeparator className="bg-border/60" /> : null}
+                  {group.label ? (
+                    <SelectLabel className="pb-1 pt-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                      {group.label}
+                    </SelectLabel>
+                  ) : null}
+                  {group.agents.map((agent) => (
+                    <SelectItem
+                      key={agent.id}
+                      value={agent.id}
+                      className="cursor-pointer text-sm transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground data-[state=checked]:bg-muted data-[state=checked]:text-foreground"
+                    >
+                      <div className="flex items-center gap-2">
+                        {(() => {
+                          const Icon = agent.icon;
+                          return (
+                            <div className="flex h-5 w-5 items-center justify-center rounded-md text-muted-foreground">
+                              <Icon className="h-4 w-4" aria-hidden="true" />
+                            </div>
+                          );
+                        })()}
+                        <div className="flex flex-col">
+                          <span className="font-medium text-sm text-foreground">
+                            {agent.name}
+                            {!agent.isActive && (
+                              <span className="ml-1 text-xs uppercase tracking-wide text-amber-500">
+                                inactive
+                              </span>
+                            )}
                           </span>
-                        )}
-                      </span>
-                      <span className="text-xs text-muted-foreground">{agent.description}</span>
-                    </div>
-                  </div>
-                </SelectItem>
+                          <span className="text-xs text-muted-foreground">{agent.description}</span>
+                        </div>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
               ))}
+              {onManageAgents ? (
+                <>
+                  <SelectSeparator className="bg-border/60" />
+                  <SelectItem
+                    value={MANAGE_AGENTS_VALUE}
+                    className="cursor-pointer text-sm text-muted-foreground transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground"
+                  >
+                    <span className="flex items-center gap-2">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-md">
+                        <AgentsIcon className="h-4 w-4" />
+                      </span>
+                      Manage agents…
+                    </span>
+                  </SelectItem>
+                </>
+              ) : null}
             </SelectContent>
           </Select>
 

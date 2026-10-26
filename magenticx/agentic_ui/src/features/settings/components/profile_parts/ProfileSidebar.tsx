@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
 import {
   Bell,
-  Bot,
   Brain,
   Database,
   Gauge,
@@ -38,7 +37,8 @@ type NavItem = {
  * The settings taxonomy mirrors ChatGPT's left-nav section list (minus the
  * consumer-only sections that have no meaning here; not-yet-built sections
  * render a ComingSoon page), followed by a "Workspace" group for the sections
- * that are ours alone (Skills, MCP, Memory). Shortcuts and Help are NOT
+ * that are ours alone (Skills, MCP, Memory). Agents is not one of them: it has
+ * its own section of the app (/agents), reached from the chat sidebar. Shortcuts and Help are NOT
  * settings sections — they open as dedicated panels from the sidebar profile
  * menu — and logout lives only in that menu.
  */
@@ -57,7 +57,6 @@ export const SETTINGS_NAV_ITEMS: readonly NavItem[] = [
 ] as const;
 
 export const WORKSPACE_NAV_ITEMS: readonly NavItem[] = [
-  { id: "agents", label: "Agents", icon: Bot },
   { id: "skills", label: "Skills", icon: Sparkles },
   { id: "mcp", label: "MCP Servers" }, // custom McpIcon, rendered specially
   { id: "memories", label: "Memory", icon: Brain },

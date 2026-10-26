@@ -14,6 +14,7 @@ import type {
   CustomAgentDetail,
   CustomAgentValidation,
   CustomAgentWritePayload,
+  MyAgent,
 } from "@/shared/lib/types";
 
 /**
@@ -25,7 +26,14 @@ import type {
  * frontend-guessed one (the id, icon and version are all assigned server-side).
  * Delete is optimistic with a rollback, since removing a row from a list is the
  * one operation where waiting feels sluggish.
+ *
+ * The list is loaded with its summary (model and counts) and only while the
+ * Agents pages are open (`active`): nothing else reads it — the rest of the app
+ * renders the shared catalog, which says which agents are custom on its own.
+ * Each mutation re-pulls that catalog through `refreshAgentCatalog`.
  */
+const NO_SUMMARY = { model: null, toolCount: null, skillCount: null, subagentCount: null };
+
 type ToastFn = (opts: {
   title: string;
   description?: string;
@@ -34,7 +42,7 @@ type ToastFn = (opts: {
 }) => void;
 
 export type UserAgentsHandlers = {
-  myAgents: Agent[];
+  myAgents: MyAgent[];
   loadingMyAgents: boolean;
   refreshMyAgents: () => Promise<void>;
   getAgentDefinition: (agentId: string) => Promise<CustomAgentDetail | null>;
@@ -50,10 +58,25 @@ type UserAgentsCtx = {
   toast: ToastFn;
   /** False until the session has been confirmed against the cookies. */
   authResolved?: boolean;
+  /** True while an Agents page ("/agents…") is open: the list loads on entering. */
+  active: boolean;
+  /**
+   * Re-pull the shared agent catalog after a mutation. Owned by the workspace
+   * because the catalog is app-wide state (the header picker, task form,
+   * Skills/Memories per-agent lists and the Agents gallery all read it); it
+   * also persists the snapshot.
+   */
+  refreshAgentCatalog: (options?: { removedAgentId?: string }) => Promise<void>;
 };
 
-export function useUserAgents({ userId, toast, authResolved }: UserAgentsCtx): UserAgentsHandlers {
-  const [myAgents, setMyAgents] = useState<Agent[]>([]);
+export function useUserAgents({
+  userId,
+  toast,
+  authResolved,
+  active,
+  refreshAgentCatalog,
+}: UserAgentsCtx): UserAgentsHandlers {
+  const [myAgents, setMyAgents] = useState<MyAgent[]>([]);
   const [loadingMyAgents, setLoadingMyAgents] = useState(false);
   const [busyAgentId, setBusyAgentId] = useState<string | null>(null);
 
@@ -73,7 +96,7 @@ export function useUserAgents({ userId, toast, authResolved }: UserAgentsCtx): U
     }
     setLoadingMyAgents(true);
     try {
-      setMyAgents(await getMyAgents(userId));
+      setMyAgents(await getMyAgents(userId, { summary: true }));
     } catch {
       // A background refresh must not nag: the list simply stays as it was.
       // Explicit actions below surface their own failures.
@@ -82,9 +105,11 @@ export function useUserAgents({ userId, toast, authResolved }: UserAgentsCtx): U
     }
   }, [userId, authResolved]);
 
+  // On entering the Agents pages (and again on each later visit, so counts
+  // changed elsewhere — a tool switched off in a chat — are not stale).
   useEffect(() => {
-    void refreshMyAgents();
-  }, [refreshMyAgents]);
+    if (active) void refreshMyAgents();
+  }, [active, refreshMyAgents]);
 
   const requireUser = useCallback((): boolean => {
     if (userId) return true;
@@ -135,8 +160,12 @@ export function useUserAgents({ userId, toast, authResolved }: UserAgentsCtx): U
       setBusyAgentId("__create__");
       try {
         const created = await createMyAgent(userId, payload);
-        setMyAgents((prev) => [...prev, created]);
+        setMyAgents((prev) => [...prev, { ...created, kind: "custom", ...NO_SUMMARY }]);
         toast({ title: "Agent created", description: `${created.name} is ready to use.` });
+        // The catalog first (the new agent's page resolves it from there), then
+        // this list again for the new card's counts.
+        await refreshAgentCatalog();
+        void refreshMyAgents();
         return created;
       } catch (error) {
         toastError(toast, "Could not create the agent", error, {
@@ -147,7 +176,7 @@ export function useUserAgents({ userId, toast, authResolved }: UserAgentsCtx): U
         setBusyAgentId(null);
       }
     },
-    [requireUser, userId, busyAgentId, toast],
+    [requireUser, userId, busyAgentId, toast, refreshAgentCatalog, refreshMyAgents],
   );
 
   const updateAgent = useCallback(
@@ -156,8 +185,11 @@ export function useUserAgents({ userId, toast, authResolved }: UserAgentsCtx): U
       setBusyAgentId(agentId);
       try {
         const saved = await updateMyAgent(userId, agentId, payload);
-        setMyAgents((prev) => prev.map((a) => (a.id === saved.id ? saved : a)));
+        // Keep the old counts until the re-pull below replaces them.
+        setMyAgents((prev) => prev.map((a) => (a.id === saved.id ? { ...a, ...saved, kind: "custom" } : a)));
         toast({ title: "Agent saved", description: `${saved.name} was updated.` });
+        await refreshAgentCatalog();
+        void refreshMyAgents();
         return saved;
       } catch (error) {
         toastError(toast, "Could not save the agent", error, {
@@ -168,7 +200,7 @@ export function useUserAgents({ userId, toast, authResolved }: UserAgentsCtx): U
         setBusyAgentId(null);
       }
     },
-    [requireUser, userId, busyAgentId, toast],
+    [requireUser, userId, busyAgentId, toast, refreshAgentCatalog, refreshMyAgents],
   );
 
   const deleteAgent = useCallback(
@@ -187,6 +219,9 @@ export function useUserAgents({ userId, toast, authResolved }: UserAgentsCtx): U
             ? `${removed.name} was removed. Your conversations with it are kept.`
             : "Your conversations with it are kept.",
         });
+        // The id re-points a picker selection that named the deleted agent,
+        // instead of leaving it on a dead id.
+        await refreshAgentCatalog({ removedAgentId: agentId });
         return true;
       } catch (error) {
         setMyAgents(previous);
@@ -198,7 +233,7 @@ export function useUserAgents({ userId, toast, authResolved }: UserAgentsCtx): U
         setBusyAgentId(null);
       }
     },
-    [requireUser, userId, busyAgentId, myAgents, toast],
+    [requireUser, userId, busyAgentId, myAgents, toast, refreshAgentCatalog],
   );
 
   return {

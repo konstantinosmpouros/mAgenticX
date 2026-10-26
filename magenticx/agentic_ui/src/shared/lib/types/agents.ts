@@ -5,12 +5,14 @@
 // it), so this module is deliberately a LEAF: it imports nothing from the rest
 // of `types/` — only the Lucide icon type and the Zod-inferred wire contracts.
 import type { LucideIcon } from "lucide-react";
-import type { AgentFile } from "../schemas";
+import type { AgentFile, AgentKind, CustomAgentSummary } from "../schemas";
 
 // `AgentFile`, `CustomAgentDetail`, `CustomAgentValidation`, `AgentToolRow` and
 // `AgentToolsResponse` are inferred from their Zod schemas (see `../schemas`).
 export type {
   AgentFile,
+  AgentKind,
+  CustomAgentSummary,
   CustomAgentDetail,
   CustomAgentValidation,
   AgentToolRow,
@@ -26,6 +28,7 @@ export type AgentPublic = {
   version?: string;
   type?: string;
   isActive: boolean;
+  kind?: AgentKind;
 };
 
 // Agent type used in the application
@@ -41,7 +44,16 @@ export type Agent = {
   // skill selection (only deep agents do).
   type?: string;
   isActive: boolean;
+  /**
+   * "custom" for an agent this user built, "platform" for the rest. Absent where
+   * the payload carried no kind (an agent embedded in a conversation, an old
+   * snapshot), which every consumer reads as "not known to be custom".
+   */
+  kind?: AgentKind;
 };
+
+/** One of the user's own agents, with the gallery's summary when it was asked for. */
+export type MyAgent = Agent & CustomAgentSummary;
 
 // What the builder collects. Mirrors the fields of the backend AgentSpec that a
 // user may set; everything else (id, version, type) is derived on submit, and
@@ -87,7 +99,7 @@ export type AgentDraft = {
    * MCP tools the agent declares, as canonical cache keys (`server/tool`).
    *
    * Stored as keys rather than `{serverId, toolName}` pairs because every other
-   * surface — the catalog, the Agents tab, the override rows — identifies a tool
+   * surface — the catalog, an agent's page, the override rows — identifies a tool
    * by that exact string; the spec's two-field shape is assembled on save.
    * Native tools are not listed here: they are attached by the runtime and are
    * not the author's to choose.

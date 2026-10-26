@@ -7,7 +7,7 @@ import type { ToolMetadata } from "../schemas";
 export type { ToolMetadata } from "../schemas";
 
 // Tools no longer carry a global enabled/disabled status — enablement is
-// per-agent (Settings → Agents), resolved server-side. This stays as an alias
+// per-agent (an agent's page under Agents), resolved server-side. This stays as an alias
 // so the read-only catalog views keep a stable prop name.
 export type ToolWithStatus = ToolMetadata;
 

@@ -22,6 +22,8 @@ import ProfilePanel from "@/features/settings/components/ProfilePanel";
 import ShortcutsPanel from "@/features/settings/components/ShortcutsPanel";
 import ShareConversationDialog from "@/features/sharing/components/SharePanel";
 
+import { AGENTS_PATH, isAgentsPath } from "@/features/agents/lib/routes";
+
 import ChatView from "@/pages/ChatView";
 import { ImageLightbox } from "@/shared/ui/ImageLightbox";
 
@@ -34,7 +36,7 @@ import { TooltipProvider } from "@/shared/ui/tooltip";
 type WorkspaceShellProps = ChatWorkspaceOptions & { children?: ReactNode };
 
 /** How long the leaving view stays for the swap: the chat holds under the
- *  Schedules page until it has fully faded in (TasksView's PAGE). */
+ *  Schedules or Agents page until it has fully faded in (their PAGE). */
 const ROUTE_SWAP_HOLD_S = 0.42;
 
 /**
@@ -42,7 +44,7 @@ const ROUTE_SWAP_HOLD_S = 0.42;
  * the chrome around the routed views. Builds the workspace once via
  * useChatWorkspace and provides it; renders `children` (the direct
  * shared-conversation path) or `<Outlet/>` (the layout-route children
- * ChatView/TasksView) in the content slot.
+ * ChatView/TasksView/AgentsView) in the content slot.
  */
 export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {}) {
   const ws = useChatWorkspace(props);
@@ -113,13 +115,6 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
     handleCreateCustomSkill,
     handleRemoveSkillFromPool,
     refreshMySkills,
-    myAgents,
-    busyAgentId,
-    getAgentDefinition,
-    validateAgent,
-    handleCreateAgent,
-    handleUpdateAgent,
-    handleDeleteAgent,
     skillSelections,
     loadAgentSkills,
     toggleUserAgentSkill,
@@ -167,11 +162,16 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
   const currentConversation = useWorkspaceStore((s) => s.currentConversation);
   const pendingDeletion = useWorkspaceStore((s) => s.pendingDeletion);
   // A private chat (open, or being written) turns the card incognito — on the
-  // chat routes only: the private flag can outlive a visit to /tasks.
+  // chat routes only: the private flag can outlive a visit to a page.
   const isPrivateMode = useWorkspaceStore((s) => s.isPrivateMode);
   const { pathname } = useLocation();
   const outlet = useOutlet();
-  const incognitoClass = useIncognitoCard(isPrivateMode && !pathname.startsWith("/tasks"));
+  const isTasksPage = pathname.startsWith("/tasks");
+  const isAgentsPage = isAgentsPath(pathname);
+  const incognitoClass = useIncognitoCard(isPrivateMode && !isTasksPage && !isAgentsPage);
+  // The route view's surface: the chat, or one of the pages over it. Moving
+  // within a surface (chat to chat, agent to agent) never remounts it.
+  const surfaceKey = isTasksPage ? "tasks" : isAgentsPage ? "agents" : "chat";
   // Main Chat Interface
   if (!authResolved) {
     return (
@@ -253,6 +253,8 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
           onVoiceMode={triggerVoiceMode}
           onOpenScheduledTasks={() => navigate("/tasks")}
           scheduledTasksRunningCount={scheduledTasks.runningCount}
+          onOpenAgents={() => navigate(AGENTS_PATH)}
+          activePage={isAgentsPage ? "agents" : isTasksPage ? "schedules" : null}
           onOpenSettings={(tab) => openProfilePanel(tab)}
           onEditProfile={settingsPanels.openEditProfile}
           onOpenShortcuts={openShortcutsPanel}
@@ -291,19 +293,19 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
                 id={OVERLAY_HOST_ID}
                 className="animate-fade-in relative flex h-svh flex-col overflow-hidden transition-slow md:h-full"
               >
-                {/* The routed view: ChatView ("/", "/c/:id") or TasksView ("/tasks"),
-                  or `children` when ChatShell is used directly (shared conversation).
-                  The chat surface + tasks page now live in pages/ChatView and
-                  pages/TasksView. */}
+                {/* The routed view: ChatView ("/", "/c/:id"), TasksView ("/tasks")
+                  or AgentsView ("/agents…"), or `children` when ChatShell is used
+                  directly (shared conversation). */}
                 <ChatWorkspaceProvider value={ws}>
                   {children ?? (
-                    // Chat <-> Schedules: the view that leaves stays mounted for
-                    // its exit (TasksView's own; the chat simply holds under the
-                    // page sliding in), keyed by surface so moving between chats
-                    // never remounts. `contents`: the wrapper adds no box.
+                    // Chat <-> Schedules <-> Agents: the view that leaves stays
+                    // mounted for its exit (the page's own; the chat simply holds
+                    // under a page sliding in), keyed by surface so moving between
+                    // chats, or between Agents pages, never remounts. `contents`:
+                    // the wrapper adds no box.
                     <AnimatePresence initial={false}>
                       <motion.div
-                        key={pathname === "/tasks" ? "tasks" : "chat"}
+                        key={surfaceKey}
                         className="contents"
                         exit={{ opacity: 1, transition: { duration: ROUTE_SWAP_HOLD_S } }}
                       >
@@ -339,13 +341,10 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
                   onCreateCustomSkill={handleCreateCustomSkill}
                   onRemoveSkillFromPool={handleRemoveSkillFromPool}
                   onRefreshMySkills={refreshMySkills}
-                  myAgents={myAgents}
-                  busyAgentId={busyAgentId}
-                  onCreateAgent={handleCreateAgent}
-                  onUpdateAgent={handleUpdateAgent}
-                  onDeleteAgent={handleDeleteAgent}
-                  onValidateAgent={validateAgent}
-                  onLoadAgentDefinition={getAgentDefinition}
+                  onManageAgents={() => {
+                    closeProfilePanel();
+                    navigate(AGENTS_PATH);
+                  }}
                   agents={agents}
                   skillSelections={skillSelections}
                   onLoadAgentSkills={loadAgentSkills}

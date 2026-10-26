@@ -1,5 +1,6 @@
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import { motion, type Variants } from "framer-motion";
+import { useSearchParams } from "react-router-dom";
 
 import ScheduledTasksPage from "@/features/tasks/components/ScheduledTasksPage";
 
@@ -33,6 +34,22 @@ export default function TasksView() {
   // Store-backed: selecting it here keeps this view out of the bundle's
   // per-render churn (see ChatView for the same move).
   const agents = useWorkspaceStore((s) => s.agents);
+  // "/tasks?agent=<id>": an agent's "Schedule it" — the new-task form opens
+  // with that agent chosen, and the parameter is dropped once it has.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const createForAgentId = searchParams.get("agent");
+  const clearAgentParam = useCallback(
+    () =>
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete("agent");
+          return next;
+        },
+        { replace: true },
+      ),
+    [setSearchParams],
+  );
 
   // The tab reads like the sidebar entry while the page is open; the chat's own
   // title comes back on the way out.
@@ -69,6 +86,8 @@ export default function TasksView() {
         onDelete={scheduledTasks.remove}
         onOpenResult={(conversationId) => navigate("/c/" + conversationId)}
         onRetry={() => void scheduledTasks.refresh()}
+        createForAgentId={createForAgentId}
+        onCreateForAgentHandled={clearAgentParam}
       />
     </motion.div>
   );

@@ -20,6 +20,8 @@ import { useConversationCompaction } from "@/features/chat/hooks/useConversation
 import { useAgentMap } from "@/features/chat/hooks/useAgentMap";
 import { useConversationPlans } from "@/features/chat/hooks/useConversationPlans";
 import { useProfilePanel } from "@/features/settings/hooks/useProfilePanel";
+import { useUserAgents } from "@/features/agents/hooks/useUserAgents";
+import { isAgentsPath } from "@/features/agents/lib/routes";
 import { useSettingsPanels } from "@/features/settings/hooks/useSettingsPanels";
 import { useAttachmentPreview } from "@/features/attachments/hooks/useAttachmentPreview";
 import { useOverlayMenus } from "@/features/chat/hooks/useOverlayMenus";
@@ -306,10 +308,14 @@ export function useChatWorkspace({
   //   "/"               → empty new-chat state
   //   "/c/:id"          → that conversation
   //   "/tasks"          → the scheduled-tasks page
-  // conversationId is undefined on "/" and "/tasks".
+  //   "/agents…"        → the Agents pages (gallery, an agent, the builder)
+  // conversationId is undefined on "/", "/tasks" and "/agents…".
   const { conversationId } = useParams();
   const location = useLocation();
   const isTasksRoute = location.pathname === "/tasks";
+  const isAgentsRoute = isAgentsPath(location.pathname);
+  // A full page over the chat (Schedules or Agents): no conversation surface.
+  const isPageRoute = isTasksRoute || isAgentsRoute;
   // Create toast wrapper for handlers
   const toastWrapper = useCallback(
     (opts: { title: string; description?: string; variant?: string; duration?: number }) => {
@@ -548,19 +554,21 @@ export function useChatWorkspace({
     handleCreateCustomSkill,
     handleRemoveSkillFromPool,
     refreshMySkills,
-    myAgents,
-    busyAgentId,
-    getAgentDefinition,
-    validateAgent,
-    handleCreateAgent,
-    handleUpdateAgent,
-    handleDeleteAgent,
   } = useProfilePanel({
     userId: workspaceUserId,
     toast: toastWrapper,
     initialPool: myRegistrySkills,
     requestPersist,
     authResolved,
+  });
+
+  // The user's own agents, for the Agents pages: loaded while one is open, and
+  // every create/edit/delete re-pulls the shared catalog.
+  const userAgents = useUserAgents({
+    userId: workspaceUserId,
+    toast: toastWrapper,
+    authResolved,
+    active: isAgentsRoute,
     refreshAgentCatalog,
   });
 
@@ -626,13 +634,13 @@ export function useChatWorkspace({
     voiceModeLanguage: resolvedPreferences.voiceModeLanguage,
   });
   // Voice mode is in-component state (no URL) and runs on whatever conversation
-  // is current. From the tasks page there is no conversation surface, so leave
-  // it for "/" first; "/" ↔ "/tasks" doesn't change :conversationId, so the
-  // load effect won't re-close voice and race this start.
+  // is current. From a page (Schedules, Agents) there is no conversation
+  // surface, so leave it for "/" first; "/" ↔ a page doesn't change
+  // :conversationId, so the load effect won't re-close voice and race this start.
   const triggerVoiceMode = useCallback(() => {
-    if (isTasksRoute) navigate("/");
+    if (isPageRoute) navigate("/");
     handleVoiceMode();
-  }, [isTasksRoute, navigate, handleVoiceMode]);
+  }, [isPageRoute, navigate, handleVoiceMode]);
 
   // Staged voice-mode transition (empty conversation only):
   //   forward (chat -> voice): chat-bar erases at center -> persona orb enters
@@ -789,7 +797,7 @@ export function useChatWorkspace({
   // conversation is open.
   useConversationRouting({
     conversationId,
-    isTasksRoute,
+    isPageRoute,
     navigate,
     authResolved,
     isLoggedIn,
@@ -1438,14 +1446,10 @@ export function useChatWorkspace({
     handleCreateCustomSkill,
     handleRemoveSkillFromPool,
     refreshMySkills,
-    // profile/agents (the Agents-tab builder)
-    myAgents,
-    busyAgentId,
-    getAgentDefinition,
-    validateAgent,
-    handleCreateAgent,
-    handleUpdateAgent,
-    handleDeleteAgent,
+    // the Agents pages: the user's own agents and their CRUD — one key, like
+    // scheduledTasks
+    userAgents,
+    refreshAgentCatalog,
     // multi-account switcher — one key; the shell reads what it needs off it
     accountSwitching,
     memoryInspector,

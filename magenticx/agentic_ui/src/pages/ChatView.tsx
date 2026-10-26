@@ -16,6 +16,7 @@ import { createCommandActions } from "@/features/chat/handlers/commandActions";
 import { useSlashCommands } from "@/features/chat/hooks/useSlashCommands";
 import { Loader } from "@/shared/ui/shadcn-io/loader";
 
+import { AGENTS_PATH } from "@/features/agents/lib/routes";
 import { useChatWorkspaceContext } from "@/app/workspaceContext";
 import { useWorkspaceStore } from "@/shared/stores/workspaceStore";
 
@@ -52,6 +53,7 @@ const BODY_MODES = ["chat", "voice"] as const;
  */
 export default function ChatView() {
   const {
+    navigate,
     handleAgentChange,
     agentTriggerRef,
     overlayMenus,
@@ -185,6 +187,7 @@ export default function ChatView() {
         canShareConversation={canShareFullConversation}
         onNewChat={handleNewChat}
         isStreaming={isCurrentConversationBusy}
+        onManageAgents={() => navigate(AGENTS_PATH)}
       />
 
       {/* Region below the header — the flex column for the body + composer, and

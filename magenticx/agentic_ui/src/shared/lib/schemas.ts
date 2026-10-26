@@ -216,6 +216,24 @@ export type CatalogueSearchPage = z.infer<typeof CatalogueSearchPageSchema>;
 // ---------------------------------------------------------------------------
 // User-authored agents (the agent builder) — /v1/agents/{user}/custom
 // ---------------------------------------------------------------------------
+// Where an agent in the catalog comes from: the platform's own, or one the user
+// built. Sent on every row of `/catalog/agents` and `/custom`; the Agents pages
+// and the chat picker split on it instead of cross-checking the `/custom` list.
+export const AgentKindSchema = z.enum(["platform", "custom"]);
+export type AgentKind = z.infer<typeof AgentKindSchema>;
+
+// What `/custom?include=summary` adds to each row, for the gallery's cards. Every
+// field is nullable and caught: an older bridge sends none of them, and a card
+// simply leaves out what it was not told rather than showing a wrong zero.
+const nullableCount = z.number().int().nonnegative().nullable().catch(null);
+export const CustomAgentSummarySchema = z.object({
+  model: z.string().min(1).nullable().catch(null),
+  toolCount: nullableCount,
+  skillCount: nullableCount,
+  subagentCount: nullableCount,
+});
+export type CustomAgentSummary = z.infer<typeof CustomAgentSummarySchema>;
+
 // One file inside an agent folder: a prompt, not a payload. Same shape as a
 // skill file, kept separate because the allowlist is narrower server-side.
 const toAgentFile = (
@@ -299,7 +317,7 @@ export const ToolMetadataListSchema = z
 export type ToolMetadata = z.infer<typeof ToolMetadataSchema>;
 
 // ---------------------------------------------------------------------------
-// Per-agent tools (Agents tab) — GET/POST /v1/agents/{user}/{slug}/tools
+// Per-agent tools (an agent's page) — GET/POST /v1/agents/{user}/{slug}/tools
 // ---------------------------------------------------------------------------
 export const AgentToolRowSchema = z.object({
   key: z.string(),

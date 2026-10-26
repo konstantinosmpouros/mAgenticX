@@ -1,4 +1,5 @@
 import type { Agent, AgentPublic } from "../../types/agents";
+import { AgentKindSchema } from "../../schemas";
 import { mapIcon } from "../icons";
 
 /**
@@ -65,5 +66,8 @@ export const transformAgent = (
     // agents from this path invisible to those filters.
     type: firstString(source.type, fb.type) ?? undefined,
     isActive: resolvedIsActive,
+    // Left unset rather than defaulted: "platform" would be a claim about an
+    // agent whose payload simply did not say (a conversation's embedded agent).
+    kind: AgentKindSchema.safeParse(source.kind ?? fb.kind).data,
   };
 };

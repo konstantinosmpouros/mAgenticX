@@ -5,7 +5,7 @@ import {
   buildAgentPayload,
   draftFromDetail,
   emptySubagent,
-} from "@/features/settings/lib/agentSpec";
+} from "@/features/agents/lib/agentSpec";
 import type { AgentDraft, AgentDraftSubAgent, CustomAgentDetail } from "@/shared/lib/types";
 
 /**

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildAgentPayload,
   draftFromDetail,
-} from "@/features/settings/lib/agentSpec";
+} from "@/features/agents/lib/agentSpec";
 import type { AgentDraft, CustomAgentDetail } from "@/shared/lib/types";
 
 /**

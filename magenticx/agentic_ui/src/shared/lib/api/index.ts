@@ -34,6 +34,7 @@ export {
   createMyAgent,
   updateMyAgent,
   deleteMyAgent,
+  exportMyAgent,
 } from "./agents";
 
 export { getTools, getSuggestions } from "./catalog";

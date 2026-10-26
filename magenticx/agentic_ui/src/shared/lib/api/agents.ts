@@ -6,12 +6,15 @@ import type {
   CustomAgentDetail,
   CustomAgentValidation,
   CustomAgentWritePayload,
+  MyAgent,
 } from "../types";
-import { requestJson, requestVoid } from "../http";
+import { requestJson, requestRaw, requestVoid } from "../http";
 import { PROXY_LIMIT_MB } from "../uploadGuards";
+import { getFilenameFromDisposition, triggerBrowserDownload } from "../download";
 import {
   AgentToolsResponseSchema,
   CustomAgentDetailSchema,
+  CustomAgentSummarySchema,
   CustomAgentValidationSchema,
   WireObjectArraySchema,
   WireObjectSchema,
@@ -32,7 +35,7 @@ export async function getAgents(): Promise<Agent[]> {
 }
 
 // ---------------------------------------------------------------------------
-// Per-agent tools (Agents tab). Two kinds of row: prebuilt tools, whose
+// Per-agent tools (an agent's page). Two kinds of row: prebuilt tools, whose
 // approval alone is configurable, and MCP tools, configurable on both axes.
 // Proxied to the agents service by the bridge; both mutations are
 // CSRF-protected and return refreshed rows.
@@ -84,14 +87,26 @@ const customAgentsUrl = (userId: string, agentId?: string) =>
   `${AGENTS_BASE_PATH}/${encodeURIComponent(userId)}/custom` +
   (agentId ? `/${encodeURIComponent(agentId)}` : "");
 
-// The agents this user authored. Returned in the same shape as the catalog, so
-// they slot straight into the existing `Agent` list.
-export async function getMyAgents(userId: string): Promise<Agent[]> {
-  const data = await requestJson(customAgentsUrl(userId), {
+// The agents this user authored, in the catalog's shape. `summary` asks the
+// bridge to add each one's model and tool/skill/sub-agent counts (one call for
+// the whole list, read from the agents service's own summary) — what the
+// gallery's cards show. Without it, or from a bridge that predates it, those
+// fields come back null and the cards leave them out.
+export async function getMyAgents(
+  userId: string,
+  { summary = false }: { summary?: boolean } = {},
+): Promise<MyAgent[]> {
+  const url = customAgentsUrl(userId) + (summary ? "?include=summary" : "");
+  const data = await requestJson(url, {
     schema: WireObjectArraySchema,
     fallbackMessage: "Failed to load your agents",
   });
-  return data.map((row) => transformAgent(row));
+  return data.map((row) => ({
+    // Every row here is the user's own, whether or not the bridge says so.
+    ...transformAgent(row),
+    kind: "custom" as const,
+    ...CustomAgentSummarySchema.parse(row),
+  }));
 }
 
 // One owned agent's full definition, for the edit view.
@@ -157,4 +172,23 @@ export async function deleteMyAgent(userId: string, agentId: string): Promise<vo
     csrf: true,
     fallbackMessage: "Failed to delete the agent",
   });
+}
+
+// Export: the agent as a `.zip` of its `agent.yaml` and every file it carries,
+// saved straight to disk under the server's filename (`<slug>.zip`). The slug
+// is the fallback name only if the bridge sends no Content-Disposition.
+export async function exportMyAgent(
+  userId: string,
+  agentId: string,
+  fallbackName = "agent",
+): Promise<void> {
+  const res = await requestRaw(`${customAgentsUrl(userId, agentId)}/export`, {
+    accept: "application/zip",
+    fallbackMessage: "Failed to export the agent",
+  });
+  const blob = await res.blob();
+  triggerBrowserDownload(
+    blob,
+    getFilenameFromDisposition(res.headers.get("Content-Disposition"), `${fallbackName}.zip`),
+  );
 }

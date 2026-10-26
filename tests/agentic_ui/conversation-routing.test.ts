@@ -42,7 +42,7 @@ const deferred = <T>() => {
 type Props = {
   conversationId: string | undefined;
   currentConversation: ConversationDetail | null;
-  isTasksRoute?: boolean;
+  isPageRoute?: boolean;
   sharedConversationToken?: string;
   initialSharedConversation?: SharedConversationDetail | null;
 };
@@ -72,7 +72,7 @@ const setup = (initialProps: Props) => {
         ...spies,
         navigate: spies.navigate as never,
         conversationId: p.conversationId,
-        isTasksRoute: p.isTasksRoute ?? false,
+        isPageRoute: p.isPageRoute ?? false,
         authResolved: true,
         isLoggedIn: true,
         userId: "u1",

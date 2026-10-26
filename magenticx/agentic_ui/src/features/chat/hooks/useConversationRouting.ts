@@ -22,9 +22,10 @@ type SetStateArg<T> = T | ((prev: T) => T);
 
 type UseConversationRoutingOptions = {
   // ── route ──
-  /** `:conversationId`; undefined on "/" and "/tasks". */
+  /** `:conversationId`; undefined on "/" and on the pages ("/tasks", "/agents…"). */
   conversationId: string | undefined;
-  isTasksRoute: boolean;
+  /** A full page over the chat — Schedules ("/tasks") or Agents ("/agents…"). */
+  isPageRoute: boolean;
   navigate: NavigateFunction;
 
   // ── identity gate ──
@@ -84,7 +85,7 @@ type UseConversationRoutingOptions = {
  */
 export function useConversationRouting({
   conversationId,
-  isTasksRoute,
+  isPageRoute,
   navigate,
   authResolved,
   isLoggedIn,
@@ -152,7 +153,8 @@ export function useConversationRouting({
     closeVoiceSession();
 
     if (!conversationId) {
-      // "/" or "/tasks" → erase conversation-scoped state synchronously.
+      // "/" or a page ("/tasks", "/agents…") → erase conversation-scoped state
+      // synchronously.
       setThinkingState(null);
       setExpandedThinking({});
       setAttachments([]);
@@ -205,18 +207,18 @@ export function useConversationRouting({
     // (and `if (id && …)` below keeps the shell itself from being navigated to).
     const wasEmpty = !lastConversationIdRef.current;
     lastConversationIdRef.current = id;
-    if (id && wasEmpty && !id.startsWith("shared:") && !conversationId && !isTasksRoute) {
+    if (id && wasEmpty && !id.startsWith("shared:") && !conversationId && !isPageRoute) {
       navigate("/c/" + id, { replace: true });
     }
-  }, [currentConversation?.id, conversationId, isTasksRoute, navigate]);
+  }, [currentConversation?.id, conversationId, isPageRoute, navigate]);
 
-  // Entering the tasks page tears down any live voice session. The load effect
-  // only fires on :conversationId changes, and "/" ↔ "/tasks" keeps it null,
-  // so voice is closed here for that transition.
+  // Entering a page (Schedules, Agents) tears down any live voice session. The
+  // load effect only fires on :conversationId changes, and "/" ↔ a page keeps it
+  // null, so voice is closed here for that transition.
   useEffect(() => {
-    if (isTasksRoute) closeVoiceSession();
+    if (isPageRoute) closeVoiceSession();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isTasksRoute]);
+  }, [isPageRoute]);
 
   // With no conversation open, the picker's selection must name an agent that is
   // actually in the catalog. An open conversation may legitimately point at one

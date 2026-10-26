@@ -9,6 +9,10 @@ import { ThemeModeSync } from "@/shared/ui/theme-mode-sync";
 import { WorkspaceShell } from "./app/WorkspaceShell";
 import ChatView from "./pages/ChatView";
 import TasksView from "./pages/TasksView";
+import AgentsView from "./pages/AgentsView";
+import AgentsGallery from "./features/agents/pages/AgentsGallery";
+import AgentPage from "./features/agents/pages/AgentPage";
+import AgentBuilderPage from "./features/agents/pages/AgentBuilderPage";
 import NotFound from "./pages/NotFound";
 import Login from "./pages/Login";
 import SharedConversationPage from "./pages/SharedConvPage";
@@ -55,6 +59,14 @@ const App = () => {
                 <Route path="/" element={<ChatView />} />
                 <Route path="/c/:conversationId" element={<ChatView />} />
                 <Route path="/tasks" element={<TasksView />} />
+                {/* The Agents section: AgentsView is its own layout (the page
+                    over the chat); the four pages render in its outlet. */}
+                <Route path="/agents" element={<AgentsView />}>
+                  <Route index element={<AgentsGallery />} />
+                  <Route path="new" element={<AgentBuilderPage mode="create" />} />
+                  <Route path=":agentId" element={<AgentPage />} />
+                  <Route path=":agentId/edit" element={<AgentBuilderPage mode="edit" />} />
+                </Route>
               </Route>
               <Route path="/login" element={<Login />} />
               <Route path="/share/:token" element={<SharedConversationPage />} />

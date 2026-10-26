@@ -24,6 +24,7 @@ type AgentSnapshot = {
   version?: string;
   type?: string;
   isActive: boolean;
+  kind?: Agent["kind"];
 };
 
 type ConversationSummarySnapshot = Omit<ConversationSummary, "agent"> & {
@@ -118,6 +119,7 @@ const serializeAgentForStorage = (agent?: Agent | null): AgentSnapshot | null =>
     version: agent.version,
     type: agent.type,
     isActive: agent.isActive,
+    kind: agent.kind,
   };
 };
 

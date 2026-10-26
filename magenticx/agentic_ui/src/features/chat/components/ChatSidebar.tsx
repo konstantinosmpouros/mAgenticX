@@ -50,6 +50,7 @@ import {
 import { Skeleton } from "@/shared/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { NewChatIcon } from "@/shared/ui/new-chat-icon";
+import { AgentsIcon } from "@/shared/ui/agents-icon";
 import { BrandLogo } from "@/shared/ui/brand-logo";
 import { INTERACTIVE_SURFACE } from "@/shared/lib/consts";
 import { useTouchMenuTrigger } from "@/features/chat/hooks/useTouchMenuTrigger";
@@ -76,6 +77,10 @@ type ChatSidebarProps = {
   onVoiceMode?: () => void;
   onOpenScheduledTasks?: () => void;
   scheduledTasksRunningCount?: number;
+  /** Open the Agents section ("/agents"). */
+  onOpenAgents?: () => void;
+  /** The page open over the chat, if any — its menu entry is highlighted. */
+  activePage?: "schedules" | "agents" | null;
   /** Open the settings panel, optionally on a specific section. */
   onOpenSettings: (tab?: string) => void;
   /** Open the small "Edit profile" dialog. */
@@ -152,6 +157,11 @@ const RAIL_REVEAL = "motion-safe:animate-sidebar-reveal";
 // Labels also never wrap: mid-animation the rail is narrower than "New chat".
 const RAIL_LABEL = `whitespace-nowrap ${RAIL_REVEAL} group-data-[collapsible=icon]:hidden`;
 const ROW_SPRING = { type: "spring", stiffness: 520, damping: 42, mass: 0.8 } as const;
+// A page entry (Schedules, Agents) while its page is open: the highlight is the
+// motion span inside it, so the button's own active fill stays off, and the
+// label reads as selected like the open conversation's title.
+const PAGE_ENTRY_ACTIVE =
+  "data-[active=true]:bg-transparent data-[active=true]:font-medium data-[active=true]:text-foreground";
 const rowMotion = (reduceMotion: boolean | null, index: number) => ({
   layout: "position" as const,
   initial: reduceMotion ? { opacity: 0 } : { opacity: 0, y: 4 },
@@ -227,6 +237,8 @@ export default function ChatSidebar({
   onVoiceMode,
   onOpenScheduledTasks,
   scheduledTasksRunningCount = 0,
+  onOpenAgents,
+  activePage = null,
   onOpenSettings,
   onEditProfile,
   onOpenShortcuts,
@@ -334,6 +346,32 @@ export default function ChatSidebar({
       setOpenMobile(false);
     }
   }, [onOpenScheduledTasks, isMobile, setOpenMobile]);
+
+  const handleAgentsClick = React.useCallback(() => {
+    onOpenAgents?.();
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+  }, [onOpenAgents, isMobile, setOpenMobile]);
+
+  // The open page's entry wears the selected conversation row's highlight (the
+  // hover surface and the brand bar), gliding between Schedules and Agents. Its
+  // own layoutId: a page and a chat are never open at once, but the two lists
+  // animate independently.
+  const pageHighlight = (page: "schedules" | "agents") =>
+    activePage === page ? (
+      <motion.span
+        layoutId="sidebar-active-page"
+        aria-hidden
+        className="absolute inset-0 z-0 rounded-xl bg-[hsl(var(--hover-surface))]"
+        transition={reduceMotion ? { duration: 0 } : ROW_SPRING}
+      >
+        <span
+          className="absolute left-[3px] top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-full"
+          style={{ background: "var(--gradient-primary)" }}
+        />
+      </motion.span>
+    ) : null;
 
   // Profile popover (the ChatGPT-style menu on the footer account button).
   const [profileMenuOpen, setProfileMenuOpen] = React.useState(false);
@@ -945,12 +983,16 @@ export default function ChatSidebar({
             <SidebarMenuButton
               size="lg"
               onClick={handleScheduledTasksClick}
+              isActive={activePage === "schedules"}
+              aria-current={activePage === "schedules" ? "page" : undefined}
               className={cn(
-                `group/nav !flex !h-9 gap-1 items-center rounded-xl bg-transparent px-1.5 py-0 text-sm text-foreground/90 transition-colors supports-[hover:hover]:${INTERACTIVE_SURFACE}`,
+                `group/nav relative !flex !h-9 gap-1 items-center !overflow-visible rounded-xl bg-transparent px-1.5 py-0 text-sm text-foreground/90 transition-colors supports-[hover:hover]:${INTERACTIVE_SURFACE}`,
+                PAGE_ENTRY_ACTIVE,
               )}
               tooltip="Schedules"
             >
-              <div className="relative grid size-9 flex-shrink-0 place-items-center">
+              {pageHighlight("schedules")}
+              <div className="relative z-[1] grid size-9 flex-shrink-0 place-items-center">
                 <MdOutlineSchedule className={`!h-[18px] !w-[18px] ${NAV_ICON_MOTION}`} />
                 {scheduledTasksRunningCount > 0 ? (
                   <span
@@ -961,7 +1003,26 @@ export default function ChatSidebar({
                   </span>
                 ) : null}
               </div>
-              <span className={RAIL_LABEL}>Schedules</span>
+              <span className={cn("relative z-[1]", RAIL_LABEL)}>Schedules</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              size="lg"
+              onClick={handleAgentsClick}
+              isActive={activePage === "agents"}
+              aria-current={activePage === "agents" ? "page" : undefined}
+              className={cn(
+                `group/nav relative !flex !h-9 gap-1 items-center !overflow-visible rounded-xl bg-transparent px-1.5 py-0 text-sm text-foreground/90 transition-colors supports-[hover:hover]:${INTERACTIVE_SURFACE}`,
+                PAGE_ENTRY_ACTIVE,
+              )}
+              tooltip="Agents"
+            >
+              {pageHighlight("agents")}
+              <div className="relative z-[1] grid size-9 flex-shrink-0 place-items-center">
+                <AgentsIcon className={`!h-[18px] !w-[18px] ${NAV_ICON_MOTION}`} />
+              </div>
+              <span className={cn("relative z-[1]", RAIL_LABEL)}>Agents</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

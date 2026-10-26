@@ -11,7 +11,7 @@ import { McpIcon } from "./icons";
 /**
  * McpServersTab — READ-ONLY inspection of the MCP tool catalog: which servers +
  * tools are available to the platform. Enabling/disabling tools is no longer a
- * global toggle here — that's done per agent in the Agents tab. This tab exists
+ * global toggle here — that's done per agent, on its page under Agents. This tab exists
  * purely to browse what integrations exist and read their descriptions.
  */
 type McpServersTabProps = {
@@ -73,7 +73,7 @@ export default function McpServersTab({ availableTools }: McpServersTabProps) {
       <InfoCard
         eyebrow="Apps"
         title="MCP tools"
-        description="Browse the integrations available to the platform and inspect what each tool does. To choose which tools a specific agent may use, open the Agents tab."
+        description="Browse the integrations available to the platform and inspect what each tool does. To choose which tools a specific agent may use, open it under Agents in the sidebar."
       >
         <div className="space-y-4">
           {availableTools.length === 0 ? (

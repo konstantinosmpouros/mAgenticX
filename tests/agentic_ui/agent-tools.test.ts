@@ -7,11 +7,11 @@ import {
   isToolOn,
   matchesToolQuery,
   passesToolFilter,
-} from "@/features/settings/lib/agentTools";
+} from "@/features/agents/lib/agentTools";
 import type { AgentToolRow } from "@/shared/lib/types";
 
 /**
- * The Agents tab shows two kinds of tool and two independent switches, and the
+ * An agent's page shows two kinds of tool and two independent switches, and the
  * same list renders every combination.
  *
  * **Kinds.** A prebuilt tool is constructed by the framework downstream of the

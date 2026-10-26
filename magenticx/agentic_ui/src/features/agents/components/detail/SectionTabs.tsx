@@ -5,9 +5,9 @@ import { cn } from "@/shared/lib/utils";
 /**
  * Horizontal section nav with an animated active indicator.
  *
- * Horizontal on purpose: the settings panel already renders its own sidebar on
- * the left, so a second vertical rail inside it would put two nav columns side
- * by side. Keeping this on the x-axis leaves one vertical axis on screen.
+ * Horizontal on purpose: the app's sidebar is already a vertical rail on the
+ * left, so a second one beside it would put two nav columns side by side.
+ * Keeping this on the x-axis leaves one vertical axis on screen.
  *
  * A section may carry a dot to mark unresolved validation, so a problem in a
  * section you are not looking at is visible before you press Save rather than

@@ -29,6 +29,14 @@ export const MODEL_CHOICES = [
 ] as const;
 
 /**
+ * A model id as people read it: its label when it is one of the choices above,
+ * otherwise the id without its provider prefix (`openai:gpt-x` → `gpt-x`), so a
+ * model the server allows but this list does not know yet still reads cleanly.
+ */
+export const modelLabel = (id: string): string =>
+  MODEL_CHOICES.find((m) => m.id === id)?.label ?? id.replace(/^[a-z0-9_-]+:/i, "");
+
+/**
  * Approval gates the platform mandates, written into every spec this builder
  * saves. MUST mirror `_HITL_FLOOR` in the agents service: a gate present there
  * but missing here makes *every* save fail validation.
@@ -268,3 +276,20 @@ export const draftFromDetail = (detail: CustomAgentDetail): AgentDraft => {
     subagents,
   };
 };
+
+/**
+ * A copy of a definition to open the builder on in CREATE mode: a fresh name
+ * and slug. The slug must differ — the server rejects a create whose slug
+ * collides — and `-copy` is the least surprising suffix.
+ */
+export function duplicateDefinition(detail: CustomAgentDetail): CustomAgentDetail {
+  const spec = detail.spec as Record<string, unknown>;
+  const baseSlug = typeof spec.slug === "string" ? spec.slug : detail.slug;
+  return {
+    ...detail,
+    id: "",
+    name: `${detail.name} copy`,
+    slug: `${baseSlug}-copy`,
+    spec: { ...spec, slug: `${baseSlug}-copy`, name: `${detail.name} copy` },
+  };
+}

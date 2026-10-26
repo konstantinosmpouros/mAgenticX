@@ -16,9 +16,6 @@ import {
   Agent,
   ConversationShareListItem,
   ConversationSummary,
-  CustomAgentDetail,
-  CustomAgentValidation,
-  CustomAgentWritePayload,
   CustomInstructions,
   CustomSkillCreatePayload,
   ToolMetadata,
@@ -28,7 +25,8 @@ import {
   UserSkill,
   UserSkillDetail,
 } from "@/shared/lib/types";
-import ProfileSidebar, { NAV_ITEMS } from "./profile_parts/ProfileSidebar";
+import ProfileSidebar from "./profile_parts/ProfileSidebar";
+import { resolveSettingsTab } from "@/features/settings/lib/settingsTabs";
 import AccountTab from "./profile_parts/AccountTab";
 import GeneralTab from "./profile_parts/GeneralTab";
 import PersonalizationTab from "./profile_parts/PersonalizationTab";
@@ -36,7 +34,6 @@ import VoiceTab from "./profile_parts/VoiceTab";
 import SecurityTab from "./profile_parts/SecurityTab";
 import DataControlsTab from "./profile_parts/DataControlsTab";
 import McpServersTab from "./profile_parts/McpServersTab";
-import AgentsTab from "./profile_parts/AgentsTab";
 import SkillsTab from "./profile_parts/SkillsTab";
 import MemoriesTab from "./profile_parts/MemoriesTab";
 import UsageTab from "./profile_parts/UsageTab";
@@ -45,15 +42,6 @@ import ComingSoon from "./profile_parts/ComingSoon";
 import CustomInstructionsDialog from "./profile_parts/CustomInstructionsDialog";
 import type { MemoriesHandlers } from "@/features/settings/hooks/useMemories";
 import { useUsageSummary } from "@/features/settings/hooks/useUsageSummary";
-
-/** Pre-taxonomy tab ids (persisted in UI snapshots) → their new section. */
-const LEGACY_TAB_MAP: Record<string, string> = {
-  profile: "account",
-  appearance: "personalization",
-  archived: "data-controls",
-};
-
-const VALID_SECTION_IDS = new Set<string>(NAV_ITEMS.map((item) => item.id));
 
 /** Header copy per section — title + one-line description under it. */
 const SECTION_META: Record<string, { eyebrow?: string; title: string; description: string }> = {
@@ -100,10 +88,6 @@ const SECTION_META: Record<string, { eyebrow?: string; title: string; descriptio
   account: {
     title: "Account",
     description: "Review your identity, workspace role, and recent account activity.",
-  },
-  agents: {
-    title: "Agents",
-    description: "Give each agent the tools it should use — your choices apply per agent.",
   },
   skills: {
     title: "Skills",
@@ -174,16 +158,8 @@ type ProfilePanelProps = {
   // enabled set keyed by ``agentId``. The hook lazy-loads selection when
   // the user expands an agent card via ``onLoadAgentSkills``.
   agents?: Agent[];
-  // User-authored agents (the Agents tab's builder). `myAgents` is the subset
-  // of `agents` this user owns; the handlers come from useUserAgents via
-  // useProfilePanel so a mutation also snapshots UI state.
-  myAgents?: Agent[];
-  busyAgentId?: string | null;
-  onCreateAgent?: (payload: CustomAgentWritePayload) => Promise<Agent | null>;
-  onUpdateAgent?: (agentId: string, payload: CustomAgentWritePayload) => Promise<Agent | null>;
-  onDeleteAgent?: (agentId: string) => Promise<boolean>;
-  onValidateAgent?: (payload: CustomAgentWritePayload) => Promise<CustomAgentValidation | null>;
-  onLoadAgentDefinition?: (agentId: string) => Promise<CustomAgentDetail | null>;
+  /** Usage's "Manage in Agents": closes Settings and opens the Agents section. */
+  onManageAgents?: () => void;
   skillSelections?: UserAgentSkillSelection;
   onLoadAgentSkills?: (agentId: string) => Promise<void>;
   onToggleUserAgentSkill?: (agentId: string, skillName: string) => Promise<void>;
@@ -240,13 +216,7 @@ export default function ProfilePanel({
   onCreateCustomSkill,
   onRemoveSkillFromPool,
   onRefreshMySkills,
-  myAgents,
-  busyAgentId,
-  onCreateAgent,
-  onUpdateAgent,
-  onDeleteAgent,
-  onValidateAgent,
-  onLoadAgentDefinition,
+  onManageAgents,
   agents,
   skillSelections,
   onLoadAgentSkills,
@@ -292,11 +262,9 @@ export default function ProfilePanel({
   useEffect(() => {
     if (!open) setShowCustomInstructions(false);
   }, [open]);
-  // Persisted tab ids from before the ChatGPT-taxonomy rename keep working:
-  // remap them to their new section, then validate against the nav registry
-  // (plus the hidden sections reachable via the Help submenu / shortcuts).
-  const remappedTab = LEGACY_TAB_MAP[activeTab] ?? activeTab;
-  const normalizedActiveTab = VALID_SECTION_IDS.has(remappedTab) ? remappedTab : "general";
+  // A stored or linked tab id that is no longer a section (renamed, or Agents,
+  // which left Settings) opens the section it became, or General.
+  const normalizedActiveTab = resolveSettingsTab(activeTab);
 
   // Workspace usage rollup — fetched lazily the first time the Usage tab is
   // opened, cached (with a short TTL) across tab switches and panel closes.
@@ -456,20 +424,6 @@ export default function ProfilePanel({
                       <McpServersTab availableTools={availableTools} />
                     ) : null}
 
-                    {normalizedActiveTab === "agents" ? (
-                      <AgentsTab
-                        agents={agents ?? []}
-                        myAgents={myAgents ?? []}
-                        mySkills={mySkills ?? []}
-                        busyAgentId={busyAgentId ?? null}
-                        onCreateAgent={onCreateAgent}
-                        onUpdateAgent={onUpdateAgent}
-                        onDeleteAgent={onDeleteAgent}
-                        onValidateAgent={onValidateAgent}
-                        onLoadAgentDefinition={onLoadAgentDefinition}
-                      />
-                    ) : null}
-
                     {normalizedActiveTab === "skills" ? (
                       <SkillsTab
                         mySkills={mySkills}
@@ -504,7 +458,7 @@ export default function ProfilePanel({
                         openConversation={conversationId ? { id: conversationId, title: conversationTitle } : null}
                         agents={agents ?? []}
                         onClosePanel={onClose}
-                        onManageAgents={() => setActiveTab("agents")}
+                        onManageAgents={onManageAgents ?? onClose}
                       />
                     ) : null}
 

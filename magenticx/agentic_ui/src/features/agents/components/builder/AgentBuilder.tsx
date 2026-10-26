@@ -56,14 +56,15 @@ import {
   draftFromDetail,
   emptyDraft,
   emptySubagent,
+  modelLabel,
   slugify,
   subagentPromptPath,
-} from "@/features/settings/lib/agentSpec";
-import { SoftPanel, ToggleSwitch } from "./shared";
-import { SectionTabs, type SectionTab } from "./agents_parts/SectionTabs";
-import { AgentSummary } from "./agents_parts/AgentSummary";
-import { ToolList } from "./agents_parts/ToolList";
-import { useFillAvailableHeight } from "@/features/settings/hooks/useFillAvailableHeight";
+} from "@/features/agents/lib/agentSpec";
+import { SoftPanel, ToggleSwitch } from "@/features/settings/components/profile_parts/shared";
+import { SectionTabs, type SectionTab } from "@/features/agents/components/detail/SectionTabs";
+import { AgentSummary } from "@/features/agents/components/detail/AgentSummary";
+import { ToolList } from "@/features/agents/components/detail/ToolList";
+import type { BuilderSection } from "@/features/agents/lib/routes";
 
 /**
  * AgentBuilder — a guided form that *generates* an agent definition.
@@ -74,7 +75,8 @@ import { useFillAvailableHeight } from "@/features/settings/hooks/useFillAvailab
  * violate and only discover on save. The form can only emit shapes that pass,
  * and the generated document is shown read-only so the format stays learnable.
  *
- * Renders bare — the parent supplies the InfoCard chrome, matching SkillBuilder.
+ * Renders bare — the page around it (AgentBuilderPage) supplies the chrome and
+ * the height.
  */
 
 // A short list of Lucide names, so the icon is a pick rather than free text
@@ -179,9 +181,6 @@ const readTextFile = (file: File): Promise<AgentDraftFile | { error: string }> =
     reader.readAsText(file);
   });
 
-/** The builder's sections, in nav order. */
-type BuilderSection =
-  "identity" | "instructions" | "tools" | "skills" | "team" | "files" | "approvals";
 
 type AgentBuilderProps = {
   /** Every agent already visible to the user — used for name/slug collisions. */
@@ -218,6 +217,9 @@ type AgentBuilderProps = {
   togglingKey?: string | null;
   onToggleTool?: (row: AgentToolRow) => void;
   onToggleApproval?: (row: AgentToolRow) => void;
+  /** The section to open on (the page's `?section=`), and where to report a switch. */
+  initialSection?: BuilderSection;
+  onSectionChange?: (section: BuilderSection) => void;
 };
 
 export default function AgentBuilder({
@@ -236,6 +238,8 @@ export default function AgentBuilder({
   togglingKey = null,
   onToggleTool,
   onToggleApproval,
+  initialSection = "identity",
+  onSectionChange,
 }: AgentBuilderProps) {
   const isEdit = mode === "edit";
   // The live, per-account rows only mean something for an agent that exists.
@@ -259,10 +263,14 @@ export default function AgentBuilder({
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
 
   const reduceMotion = useReducedMotion();
-  // The editor fills the panel exactly, so the actions sit on the panel's
-  // bottom edge no matter which section is open or how short it is.
-  const { ref: shellRef, height: shellHeight } = useFillAvailableHeight<HTMLDivElement>();
-  const [section, setSection] = useState<BuilderSection>("identity");
+  const [section, setSectionState] = useState<BuilderSection>(initialSection);
+  const setSection = useCallback(
+    (next: BuilderSection) => {
+      setSectionState(next);
+      onSectionChange?.(next);
+    },
+    [onSectionChange],
+  );
   // Validation is reported only after a save attempt: a blank new-agent form
   // is incomplete, not wrong, and an error banner on first paint reads as a
   // failure the user caused. Required fields are marked instead.
@@ -493,7 +501,6 @@ export default function AgentBuilder({
       ),
     }));
 
-  const modelLabel = (id: string) => MODEL_CHOICES.find((m) => m.id === id)?.label ?? id;
 
   /**
    * Add reference files, rejecting each bad one with its own reason.
@@ -617,17 +624,12 @@ export default function AgentBuilder({
   const captionClass = "text-xs font-medium text-muted-foreground";
 
   return (
-    // Height is measured, not declared — see useFillAvailableHeight for why
-    // neither `h-full` nor `position: sticky` can work through this ancestor
-    // chain. With a real height the flex column pins the tabs to the top and the
-    // actions to the bottom, and only the section body scrolls.
-    <div
-      ref={shellRef}
-      style={shellHeight ? { height: shellHeight } : undefined}
-      className="flex flex-col"
-    >
-      {/* Section nav — horizontal, because the settings panel already owns the
-          left rail; a second vertical nav inside it would be one too many. */}
+    // Fills the height its page gives it (a flex column down from the route
+    // container): the tabs stay at the top, the actions at the bottom, and only
+    // the section body scrolls.
+    <div className="flex h-full min-h-0 flex-col">
+      {/* Section nav — horizontal, above the form, as it was in the settings
+          panel; P3 replaces it with the builder's own section rail. */}
       <div className="shrink-0 border-b border-border/50">
         <SectionTabs
           tabs={sectionTabs}
