@@ -141,9 +141,11 @@ resolved_interrupt_on = {**native_hitl_defaults(), **(interrupt_on or {})}
 
 So a native tool that declares itself dangerous is approval-gated by default for
 every deep agent, while a spec can still speak for itself. `create_skill` is the
-first tool to use it, and it is additionally in `_HITL_FLOOR`
-(`harness/abstractions/user_agents.py`), so a user-authored agent may add gates
-but never remove this one.
+first tool to use it. Like every default gate except `execute` (locked), the
+user may turn it off for an agent: the agent builder saves that choice as the
+user's approval preference, and `validate_definition`
+(`harness/abstractions/user_agents.py`) only refuses a spec gate that names a
+tool the agent lacks, gates `ask_user`, or clears `execute`.
 
 ## Phase 4 — What a user can change, and how
 
@@ -175,7 +177,7 @@ A user can build their own agent (Settings → Agents → Your agents), and the 
 
 ```mermaid
 flowchart LR
-    SPEC["user's agent.yaml<br/>tools: [mcp refs, native names]"] --> VAL["validate_write()<br/>allowlisted model · known natives<br/>HITL floor · quotas · path confinement"]
+    SPEC["user's agent.yaml<br/>tools: [mcp refs, native names]"] --> VAL["validate_definition()<br/>allowlisted model · known natives · MCP vs gateway<br/>gate keys · quotas · path confinement"]
     VAL --> RES["resolve_agent_definition(slug, owner_user_id)"]
     RES --> BUILD["YamlDeepAgent → build_deep_agent<br/>identical to a platform agent"]
     BUILD --> OVR["(declared ∪ enabled) − disabled<br/>from the run config"]
@@ -184,7 +186,7 @@ flowchart LR
 | Guarantee | How it holds |
 | --- | --- |
 | No user-supplied tool code | `tools:` entries are *references* — an MCP `server/tool` pair validated against the live gateway manifest, or a native name validated against the in-code registry. There is no path by which a spec contributes executable code. |
-| The approval gates can't be removed | `_HITL_FLOOR = (write_file, edit_file, execute, task)` is enforced in `validate_write`, so a spec that omits or falsifies a gate is **rejected**. Without this, authoring an agent would be a one-line bypass of the confirmation gate on `write_file`/`execute`. |
+| `execute` always asks | `locked_gates()` is merged last at run time, and `validate_definition` rejects a spec with `hitl: {execute: false}`. The other default gates are the user's choice per agent (their approval preferences, set from the builder or the agent's Approvals tab), not a floor in the spec. |
 | Models are allowlisted | `settings.registry.allowed_agent_models`, not free text — a user cannot select something nonexistent or costly. |
 | Definitions are config, never code | `extra="forbid"` on every spec model; the agent folder accepts `.md/.txt/.yaml/.yml` only, ≤20 files, ≤256 KiB each, ≤1 MiB total, depth ≤3. |
 | Overrides work identically | The rows are keyed on `(user_id, agent_slug, tool_key)`, so a user agent and a platform one are handled the same way and two users' same-named agents cannot alias. |
@@ -324,7 +326,7 @@ See [database-schema](../architecture/database-schema.md#agent_runtime-tables) f
 | Agents-tab list / toggle | [magenticx/agents/utils/agent_tools.py](../../magenticx/agents/utils/agent_tools.py) · [router/agent_tools.py](../../magenticx/agents/router/agent_tools.py) | `list_agent_tools`, `toggle_agent_tool` |
 | Live MCP manifest load | [magenticx/agents/utils/mcp_tools.py](../../magenticx/agents/utils/mcp_tools.py) · [router/inference.py](../../magenticx/agents/router/inference.py) | `load_mcp_tools`, `optional_mcp_session`, `attach_tools` call |
 | Bridge proxy | [magenticx/dialogue_bridge/router/agent_tools.py](../../magenticx/dialogue_bridge/router/agent_tools.py) | GET list + POST toggle (CSRF) |
-| User-agent spec validation (tool refs, HITL floor, quotas) | [magenticx/agents/harness/abstractions/user_agents.py](../../magenticx/agents/harness/abstractions/user_agents.py) | `validate_write`, `_HITL_FLOOR`, `_ALLOWED_EXTENSIONS` |
+| User-agent spec validation (tool refs, gate keys, quotas), YAML import/export | [magenticx/agents/harness/abstractions/user_agents.py](../../magenticx/agents/harness/abstractions/user_agents.py) | `validate_definition`, `parse_agent_yaml`, `render_agent_yaml`, `_ALLOWED_EXTENSIONS` |
 | Ownership-aware resolution | [magenticx/agents/utils/agents.py](../../magenticx/agents/utils/agents.py) | `resolve_agent_definition`, `_load_user_agent`, `_USER_AGENT_CACHE` |
 | Frontend Agents tab | [magenticx/agentic_ui/src/features/settings/components/profile_parts/AgentsTab.tsx](../../magenticx/agentic_ui/src/features/settings/components/profile_parts/AgentsTab.tsx) | optimistic toggle, `getAgentTools` / `toggleAgentTool` |
 

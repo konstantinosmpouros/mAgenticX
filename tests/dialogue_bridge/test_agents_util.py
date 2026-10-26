@@ -360,7 +360,7 @@ async def tool_rows(monkeypatch):
     async def fake_fetch(db, user_id, agent_id):
         return {"agentSlug": "omni", "tools": [dict(r) for r in rows]}
 
-    async def fake_slug(agent_id):
+    async def fake_slug(db, user_id, agent_id):
         return "omni"
 
     monkeypatch.setattr(agents_util, "fetch_agent_tools", fake_fetch)

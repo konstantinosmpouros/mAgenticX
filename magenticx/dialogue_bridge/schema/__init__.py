@@ -12,6 +12,7 @@ from schema.agent_tools import (
     AgentToolRow,
     AgentToolsResponse,
     ToolApprovalRequest,
+    ToolApprovalsRequest,
     ToolEnabledRequest,
 )
 from schema.attachments import (
@@ -35,6 +36,8 @@ from schema.base import (
 from schema.catalog import (
     AgentFull,
     AgentPublic,
+    BuiltinToolInfo,
+    ModelChoice,
     ToolManifest,
 )
 from schema.conversations import (
@@ -142,6 +145,8 @@ from schema.usage import (
 from schema.user_agents import (
     AgentFile,
     CustomAgentDetail,
+    CustomAgentImportResult,
+    CustomAgentIssue,
     CustomAgentValidation,
     CustomAgentWrite,
 )
@@ -176,6 +181,7 @@ __all__ = [
     "AgentPublic",
     "AgentToolRow",
     "AgentToolsResponse",
+    "BuiltinToolInfo",
     "AttachmentIn",
     "AttachmentOut",
     "AuthResponse",
@@ -195,6 +201,8 @@ __all__ = [
     "ConversationVisibilityUpdate",
     "CreateConversationResponse",
     "CustomAgentDetail",
+    "CustomAgentImportResult",
+    "CustomAgentIssue",
     "CustomAgentValidation",
     "CustomAgentWrite",
     "CustomInstructions",
@@ -237,7 +245,9 @@ __all__ = [
     "TaskTargetMode",
     "TitleOut",
     "ToolApprovalRequest",
+    "ToolApprovalsRequest",
     "ToolEnabledRequest",
+    "ModelChoice",
     "ToolManifest",
     "UTCDateTime",
     "UpdateConversationResponse",

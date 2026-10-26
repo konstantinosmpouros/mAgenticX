@@ -289,12 +289,27 @@ flowchart TD
 - Active agent cache is in-memory.
 - On cache miss, the bridge synchronizes against `agents`.
 - Manifests are upserted by `id`.
-- Any DB agent missing from the latest upstream list is marked inactive.
+- Any DB agent missing from the latest upstream list is marked inactive. User-authored agents are never touched by the sync.
+- The response is the cached platform agents plus the caller's own agents, read per request. Each item carries `kind`: `"platform"` or `"custom"`, derived from `owner_user_id`.
 
 ### 8.3 Tool catalog behavior
 
 - `GET /v1/catalog/tools` simply proxies the `agents` service `/tools` endpoint.
+- `GET /v1/catalog/models` (the user-agent model allowlist, in order) and `GET /v1/catalog/builtin-tools` (built-in tools with `group`, `hitlDefault`, `locked`, `gateable`, `mainOnly`) proxy `/models` and `/builtin-tools` the same way, for the agent builder. An upstream 404 is returned as a 404, so the bridge can be deployed before an agents service that serves them.
 - No separate tool cache exists in the bridge.
+
+### 8.4 Custom agents (the agent builder)
+
+Routes under `/v1/agents/{user_id}/custom` (`router/user_agents.py`, logic in `utils/user_agents.py`). The catalog row (`agents`, with `owner_user_id`) lives in `chat_db`; the definition (spec and files) is stored by the agents service.
+
+- **List** reads the rows only. `?include=summary` adds `model`, `toolCount`, `skillCount` and `subagentCount` from one upstream list call, merged by slug; if that call fails the rows come back without counts.
+- **Create / update** call the agents service first, then write the row. If the row cannot be committed after a create, the upstream definition is deleted again (compensation) and the error re-raised.
+- **Errors** from the agents service keep their status for 400, 404, 409, 413, 422 and 429. A 422 for an invalid definition carries an object, `{"detail": {"message", "errors", "issues"}}`; 409 (duplicate slug) and 429 (cap) carry a string. Validate returns `issues[{path, message, severity}]` next to `errors`.
+- **Import** (`POST …/custom/import`, multipart) accepts a `yaml` text field plus `files` (`.md`, `.txt`, `.yaml`, `.yml`), or one `.zip` in `files`. The zip is unpacked in memory (≤ 20 files plus the manifest, ≤ 256 KiB each, ≤ 1.25 MiB in total, sizes checked as declared and while reading, no absolute paths, `..` or symlinks, depth ≤ 4; one shared top folder is stripped; `__MACOSX/` and dotfiles are ignored). `{yaml, files}` is forwarded to the agents service, which parses and validates it. Nothing is saved. Rate-limited per user (`AGENT_IMPORT_RATE_LIMIT_*`).
+- **Export** (`GET …/custom/{agent_id}/export`) checks ownership, then returns the agents service's `.zip` with its `Content-Type` and `Content-Disposition`.
+- **Approvals in one batch** (`PUT /v1/agents/{user_id}/{agent_id}/tools/approvals`, body `{"approvals": {"<toolKey>": true | false | null}}`) writes every choice to `user_agent_tool_prefs` in one transaction. `null` drops the choice. An unknown key is a 404 and a change to a locked gate a 409, as on the single-row route; any refusal writes nothing.
+
+Every user-facing path that takes an agent id (conversations, scheduled tasks, suggestions, skills, memories, agent tools) resolves it through `utils.agents.get_usable_agent`: a platform agent or the caller's own, otherwise 404.
 
 ## 9. Conversation and Message Lifecycle
 
@@ -305,7 +320,7 @@ flowchart TD
 Behavior:
 
 - validates the user scope
-- validates the target agent from the cached agent list
+- validates the target agent: a platform agent or one of the caller's own (`get_usable_agent`); anything else is a 404
 - generates multiple title candidates through the `agents` title endpoint when none is provided and picks one at random
 - falls back to message preview, agent name, or `"New conversation"` if title generation fails
 - creates the conversation and first message atomically
@@ -602,6 +617,8 @@ Either `content` or at least one attachment must be present for non-placeholder 
 | --- | --- |
 | `/v1/catalog/agents` | `GET` |
 | `/v1/catalog/tools` | `GET` |
+| `/v1/catalog/models` | `GET` |
+| `/v1/catalog/builtin-tools` | `GET` |
 
 ### 15.3 Preferences
 
@@ -676,6 +693,21 @@ Either `content` or at least one attachment must be present for non-placeholder 
 | `/v1/attachments/preview-token/{user_id}/{conversation_id}/{message_id}/{blob_id}` | `GET` |
 | `/v1/attachments/public/{token}` | `GET` |
 | `/v1/attachments/images/{user_id}` | `GET` |
+
+### 15.12 Custom Agents and Agent Tools
+
+| Endpoint | Method | Notes |
+| --- | --- | --- |
+| `/v1/agents/{user_id}/custom` | `GET` | `?include=summary` adds model and counts |
+| `/v1/agents/{user_id}/custom` | `POST` | Create |
+| `/v1/agents/{user_id}/custom/validate` | `POST` | Dry run: `valid`, `errors`, `issues` |
+| `/v1/agents/{user_id}/custom/import` | `POST` | Multipart `yaml` + `files`, or one `.zip`; saves nothing |
+| `/v1/agents/{user_id}/custom/{agent_id}` | `GET` / `PUT` / `DELETE` | Owned agents only |
+| `/v1/agents/{user_id}/custom/{agent_id}/export` | `GET` | `.zip` |
+| `/v1/agents/{user_id}/{agent_id}/tools` | `GET` | |
+| `/v1/agents/{user_id}/{agent_id}/tools/enabled` | `POST` | One MCP tool on/off |
+| `/v1/agents/{user_id}/{agent_id}/tools/approval` | `POST` | One approval gate |
+| `/v1/agents/{user_id}/{agent_id}/tools/approvals` | `PUT` | Every approval choice, one transaction |
 
 ## 16. Observability, Security, and Edge Behavior
 
@@ -883,7 +915,7 @@ Configured environment there includes:
 
 - Database schema migrations run automatically on startup via `alembic upgrade head` in the FastAPI lifespan handler (see §7.3). The legacy `Base.metadata.create_all` path was removed when alembic became the source of truth.
 - Agent manifests are synchronized on demand, not during startup.
-- `get_agent_by_id` currently reads only from the in-memory cache, so a cache miss depends on a prior catalog sync path having primed it.
+- `get_agent_by_id` reads the in-memory cache (platform agents only) and falls back to the database, so user-authored agents and agents added since boot resolve too. It does not check ownership; user-facing paths use `get_usable_agent` instead.
 - Microsoft Entra ID is the only way to sign in; there is no password route.
 - The bridge stores raw binary blobs in Postgres, not in external object storage.
 - Image attachments are returned as base64 in the image pagination endpoint.

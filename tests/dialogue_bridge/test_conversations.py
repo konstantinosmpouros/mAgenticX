@@ -98,13 +98,10 @@ async def test_create_conversation_persists_first_message_and_fallback_title(
     seeded_agent,
     monkeypatch,
 ):
-    async def fake_get_agent_by_id(_agent_id):
-        return seeded_agent
-
+    # The agent resolves for real: seeded_agent is a platform agent in the test DB.
     async def fake_generate_title(_first_message):
         return None
 
-    monkeypatch.setattr(conversation_router, "get_agent_by_id", fake_get_agent_by_id)
     monkeypatch.setattr(utils.titles, "generate_conversation_title", fake_generate_title)
 
     response = await client.post(
@@ -128,12 +125,7 @@ async def test_create_conversation_persists_first_message_and_fallback_title(
     assert payload["detail"]["messages"][0]["content"].startswith("This is a long")
 
 
-async def test_create_conversation_rejects_unknown_agent(client, seeded_user, monkeypatch):
-    async def fake_get_agent_by_id(_agent_id):
-        return None
-
-    monkeypatch.setattr(conversation_router, "get_agent_by_id", fake_get_agent_by_id)
-
+async def test_create_conversation_rejects_unknown_agent(client, seeded_user):
     response = await client.post(
         f"/v1/conversations/{seeded_user.id}",
         json={
@@ -142,8 +134,9 @@ async def test_create_conversation_rejects_unknown_agent(client, seeded_user, mo
         },
     )
 
-    assert response.status_code == 400
-    assert response.json()["detail"] == "Unknown or inactive agent."
+    # Same answer as someone else's private agent (get_usable_agent): a 404.
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Agent not found."
 
 
 async def test_get_conversations_excludes_archived(client, seeded_user, conversation_factory):
@@ -582,16 +575,12 @@ async def test_conversation_suggestions_use_recent_non_private_context(
         messages=[{"sender": "user", "type": "text", "content": "Need analytics"}],
     )
 
-    async def fake_get_agent_by_id(_agent_id):
-        return seeded_agent
-
     captured = {}
 
     async def fake_generate_conversation_suggestions(**kwargs):
         captured.update(kwargs)
         return ["Review revenue", "Compare regions"]
 
-    monkeypatch.setattr(catalog_router, "get_agent_by_id", fake_get_agent_by_id)
     monkeypatch.setattr(catalog_router, "generate_conversation_suggestions", fake_generate_conversation_suggestions)
 
     response = await client.get(f"/v1/catalog/{seeded_user.id}/suggestions?agentId={seeded_agent.id}")

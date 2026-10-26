@@ -1,9 +1,10 @@
 """Per-agent tool endpoints (Agents tab) — thin proxy to the agents service.
 
 Lists the tools an agent can use with their per-(user, agent) state, toggles one
-on or off, and sets whether one pauses for human approval. User-scoped
-(``validate_userId`` ensures the path user matches the session); both mutating
-routes additionally require a CSRF token.
+on or off, and sets whether one pauses for human approval (one tool, or every
+choice at once for the builder's save). User-scoped (``validate_userId`` ensures
+the path user matches the session); every mutating route additionally requires a
+CSRF token.
 
 No longer a pure proxy: the *manifest* still comes from the agents service (only
 it can see which tools exist), while the user's on/off choices are owned by
@@ -16,10 +17,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from core.logging import get_logger, set_context
 from core.auth.session import AuthUser, require_csrf_protection
-from schema import AgentToolsResponse, ToolApprovalRequest, ToolEnabledRequest
+from schema import AgentToolsResponse, ToolApprovalRequest, ToolApprovalsRequest, ToolEnabledRequest
 from utils import (
     fetch_agent_tools,
     set_agent_tool_approval,
+    set_agent_tool_approvals,
     set_agent_tool_enabled,
     validate_userId,
 )
@@ -95,5 +97,30 @@ async def set_agent_tool_approval_gate(
         agent_id=agent_id,
         tool_key=body.toolKey,
         approval=body.approval,
+    )
+    return AgentToolsResponse.model_validate(payload)
+
+
+@router.put(
+    "/{user_id}/{agent_id}/tools/approvals",
+    response_model=AgentToolsResponse,
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_csrf_protection)],
+)
+async def set_agent_tool_approval_gates(
+    user_id: str,
+    agent_id: str,
+    body: ToolApprovalsRequest,
+    _: AuthUser = Depends(validate_userId),
+    db: AsyncSession = Depends(get_db),
+) -> AgentToolsResponse:
+    """Apply every approval choice at once (the builder's save); all or nothing."""
+    set_context(user_id=user_id)
+    payload = await set_agent_tool_approvals(db, user_id, agent_id, body.approvals)
+    logger.info(
+        "agent_tool_approvals_set",
+        "Set per-agent tool approval gates in one batch",
+        agent_id=agent_id,
+        tool_count=len(body.approvals),
     )
     return AgentToolsResponse.model_validate(payload)

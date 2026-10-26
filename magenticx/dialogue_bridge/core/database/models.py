@@ -64,9 +64,10 @@ class AgentTable(Base):
 
     id = Column(String, primary_key=True, default=gen_uuid)
     # NULL = a platform agent discovered from the agents-service manifest.
-    # Set = a user-authored agent whose definition lives in that user's
-    # workspace (`custom_agents/<slug>/agent.yaml`). Drives both the agents
-    # service's resolution path and every ownership check.
+    # Set = a user-authored agent: this row is its catalog identity, and its
+    # definition (spec + files) is stored by the agents service in
+    # `agent_runtime`, keyed by (owner, slug). Drives both the agents service's
+    # resolution path and every ownership check (`utils.agents.get_usable_agent`).
     owner_user_id = Column(
         String, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
     )
@@ -89,6 +90,15 @@ class AgentTable(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+
+    @property
+    def kind(self) -> str:
+        """``"custom"`` for a user-authored agent, ``"platform"`` otherwise.
+
+        Derived, never stored: the owner column already says it, and a second
+        column could disagree with it.
+        """
+        return "custom" if self.owner_user_id else "platform"
 
 
 class UserTable(Base):
@@ -811,9 +821,9 @@ class UserAgentToolPrefTable(Base):
     thing and made "who disabled this tool" unanswerable. A row makes a toggle a
     single write and the question a query.
 
-    Keyed by ``agent_slug`` for the same reason as :class:`UserAgentSkillTable`:
-    the pairing is meaningful for platform agents too, and the slug is the stable
-    identifier for it.
+    Keyed by ``agent_slug``, not the catalog id: the pairing is meaningful for
+    platform agents too, and the slug is what the agents service and the run
+    config identify the agent by.
 
     ``tool_key`` is the canonical tool-cache-key (``<server>/<tool>`` for MCP, the
     bare name for native) — stored verbatim, because it is matched against live

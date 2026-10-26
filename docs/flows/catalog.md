@@ -105,12 +105,20 @@ flowchart TD
     "description": "Researches and analyzes documents",
     "icon": "Search",
     "version": "1.0.0",
-    "isActive": true
+    "type": "langgraph agent",
+    "isActive": true,
+    "kind": "platform",
+    "model": null,
+    "toolCount": null,
+    "skillCount": null,
+    "subagentCount": null
   }
 ]
 ```
 
 All returned agents have `isActive: true`. The endpoint never returns inactive agents.
+
+The list is the cached platform agents plus the caller's own agents (read per request, never cached). `kind` is `"platform"` or `"custom"`, derived from `owner_user_id`, so the UI no longer has to cross-check `/v1/agents/{userId}/custom` to tell which agents are the user's. `model` and the counts are only filled in by `GET /v1/agents/{userId}/custom?include=summary` (the agent gallery), from one agents-service list call; they are `null` here.
 
 ### Frontend: icon mapping and state
 
@@ -171,6 +179,17 @@ MCP off is a normal state, not an outage: the UI already renders an empty catalo
 
 The frontend maps `server_id → serverId` and `tool_name → toolName` (camelCase keys).
 
+### Builder catalogs: models and built-in tools
+
+The agent builder reads two more lists, proxied the same way (uncached, `require_current_user`):
+
+| Bridge | Agents service | Item |
+| --- | --- | --- |
+| `GET /v1/catalog/models` | `GET /models` | `{"id": "openai:gpt-5", "label": "GPT-5", "default": true}`, in allowlist order |
+| `GET /v1/catalog/builtin-tools` | `GET /builtin-tools` | `{"name", "description", "group", "hitlDefault", "locked", "gateable", "mainOnly"}` |
+
+A draft agent has no slug yet, so the per-agent `GET /v1/agents/{userId}/{agentId}/tools` cannot answer for it; `builtin-tools` can. An upstream 404 is returned as a 404 (not a 502), so the bridge can ship before the agents service serves these routes and the UI falls back to its own lists meanwhile. Other upstream failures follow the house errors (502 / 503).
+
 ```typescript
 type ToolMetadata = {
   serverId: string;
@@ -201,7 +220,7 @@ There is **no backend search endpoint** for tools. Filtering is done entirely on
 **Inputs:**
 
 - `userId` — validated against the authenticated session
-- `agentId` (optional query param) — if provided, fetches agent context to make suggestions relevant to that agent
+- `agentId` (optional query param) — if provided, fetches agent context to make suggestions relevant to that agent. It must be a platform agent or one of the caller's own (`get_usable_agent`); another user's agent id is a 404, so its name and description never reach the prompt
 
 **Backend logic:**
 
@@ -351,10 +370,10 @@ Edit, retry, and shared conversation continuation use the same `/start` endpoint
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| Catalog endpoints | [magenticx/dialogue_bridge/router/catalog.py](../../magenticx/dialogue_bridge/router/catalog.py) | `GET /agents`, `GET /tools`, `GET /{userId}/suggestions` handlers |
-| Agent sync + cache | [magenticx/dialogue_bridge/utils/agents.py](../../magenticx/dialogue_bridge/utils/agents.py) | `_AGENT_CACHE`, `get_cached_agents()`, `sync_agents_with_service()`, `prime_agent_cache()` |
+| Catalog endpoints | [magenticx/dialogue_bridge/router/catalog.py](../../magenticx/dialogue_bridge/router/catalog.py) | `GET /agents`, `GET /tools`, `GET /models`, `GET /builtin-tools`, `GET /{userId}/suggestions` handlers |
+| Agent sync + cache | [magenticx/dialogue_bridge/utils/agents.py](../../magenticx/dialogue_bridge/utils/agents.py) | `_AGENT_CACHE`, `get_cached_agents()`, `sync_agents_with_service()`, `prime_agent_cache()`, `get_usable_agent()` |
 | Agent DB table | [magenticx/dialogue_bridge/core/database/models.py](../../magenticx/dialogue_bridge/core/database/models.py) | `AgentTable`, `is_active` column |
-| Pydantic schemas | [magenticx/dialogue_bridge/schema/catalog.py](../../magenticx/dialogue_bridge/schema/catalog.py) | `AgentPublic`, `ToolManifest` |
+| Pydantic schemas | [magenticx/dialogue_bridge/schema/catalog.py](../../magenticx/dialogue_bridge/schema/catalog.py) | `AgentPublic`, `ToolManifest`, `ModelChoice`, `BuiltinToolInfo` |
 | Suggestion generation | [magenticx/dialogue_bridge/utils/conversations.py](../../magenticx/dialogue_bridge/utils/conversations.py) | `generate_conversation_suggestions()` |
 | MCP catalog registry | [magenticx/mcp_gateway/mcp_catalog.yaml](../../magenticx/mcp_gateway/mcp_catalog.yaml) | registered MCP servers and tool lists |
 | MCP server config | [magenticx/mcp_gateway/mcp_config.yaml](../../magenticx/mcp_gateway/mcp_config.yaml) | runtime parameters per server |

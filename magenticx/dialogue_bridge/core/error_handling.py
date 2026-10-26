@@ -1,5 +1,5 @@
 import asyncio
-from typing import Any, Awaitable, Callable, NoReturn, TypeVar
+from typing import Any, Awaitable, Callable, Collection, NoReturn, TypeVar
 
 import httpx
 from fastapi import HTTPException, Request, status
@@ -66,8 +66,14 @@ class DialogueBridgeExceptionHandler:
 
 
     @staticmethod
-    def _public_http_detail(exc: HTTPException) -> str:
+    def _public_http_detail(exc: HTTPException) -> str | dict:
         if isinstance(exc.detail, str) and exc.detail.strip():
+            return exc.detail
+        # A structured detail is passed through only when it was built on
+        # purpose — today the agent builder's validation report
+        # (``{message, errors, issues}``) forwarded from the agents service.
+        # Never on a server error, whatever it carries.
+        if isinstance(exc.detail, dict) and exc.detail and exc.status_code < 500:
             return exc.detail
         return "Request could not be completed. Please try again."
 
@@ -119,20 +125,51 @@ class UpstreamErrorHandler:
         public_detail: str,
         upstream_service: str,
         operation: str,
+        forward_statuses: Collection[int] = (),
     ) -> NoReturn:
+        """Log an upstream HTTP error and raise the public one.
+
+        By default every upstream status becomes a 502 with ``public_detail``.
+        A status listed in ``forward_statuses`` is instead re-raised as itself,
+        carrying the upstream ``detail`` — a string, or an object such as the
+        agents service's validation report — so a caller can show the real
+        reason (a duplicate slug, a cap, the exact invalid field). Anything else
+        upstream put in ``detail`` (a list, which is FastAPI's own validation
+        format and echoes the request input) falls back to ``public_detail``.
+        """
+        upstream_status = exc.response.status_code
         logger.warning(
             event,
             message,
             exc_info=True,
             upstream_service=upstream_service,
             operation=operation,
-            status_code=exc.response.status_code,
+            status_code=upstream_status,
             failure_reason="upstream_http_error",
         )
+        if upstream_status in forward_statuses:
+            raise HTTPException(
+                status_code=upstream_status,
+                detail=self._forwardable_detail(exc.response, public_detail),
+            ) from exc
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=public_detail,
         ) from exc
+
+
+    @staticmethod
+    def _forwardable_detail(response: httpx.Response, fallback: str) -> str | dict:
+        try:
+            body = response.json()
+        except ValueError:
+            return fallback
+        detail = body.get("detail") if isinstance(body, dict) else None
+        if isinstance(detail, str) and detail.strip():
+            return detail[:500]
+        if isinstance(detail, dict) and detail:
+            return detail
+        return fallback
 
 
     def raise_request_error(

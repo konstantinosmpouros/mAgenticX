@@ -265,12 +265,7 @@ async def test_fire_creates_tagged_run(db_session_factory, seeded_user, seeded_a
     assert captured.get("run_id") == run_message_id
 
 
-async def test_create_rejects_unknown_agent(client, seeded_user, monkeypatch):
-    async def fake_get_agent_by_id(_agent_id):
-        return None
-
-    monkeypatch.setattr(scheduled_tasks_util, "get_agent_by_id", fake_get_agent_by_id)
-
+async def test_create_rejects_unknown_agent(client, seeded_user):
     resp = await client.post(
         f"/v1/scheduled-tasks/{seeded_user.id}",
         json={
@@ -280,5 +275,5 @@ async def test_create_rejects_unknown_agent(client, seeded_user, monkeypatch):
             "intervalSeconds": 3600,
         },
     )
-    assert resp.status_code == 400
-    assert resp.json()["detail"] == "Unknown or inactive agent."
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "Agent not found."

@@ -16,6 +16,34 @@ class AgentManifest(BaseModel):
     icon: str
 
 
+class AgentModelOption(BaseModel):
+    """A model a user-authored agent may run on (GET /models)."""
+
+    id: str
+    label: str
+    #: The one the builder preselects.
+    default: bool = False
+
+
+class BuiltinToolInfo(BaseModel):
+    """A prebuilt tool as the agent builder lists it (GET /builtin-tools).
+
+    Every deep agent has these; the builder shows them and lets the user choose
+    which ask for approval. Mirrors ``harness.tools.builtins.BuiltinTool``.
+    """
+
+    name: str
+    description: str = ""
+    group: str
+    hitlDefault: bool = False
+    #: Approval cannot be turned off (``execute``).
+    locked: bool = False
+    #: Approval can never be turned on (``ask_user``: the call is itself a pause).
+    gateable: bool = True
+    #: Only the main agent has it; sub-agents never do.
+    mainOnly: bool = False
+
+
 class ToolManifest(BaseModel):
     """One MCP tool as advertised to the UI tool catalog (GET /tools)."""
     server_id: str = ""

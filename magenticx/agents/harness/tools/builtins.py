@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any
 
 
 class Availability(str, Enum):
@@ -100,6 +101,29 @@ def locked_gates() -> dict[str, bool]:
     return {t.name: True for t in BUILTIN_TOOLS if t.locked}
 
 
+#: Tools only the main agent has: sub-agents are built without them
+#: (``deep_agent._without_ask_user``) — a question goes to the person, and only
+#: the main agent talks to them.
+MAIN_ONLY_TOOLS: frozenset[str] = frozenset({"ask_user"})
+
+
+def builtin_tool_catalog() -> list[dict[str, Any]]:
+    """Every prebuilt tool as the agent builder lists it (``GET /builtin-tools``):
+    what it does, its group, and how its approval behaves."""
+    return [
+        {
+            "name": t.name,
+            "description": t.description,
+            "group": t.group,
+            "hitlDefault": t.hitl_default or t.locked,
+            "locked": t.locked,
+            "gateable": t.gateable,
+            "mainOnly": t.name in MAIN_ONLY_TOOLS,
+        }
+        for t in BUILTIN_TOOLS
+    ]
+
+
 def ungateable_tools() -> frozenset[str]:
     """Tools no layer may gate. Removed after the merge, locked gates included."""
     return frozenset(t.name for t in BUILTIN_TOOLS if not t.gateable)
@@ -127,9 +151,11 @@ def resolve_availability(
 __all__ = [
     "BUILTIN_BY_NAME",
     "BUILTIN_TOOLS",
+    "MAIN_ONLY_TOOLS",
     "Availability",
     "BuiltinTool",
     "builtin_hitl_defaults",
+    "builtin_tool_catalog",
     "is_builtin",
     "locked_gates",
     "resolve_availability",

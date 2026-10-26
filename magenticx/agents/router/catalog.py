@@ -2,10 +2,12 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from core.security.internal_trust import require_internal_caller
 from core.logging import get_logger
+from core.security.internal_trust import require_internal_caller
 from core.settings import settings
-from schema import AgentManifest, ToolManifest
+from harness.abstractions.user_agents import agent_model_options
+from harness.tools.builtins import builtin_tool_catalog
+from schema import AgentManifest, AgentModelOption, BuiltinToolInfo, ToolManifest
 from utils import MCPToolsClientError, get_cached_tool_manifests, list_mcp_tools
 from utils.agents import AGENT_REGISTRY
 
@@ -67,3 +69,27 @@ async def get_available_tools() -> List[ToolManifest]:
     manifests = get_cached_tool_manifests()
     logger.info("tools_cache_filled", "Refreshed tool catalog", count=len(manifests))
     return manifests
+
+
+@router.get(
+    "/models",
+    response_model=List[AgentModelOption],
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_internal_caller)],
+)
+async def get_agent_models() -> List[AgentModelOption]:
+    """The models a user-authored agent may run on (the builder's model picker),
+    with the one it preselects."""
+    return [AgentModelOption.model_validate(item) for item in agent_model_options()]
+
+
+@router.get(
+    "/builtin-tools",
+    response_model=List[BuiltinToolInfo],
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_internal_caller)],
+)
+async def get_builtin_tools() -> List[BuiltinToolInfo]:
+    """Every prebuilt tool an agent has, with how its approval behaves — for the
+    builder, before the agent exists (the per-agent tool rows need a saved one)."""
+    return [BuiltinToolInfo.model_validate(item) for item in builtin_tool_catalog()]

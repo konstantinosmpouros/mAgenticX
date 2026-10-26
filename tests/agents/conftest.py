@@ -539,9 +539,13 @@ class FakeAgentDefinitionStore:
     async def read_files(self, user_id, agent_slug):
         return dict(self.files.get((user_id, agent_slug), {}))
 
-    async def save(self, user_id, agent_slug, *, spec, files):
+    async def save(self, user_id, agent_slug, *, spec, files, create_only=False):
         key = (user_id, agent_slug)
         replaced = key in self.specs
+        if create_only and replaced:
+            from harness.agent_registry.store import AgentDefinitionExistsError
+
+            raise AgentDefinitionExistsError(agent_slug)
         self._clock += 1
         self.specs[key] = spec
         self.files[key] = dict(files)      # replace, never merge

@@ -32,7 +32,7 @@ from core.settings import settings
 from core.security.tls import get_httpx_client_cert, get_httpx_verify
 from core.error_handling import upstream_error_handler
 
-from utils.agents import get_agent_by_id
+from utils.agents import get_usable_agent
 
 logger = get_logger(__name__)
 
@@ -68,14 +68,10 @@ def _default_timeout() -> httpx.Timeout:
     return settings.http.skills_timeout
 
 
-async def _resolve_agent_slug(agent_id: str) -> str:
-    """Translate the catalog UUID into the slug the agents service expects."""
-    agent = await get_agent_by_id(agent_id)
-    if agent is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Agent not found or not active.",
-        )
+async def _resolve_agent_slug(user_id: str, agent_id: str) -> str:
+    """Translate the catalog UUID into the slug the agents service expects,
+    for an agent this user may use (a platform agent or their own)."""
+    agent = await get_usable_agent(None, user_id, agent_id)
     slug = getattr(agent, "slug", None)
     if not slug:
         raise HTTPException(
@@ -491,7 +487,7 @@ async def get_user_agent_skills(
     agents by id while the agents service addresses them by slug — the one piece
     of translation this proxy still does.
     """
-    agent_slug = await _resolve_agent_slug(agent_id)
+    agent_slug = await _resolve_agent_slug(user_id, agent_id)
     timeout = _default_timeout()
     upstream_headers = internal_service_headers(get_context().get("request_id"))
     url = _user_agent_skills_url(agent_slug, user_id)
@@ -542,7 +538,7 @@ async def _proxy_skill_mutation(
     enabled: bool,
 ) -> None:
     """Shared PUT / DELETE proxy logic — both endpoints differ only in HTTP verb."""
-    agent_slug = await _resolve_agent_slug(agent_id)
+    agent_slug = await _resolve_agent_slug(user_id, agent_id)
     url = _user_agent_skill_item_url(agent_slug, user_id, skill_name)
     timeout = _default_timeout()
     request_id = get_context().get("request_id")

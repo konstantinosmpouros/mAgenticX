@@ -36,10 +36,10 @@ from utils import (
     build_share_snapshot,
     clone_branch_to_conversation,
     conversation_summaries_query,
-    get_agent_by_id,
     get_conversation_with_agent,
     get_owned_message,
     get_share_for_owner,
+    get_usable_agent,
     init_conv,
     list_owned_shares,
     resolve_conversation_title,
@@ -77,10 +77,8 @@ async def createConversation(
     (with optional attachments). Returns the full conversation detail.
     """
     set_context(user_id=user_id)
-    # Fetch agent metadata
-    agent = await get_agent_by_id(payload.agentId)
-    if agent is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown or inactive agent.")
+    # A platform agent or one of the caller's own; anyone else's is a 404.
+    agent = await get_usable_agent(db, current_user.id, payload.agentId)
 
     resolved_title = await resolve_conversation_title(
         first_message=payload.firstMessage,

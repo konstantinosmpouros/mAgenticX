@@ -80,7 +80,7 @@ function InstructionBubble({ from, to, text }: { from: string; to: string; text:
           <span className="sr-only">to</span> {to}
         </span>
       </p>
-      <Card className="ml-auto max-w-[88%] border-border bg-chat-user p-4 text-chat-user-foreground shadow-card">
+      <Card className="agent-map-instruction ml-auto max-w-[88%] border-border bg-chat-user p-4 text-chat-user-foreground shadow-card">
         <div
           className={cn("relative min-w-0", long && !open && "overflow-hidden")}
           style={long && !open ? { maxHeight: CLAMP_PX } : undefined}

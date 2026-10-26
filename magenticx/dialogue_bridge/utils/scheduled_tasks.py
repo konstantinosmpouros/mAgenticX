@@ -53,7 +53,7 @@ from schema import (
     ScheduledTaskUpdate,
 )
 from utils.account_status import open_deletion_exists_for
-from utils.agents import get_agent_by_id
+from utils.agents import get_agent_by_id, get_usable_agent
 from utils.inference_runs import ACTIVE_RUN_STATUSES, inference_run_manager
 from utils.inference_start import start_inference_flow
 
@@ -146,9 +146,9 @@ async def create_scheduled_task(
             detail=f"You can have at most {settings.scheduler.max_tasks_per_user} scheduled tasks. Delete one first.",
         )
 
-    agent = await get_agent_by_id(create.agentId)
-    if agent is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown or inactive agent.")
+    # Checked now, not at the first fire: a task on someone else's agent would
+    # otherwise be accepted and fail at run time.
+    agent = await get_usable_agent(db, user.id, create.agentId)
 
     spec = _schedule_spec_from_payload(create)
     next_run = compute_next_run_at(create.scheduleKind, spec, create.timezone, after=_now())
@@ -203,9 +203,7 @@ async def update_scheduled_task(
     if update.prompt is not None:
         task.prompt = update.prompt
     if update.agentId is not None:
-        agent = await get_agent_by_id(update.agentId)
-        if agent is None:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown or inactive agent.")
+        agent = await get_usable_agent(db, task.user_id, update.agentId)
         task.agent_id = agent.id
         task.agent_name = agent.name
         task.agent_slug = agent.slug

@@ -75,3 +75,12 @@
   outline: 2px solid hsl(var(--primary) / 0.7);
   outline-offset: 1px;
 }
+
+/* The instruction bubble in a sub-agent's detail wears the user-message
+   colours (dark in most themes) but renders Markdown, whose inline code is a
+   light `bg-muted` chip: on the dark bubble its light text vanished. Tint the
+   chip from the bubble's own ink instead, so it reads in every theme. */
+.agent-map-instruction [data-streamdown="inline-code"] {
+  background-color: hsl(var(--chat-user-foreground) / 0.14);
+  color: inherit;
+}

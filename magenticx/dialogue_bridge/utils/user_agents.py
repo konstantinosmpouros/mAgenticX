@@ -1,4 +1,4 @@
-"""User-authored agents — owned by ``chat_db``, materialised to the agents service.
+"""User-authored agents: the catalog row lives in ``chat_db``, the definition in the agents service.
 
 A custom agent has **two** parts, split by who reads them:
 
@@ -15,16 +15,17 @@ proxies the definition rather than mirroring it, so there is nothing to keep in
 step and no window where the two disagree.
 
 Order on create/update: call the agents service **first**, because that call is
-what validates the spec *and* persists it, then write the catalog row. Reads do not call
-upstream at all — the row and its files answer them — so a slow or restarting
-agents service no longer makes a user's own agents vanish from settings, and a
-definition the volume alone holds is repaired by the sync pass rather than by a
-read that happens to open it.
+what validates the spec *and* persists it, then write the catalog row. If the
+row cannot be committed after a create, the new definition is deleted upstream
+again (compensation), so a failed create never leaves a definition no row
+points at — one the user could neither see nor recreate behind the duplicate-slug
+409. The list reads the rows alone, so a slow or restarting agents service does
+not make a user's own agents vanish; only the gallery's counts
+(``include_summary``) and opening one agent's definition call upstream.
 
-What is stored is the *submitted payload* (spec + uploaded files), not the
-generated ``agent.yaml``: that file is derived from the spec by the agents
-service, uploading it is explicitly rejected, and keeping the spec avoids giving
-the bridge a YAML dependency it has no other reason to carry.
+The bridge sends the spec as JSON and stores none of it. ``agent.yaml`` text
+only passes through on **import** (forwarded for the agents service to parse)
+and **export** (a zip streamed back), so the bridge needs no YAML dependency.
 
 Delete is a **soft** delete of the row (``is_active=False``) plus removal of the
 definition: ``agents.id`` is referenced by conversations with ``ON DELETE
@@ -32,12 +33,13 @@ CASCADE``, so hard-deleting the row would destroy the user's chat history.
 Recreating the same slug later reuses (reactivates) the dormant row rather than
 tripping the ``(owner_user_id, slug)`` uniqueness rule.
 """
-from typing import Any, Dict, List, Optional
+from collections.abc import Sequence
+from typing import Any, Dict, Optional
 from uuid import uuid4
 
 import httpx
-from fastapi import HTTPException, status
-from sqlalchemy import delete, select
+from fastapi import HTTPException, UploadFile, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import func
 
@@ -47,31 +49,49 @@ from core.security.internal_trust import internal_service_headers
 from core.security.tls import get_httpx_client_cert, get_httpx_verify
 from core.settings import settings
 from core.logging import get_context, get_logger
+from utils.agent_import import build_import_payload
 
 logger = get_logger(__name__)
 
 AGENTS_SERVICE_URL = settings.upstream.agents_service_url
+
+# Upstream statuses re-raised as themselves, with the agents service's
+# ``detail``: a duplicate slug (409), the per-user cap (429), an invalid
+# definition (422, whose detail is an object carrying ``issues``), and so on.
+# Anything else becomes a 502 with the caller's public message.
+_FORWARDED_STATUSES = frozenset({400, 404, 409, 413, 422, 429})
+
+#: An export is the agent's files zipped, bounded upstream; this only stops a
+#: misbehaving upstream from making the bridge buffer something unbounded.
+_MAX_EXPORT_BYTES = 8 * 1024 * 1024
+
+# Counts merged into the gallery rows, upstream name → wire name.
+_SUMMARY_COUNTS = {
+    "model": "model",
+    "tool_count": "toolCount",
+    "skill_count": "skillCount",
+    "subagent_count": "subagentCount",
+}
 
 
 def _base_url(user_id: str) -> str:
     return f"{AGENTS_SERVICE_URL.rstrip('/')}/users/{user_id}/custom-agents"
 
 
-async def _proxy(
+async def _send(
     method: str,
     url: str,
     *,
     operation: str,
     public_detail: str,
-    json_body: Optional[Dict[str, Any]] = None,
-    expect_json: bool = True,
-) -> Any:
+    json_body: dict[str, Any] | None = None,
+) -> httpx.Response:
     """One upstream call to the agents service with the house error handling.
 
-    Collapses the retry/HTTP-error/transport-error/invalid-JSON ladder that every
-    proxy helper needs. A 4xx from upstream is forwarded with its ``detail``
-    intact so the builder can show the real validation message rather than a
-    generic failure.
+    Collapses the retry/HTTP-error/transport-error ladder that every proxy
+    helper needs. A 4xx listed in ``_FORWARDED_STATUSES`` is forwarded with its
+    ``detail`` intact — a string, or the validation report object — so the
+    builder can show the real reason rather than a generic failure.
     """
     timeout = settings.http.agents_timeout
     headers = internal_service_headers(get_context().get("request_id"))
@@ -93,6 +113,7 @@ async def _proxy(
             message="Agents service returned an HTTP error for a custom-agent call",
             public_detail=public_detail,
             upstream_service="agents", operation=operation,
+            forward_statuses=_FORWARDED_STATUSES,
         )
     except httpx.RequestError as exc:
         upstream_error_handler.raise_request_error(
@@ -102,7 +123,22 @@ async def _proxy(
             public_detail="Agent definitions are temporarily unavailable. Please try again shortly.",
             upstream_service="agents", operation=operation,
         )
+    return resp
 
+
+async def _proxy(
+    method: str,
+    url: str,
+    *,
+    operation: str,
+    public_detail: str,
+    json_body: Optional[Dict[str, Any]] = None,
+    expect_json: bool = True,
+) -> Any:
+    """A JSON call to the agents service (see :func:`_send`); returns the body."""
+    resp = await _send(
+        method, url, operation=operation, public_detail=public_detail, json_body=json_body
+    )
     if not expect_json:
         return None
     try:
@@ -115,6 +151,29 @@ async def _proxy(
             public_detail="Agent definitions returned an unexpected response.",
             upstream_service="agents", operation=operation,
         )
+
+
+async def _proxy_bytes(
+    method: str,
+    url: str,
+    *,
+    operation: str,
+    public_detail: str,
+    max_bytes: int,
+) -> httpx.Response:
+    """A binary call to the agents service (an export zip); returns the response
+    so the caller can pass its ``Content-Type`` and ``Content-Disposition`` on."""
+    resp = await _send(method, url, operation=operation, public_detail=public_detail)
+    if len(resp.content) > max_bytes:
+        upstream_error_handler.raise_invalid_response(
+            logger,
+            event=f"{operation}_too_large",
+            message="Agents service returned a larger file than the bridge forwards",
+            public_detail=public_detail,
+            upstream_service="agents", operation=operation,
+            size_bytes=len(resp.content),
+        )
+    return resp
 
 
 # ---------------------------------------------------------------------------
@@ -135,13 +194,10 @@ async def _upsert_row(
 ) -> AgentTable:
     """Create or refresh this user's catalog row from an agents-service summary.
 
-    Flushes but does **not** commit: the caller writes the definition straight
-    after, and the two must land as one transaction. Committing here left a
-    window where the catalog row was current while the definition was still the
-    previous version — the volume held the new files, ``chat_db`` the old ones,
-    and a reconciliation pass that trusts ``chat_db`` would then revert the
-    user's edit. The flush is still needed so the INSERT is emitted before
-    ``agent_definition_files`` references it.
+    Flushes but does **not** commit: the caller owns the transaction, so a
+    create can compensate upstream when the commit fails. The flush makes a
+    constraint violation surface here, inside that guard, rather than at an
+    implicit flush later.
     """
     slug = str(summary.get("slug") or "")
     row = await _row_for(db, user_id, slug)
@@ -175,50 +231,81 @@ async def _upsert_row(
     return row
 
 
-# ---------------------------------------------------------------------------
-# Definition persistence — chat_db is the source of truth
-# ---------------------------------------------------------------------------
-# The agents-service volume has no backup, so a definition that lived only there
-# died with it: the catalog row survived and pointed at nothing, leaving an agent
-# that listed in the UI and failed at run time. These helpers keep the authored
-# definition here; the volume is a materialised cache the agents service rebuilds.
-#
-# What is stored is the *submitted payload* — the spec plus the uploaded files —
-# not the generated `agent.yaml`. That file is produced by the agents service
-# from the spec (and uploading it is explicitly rejected), so the spec is the
-# real input, and storing it keeps the bridge free of a YAML dependency.
-
-
 def _summary_from_row(row: AgentTable) -> Dict[str, Any]:
-    """The list-shape a client expects, assembled from the row alone."""
+    """The list-shape a client expects (``AgentPublic``), from the row alone."""
     return {
         "id": row.id,
         "slug": row.slug,
-        "name": row.name,
-        "description": row.description,
-        "icon": row.icon,
+        "name": row.name or row.slug or "",
+        "description": row.description or "",
+        "icon": row.icon or "",
         "version": row.version,
-        "type": row.type,
+        "type": row.type or "deep agent",
+        "is_active": True,
+        "kind": "custom",
     }
+
+
+def _counts_from_summary(summary: dict[str, Any] | None) -> dict[str, Any]:
+    """The gallery counts an agents-service summary carries, renamed for the
+    wire. A field the summary lacks is left out (an older agents service)."""
+    if not isinstance(summary, dict):
+        return {}
+    return {wire: summary[key] for key, wire in _SUMMARY_COUNTS.items() if summary.get(key) is not None}
+
+
+def _public_from_row(row: AgentTable, summary: dict[str, Any] | None = None) -> dict[str, Any]:
+    return {**_summary_from_row(row), **_counts_from_summary(summary)}
 
 
 # ---------------------------------------------------------------------------
 # Public surface
 # ---------------------------------------------------------------------------
-async def list_custom_agent_definitions(db: AsyncSession, user_id: str) -> List[Dict[str, Any]]:
-    """This user's agents, straight from ``chat_db``.
+async def list_custom_agent_definitions(
+    db: AsyncSession, user_id: str, *, include_summary: bool = False
+) -> list[dict[str, Any]]:
+    """This user's agents, from ``chat_db``.
 
-    Used to join a catalog row against a summary fetched from the agents
-    service. The row now carries everything the list needs, so the upstream hop
-    is gone — and with it the failure mode where the agents service being slow
-    or restarting made a user's own agents disappear from their settings.
+    By default this never calls upstream: it runs on every page load, and the
+    agents service being slow or restarting must not make a user's own agents
+    disappear. ``include_summary`` (the gallery) adds each agent's model and
+    tool/skill/sub-agent counts from **one** upstream list call, merged by slug.
+    If that call fails the rows are returned without counts: the gallery
+    degrades, it does not break.
     """
     result = await db.execute(
         select(AgentTable)
         .where(AgentTable.owner_user_id == user_id, AgentTable.is_active == True)
         .order_by(AgentTable.name)
     )
-    return [_summary_from_row(row) for row in result.scalars().all()]
+    items = [_summary_from_row(row) for row in result.scalars().all()]
+    if not include_summary or not items:
+        return items
+
+    try:
+        summaries = await _proxy(
+            "GET", _base_url(user_id),
+            operation="custom_agent_list",
+            public_detail="Agent details could not be loaded.",
+        )
+    except HTTPException as exc:
+        logger.warning(
+            "custom_agent_summary_unavailable",
+            "Listed custom agents without counts; the agents service list failed",
+            status_code=exc.status_code,
+            failure_reason="upstream_summary_unavailable",
+        )
+        return items
+    if not isinstance(summaries, list):
+        logger.warning(
+            "custom_agent_summary_invalid_payload",
+            "Listed custom agents without counts; the agents service list was not a list",
+            payload_type=type(summaries).__name__,
+        )
+        return items
+
+    by_slug = {str(s.get("slug")): s for s in summaries if isinstance(s, dict)}
+    return [{**item, **_counts_from_summary(by_slug.get(item["slug"]))} for item in items]
 
 
 async def get_custom_agent_definition(
@@ -249,59 +336,10 @@ async def get_custom_agent_definition(
     }
 
 
-async def adopt_definition(
-    db: AsyncSession,
-    user_id: str,
-    *,
-    slug: str,
-    spec: Dict[str, Any],
-    files: List[Dict[str, Any]],
-) -> bool:
-    """Take a definition the volume holds and ``chat_db`` does not.
-
-The sync exchange's write-back path, and the only one left. It **creates**
-    the catalog row as well as the definition, which is what the read-triggered
-    adoption it replaced could never do: that path started from a row, so the
-    orphan a half-failed create leaves — a folder no row points at — stayed
-    invisible in the UI and un-recreatable behind the upstream 409.
-
-    Refuses to revive a deleted agent: a dormant row is the tombstone that stops
-    reconciliation resurrecting it, so a slug we hold as inactive is skipped
-    rather than reactivated. Does not commit — the caller owns the transaction.
-    """
-    if not slug or not spec:
-        return False
-    existing = await _row_for(db, user_id, slug)
-    if existing is not None and not existing.is_active:
-        logger.info(
-            "custom_agent_adopt_skipped_deleted",
-            "Skipped adopting a slug this user has deleted",
-            user_id=user_id,
-            agent_slug=slug,
-        )
-        return False
-
-    summary = {
-        "slug": slug,
-        "name": spec.get("name") or slug,
-        "description": spec.get("description") or "",
-        "icon": spec.get("icon") or "",
-        "version": spec.get("version"),
-    }
-    row = await _upsert_row(db, user_id, summary)
-    logger.info(
-        "custom_agent_catalog_row_adopted",
-        "Created a catalog row for an agent only the agents service knew about",
-        agent_id=row.id,
-        agent_slug=slug,
-    )
-    return True
-
-
 async def validate_custom_agent_definition(
     user_id: str, payload: Dict[str, Any]
 ) -> Dict[str, Any]:
-    """Dry run — report problems without writing anything."""
+    """Dry run — report problems (``errors`` and field-level ``issues``) without writing."""
     return await _proxy(
         "POST", f"{_base_url(user_id)}/validate",
         operation="custom_agent_validate",
@@ -310,10 +348,73 @@ async def validate_custom_agent_definition(
     )
 
 
+async def import_custom_agent(
+    user_id: str, yaml_text: str | None, uploads: Sequence[UploadFile]
+) -> dict[str, Any]:
+    """Check an uploaded ``agent.yaml`` (+ files, or one ``.zip``). Saves nothing.
+
+    The upload is unpacked and size-checked here (``utils.agent_import``), then
+    the agents service parses and validates it. Its answer — ``valid``,
+    ``issues``, the parsed ``spec`` and the ``files`` to send — goes back to
+    the builder, which opens it as a draft; the later create is what saves it,
+    and what refuses a slug the user already has.
+    """
+    body = await build_import_payload(yaml_text, uploads)
+    result = await _proxy(
+        "POST", f"{_base_url(user_id)}/import",
+        operation="custom_agent_import",
+        public_detail="The agent file could not be checked. Please try again.",
+        json_body=body,
+    )
+    logger.info(
+        "custom_agent_import_checked",
+        "Checked an imported agent definition",
+        file_count=len(body["files"]),
+        valid=bool((result or {}).get("valid")),
+    )
+    return result
+
+
+async def export_custom_agent(
+    db: AsyncSession, user_id: str, agent_id: str
+) -> dict[str, Any]:
+    """An owned agent as a ``.zip`` (``agent.yaml`` + its files), from upstream.
+
+    Returns ``content``, ``media_type`` and ``content_disposition`` (the
+    upstream header, or one built from the slug) for the router to send.
+    """
+    row = await _require_owned_row(db, user_id, agent_id)
+    resp = await _proxy_bytes(
+        "GET", f"{_base_url(user_id)}/{row.slug}/export",
+        operation="custom_agent_export",
+        public_detail="The agent could not be exported. Please try again.",
+        max_bytes=_MAX_EXPORT_BYTES,
+    )
+    logger.info(
+        "custom_agent_exported",
+        "Exported a user-authored agent",
+        agent_id=row.id,
+        agent_slug=row.slug,
+        size_bytes=len(resp.content),
+    )
+    return {
+        "content": resp.content,
+        "media_type": resp.headers.get("content-type") or "application/zip",
+        "content_disposition": resp.headers.get("content-disposition")
+        or f'attachment; filename="{row.slug}.zip"',
+    }
+
+
 async def create_custom_agent(
     db: AsyncSession, user_id: str, payload: Dict[str, Any]
-) -> AgentTable:
-    """Write the definition, then the catalog row. Returns the row."""
+) -> dict[str, Any]:
+    """Write the definition, then the catalog row. Returns the public row.
+
+    If the row cannot be written after the definition was, the definition is
+    deleted upstream again before the error is re-raised. Without that, the
+    agents service would hold a definition no row points at: invisible in the
+    UI, and the slug blocked by a 409 on every retry.
+    """
     summary = await _proxy(
         "POST", _base_url(user_id),
         operation="custom_agent_create",
@@ -324,22 +425,55 @@ async def create_custom_agent(
     # above, in the database the agents service owns — which is also what
     # validated it, so there is no window where this side holds a definition
     # upstream has refused.
-    row = await _upsert_row(db, user_id, summary or {})
-    # `get_db` does not commit on close, so this is what makes the row durable.
-    await db.commit()
+    try:
+        row = await _upsert_row(db, user_id, summary or {})
+        # `get_db` does not commit on close, so this is what makes the row durable.
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        await _compensate_create(user_id, str((summary or {}).get("slug") or ""))
+        raise
     logger.info(
         "custom_agent_created",
         "Created a user-authored agent",
         agent_id=row.id,
         agent_slug=row.slug,
     )
-    return row
+    return _public_from_row(row, summary)
+
+
+async def _compensate_create(user_id: str, slug: str) -> None:
+    """Undo an upstream create whose catalog row failed. Best effort: the
+    original error is what the caller sees, so a failure here is only logged."""
+    if not slug:
+        return
+    try:
+        await _proxy(
+            "DELETE", f"{_base_url(user_id)}/{slug}",
+            operation="custom_agent_create_compensate",
+            public_detail="The agent could not be created. Please try again.",
+            expect_json=False,
+        )
+    except HTTPException as exc:
+        logger.error(
+            "custom_agent_create_compensation_failed",
+            "Could not delete an upstream definition after its catalog row failed",
+            agent_slug=slug,
+            status_code=exc.status_code,
+            failure_reason="compensation_failed",
+        )
+        return
+    logger.warning(
+        "custom_agent_create_compensated",
+        "Deleted the upstream definition of a create whose catalog row failed",
+        agent_slug=slug,
+    )
 
 
 async def update_custom_agent(
     db: AsyncSession, user_id: str, agent_id: str, payload: Dict[str, Any]
-) -> AgentTable:
-    """Replace an owned definition and refresh its catalog row."""
+) -> dict[str, Any]:
+    """Replace an owned definition and refresh its catalog row. Returns the public row."""
     row = await _require_owned_row(db, user_id, agent_id)
     summary = await _proxy(
         "PUT", f"{_base_url(user_id)}/{row.slug}",
@@ -355,7 +489,7 @@ async def update_custom_agent(
         agent_id=updated.id,
         agent_slug=updated.slug,
     )
-    return updated
+    return _public_from_row(updated, summary)
 
 
 async def delete_custom_agent(db: AsyncSession, user_id: str, agent_id: str) -> None:
@@ -373,8 +507,7 @@ async def delete_custom_agent(db: AsyncSession, user_id: str, agent_id: str) -> 
         expect_json=False,
     )
     # The definition is already gone upstream. The row only *deactivates* (see
-    # the docstring): conversations hold a foreign key to it, and a dormant row
-    # is also what stops a stale write-back resurrecting a deleted agent.
+    # the docstring): conversations hold a foreign key to it.
     row.is_active = False
     row.updated_at = func.now()
     await db.commit()
@@ -409,7 +542,9 @@ async def _require_owned_row(db: AsyncSession, user_id: str, agent_id: str) -> A
 __all__ = [
     "create_custom_agent",
     "delete_custom_agent",
+    "export_custom_agent",
     "get_custom_agent_definition",
+    "import_custom_agent",
     "list_custom_agent_definitions",
     "update_custom_agent",
     "validate_custom_agent_definition",

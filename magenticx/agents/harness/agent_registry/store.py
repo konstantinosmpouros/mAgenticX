@@ -57,6 +57,10 @@ logger = get_logger(__name__)
 #: copy can never diverge from the spec it claims to describe.
 MANIFEST_FILENAME = "agent.yaml"
 
+
+class AgentDefinitionExistsError(Exception):
+    """An insert-only save found the slug already taken by this user."""
+
 _DDL = """
 CREATE TABLE IF NOT EXISTS agent_definitions (
     user_id     text NOT NULL,
@@ -208,6 +212,7 @@ class AgentDefinitionStore(BaseStore):
         *,
         spec: dict[str, Any],
         files: dict[str, tuple[str, str]],
+        create_only: bool = False,
     ) -> bool:
         """Create or replace one agent's definition. Returns whether it existed.
 
@@ -216,18 +221,34 @@ class AgentDefinitionStore(BaseStore):
         reading. The spec and its files move in **one transaction** — a spec
         whose ``prompt:`` points at a file that was not written is an agent that
         fails to build, so the two must never land separately.
+
+        ``create_only`` refuses to replace: the insert does nothing on a taken
+        slug and :class:`AgentDefinitionExistsError` is raised, so of two
+        concurrent creates exactly one wins.
         """
         async with self._pool.connection() as conn, conn.transaction():
-            cur = await conn.execute(
-                "INSERT INTO agent_definitions (user_id, agent_slug, spec) "
-                "VALUES (%s, %s, %s) "
-                "ON CONFLICT (user_id, agent_slug) DO UPDATE SET "
-                "spec = EXCLUDED.spec, updated_at = now() "
-                "RETURNING (xmax <> 0) AS replaced",
-                (user_id, agent_slug, json.dumps(spec)),
-            )
-            row = await cur.fetchone()
-            replaced = bool(row and row.get("replaced"))
+            if create_only:
+                cur = await conn.execute(
+                    "INSERT INTO agent_definitions (user_id, agent_slug, spec) "
+                    "VALUES (%s, %s, %s) "
+                    "ON CONFLICT (user_id, agent_slug) DO NOTHING "
+                    "RETURNING agent_slug",
+                    (user_id, agent_slug, json.dumps(spec)),
+                )
+                if await cur.fetchone() is None:
+                    raise AgentDefinitionExistsError(agent_slug)
+                replaced = False
+            else:
+                cur = await conn.execute(
+                    "INSERT INTO agent_definitions (user_id, agent_slug, spec) "
+                    "VALUES (%s, %s, %s) "
+                    "ON CONFLICT (user_id, agent_slug) DO UPDATE SET "
+                    "spec = EXCLUDED.spec, updated_at = now() "
+                    "RETURNING (xmax <> 0) AS replaced",
+                    (user_id, agent_slug, json.dumps(spec)),
+                )
+                row = await cur.fetchone()
+                replaced = bool(row and row.get("replaced"))
             await conn.execute(
                 "DELETE FROM agent_definition_files "
                 "WHERE user_id = %s AND agent_slug = %s",
@@ -436,5 +457,6 @@ def _as_search_item(
 
 __all__ = [
     "MANIFEST_FILENAME",
+    "AgentDefinitionExistsError",
     "AgentDefinitionStore",
 ]

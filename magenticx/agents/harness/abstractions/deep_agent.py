@@ -56,6 +56,23 @@ def _without_ask_user(tools: Sequence[Any] | None) -> list[Any]:
     question, at any depth (the tool also refuses a sub-agent's call)."""
     return [t for t in (tools or []) if getattr(t, "name", None) != ASK_USER_TOOL_NAME]
 
+
+def _unique_by_name(tools: Sequence[Any]) -> list[Any]:
+    """``tools`` with each name once, the first kept. A YAML spec may list a
+    native tool that is also always-on (``{native: render_chart}``), and the
+    model API rejects two tools with one name."""
+    seen: set[str] = set()
+    unique: list[Any] = []
+    for tool in tools:
+        name = getattr(tool, "name", None)
+        if name is not None and name in seen:
+            continue
+        if name is not None:
+            seen.add(name)
+        unique.append(tool)
+    return unique
+
+
 class DeepAgent(BaseAgent, ABC):
     """
     Blueprint for deep/autonomous agents.
@@ -520,7 +537,7 @@ class DeepAgent(BaseAgent, ABC):
 
         # Selection already happened in _filter_live_tools; builtins are appended
         # here and are structurally out of reach of any user disable.
-        resolved_tools = self.tools + self._builtin_tools()
+        resolved_tools = _unique_by_name([*self.tools, *self._builtin_tools()])
 
         # `is not None` and not truthiness: a spec that deliberately declares no
         # gates passes `{}` and must stay empty rather than falling back to the

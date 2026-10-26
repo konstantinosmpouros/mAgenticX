@@ -124,20 +124,27 @@ async def set_enabled(
 
 
 async def set_approval(
-    db: AsyncSession, user_id: str, agent_slug: str, tool_key: str, *, required: bool, baseline: bool
+    db: AsyncSession,
+    user_id: str,
+    agent_slug: str,
+    tool_key: str,
+    *,
+    required: bool | None,
+    baseline: bool,
 ) -> None:
     """Record one approval choice, or clear it when it matches the baseline.
 
     ``baseline`` is what the agent gates before anyone chooses. Matching it
     stores nothing, so the table holds real choices only; differing from it
     stores the explicit value — which is how a prebuilt tool's default gate gets
-    turned off at all.
+    turned off at all. ``required=None`` drops the choice outright, so the tool
+    follows the baseline again (the builder's batch save sends it).
 
     A locked gate is never reachable here: the caller refuses it, and the runtime
     merges locked gates after every user choice regardless.
     """
     row = await _row_for(db, user_id, agent_slug, tool_key)
-    value = None if required == baseline else required
+    value = None if required is None or required == baseline else required
 
     if row is None:
         if value is None:

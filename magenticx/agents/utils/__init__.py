@@ -10,6 +10,7 @@ from utils.mcp_tools import (
     get_cached_tool_manifests_map,
     build_cache_key_from_tool_name,
     get_tool_cache_key,
+    known_mcp_tool_keys,
     list_mcp_tools,
     optional_mcp_session,
 )
@@ -25,6 +26,7 @@ __all__ = [
     "get_cached_tool_manifests",
     "get_cached_tool_manifests_map",
     "get_tool_cache_key",
+    "known_mcp_tool_keys",
     "list_mcp_tools",
     "make_merge_with_template",
     "normalise_user_input",

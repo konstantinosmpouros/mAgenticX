@@ -7,7 +7,7 @@ We monkeypatch ``utils.skills.httpx.AsyncClient`` with a fake client whose
 or raise an httpx transport error. Nothing is cached any more — the bundled
 catalogue and its Redis cache were removed by plan 30 — so every test is about
 what is forwarded and how upstream answers are mapped.
-``utils.skills.get_agent_by_id`` is patched directly to control slug resolution.
+``utils.skills.get_usable_agent`` is patched directly to control slug resolution.
 """
 from __future__ import annotations
 
@@ -120,10 +120,10 @@ async def db(session_factory):
 def patch_slug(monkeypatch):
     """Make ``_resolve_agent_slug`` return a fixed slug for any agent_id."""
 
-    async def fake_get_agent_by_id(agent_id):
+    async def fake_get_usable_agent(db, user_id, agent_id):
         return SimpleNamespace(id=agent_id, slug="test-slug")
 
-    monkeypatch.setattr(skills_mod, "get_agent_by_id", fake_get_agent_by_id)
+    monkeypatch.setattr(skills_mod, "get_usable_agent", fake_get_usable_agent)
 
 
 # ---------------------------------------------------------------------------
@@ -378,30 +378,30 @@ async def test_remove_skill_request_error_503(monkeypatch):
 # _resolve_agent_slug
 # ---------------------------------------------------------------------------
 async def test_resolve_agent_slug_returns_slug(monkeypatch):
-    async def fake_get_agent_by_id(agent_id):
+    async def fake_get_usable_agent(db, user_id, agent_id):
         return SimpleNamespace(id=agent_id, slug="resolved-slug")
 
-    monkeypatch.setattr(skills_mod, "get_agent_by_id", fake_get_agent_by_id)
-    assert await _resolve_agent_slug("agent-1") == "resolved-slug"
+    monkeypatch.setattr(skills_mod, "get_usable_agent", fake_get_usable_agent)
+    assert await _resolve_agent_slug("u1", "agent-1") == "resolved-slug"
 
 
-async def test_resolve_agent_slug_404_when_missing(monkeypatch):
-    async def fake_get_agent_by_id(agent_id):
-        return None
+async def test_resolve_agent_slug_404_when_missing(monkeypatch, session_factory):
+    # The real lookup, against the test DB, with no such agent.
+    import utils.agents as agents_util
 
-    monkeypatch.setattr(skills_mod, "get_agent_by_id", fake_get_agent_by_id)
+    monkeypatch.setattr(agents_util, "SessionLocal", session_factory)
     with pytest.raises(Exception) as exc:
-        await _resolve_agent_slug("nope")
+        await _resolve_agent_slug("u1", "nope")
     assert getattr(exc.value, "status_code", None) == 404
 
 
 async def test_resolve_agent_slug_500_when_no_slug(monkeypatch):
-    async def fake_get_agent_by_id(agent_id):
+    async def fake_get_usable_agent(db, user_id, agent_id):
         return SimpleNamespace(id=agent_id, slug=None)
 
-    monkeypatch.setattr(skills_mod, "get_agent_by_id", fake_get_agent_by_id)
+    monkeypatch.setattr(skills_mod, "get_usable_agent", fake_get_usable_agent)
     with pytest.raises(Exception) as exc:
-        await _resolve_agent_slug("agent-noslug")
+        await _resolve_agent_slug("u1", "agent-noslug")
     assert getattr(exc.value, "status_code", None) == 500
 
 

@@ -2,7 +2,7 @@ import asyncio
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Dict, List, Sequence
+from typing import Dict, List, Optional, Sequence
 
 import mcp
 from mcp import types
@@ -212,6 +212,30 @@ async def list_mcp_tools(*, force_refresh: bool = False) -> List[types.Tool]:
         logger.info("mcp_tools_cache_refreshed", "MCP tool manifest cache refreshed", tool_count=len(_MCP_TOOL_MANIFEST_CACHE))
 
     return tools
+
+
+async def known_mcp_tool_keys() -> Optional[frozenset[str]]:
+    """The gateway's tools as ``server/tool`` keys, for checking an agent spec.
+
+    Empty when MCP is off on this deployment; ``None`` when the catalog could
+    not be read (gateway down, or the manifest cache is disabled), which the
+    caller reports as "could not check" rather than as unknown tools.
+    """
+    if not settings.mcp.enabled:
+        return frozenset()
+    if not _MCP_TOOL_MANIFEST_CACHE:
+        try:
+            await list_mcp_tools()
+        except MCPToolsClientError:
+            logger.warning(
+                "mcp_tool_keys_unavailable",
+                "Could not read the MCP catalog to check an agent's tools",
+                failure_reason="gateway_unavailable",
+            )
+            return None
+    if not _MCP_TOOL_MANIFEST_CACHE:
+        return None
+    return frozenset(f"{m.server_id}/{m.tool_name}" for m in _MCP_TOOL_MANIFEST_CACHE.values())
 
 
 @asynccontextmanager

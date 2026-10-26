@@ -7,7 +7,7 @@ module a DTO lives in.
 """
 from schema.account import PurgeThreadsRequest, PurgeThreadsResponse, PurgeUserResponse
 from schema.agent_tools import AgentToolRow, AgentToolsResponse
-from schema.catalog import AgentDefinition, AgentManifest, ToolManifest
+from schema.catalog import AgentDefinition, AgentManifest, AgentModelOption, BuiltinToolInfo, ToolManifest
 from schema.commands import CommandListResponse, CommandOut
 from schema.conversation_files import (
     CopyConversationFilesRequest,
@@ -46,6 +46,9 @@ from schema.skills import (
 )
 from schema.user_agents import (
     AgentFile,
+    AgentIssue,
+    CustomAgentImport,
+    CustomAgentImportResult,
     CustomAgentValidation,
     CustomAgentWrite,
     UserAgentDetail,
@@ -66,6 +69,11 @@ __all__ = [
     "PurgeUserResponse",
     "AgentDefinition",
     "AgentFile",
+    "AgentIssue",
+    "AgentModelOption",
+    "BuiltinToolInfo",
+    "CustomAgentImport",
+    "CustomAgentImportResult",
     "AgentManifest",
     "AgentResumeRequest",
     "AgentToolRow",

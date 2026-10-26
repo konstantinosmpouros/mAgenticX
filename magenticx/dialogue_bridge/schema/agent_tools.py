@@ -39,3 +39,15 @@ class ToolApprovalRequest(BaseModel):
 
     toolKey: str
     approval: bool
+
+
+
+class ToolApprovalsRequest(BaseModel):
+    """Every approval choice for one agent, applied together (the builder's save).
+
+    ``True`` gates the tool, ``False`` clears a gate, ``None`` drops the user's
+    choice so the tool follows the agent's own default again.
+    """
+    model_config = ConfigDict(populate_by_name=True)
+
+    approvals: dict[str, bool | None] = Field(default_factory=dict)

@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 import pytest_asyncio
 from fastapi_pagination import add_pagination
@@ -74,6 +75,7 @@ os.environ.setdefault("VOICE_SESSION_RATE_LIMIT_MAX_ATTEMPTS", "1000000")
 os.environ.setdefault("EXPORT_PDF_RATE_LIMIT_MAX_ATTEMPTS", "1000000")
 os.environ.setdefault("SHARE_CREATE_RATE_LIMIT_MAX_ATTEMPTS", "1000000")
 os.environ.setdefault("SKILL_UPLOAD_RATE_LIMIT_MAX_ATTEMPTS", "1000000")
+os.environ.setdefault("AGENT_IMPORT_RATE_LIMIT_MAX_ATTEMPTS", "1000000")
 os.environ.setdefault("MESSAGE_RATE_LIMIT_MAX_ATTEMPTS", "1000000")
 os.environ.setdefault("SUGGESTIONS_RATE_LIMIT_MAX_ATTEMPTS", "1000000")
 os.environ.setdefault("USAGE_ANALYTICS_RATE_LIMIT_MAX_ATTEMPTS", "1000000")
@@ -137,12 +139,15 @@ async def _in_process_redis():
     await _app_redis.flushall()
     for holder in _REDIS_HOLDERS:
         holder._client = _app_redis
+    # The event log's second pool, for its blocking live-tail reads.
+    run_event_log._reader = _app_redis
     oidc_module._redis = _app_redis
     yield
     # The event log's second pool, for its blocking live-tail reads.
     run_event_log._reader = _app_redis
     for holder in _REDIS_HOLDERS:
         holder._client = None
+    run_event_log._reader = None
     oidc_module._redis = None
 
     run_event_log._reader = None
@@ -334,6 +339,49 @@ def conversation_factory(session_factory, seeded_user, seeded_agent):
 @pytest.fixture
 def db_session_factory(session_factory):
     return session_factory
+
+
+class FakeAgentsService:
+    """The agents service as an ``httpx.MockTransport``: answers by (method, path)
+    and records every call, so a test can assert what was — and was not — sent.
+
+    ``on(method, path, reply)`` registers a ``httpx.Response`` or a callable
+    taking the request. An unregistered call fails the test rather than
+    returning something plausible.
+    """
+
+    def __init__(self) -> None:
+        self.routes: dict[tuple[str, str], Any] = {}
+        self.calls: list[httpx.Request] = []
+
+    def on(self, method: str, path: str, reply: Any) -> None:
+        self.routes[(method.upper(), path)] = reply
+
+    def called(self, method: str, path: str) -> list[httpx.Request]:
+        return [r for r in self.calls if r.method == method.upper() and r.url.path == path]
+
+    def handle(self, request: httpx.Request) -> httpx.Response:
+        self.calls.append(request)
+        reply = self.routes.get((request.method, request.url.path))
+        if reply is None:
+            raise AssertionError(f"unexpected agents-service call: {request.method} {request.url.path}")
+        return reply(request) if callable(reply) else reply
+
+
+@pytest.fixture
+def agents_service(client, monkeypatch):
+    """Route every bridge → agents-service call to a :class:`FakeAgentsService`.
+
+    Depends on ``client`` so the test client is built before ``httpx.AsyncClient``
+    is swapped (the swap is module-global, as in the other upstream tests).
+    """
+    fake = FakeAgentsService()
+    real = httpx.AsyncClient
+    transport = httpx.MockTransport(fake.handle)
+    monkeypatch.setattr(
+        httpx, "AsyncClient", lambda *a, **k: real(transport=transport, timeout=k.get("timeout"))
+    )
+    return fake
 
 
 __all__ = [

@@ -1069,6 +1069,11 @@ class RateLimitSettings(BaseSettings):
     # skill limit, so the Add route cannot be used as a fetch amplifier.
     skill_remote_add_max_attempts: int = Field(10, validation_alias="SKILL_REMOTE_ADD_RATE_LIMIT_MAX_ATTEMPTS")
     skill_remote_add_window_seconds: int = Field(60, validation_alias="SKILL_REMOTE_ADD_RATE_LIMIT_WINDOW_SECONDS")
+    # Agent-builder import (plan 44): unpacks an uploaded agent.yaml/.zip in
+    # memory and has the agents service parse it — the same ceiling as a skill
+    # upload, in its own bucket.
+    agent_import_max_attempts: int = Field(10, validation_alias="AGENT_IMPORT_RATE_LIMIT_MAX_ATTEMPTS")
+    agent_import_window_seconds: int = Field(60, validation_alias="AGENT_IMPORT_RATE_LIMIT_WINDOW_SECONDS")
     # Minting an export download token. The export itself is bounded by the
     # cooldown column; this only stops a client hammering the token endpoint.
     export_token_max_attempts: int = Field(10, validation_alias="EXPORT_TOKEN_RATE_LIMIT_MAX_ATTEMPTS")

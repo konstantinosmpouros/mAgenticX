@@ -19,7 +19,7 @@ from core.error_handling import upstream_error_handler
 from core.security.internal_trust import internal_service_headers
 from core.security.tls import get_httpx_client_cert, get_httpx_verify
 from core.settings import settings
-from utils.agents import get_agent_by_id
+from utils.agents import get_usable_agent
 
 logger = get_logger(__name__)
 
@@ -38,14 +38,10 @@ def _default_timeout() -> httpx.Timeout:
     return settings.http.skills_timeout
 
 
-async def _resolve_agent_slug(agent_id: str) -> str:
-    """Translate the catalog UUID into the slug the agents service expects."""
-    agent = await get_agent_by_id(agent_id)
-    if agent is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Agent not found or not active.",
-        )
+async def _resolve_agent_slug(user_id: str, agent_id: str) -> str:
+    """Translate the catalog UUID into the slug the agents service expects,
+    for an agent this user may use (a platform agent or their own)."""
+    agent = await get_usable_agent(None, user_id, agent_id)
     slug = getattr(agent, "slug", None)
     if not slug:
         raise HTTPException(
@@ -57,7 +53,7 @@ async def _resolve_agent_slug(agent_id: str) -> str:
 
 async def list_agent_memories(*, user_id: str, agent_id: str) -> List[Dict[str, Any]]:
     """Return this (user, agent)'s saved memories (metadata only), sorted by name."""
-    agent_slug = await _resolve_agent_slug(agent_id)
+    agent_slug = await _resolve_agent_slug(user_id, agent_id)
     headers = internal_service_headers(get_context().get("request_id"))
     try:
         async with httpx.AsyncClient(
@@ -99,7 +95,7 @@ async def list_agent_memories(*, user_id: str, agent_id: str) -> List[Dict[str, 
 
 async def get_agent_memory_detail(*, user_id: str, agent_id: str, name: str) -> Dict[str, Any]:
     """Return one saved memory with its full content (click-to-preview)."""
-    agent_slug = await _resolve_agent_slug(agent_id)
+    agent_slug = await _resolve_agent_slug(user_id, agent_id)
     headers = internal_service_headers(get_context().get("request_id"))
     try:
         async with httpx.AsyncClient(
@@ -137,7 +133,7 @@ async def get_agent_memory_detail(*, user_id: str, agent_id: str, name: str) -> 
 
 async def delete_agent_memory(*, user_id: str, agent_id: str, name: str) -> None:
     """Delete one memory (removes its yml + AGENTS.md row upstream). Idempotent."""
-    agent_slug = await _resolve_agent_slug(agent_id)
+    agent_slug = await _resolve_agent_slug(user_id, agent_id)
     url = _memory_item_url(agent_slug, user_id, name)
     headers = internal_service_headers(get_context().get("request_id"))
     try:
