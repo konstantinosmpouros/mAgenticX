@@ -73,10 +73,13 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
  * missing count is left out rather than shown as a zero it may not be. Zero
  * tools is worth saying; zero skills or sub-agents is the default and is not.
  */
-export function cardFacts(summary: CustomAgentSummary | null): string[] {
+export function cardFacts(
+  summary: CustomAgentSummary | null,
+  models?: ReadonlyArray<{ id: string; label: string }>,
+): string[] {
   if (!summary) return [];
   const facts: string[] = [];
-  if (summary.model) facts.push(modelLabel(summary.model));
+  if (summary.model) facts.push(modelLabel(summary.model, models));
   if (typeof summary.toolCount === "number") {
     facts.push(plural(summary.toolCount, "tool", "tools"));
   }

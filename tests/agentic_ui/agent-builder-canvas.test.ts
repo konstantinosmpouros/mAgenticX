@@ -233,7 +233,7 @@ describe("the builder's rules, against the server's table", () => {
     const issues = checkDraft({ ...emptyDraft(), subagents: [{ ...emptySubagent() }] }, { mode: "create" });
     const required = issues.filter((i) => i.required).map((i) => i.path);
     expect(required).toEqual(
-      expect.arrayContaining(["name", "prompt", "subagents.0.name", "subagents.0.description", "subagents.0.prompt"]),
+      expect.arrayContaining(["name", "model", "prompt", "subagents.0.name", "subagents.0.description", "subagents.0.prompt"]),
     );
   });
 });

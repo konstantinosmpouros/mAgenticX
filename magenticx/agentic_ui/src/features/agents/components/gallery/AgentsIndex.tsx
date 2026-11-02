@@ -29,6 +29,7 @@ import {
   type GalleryScope,
 } from "@/features/agents/lib/gallery";
 import { KindBadge } from "@/features/agents/components/page";
+import { useModelOptions } from "@/features/agents/hooks/useModelOptions";
 import { PRIMARY_BUTTON } from "@/features/agents/lib/styles";
 
 /**
@@ -63,6 +64,7 @@ export function AgentsIndex({
   onDelete: (agent: Agent) => void;
 }) {
   const reduceMotion = useReducedMotion();
+  const models = useModelOptions();
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<GalleryScope>("all");
 
@@ -150,7 +152,7 @@ export function AgentsIndex({
           {visible.map((card, index) => {
             const { agent } = card;
             const Icon = agent.icon ?? Bot;
-            const facts = cardFacts(card.summary);
+            const facts = cardFacts(card.summary, models);
             const busy = busyAgentId === agent.id;
             return (
               <motion.li

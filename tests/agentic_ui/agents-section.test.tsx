@@ -195,7 +195,10 @@ describe("agents gallery", () => {
   });
 
   it("states a custom agent's facts, leaving out what the summary lacks", () => {
-    expect(cardFacts(summary)).toEqual(["GPT-5", "3 tools", "2 skills", "1 sub-agent"]);
+    const models = [{ id: "openai:gpt-5", label: "GPT-5", default: true }];
+    expect(cardFacts(summary, models)).toEqual(["GPT-5", "3 tools", "2 skills", "1 sub-agent"]);
+    // Without the server's list, the id reads without its provider prefix.
+    expect(cardFacts(summary)[0]).toBe("gpt-5");
     expect(
       cardFacts({ model: null, toolCount: 0, skillCount: null, subagentCount: 0 }),
     ).toEqual(["0 tools"]);

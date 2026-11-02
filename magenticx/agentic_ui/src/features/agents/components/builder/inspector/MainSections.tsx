@@ -140,7 +140,22 @@ export function IdentitySection() {
         htmlFor={fieldId(ROOT_UID, "model")}
         issues={modelIssues}
         issuesId={`${fieldId(ROOT_UID, "model")}-issues`}
-        hint="Its sub-agents use it too, unless one picks its own."
+        hint={
+          catalogs.modelsFailed ? (
+            <span role="alert">
+              Couldn&apos;t load the models.{" "}
+              <button
+                type="button"
+                onClick={catalogs.retryModels}
+                className="font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+              >
+                Try again
+              </button>
+            </span>
+          ) : (
+            "Its sub-agents use it too, unless one picks its own."
+          )
+        }
       >
         <ModelSelect
           id={fieldId(ROOT_UID, "model")}

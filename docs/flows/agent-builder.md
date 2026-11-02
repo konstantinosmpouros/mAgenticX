@@ -167,7 +167,7 @@ The bridge reuses the whole run pipeline (event log, WebSocket frames, approvals
 - **The UI reads specs fail-open.** `AgentSpecSchema` (zod, `.passthrough()`) types the spec on reads. A malformed field becomes absent rather than breaking the page.
 - **A save rewrites the whole folder.** `draftFromDetail` must account for every file: generated prompt files fold back into their nodes, and everything else becomes a reference file. A file it dropped would be deleted by the next save.
 - **Replace skips the approval step.** Replacing directly from the import screen updates the definition only. The user's approval preferences stay as they were. "Open in the builder" then Commit applies them as usual.
-- **The model list comes from the server.** `GET /v1/catalog/models` drives the pickers. `MODEL_CHOICES` in `agentSpec.ts` is a fallback used only while that list can't be read.
+- **The model list comes only from the server.** `GET /v1/catalog/models` drives the pickers and the labels (`useAgentCatalogs` in the builder, `useModelOptions` in the gallery and on an agent's page). The UI keeps no list of its own: when the read fails, the Model field says so with **Try again**, a new draft has no model ("Choose a model."), and labels fall back to the id without its provider prefix.
 
 ---
 

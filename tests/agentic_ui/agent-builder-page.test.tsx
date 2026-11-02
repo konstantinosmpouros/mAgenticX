@@ -353,3 +353,15 @@ describe("replace from YAML", () => {
     await waitFor(() => expect(where()).toBe("/agents/c9"));
   });
 });
+
+describe("the model list", () => {
+  it("says when the models can't be read, and reads them again on Try again", async () => {
+    api.getAgentModels.mockRejectedValueOnce(new Error("down"));
+    renderAt("/agents/new?via=canvas");
+    expect(await screen.findByText(/Couldn.t load the models/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(api.getAgentModels).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByText(/Couldn.t load the models/)).not.toBeInTheDocument());
+  });
+});

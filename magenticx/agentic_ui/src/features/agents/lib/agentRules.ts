@@ -107,7 +107,7 @@ const issue = (
   extra: Partial<DraftIssue> = {},
 ): DraftIssue => ({ path, message, severity: "error", source: "client", ...extra });
 
-/** The checks on the agent itself: name (and the slug built from it), description, instructions. */
+/** The checks on the agent itself: name (and the slug built from it), description, model, instructions. */
 function topLevelIssues(draft: AgentDraft, ctx: RuleContext): DraftIssue[] {
   const issues: DraftIssue[] = [];
   const name = draft.name.trim();
@@ -132,6 +132,9 @@ function topLevelIssues(draft: AgentDraft, ctx: RuleContext): DraftIssue[] {
     issues.push(
       issue("description", `Keep the description under ${MAX_DESCRIPTION_CHARS} characters.`),
     );
+  }
+  if (!draft.model) {
+    issues.push(issue("model", "Choose a model.", { required: true }));
   }
   if (!draft.prompt.trim()) {
     issues.push(

@@ -4,6 +4,7 @@ import { AlertCircle, CheckCircle2, ShieldCheck, Wrench } from "lucide-react";
 
 import type { Agent, AgentToolRow, CustomAgentSummary } from "@/shared/lib/types";
 import { modelLabel } from "@/features/agents/lib/agentSpec";
+import { useModelOptions } from "@/features/agents/hooks/useModelOptions";
 import type { DetailSection } from "@/features/agents/lib/routes";
 import { SectionTabs, type SectionTab } from "./SectionTabs";
 import { ToolList } from "./ToolList";
@@ -90,6 +91,7 @@ export function AgentDetail({
   versionLabel?: string | null;
 }) {
   const reduceMotion = useReducedMotion();
+  const models = useModelOptions();
 
   const enabledCount = useMemo(() => tools.filter((t) => t.enabled).length, [tools]);
   const gatedCount = useMemo(() => tools.filter((t) => t.approval).length, [tools]);
@@ -192,7 +194,7 @@ export function AgentDetail({
                   { label: "Type", value: agentTypeLabel(agent.type) },
                   // A custom agent's definition, from the list summary; absent
                   // when the bridge did not send it, rather than shown as "—".
-                  ...(summary?.model ? [{ label: "Model", value: modelLabel(summary.model) }] : []),
+                  ...(summary?.model ? [{ label: "Model", value: modelLabel(summary.model, models) }] : []),
                   ...(typeof summary?.skillCount === "number"
                     ? [{ label: "Skills", value: String(summary.skillCount) }]
                     : []),

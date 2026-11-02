@@ -148,7 +148,8 @@ describe("the schemas that carry a spec", () => {
       files: [{ path: "AGENT.md", content: "Help." }],
     });
     const draft = draftFromDetail(detail);
-    expect(draft.model).toBeTruthy();
+    // No guessed model: the builder asks for one ("Choose a model").
+    expect(draft.model).toBe("");
     expect(draft.memory).toBe(true);
     expect(draft.skills).toEqual([]);
     expect(draft.hitl).toEqual({});

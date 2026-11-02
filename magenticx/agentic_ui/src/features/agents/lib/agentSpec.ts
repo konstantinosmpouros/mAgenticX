@@ -19,29 +19,13 @@ import type {
 } from "@/shared/lib/types";
 
 /**
- * The models a user may pick when `/catalog/models` cannot be read (an older
- * bridge, a blip). The server's list wins whenever it loads, and re-validates
- * every save, so a drift here surfaces as an issue rather than a broken agent.
- */
-export const MODEL_CHOICES = [
-  { id: "openai:gpt-6-luna", label: "GPT-6 Luna" },
-  { id: "openai:gpt-5", label: "GPT-5" },
-  { id: "openai:gpt-4o", label: "GPT-4o" },
-  { id: "openai:gpt-4o-mini", label: "GPT-4o mini" },
-] as const;
-
-/** The model a new agent starts on when the server has not said otherwise. */
-export const FALLBACK_MODEL = MODEL_CHOICES[1].id;
-
-/**
  * A model id as people read it: the server's label when one is given, else the
- * fallback list's, else the id without its provider prefix (`openai:gpt-x` →
- * `gpt-x`), so a model nobody has a label for still reads cleanly.
+ * id without its provider prefix (`openai:gpt-x` → `gpt-x`), so a model nobody
+ * has a label for still reads cleanly. The models themselves come only from the
+ * server (`/catalog/models`); the UI keeps no list of its own.
  */
 export const modelLabel = (id: string, models?: ReadonlyArray<{ id: string; label: string }>) =>
-  models?.find((m) => m.id === id)?.label ||
-  MODEL_CHOICES.find((m) => m.id === id)?.label ||
-  id.replace(/^[a-z0-9_-]+:/i, "");
+  models?.find((m) => m.id === id)?.label || id.replace(/^[a-z0-9_-]+:/i, "");
 
 export const PROMPT_FILE = "AGENT.md";
 export const MANIFEST_FILE = "agent.yaml";
@@ -100,7 +84,8 @@ export const newUid = (): string => {
   return `n${uidCounter.toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 };
 
-export const emptyDraft = (model: string = FALLBACK_MODEL): AgentDraft => ({
+/** A blank draft; `model` is the server's default, or "" when its list could not be read. */
+export const emptyDraft = (model: string = ""): AgentDraft => ({
   slug: "",
   name: "",
   description: "",
@@ -266,7 +251,7 @@ export const draftFromDetail = (detail: CustomAgentDetail): AgentDraft => {
     name: detail.name,
     description: detail.description,
     icon: detail.icon || "Bot",
-    model: mainModel || FALLBACK_MODEL,
+    model: mainModel || "",
     prompt: fileFor(PROMPT_FILE),
     memory: spec.memory !== false,
     tools: toolKeys(spec.tools),

@@ -1,13 +1,12 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { getAgentModels, getBuiltinTools, getTools } from "@/shared/lib/api";
 import type { AgentModelOption, BuiltinToolInfo, ToolMetadata } from "@/shared/lib/types";
-import { MODEL_CHOICES } from "@/features/agents/lib/agentSpec";
 
 export type AgentCatalogs = {
-  /** The models an agent may run on; the fallback list until (or unless) the server's loads. */
+  /** The models an agent may run on, as the server lists them; empty until (or unless) it answers. */
   models: AgentModelOption[];
-  /** The model a new agent starts on. */
+  /** The model a new agent starts on: the server's default, or "" when the list could not be read. */
   defaultModel: string;
   /** Every built-in tool with its approval rules; empty when the bridge predates the route. */
   builtins: BuiltinToolInfo[];
@@ -17,52 +16,59 @@ export type AgentCatalogs = {
   loaded: boolean;
   /** False until the models answered (or failed) — what a new agent waits for. */
   modelsLoaded: boolean;
-  /** True when the models could not be read and the list is the fallback. */
-  modelsFallback: boolean;
+  /** True when the models could not be read (or came back empty). */
+  modelsFailed: boolean;
+  /** Read the models again, after a failure. */
+  retryModels: () => void;
 };
 
-const FALLBACK_MODELS: AgentModelOption[] = MODEL_CHOICES.map((m, index) => ({
-  id: m.id,
-  label: m.label,
-  default: index === 1,
-}));
+type CatalogState = Omit<AgentCatalogs, "retryModels">;
 
 /**
  * What the builder offers to pick from, read from the server rather than kept
- * in the UI (plan 37 §0, decision 3). Each read fails quietly: the builder
- * explains an empty list where it shows one, and the server re-checks every
- * save anyway.
+ * in the UI (plan 37 §0, decision 3). The models come only from the server: if
+ * they can't be read the Model field says so and offers to try again, rather
+ * than guessing a list that may have drifted from the allowlist. The tool
+ * lists fail quietly: the builder explains an empty list where it shows one,
+ * and the server re-checks every save anyway.
  */
 export function useAgentCatalogs(): AgentCatalogs {
-  const [state, setState] = useState<AgentCatalogs>({
-    models: FALLBACK_MODELS,
-    defaultModel: FALLBACK_MODELS[1].id,
+  const [state, setState] = useState<CatalogState>({
+    models: [],
+    defaultModel: "",
     builtins: [],
     tools: [],
     loaded: false,
     modelsLoaded: false,
-    modelsFallback: true,
+    modelsFailed: false,
   });
+
+  const loadModels = useCallback(async (isCancelled: () => boolean) => {
+    try {
+      const list = await getAgentModels();
+      if (isCancelled()) return;
+      setState((prev) =>
+        list.length
+          ? {
+              ...prev,
+              models: list,
+              defaultModel: (list.find((m) => m.default) ?? list[0]).id,
+              modelsLoaded: true,
+              modelsFailed: false,
+            }
+          : { ...prev, modelsLoaded: true, modelsFailed: true },
+      );
+    } catch {
+      if (!isCancelled()) setState((prev) => ({ ...prev, modelsLoaded: true, modelsFailed: true }));
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
+    const isCancelled = () => cancelled;
     // The models come in on their own: a new agent waits for its default
     // model, not for the MCP gateway's (slower) tool list.
-    const models = getAgentModels()
-      .then((list) => {
-        if (cancelled || !list.length) return;
-        setState((prev) => ({
-          ...prev,
-          models: list,
-          defaultModel: (list.find((m) => m.default) ?? list[0]).id,
-          modelsLoaded: true,
-          modelsFallback: false,
-        }));
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setState((prev) => ({ ...prev, modelsLoaded: true }));
-      });
+    const models = loadModels(isCancelled);
     void Promise.allSettled([models, getBuiltinTools(), getTools()]).then(([, builtins, tools]) => {
       if (cancelled) return;
       setState((prev) => ({
@@ -75,7 +81,11 @@ export function useAgentCatalogs(): AgentCatalogs {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [loadModels]);
 
-  return state;
+  const retryModels = useCallback(() => {
+    void loadModels(() => false);
+  }, [loadModels]);
+
+  return { ...state, retryModels };
 }
