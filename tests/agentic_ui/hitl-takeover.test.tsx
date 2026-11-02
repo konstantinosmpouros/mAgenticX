@@ -116,6 +116,40 @@ describe("HitlInputTakeover", () => {
     expect(screen.getByText("Run a shell command")).toBeInTheDocument();
     expect(screen.getByText("rm -rf build")).toBeInTheDocument();
   });
+
+  it("steps through a batch, then sends every decision together", async () => {
+    const batch = {
+      interruptId: "int-batch-2",
+      threadId: "thread-1",
+      content: {
+        value: {
+          action_requests: [
+            { name: "execute", args: { command: "rm -rf build" } },
+            { name: "write_file", args: { file_path: "/out/b.md", content: "# Hi" } },
+          ],
+        },
+      },
+    };
+    const onResolve = vi.fn(async () => {});
+    render(<HitlInputTakeover interrupt={batch} pendingCount={1} onResolve={onResolve} />);
+    expect(screen.getByText("Approve 2 actions")).toBeInTheDocument();
+    expect(screen.getAllByRole("tab")).toHaveLength(2);
+    // Nothing to send until each action is decided.
+    expect(screen.queryByRole("button", { name: /Send decisions/ })).not.toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText(/Rejection reason for Run a shell command/), "too risky");
+    await userEvent.click(screen.getByRole("button", { name: /Reject/ }));
+    await waitFor(() => expect(screen.getByText("Write b.md")).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: /^Approve$/ }));
+
+    expect(screen.getByRole("tab", { name: /Action 1: .*\(rejected\)/ })).toBeInTheDocument();
+    expect(screen.getByText(/1 approved · 1 rejected/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Send decisions/ }));
+    expect(onResolve).toHaveBeenCalledWith([
+      { decision: "reject", reason: "too risky" },
+      { decision: "approve", reason: undefined },
+    ]);
+  });
 });
 
 describe("approval presenter", () => {

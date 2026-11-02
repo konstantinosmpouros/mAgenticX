@@ -215,7 +215,10 @@ export function AgentsIndex({
                 </button>
 
                 {card.custom ? (
-                  <DropdownMenu>
+                  // Not modal: Delete opens a confirm dialog and the card (with this
+                  // menu) then unmounts. A modal menu's page lock (pointer-events:
+                  // none on <body>) was left behind, and nothing could be clicked.
+                  <DropdownMenu modal={false}>
                     <DropdownMenuTrigger asChild>
                       <button
                         type="button"

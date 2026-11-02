@@ -871,7 +871,7 @@ export default function ChatSidebar({
       onMouseEnter={handleSidebarMouseEnter}
       onMouseLeave={handleSidebarMouseLeave}
     >
-      <SidebarHeader className="gap-4 px-2 pb-2 pt-4">
+      <SidebarHeader className="gap-2.5 px-2 pb-2 pt-4">
         <SidebarMenu className="!gap-0">
           <SidebarMenuItem>
             <SidebarMenuButton
@@ -944,7 +944,9 @@ export default function ChatSidebar({
           </SidebarMenuItem>
         </SidebarMenu>
 
-        <SidebarMenu className="!gap-0.5">
+        {/* Rows stacked with no gap (36px apart), as ChatGPT's are; each row's
+            constant px-1.5 lead keeps its icon pinned. */}
+        <SidebarMenu className="!gap-0">
           <SidebarMenuItem>
             <SidebarMenuButton
               size="lg"

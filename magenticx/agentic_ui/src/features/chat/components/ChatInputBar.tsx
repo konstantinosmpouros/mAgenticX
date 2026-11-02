@@ -115,10 +115,9 @@ type ChatInputBarProps = {
   // When set, replaces the chat composer inside the same AnimatePresence
   // swap (voice-bar precedent) — used for the pending-HITL approval surface
   // so the action lives at the bottom where the user is already looking.
+  // It follows the active theme, like the composer it replaces: both the
+  // approval card and the agent's questions sit on the composer's own card.
   hitlTakeover?: React.ReactNode;
-  // The approval bar is always dark; a takeover that stands in for the
-  // composer itself (the agent's questions) keeps the active theme instead.
-  hitlTakeoverThemed?: boolean;
   starterSuggestions?: string[];
   onStarterSuggestionSelect?: (suggestion: string) => void;
 };
@@ -187,7 +186,6 @@ export function ChatInputBar(props: ChatInputBarProps) {
     dictationRequestSignal,
     dictationCancelSignal,
     hitlTakeover,
-    hitlTakeoverThemed = false,
     starterSuggestions = [],
     onStarterSuggestionSelect,
   } = props;
@@ -618,8 +616,8 @@ export function ChatInputBar(props: ChatInputBarProps) {
   return (
     // Always in the same place (sticky at the bottom); the empty screen lifts it
     // with a transform, so it stays mounted and glides between the two spots.
-    // The composer follows the active theme (styles/composer.css); the plan
-    // card and the approval takeover keep their always-dark scope below.
+    // The composer follows the active theme (styles/composer.css), and so does
+    // a takeover in its place (the approval card, the agent's questions).
     <motion.div
       ref={containerRef}
       initial={false}
@@ -753,9 +751,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
                 {...dock}
                 style={{ transformOrigin: "center bottom" }}
               >
-                <div
-                  className={`${hitlTakeoverThemed ? "" : "dark "}relative mx-auto max-w-3xl pointer-events-auto`}
-                >
+                <div className="relative mx-auto max-w-3xl pointer-events-auto">
                   {hitlTakeover}
                 </div>
               </motion.div>

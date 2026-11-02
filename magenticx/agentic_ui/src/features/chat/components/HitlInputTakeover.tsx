@@ -1,14 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion, type Variants } from "framer-motion";
-import {
-  Check,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  Loader2,
-  ShieldAlert,
-  X,
-} from "lucide-react";
+import { Check, ChevronDown, Loader2, ShieldAlert, X } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import type { HitlInterrupt } from "@/features/chat/components/message_parts/HitlInterruptCard";
 import { HitlActionSummary } from "@/features/chat/components/message_parts/HitlActionSummary";
@@ -111,8 +103,6 @@ export function HitlInputTakeover({ interrupt, pendingCount, onResolve }: HitlIn
     setExitKind(kind);
     setIndex(target);
   };
-  const goNext = () => goTo(index + 1, "next");
-  const goPrev = () => goTo(index - 1, "prev");
 
   const setCardReason = (value: string) =>
     setReasons((prev) => prev.map((r, i) => (i === index ? value : r)));
@@ -133,302 +123,223 @@ export function HitlInputTakeover({ interrupt, pendingCount, onResolve }: HitlIn
     );
   };
 
-  const exitTargets: Record<"approve" | "reject" | "next" | "prev", { x: number; rotate: number }> =
-    {
-      approve: { x: 180, rotate: 8 },
-      reject: { x: -180, rotate: -8 },
-      next: { x: -150, rotate: 0 },
-      prev: { x: 150, rotate: 0 },
-    };
-  const cardVariants: Variants = {
-    enter: reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.92, y: 16 },
-    center: { opacity: 1, scale: 1, x: 0, y: 0, rotate: 0 },
-    exit: (kind: "approve" | "reject" | "next" | "prev") =>
-      reduceMotion
-        ? { opacity: 0, transition: { duration: 0.12 } }
-        : { opacity: 0, ...exitTargets[kind], transition: { duration: 0.22, ease: "easeIn" } },
+  // Moving between actions slides the body sideways; deciding one slides it
+  // towards its decision. Reduced motion: a plain fade.
+  const slideX: Record<"approve" | "reject" | "next" | "prev", number> = {
+    approve: 40,
+    reject: -40,
+    next: -32,
+    prev: 32,
   };
+  const bodyVariants: Variants = {
+    enter: (kind: keyof typeof slideX) =>
+      reduceMotion ? { opacity: 0 } : { opacity: 0, x: -slideX[kind] },
+    center: { opacity: 1, x: 0 },
+    exit: (kind: keyof typeof slideX) =>
+      reduceMotion
+        ? { opacity: 0, transition: { duration: 0.1 } }
+        : { opacity: 0, x: slideX[kind], transition: { duration: 0.16, ease: "easeIn" } },
+  };
+  const current = actions[index];
+  const currentHasDetail = Boolean(current && hasApprovalDetail(current));
 
   return (
-    <div className="relative z-20 overflow-hidden rounded-[2rem] border border-warning/45 bg-background shadow-lg">
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-12 bg-gradient-to-b from-warning/[0.10] via-warning/[0.04] to-transparent" />
+    // The composer's own card, hairline and halo (styles/composer.css), as the
+    // ask-user card uses: the approval reads as part of the same surface. The
+    // warning colour stays in the icon and a light wash, not the whole frame.
+    <section
+      className="composer-shell z-20"
+      data-busy={busy !== null}
+      aria-label="Approval required"
+    >
+      <div aria-hidden className="composer-glow" />
+      <div className="composer-surface overflow-hidden">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-0 h-24 rounded-t-[1.75rem] bg-gradient-to-b from-warning/[0.08] to-transparent"
+        />
 
-      <div className="relative flex items-center gap-3 px-4 pt-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-warning/[0.18] text-warning">
-          <ShieldAlert className="h-4 w-4" />
-        </span>
-        {isBatch ? (
-          <>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-semibold text-foreground">
-                Approval required
-              </span>
-              <span className="block truncate text-xs text-muted-foreground">
-                Review each action — approve some, reject others.
-              </span>
-            </span>
-            {/* Pager: inspect/move between actions without deciding. */}
-            <div className="flex shrink-0 items-center gap-1">
-              <button
-                type="button"
-                onClick={goPrev}
-                disabled={busy !== null || index === 0}
-                aria-label="Previous action"
-                className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-30"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-              <span className="min-w-[3.2rem] rounded-full bg-warning/15 px-2 py-0.5 text-center text-[10px] font-medium text-warning">
-                {index + 1} of {total}
-              </span>
-              <button
-                type="button"
-                onClick={goNext}
-                disabled={busy !== null || index === total - 1}
-                aria-label="Next action"
-                className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-30"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </button>
-            </div>
-          </>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setDetailOpen((prev) => !prev)}
-            disabled={!singleHasDetail}
-            aria-expanded={singleHasDetail ? detailOpen : undefined}
-            aria-label={detailOpen ? "Hide approval details" : "Show approval details"}
-            className="group flex min-w-0 flex-1 items-center gap-2 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning/50 disabled:cursor-default"
-          >
-            <span className="min-w-0">
-              <span className="block truncate text-sm font-semibold text-foreground">
-                Approval required
-                {pendingCount > 1 ? (
-                  <span className="ml-2 rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-medium text-warning">
-                    1 of {pendingCount}
-                  </span>
-                ) : null}
-              </span>
-              <span className="block truncate text-xs text-muted-foreground">{summaryLine}</span>
-            </span>
-            {singleHasDetail ? (
-              <ChevronDown
-                className={cn(
-                  "h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:text-foreground",
-                  detailOpen && "rotate-180",
-                )}
-              />
-            ) : null}
-          </button>
-        )}
-      </div>
-
-      {/* Single action: what exactly is being approved, in its natural form. */}
-      {!isBatch && detailOpen && single && singleHasDetail ? (
-        <div className="scrollbar-muted relative mx-4 mt-2 max-h-[min(22rem,45vh)] overflow-y-auto overscroll-contain rounded-xl border border-border bg-background px-3 py-2.5">
-          <HitlActionSummary summary={single} />
-        </div>
-      ) : null}
-
-      {/* Batch path: a navigable stacked deck — one card at a time. */}
-      {isBatch ? (
-        <div className="relative mx-4 mt-3 min-h-[156px]">
-          {/* Peek of the cards still ahead of the top card. */}
-          {!reduceMotion
-            ? Array.from({ length: Math.min(Math.max(total - 1 - index, 0), 2) }).map((_, i) => (
-                <div
-                  key={`deck-back-${i}`}
-                  aria-hidden
-                  className="absolute inset-x-0 top-0 h-full rounded-2xl border border-warning/20 bg-secondary/40"
-                  style={{
-                    transform: `translateY(${(i + 1) * 7}px) scale(${1 - (i + 1) * 0.04})`,
-                    opacity: 0.55 - i * 0.18,
-                    zIndex: -1,
-                  }}
-                />
-              ))
-            : null}
-
-          <AnimatePresence mode="popLayout" custom={exitKind} initial={false}>
-            {busy === "submit" ? (
-              <motion.div
-                key="submitting"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="flex h-[156px] items-center justify-center rounded-2xl border border-warning/40 bg-background"
-              >
-                <span className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Resuming with your decisions…
+        {/* ---- header: what needs approving ---- */}
+        <div className="relative flex items-center gap-3 px-4 pt-4 sm:px-5">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-warning/[0.12] text-warning ring-1 ring-warning/20">
+            <ShieldAlert className="h-[18px] w-[18px]" />
+          </span>
+          {isBatch ? (
+            <>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-semibold text-foreground">
+                  Approve {total} actions
                 </span>
-              </motion.div>
-            ) : (
-              <motion.div
-                key={index}
-                custom={exitKind}
-                variants={cardVariants}
-                initial="enter"
-                animate="center"
-                exit="exit"
-                transition={
-                  reduceMotion
-                    ? { duration: 0.12 }
-                    : { type: "spring", stiffness: 420, damping: 34 }
-                }
-                className="relative rounded-2xl border border-warning/40 bg-background px-3.5 py-3 shadow-sm"
-              >
-                <div className="mb-2 flex items-center gap-2">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-md bg-warning/15 text-[11px] font-semibold text-warning">
-                    {index + 1}
+                <span className="block truncate text-xs text-muted-foreground">
+                  {current?.title ?? `Action ${index + 1}`}
+                  <span className="text-muted-foreground/70">
+                    {" "}
+                    · {index + 1} of {total}
                   </span>
-                  <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
-                    {actions[index]?.title ?? `Action ${index + 1}`}
-                  </span>
-                  {currentDecision ? (
-                    <span
+                </span>
+              </span>
+              {/* One pill per action: where you are, and what you decided. */}
+              <div role="tablist" aria-label="Actions" className="flex shrink-0 items-center gap-1">
+                {actions.map((action, i) => {
+                  const decided = decisions[i];
+                  const state =
+                    decided === "approve"
+                      ? " (approved)"
+                      : decided === "reject"
+                        ? " (rejected)"
+                        : "";
+                  return (
+                    <button
+                      key={`step-${i}`}
+                      type="button"
+                      role="tab"
+                      aria-selected={i === index}
+                      aria-label={`Action ${i + 1}: ${action.title}${state}`}
+                      onClick={() => goTo(i, i > index ? "next" : "prev")}
+                      disabled={busy !== null}
                       className={cn(
-                        "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium",
-                        currentDecision === "approve"
+                        "flex h-7 min-w-7 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+                        decided === "approve"
                           ? "bg-success/15 text-success"
-                          : "bg-destructive/15 text-destructive",
+                          : decided === "reject"
+                            ? "bg-destructive/15 text-destructive"
+                            : "bg-muted text-muted-foreground hover:text-foreground",
+                        i === index && "ring-2 ring-primary/40 ring-offset-1 ring-offset-card",
                       )}
                     >
-                      {currentDecision === "approve" ? "Approved" : "Rejected"}
-                    </span>
-                  ) : (
-                    <span className="shrink-0 text-[11px] text-muted-foreground">Pending</span>
-                  )}
-                </div>
-
-                {actions[index] && hasApprovalDetail(actions[index]) ? (
-                  <div className="scrollbar-muted max-h-44 overflow-y-auto overscroll-contain">
-                    <HitlActionSummary summary={actions[index]} />
-                  </div>
-                ) : null}
-
-                <input
-                  value={reasons[index] ?? ""}
-                  onChange={(event) => setCardReason(event.target.value)}
-                  placeholder="Reason if you reject (optional)"
-                  disabled={busy !== null}
-                  aria-label={`Rejection reason for ${actions[index]?.title ?? `action ${index + 1}`}`}
-                  className="mt-2.5 h-9 w-full rounded-lg border border-border bg-background px-3 text-xs text-foreground placeholder:text-muted-foreground/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-60"
-                />
-
-                <div className="mt-2.5 flex items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    aria-pressed={currentDecision === "reject"}
-                    onClick={() => decideCard("reject")}
-                    disabled={busy !== null}
-                    className={cn(
-                      "h-10 flex-1 gap-1.5 rounded-full border transition-colors",
-                      currentDecision === "reject"
-                        ? "border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                        : "border-border text-muted-foreground hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive",
-                    )}
-                  >
-                    <X className="h-4 w-4" /> Reject
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    aria-pressed={currentDecision === "approve"}
-                    onClick={() => decideCard("approve")}
-                    disabled={busy !== null}
-                    className={cn(
-                      "h-10 flex-1 gap-1.5 rounded-full border transition-colors",
-                      currentDecision === "approve"
-                        ? "border-transparent bg-success text-success-foreground hover:bg-success/90"
-                        : "border-border text-muted-foreground hover:border-success/40 hover:bg-success/10 hover:text-success",
-                    )}
-                  >
-                    <Check className="h-4 w-4" /> Approve
-                  </Button>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      ) : null}
-
-      {error ? <p className="relative px-4 pt-2 text-xs text-destructive">{error}</p> : null}
-
-      {isBatch ? (
-        <div className="relative flex items-center justify-between gap-3 px-4 pb-3 pt-3">
-          {/* Status dots double as quick-nav to any action. */}
-          <span className="flex items-center gap-1.5">
-            {actions.map((_, i) => (
-              <button
-                key={`dot-${i}`}
-                type="button"
-                onClick={() => goTo(i, i > index ? "next" : "prev")}
-                disabled={busy !== null}
-                aria-label={`Go to action ${i + 1}`}
-                aria-current={i === index}
-                className={cn(
-                  "h-2 w-2 rounded-full transition-all",
-                  i === index && "ring-2 ring-primary/50 ring-offset-1 ring-offset-background",
-                  decisions[i] === "approve"
-                    ? "bg-success"
-                    : decisions[i] === "reject"
-                      ? "bg-destructive"
-                      : i === index
-                        ? "bg-primary"
-                        : "bg-border hover:bg-muted-foreground/50",
-                )}
-              />
-            ))}
-          </span>
-          <div className="flex items-center gap-3">
-            <span className="text-[11px] text-muted-foreground">
-              {allDecided
-                ? rejectedCount
-                  ? `${rejectedCount} rejected`
-                  : "all approved"
-                : `${decidedCount} of ${total} decided`}
-            </span>
-            <Button
+                      {decided === "approve" ? (
+                        <Check className="h-3.5 w-3.5" aria-hidden />
+                      ) : decided === "reject" ? (
+                        <X className="h-3.5 w-3.5" aria-hidden />
+                      ) : (
+                        i + 1
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            <button
               type="button"
-              onClick={handleSubmitAll}
-              disabled={busy !== null || !allDecided}
-              className="h-10 gap-1.5 rounded-full bg-primary px-5 text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+              onClick={() => setDetailOpen((prev) => !prev)}
+              disabled={!singleHasDetail}
+              aria-expanded={singleHasDetail ? detailOpen : undefined}
+              aria-label={detailOpen ? "Hide approval details" : "Show approval details"}
+              className="group flex min-w-0 flex-1 items-center gap-2 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning/50 disabled:cursor-default"
             >
-              {busy === "submit" ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Check className="h-4 w-4" />
-              )}
-              Submit
-            </Button>
-          </div>
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-semibold text-foreground">
+                  Approval required
+                  {pendingCount > 1 ? (
+                    <span className="ml-2 rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-medium text-warning">
+                      1 of {pendingCount}
+                    </span>
+                  ) : null}
+                </span>
+                <span className="block truncate text-xs text-muted-foreground">{summaryLine}</span>
+              </span>
+              {singleHasDetail ? (
+                <ChevronDown
+                  className={cn(
+                    "h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:text-foreground",
+                    detailOpen && "rotate-180",
+                  )}
+                />
+              ) : null}
+            </button>
+          )}
         </div>
-      ) : (
-        <div className="relative flex items-center gap-2 px-3 py-3">
+
+        {/* ---- body: exactly what is being approved, in its natural form ---- */}
+        {!isBatch && detailOpen && single && singleHasDetail ? (
+          <div className="scrollbar-muted relative mx-4 mt-3 max-h-[min(22rem,45vh)] overflow-y-auto overscroll-contain rounded-2xl border border-border/60 bg-muted/25 px-3.5 py-3 sm:mx-5">
+            <HitlActionSummary summary={single} />
+          </div>
+        ) : null}
+
+        {isBatch ? (
+          <div className="relative mx-4 mt-3 overflow-hidden sm:mx-5">
+            <AnimatePresence mode="popLayout" custom={exitKind} initial={false}>
+              {busy === "submit" ? (
+                <motion.div
+                  key="submitting"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="flex h-28 items-center justify-center gap-2 text-sm text-muted-foreground"
+                >
+                  <Loader2 className="h-4 w-4 animate-spin" /> Resuming with your decisions…
+                </motion.div>
+              ) : (
+                <motion.div
+                  key={index}
+                  custom={exitKind}
+                  variants={bodyVariants}
+                  initial="enter"
+                  animate="center"
+                  exit="exit"
+                  transition={
+                    reduceMotion ? { duration: 0.12 } : { duration: 0.22, ease: [0.22, 1, 0.36, 1] }
+                  }
+                  className="scrollbar-muted max-h-[min(18rem,40vh)] overflow-y-auto overscroll-contain rounded-2xl border border-border/60 bg-muted/25 px-3.5 py-3"
+                >
+                  {current && currentHasDetail ? (
+                    <HitlActionSummary summary={current} />
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Nothing more to show for this action.
+                    </p>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        ) : null}
+
+        {error ? (
+          <p role="alert" className="relative px-4 pt-2 text-xs text-destructive sm:px-5">
+            {error}
+          </p>
+        ) : null}
+
+        {/* ---- decision row: the same for one action or each of several ---- */}
+        <div className="relative flex items-center gap-2 px-4 pb-4 pt-3 sm:px-5">
           <input
             ref={reasonRef}
-            value={reason}
-            onChange={(event) => setReason(event.target.value)}
+            value={isBatch ? (reasons[index] ?? "") : reason}
+            onChange={(event) =>
+              isBatch ? setCardReason(event.target.value) : setReason(event.target.value)
+            }
             onKeyDown={(event) => {
               if (event.key === "Enter" && busy === null) {
                 event.preventDefault();
-                void handleSingle("approve");
+                if (isBatch) decideCard("approve");
+                else void handleSingle("approve");
               }
             }}
-            placeholder="Reason (optional)"
+            placeholder={isBatch ? "Reason if you reject (optional)" : "Reason (optional)"}
             disabled={busy !== null}
-            className="h-11 min-w-0 flex-1 rounded-full border border-border bg-background px-4 text-sm text-foreground placeholder:text-muted-foreground/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-60"
+            aria-label={
+              isBatch
+                ? `Rejection reason for ${current?.title ?? `action ${index + 1}`}`
+                : "Reason (optional)"
+            }
+            className="h-11 min-w-0 flex-1 rounded-full border border-border/70 bg-muted/30 px-4 text-sm text-foreground placeholder:text-muted-foreground/70 transition-colors focus-visible:border-primary/40 focus-visible:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 disabled:opacity-60"
           />
-          {/* One solid affirmative, one quiet deny — rather than two competing
-              filled pills. Reject stays neutral until you reach for it, then
-              reveals its destructive intent on hover/focus. */}
+          {/* One solid affirmative, one quiet deny. Reject stays neutral until
+              you reach for it; a decided action shows its choice filled. */}
           <Button
             type="button"
             variant="outline"
-            onClick={() => handleSingle("reject")}
+            aria-pressed={isBatch ? currentDecision === "reject" : undefined}
+            onClick={() => (isBatch ? decideCard("reject") : void handleSingle("reject"))}
             disabled={busy !== null}
-            className="h-11 gap-1.5 rounded-full border-border px-4 text-muted-foreground transition-colors hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive focus-visible:border-destructive/40 focus-visible:text-destructive"
+            className={cn(
+              "h-11 gap-1.5 rounded-full px-4 transition-colors",
+              isBatch && currentDecision === "reject"
+                ? "border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                : "border-border text-muted-foreground hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive focus-visible:border-destructive/40 focus-visible:text-destructive",
+            )}
           >
             {busy === "reject" ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -439,9 +350,15 @@ export function HitlInputTakeover({ interrupt, pendingCount, onResolve }: HitlIn
           </Button>
           <Button
             type="button"
-            onClick={() => handleSingle("approve")}
+            aria-pressed={isBatch ? currentDecision === "approve" : undefined}
+            onClick={() => (isBatch ? decideCard("approve") : void handleSingle("approve"))}
             disabled={busy !== null}
-            className="h-11 gap-1.5 rounded-full bg-success px-4 text-success-foreground transition-colors hover:bg-success/90"
+            className={cn(
+              "h-11 gap-1.5 rounded-full px-4 transition-colors",
+              isBatch && currentDecision === "reject"
+                ? "border border-border bg-transparent text-muted-foreground hover:bg-success/10 hover:text-success"
+                : "bg-success text-success-foreground hover:bg-success/90",
+            )}
           >
             {busy === "approve" ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -451,7 +368,37 @@ export function HitlInputTakeover({ interrupt, pendingCount, onResolve }: HitlIn
             Approve
           </Button>
         </div>
-      )}
-    </div>
+
+        {/* ---- several actions: send them together once each is decided ---- */}
+        <AnimatePresence initial={false}>
+          {isBatch && allDecided && busy !== "submit" ? (
+            <motion.div
+              key="send"
+              initial={reduceMotion ? { opacity: 0 } : { opacity: 0, height: 0 }}
+              animate={reduceMotion ? { opacity: 1 } : { opacity: 1, height: "auto" }}
+              exit={reduceMotion ? { opacity: 0 } : { opacity: 0, height: 0 }}
+              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              className="relative overflow-hidden"
+            >
+              <div className="flex items-center justify-between gap-3 border-t border-border/60 px-4 py-3 sm:px-5">
+                <span className="text-xs text-muted-foreground">
+                  {total - rejectedCount} approved
+                  {rejectedCount ? ` · ${rejectedCount} rejected` : ""}
+                </span>
+                <Button
+                  type="button"
+                  onClick={handleSubmitAll}
+                  disabled={busy !== null}
+                  className="h-10 gap-1.5 rounded-full bg-primary px-5 text-primary-foreground hover:bg-primary/90"
+                >
+                  <Check className="h-4 w-4" />
+                  Send decisions
+                </Button>
+              </div>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+      </div>
+    </section>
   );
 }

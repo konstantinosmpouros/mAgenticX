@@ -1,0 +1,53 @@
+# Plan 11, phase 0: prove a gVisor sandbox works on ARM64 without KVM (as on
+# Dennis, an Ampere A1 with no /dev/kvm) and time a file-making workload under
+# it. Builds the sandbox_runner image natively on an ARM64 runner and runs its
+# spike script. Nothing is pushed and nothing is deployed.
+name: Sandbox spike
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "magenticx/sandbox_runner/**"
+      - ".github/workflows/sandbox-spike.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  spike:
+    name: gVisor on ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # ARM64 is the one that matters (Dennis); x86 is the comparison.
+        runner: [ubuntu-24.04-arm, ubuntu-24.04]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Host
+        run: |
+          uname -a
+          nproc
+          ls -l /dev/kvm 2>/dev/null || echo "/dev/kvm: absent"
+
+      - name: Build the sandbox_runner image
+        run: docker build -t sandbox-runner magenticx/sandbox_runner
+
+      - name: Run the spike
+        run: |
+          mkdir -p results
+          docker run --rm --privileged -v "$PWD/results:/results" sandbox-runner /opt/spike/run_spike.sh
+
+      - name: Summary
+        if: always()
+        run: cat results/summary.md >> "$GITHUB_STEP_SUMMARY" || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sandbox-spike-${{ matrix.runner }}
+          path: results/

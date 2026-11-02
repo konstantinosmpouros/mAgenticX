@@ -229,6 +229,19 @@ describe("agents gallery", () => {
     expect(where()).toBe("/agents/c1");
   });
 
+  it("deletes from the card menu and leaves the page clickable", async () => {
+    const ctx = context({ userAgents: userAgents({ myAgents: [summary] }) });
+    renderAt("/agents", ctx);
+    const trigger = await screen.findByRole("button", { name: "Actions for My Researcher" });
+    fireEvent.keyDown(trigger, { key: "Enter" });
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Delete/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Delete agent" }));
+    await waitFor(() => expect(ctx.userAgents.deleteAgent).toHaveBeenCalledWith("c1"));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    // No menu or dialog left its page lock behind.
+    await waitFor(() => expect(document.body.style.pointerEvents).not.toBe("none"));
+  });
+
   it("invites a first agent when Mine is empty", async () => {
     renderAt("/agents", context({ agents: [platform] }));
     fireEvent.click(await screen.findByRole("button", { name: /^Mine/ }));

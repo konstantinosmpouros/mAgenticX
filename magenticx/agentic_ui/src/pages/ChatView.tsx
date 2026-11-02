@@ -295,7 +295,6 @@ export default function ChatView() {
           toast={toast}
           currentAgent={inputBarAgent ?? undefined}
           Textarea={Textarea}
-          hitlTakeoverThemed={activeHitlIsQuestion}
           hitlTakeover={
             activeHitlInterrupt && activeConversationRun && activeHitlIsQuestion ? (
               // The agent's clarifying questions: answered (or skipped) through
