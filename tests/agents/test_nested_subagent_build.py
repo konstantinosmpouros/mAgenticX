@@ -187,6 +187,32 @@ def test_a_user_agent_prompt_reference_is_checked_at_every_depth(agents_service,
     ]
 
 
+def test_a_user_agent_prompt_is_at_most_64_kib_at_every_depth(agents_service, spec_module):
+    user_agents = importlib.import_module("harness.abstractions.user_agents")
+    schema = importlib.import_module("schema")
+    payload = _agent_spec(
+        spec_module, subagents=[{**_sa("researcher"), "prompt": "./subagents/researcher.md"}],
+    ).model_dump()
+    payload["prompt"] = "./AGENT.md"
+    files = [
+        schema.AgentFile(path="AGENT.md", content="x" * (64 * 1024)),
+        schema.AgentFile(path="subagents/researcher.md", content="x" * (64 * 1024 + 1)),
+        schema.AgentFile(path="guides/long.md", content="x" * (200 * 1024)),
+    ]
+    original = user_agents.settings.registry.allowed_agent_models
+    user_agents.settings.registry.allowed_agent_models = [MODEL]
+    try:
+        spec, errors = user_agents.validate_write(
+            "u1", payload, files, reserved_slugs=frozenset(), known_skills=frozenset()
+        )
+    finally:
+        user_agents.settings.registry.allowed_agent_models = original
+    assert spec is None
+    assert errors == [
+        "The sub-agent 'researcher' prompt is over 64 KiB; move reference material into a file of its own."
+    ]
+
+
 # ---------------------------------------------------------------------------
 # The definition (agents written in code)
 # ---------------------------------------------------------------------------

@@ -247,9 +247,119 @@ const toAgentFile = (
 export const AgentFileSchema = z.record(z.unknown()).transform(toAgentFile);
 export type AgentFile = z.infer<typeof AgentFileSchema>;
 
+// ---------------------------------------------------------------------------
+// agent.yaml — a user-authored agent's spec, as the UI reads it. Mirrors
+// `AgentSpec` / `SubAgentSpec` / `ToolRef` / `ModelSpec` in
+// agents/harness/abstractions/agent_spec.py, but deliberately looser: the
+// server is the validator (it reports issues by path), this only types the
+// reads so a malformed field cannot crash a page.
+//
+//   * Every field is optional and fails open to "absent" (`.catch(undefined)`):
+//     a missing field stays missing, so a spec passed back to the server (an
+//     import, a duplicate) is not given defaults it never had. The optional
+//     keys are intended here, so the `.catch`-makes-it-optional gotcha above
+//     does not apply.
+//   * `.passthrough()` everywhere: a key the UI does not know (a newer server
+//     field) survives the parse and goes back out on a save that sends the spec.
+//   * Lists keep the items that parse. A sub-agent that is not an object becomes
+//     `{}` rather than being dropped: the server's issue paths
+//     (`subagents.0.subagents.1.name`) are indices, and must stay aligned.
+// ---------------------------------------------------------------------------
+const specText = z.string().optional().catch(undefined);
+
+/** A list of `item`s with the unparseable rows left out; a non-list is absent. */
+const specList = <T extends z.ZodTypeAny>(item: T) =>
+  z
+    .array(z.unknown())
+    .transform((rows) =>
+      rows.flatMap((row) => {
+        const parsed = item.safeParse(row);
+        return parsed.success ? [parsed.data as z.output<T>] : [];
+      }),
+    )
+    .optional()
+    .catch(undefined);
+
+/** A `{key: value}` map keeping only the entries whose value is a `T`. */
+const specMap = <T extends z.ZodTypeAny>(value: T) =>
+  z
+    .record(z.unknown())
+    .transform((raw) =>
+      Object.fromEntries(
+        Object.entries(raw).flatMap(([key, v]) => {
+          const parsed = value.safeParse(v);
+          return parsed.success ? [[key, parsed.data as z.output<T>] as const] : [];
+        }),
+      ),
+    )
+    .optional()
+    .catch(undefined);
+
+// One entry of a `tools` list: an MCP tool (`server_id` + `tool_name`) or a
+// native one (`native`). Which form it is stays the server's check.
+export const AgentToolRefSchema = z
+  .object({ server_id: specText, tool_name: specText, native: specText })
+  .passthrough();
+export type AgentToolRef = z.infer<typeof AgentToolRefSchema>;
+
+// `model`: the main model plus an older spec's per-sub-agent overrides by name.
+export const AgentModelSpecSchema = z
+  .object({ main: specText, subagents: specMap(z.string()) })
+  .passthrough();
+export type AgentModelSpec = z.infer<typeof AgentModelSpecSchema>;
+
+// A sub-agent, recursively. Declared by hand because a `z.lazy` self-reference
+// cannot be inferred; the index signature is what `.passthrough()` keeps.
+export type AgentSubAgentSpec = {
+  name?: string;
+  description?: string;
+  prompt?: string;
+  model?: string;
+  tools?: AgentToolRef[];
+  subagents?: AgentSubAgentSpec[];
+  [key: string]: unknown;
+};
+export const AgentSubAgentSpecSchema: z.ZodType<AgentSubAgentSpec, z.ZodTypeDef, unknown> = z
+  .object({
+    name: specText,
+    description: specText,
+    prompt: specText,
+    model: specText,
+    tools: specList(AgentToolRefSchema),
+    subagents: z.lazy(() => specList(AgentSubAgentSpecSchema)),
+  })
+  .passthrough()
+  .catch({});
+
+// The whole document. Without the final `.catch` so the import result can tell
+// "no spec" (null) from "an empty one"; `AgentSpecSchema` is the caught form.
+const AgentSpecObjectSchema = z
+  .object({
+    id: specText,
+    slug: specText,
+    name: specText,
+    version: specText,
+    type: specText,
+    description: specText,
+    icon: specText,
+    prompt: specText,
+    // An object per the server's ModelSpec; a bare id string is still read.
+    model: z.union([z.string(), AgentModelSpecSchema]).optional().catch(undefined),
+    memory: z.boolean().optional().catch(undefined),
+    tools: specList(AgentToolRefSchema),
+    skills: specList(z.string()),
+    subagents: specList(AgentSubAgentSpecSchema),
+    // Tools gated behind approval by default, e.g. `{write_file: true}`.
+    hitl: specMap(z.boolean()),
+  })
+  .passthrough();
+
+// A spec that is not an object at all reads as an empty one.
+export const AgentSpecSchema = AgentSpecObjectSchema.catch({});
+export type AgentSpec = z.infer<typeof AgentSpecSchema>;
+
 // A user-authored agent's full definition. `spec` is the agent.yaml document,
-// passed through opaquely — the backend owns its schema, so validating its shape
-// here would only create a second contract to keep in sync.
+// typed by `AgentSpecSchema` (fail-open, unknown keys kept).
 export const CustomAgentDetailSchema = z.record(z.unknown()).transform((raw) => ({
   id: typeof raw.id === "string" ? raw.id : "",
   slug: typeof raw.slug === "string" ? raw.slug : "",
@@ -258,7 +368,7 @@ export const CustomAgentDetailSchema = z.record(z.unknown()).transform((raw) => 
   icon: typeof raw.icon === "string" ? raw.icon : "",
   version: typeof raw.version === "string" ? raw.version : undefined,
   type: typeof raw.type === "string" ? raw.type : "deep agent",
-  spec: (raw.spec ?? {}) as Record<string, unknown>,
+  spec: AgentSpecSchema.parse(raw.spec),
   files: Array.isArray(raw.files)
     ? raw.files.map((f) => toAgentFile(f as Record<string, unknown>)).filter((f) => f.path)
     : [],
@@ -306,10 +416,10 @@ export const AgentVersionListSchema = z
   );
 
 // One version in full: the summary plus that version's agent.yaml (`spec`,
-// opaque like CustomAgentDetail's) and every file it carried.
+// typed like CustomAgentDetail's) and every file it carried.
 export const AgentVersionDetailSchema = z.record(z.unknown()).transform((raw) => ({
   ...toAgentVersionSummary(raw),
-  spec: (raw.spec && typeof raw.spec === "object" ? raw.spec : {}) as Record<string, unknown>,
+  spec: AgentSpecSchema.parse(raw.spec),
   files: Array.isArray(raw.files)
     ? raw.files.map((f) => toAgentFile((f ?? {}) as Record<string, unknown>)).filter((f) => f.path)
     : [],
@@ -340,7 +450,7 @@ export type CustomAgentValidation = z.infer<typeof CustomAgentValidationSchema>;
 // the YAML became — set whenever it parsed, valid or not, so the builder can
 // open it to fix — and `files` the prompt files to send with it.
 export const CustomAgentImportResultSchema = CustomAgentValidationSchema.extend({
-  spec: z.record(z.unknown()).nullable().catch(null),
+  spec: AgentSpecObjectSchema.nullable().catch(null),
   files: z
     .array(z.unknown())
     .catch([])

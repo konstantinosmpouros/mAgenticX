@@ -49,7 +49,7 @@ from langgraph.store.base import (
 )
 
 from core.logging import get_logger
-from harness.agent_registry.versions import MAX_VERSIONS, describe_changes
+from harness.agent_registry.versions import describe_changes
 
 logger = get_logger(__name__)
 
@@ -337,9 +337,8 @@ class AgentDefinitionStore(BaseStore):
         that is the restored version, not the newest one — and ``based_on``
         names it. An agent saved before history began has no versions yet: its
         state before this save goes in first as a ``baseline``, so the first
-        edit after the feature shipped can still be compared and undone. Past
-        :data:`MAX_VERSIONS` the oldest are dropped; the current version is
-        always the newest after a save, so it is never one of them.
+        edit after the feature shipped can still be compared and undone. Every
+        version is kept: they go only with the agent itself.
         """
         cur = await conn.execute(
             "SELECT max(v.version_no) AS last, max(d.current_version) AS current "
@@ -377,11 +376,6 @@ class AgentDefinitionStore(BaseStore):
             "UPDATE agent_definitions SET current_version = %s "
             "WHERE user_id = %s AND agent_slug = %s",
             (number, user_id, agent_slug),
-        )
-        await conn.execute(
-            "DELETE FROM agent_definition_versions "
-            "WHERE user_id = %s AND agent_slug = %s AND version_no <= %s",
-            (user_id, agent_slug, number - MAX_VERSIONS),
         )
 
     async def _insert_version(

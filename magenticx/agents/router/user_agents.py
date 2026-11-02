@@ -218,7 +218,7 @@ async def export_custom_agent(user_id: str, agent_slug: str) -> Response:
 )
 async def create_custom_agent(user_id: str, payload: CustomAgentWrite) -> UserAgentSummary | JSONResponse:
     """Create an agent. 409 if the slug is already taken by this user, 422 on an
-    invalid definition, 429 when the per-user cap is reached."""
+    invalid definition."""
     spec, issues = await _validate(user_id, payload.spec, payload.files)
     if spec is None:
         return _invalid(issues)
@@ -227,13 +227,6 @@ async def create_custom_agent(user_id: str, payload: CustomAgentWrite) -> UserAg
     existing = await list_user_agents(user_id)
     if any(item.slug == spec.slug for item in existing):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=taken)
-    cap = settings.registry.max_agents_per_user
-    if len(existing) >= cap:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"You have reached the limit of {cap} agents.",
-        )
-
     try:
         summary = await write_user_agent(user_id, spec, payload.files, create=True)
     except AgentDefinitionExistsError:

@@ -241,8 +241,8 @@ export function AgentHistory({
 
       <p className="flex items-center gap-2 px-1 pt-1 text-xs text-muted-foreground">
         <History className="h-3.5 w-3.5 shrink-0 text-primary/70" aria-hidden />
-        The last 20 saves of {agentName} are kept. Restoring one makes it current again without
-        adding or deleting a version.
+        Every save of {agentName} is kept. Restoring one makes it current again without adding
+        or deleting a version.
       </p>
 
       <ConfirmDialog

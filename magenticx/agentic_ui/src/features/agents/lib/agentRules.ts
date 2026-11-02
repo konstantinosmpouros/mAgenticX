@@ -24,6 +24,7 @@ export const MAX_SUBAGENT_NAME_CHARS = 48;
 export const MAX_SUBAGENT_DESCRIPTION_CHARS = 1000;
 export const MAX_FILES = 20;
 export const MAX_FILE_BYTES = 256 * 1024;
+export const MAX_PROMPT_BYTES = 64 * 1024;
 export const MAX_TOTAL_BYTES = 1024 * 1024;
 export const MAX_PATH_DEPTH = 3;
 export const FILE_EXTENSIONS = [".md", ".txt", ".yaml", ".yml"] as const;
@@ -232,6 +233,9 @@ function treeIssues(draft: AgentDraft): DraftIssue[] {
   return issues;
 }
 
+/** A prompt's own entry in `draftFiles`: the agent's, or a sub-agent's at any depth. */
+const isPrompt = (owner: string): boolean => owner === "prompt" || owner.endsWith(".prompt");
+
 /**
  * The file quotas, counted over everything a save writes — the main prompt,
  * every sub-agent's prompt at every depth, and the reference files — exactly as
@@ -255,6 +259,13 @@ function fileIssues(draft: AgentDraft): DraftIssue[] {
     if (size > MAX_FILE_BYTES) {
       issues.push(
         issue(file.owner, `${file.path} is ${formatBytes(size)}; the limit is ${formatBytes(MAX_FILE_BYTES)} per file.`),
+      );
+    } else if (isPrompt(file.owner) && size > MAX_PROMPT_BYTES) {
+      issues.push(
+        issue(
+          file.owner,
+          `These instructions are ${formatBytes(size)}; the limit is ${formatBytes(MAX_PROMPT_BYTES)}. Move reference material into a file of its own.`,
+        ),
       );
     }
   }

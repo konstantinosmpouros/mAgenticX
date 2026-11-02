@@ -1,4 +1,9 @@
-import type { AgentVersionDetail, AgentVersionSummary } from "@/shared/lib/types";
+import type {
+  AgentSubAgentSpec,
+  AgentToolRef,
+  AgentVersionDetail,
+  AgentVersionSummary,
+} from "@/shared/lib/types";
 import { modelLabel, PROMPT_FILE, SUBAGENT_DIR } from "@/features/agents/lib/agentSpec";
 
 /**
@@ -113,43 +118,33 @@ type VersionFacts = {
 
 const text = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
 
-const toolItem = (ref: unknown): ListItem | null => {
-  if (typeof ref === "string" && ref) return { key: ref, label: ref };
-  if (!ref || typeof ref !== "object") return null;
-  const r = ref as Record<string, unknown>;
-  const name = text(r.tool_name) || text(r.name);
+const toolItem = (ref: AgentToolRef): ListItem | null => {
+  const name = text(ref.tool_name) || text(ref.name);
   if (!name) return null;
-  const server = text(r.server_id);
+  const server = text(ref.server_id);
   return { key: server ? `${server}/${name}` : name, label: name };
 };
 
 /** Every sub-agent in the tree, as "Parent › Child" so a nested one is placeable. */
-const subagentItems = (raw: unknown, above: string[] = []): ListItem[] =>
-  Array.isArray(raw)
-    ? raw.flatMap((node) => {
-        const sa = (node ?? {}) as Record<string, unknown>;
-        const name = text(sa.name);
-        if (!name) return [];
-        const path = [...above, name];
-        const label = path.join(" › ");
-        return [{ key: label, label }, ...subagentItems(sa.subagents, path)];
-      })
-    : [];
+const subagentItems = (specs: AgentSubAgentSpec[] = [], above: string[] = []): ListItem[] =>
+  specs.flatMap((sa) => {
+    const name = text(sa.name);
+    if (!name) return [];
+    const path = [...above, name];
+    const label = path.join(" › ");
+    return [{ key: label, label }, ...subagentItems(sa.subagents, path)];
+  });
 
 /** The definition's own approval defaults (`hitl`), as one readable line. */
-const approvalDefaults = (raw: unknown): string =>
-  raw && typeof raw === "object"
-    ? Object.entries(raw as Record<string, unknown>)
-        .filter((entry): entry is [string, boolean] => typeof entry[1] === "boolean")
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([tool, ask]) => `${tool}: ${ask ? "asks first" : "runs without asking"}`)
-        .join(", ")
-    : "";
+const approvalDefaults = (hitl: Record<string, boolean> = {}): string =>
+  Object.entries(hitl)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([tool, ask]) => `${tool}: ${ask ? "asks first" : "runs without asking"}`)
+    .join(", ");
 
 const facts = (version: AgentVersionDetail): VersionFacts => {
   const spec = version.spec;
-  const model = (spec.model ?? {}) as Record<string, unknown>;
-  const main = typeof spec.model === "string" ? spec.model : text(model.main);
+  const main = text(typeof spec.model === "string" ? spec.model : spec.model?.main);
   return {
     name: text(spec.name),
     description: text(spec.description),
@@ -157,15 +152,8 @@ const facts = (version: AgentVersionDetail): VersionFacts => {
     icon: text(spec.icon),
     memory: typeof spec.memory === "boolean" ? (spec.memory ? "On" : "Off") : "",
     approvals: approvalDefaults(spec.hitl),
-    tools: Array.isArray(spec.tools)
-      ? spec.tools.map(toolItem).filter((t): t is ListItem => t !== null)
-      : [],
-    skills: Array.isArray(spec.skills)
-      ? spec.skills
-          .map(String)
-          .filter(Boolean)
-          .map((s) => ({ key: s, label: s }))
-      : [],
+    tools: (spec.tools ?? []).map(toolItem).filter((t): t is ListItem => t !== null),
+    skills: (spec.skills ?? []).filter(Boolean).map((s) => ({ key: s, label: s })),
     subagents: subagentItems(spec.subagents),
     files: new Map(
       version.files.map((f) => [f.path, { content: f.content, binary: f.encoding === "base64" }]),

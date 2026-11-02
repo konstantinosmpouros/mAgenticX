@@ -4,8 +4,7 @@ The version history keeps a whole copy of the agent on every save; this names
 the parts of it a save touched, in the words the History tab shows — so the
 list reads "instructions, tools" rather than a diff the user has to open to
 find out. It is computed once, when the version is written, and stored with it:
-a later reader never re-derives it from two snapshots that may by then be
-pruned.
+a later reader never re-derives it from two snapshots.
 
 Pure functions over plain data — a spec dict and ``{path: (content, encoding)}``
 — so they are tested without a database.
@@ -13,9 +12,6 @@ Pure functions over plain data — a spec dict and ``{path: (content, encoding)}
 from __future__ import annotations
 
 from typing import Any
-
-#: How many versions of one agent are kept. The oldest goes when a save makes one more.
-MAX_VERSIONS = 20
 
 #: Why a version exists. ``baseline`` is the agent as it stood before history
 #: began: recorded on the first save after the feature shipped, so that save's
@@ -98,4 +94,4 @@ def describe_changes(
     return [part for part in CHANGE_ORDER if found[part]]
 
 
-__all__ = ["CHANGE_ORDER", "KINDS", "MAX_VERSIONS", "describe_changes"]
+__all__ = ["CHANGE_ORDER", "KINDS", "describe_changes"]

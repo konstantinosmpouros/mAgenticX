@@ -32,7 +32,7 @@ sequenceDiagram
     A->>DB: BEGIN, read the current definition FOR UPDATE
     A->>DB: upsert spec, replace files
     alt save
-        A->>DB: compare with the replaced state, INSERT max+1 (based_on = current), current_version = max+1, prune past 20
+        A->>DB: compare with the replaced state, INSERT max+1 (based_on = current), current_version = max+1
     else restore of version n
         A->>DB: current_version = n (no version row)
     end
@@ -50,7 +50,7 @@ sequenceDiagram
 
 The new state is compared with **the state it replaces** — the current version, which after a restore is the restored one, not the newest. If nothing differs, no version is added. Opening the builder and saving without an edit leaves the history (and the current pointer) alone.
 
-A save that does change something is numbered `max(version_no) + 1`, never reusing a number, and records `based_on`: the version it was made on top of (`current_version`, or the newest when that is NULL). It then becomes current, and versions `≤ number − 20` are pruned. A save with `restored_from = n` (a restore) skips all of this: it sets `current_version = n` and records nothing.
+A save that does change something is numbered `max(version_no) + 1`, never reusing a number, and records `based_on`: the version it was made on top of (`current_version`, or the newest when that is NULL). It then becomes current. Every version is kept until the agent is deleted. A save with `restored_from = n` (a restore) skips all of this: it sets `current_version = n` and records nothing.
 
 ```mermaid
 flowchart TD
@@ -65,7 +65,6 @@ flowchart TD
     D -->|some| V["insert v(max+1) saved"]
     V --> CU[current_version = max+1]
     CR --> CU
-    CU --> P[delete versions ≤ number − 20]
 ```
 
 | Kind | When |
@@ -83,16 +82,16 @@ flowchart TD
 
 | Key fact | Value / detail |
 | --- | --- |
-| Cap | `MAX_VERSIONS = 20` per agent (`harness/agent_registry/versions.py`). The oldest go in the same transaction that adds the 21st. A restore prunes nothing, so a restored old version stays kept until the next recording save |
-| Numbering | 1, 2, 3, … per agent, always `max + 1`. Pruning leaves a gap at the bottom and never renumbers, so v7 is the same snapshot for as long as it is kept |
+| Cap | None: every version is kept until the agent is deleted. Histories from before the cap was removed may start above v1, because the old 20-version cap dropped their oldest rows |
+| Numbering | 1, 2, 3, … per agent, always `max + 1`, never renumbered, so v7 is always the same snapshot |
 | Storage | One row per version: `spec` jsonb, `files` jsonb as `{path: {content, encoding}}` ([database-schema](../architecture/database-schema.md#agent_definition_versions)) |
-| Size | Bounded by the definition limits: ≤ 20 files, 1 MiB per agent, × 20 versions |
+| Size | Each version is bounded by the definition limits (≤ 20 files, 1 MiB per agent); the number of versions is not |
 
 ---
 
 ## Phase 2 — What changed
 
-`describe_changes(before, after)` names the parts of the agent that differ, in a fixed order. It is stored on the version as `changes`, so the History list can show "Instructions · Tools" without loading two snapshots. It is never re-derived, because the version it was compared against may have been pruned since.
+`describe_changes(before, after)` names the parts of the agent that differ, in a fixed order. It is stored on the version as `changes`, so the History list can show "Instructions · Tools" without loading two snapshots. It is never re-derived, because the version it was compared against may be gone from an older, capped history.
 
 | Part | Covers |
 | --- | --- |
@@ -152,7 +151,7 @@ The history belongs to the agent and goes with it.
 - **Agents from before history start empty.** Until its first save after the feature shipped, an older agent lists no versions. That save writes the `baseline` first, then its own version, so the very first edit is already undoable.
 - **No-op saves are invisible.** A save whose spec and files match the current state adds nothing and leaves the pointer where it is. A restore never adds a version. Anything that expects "one save = one version" is wrong.
 - **The comparison is against the replaced state, not the newest version.** After a restore of v1, an edit is compared with v1 and named `based_on = 1`, even though v2…vN are listed above it. The timeline is therefore not a chain: the version listed below a row is not necessarily the one it was based on.
-- **The current pointer can dangle.** `current_version` is not a foreign key. It is NULL on agents from before the column existed, and a version it names could in principle be pruned; in both cases the list falls back to marking the newest as current, and the next save is based on the newest.
+- **The current pointer can dangle.** `current_version` is not a foreign key. It is NULL on agents from before the column existed, and a version it names could be missing from an older, capped history; in both cases the list falls back to marking the newest as current, and the next save is based on the newest.
 - **Schema drift reads as `settings`.** Specs are stored as the validated `model_dump`. If `AgentSpec` gains a field, the first save afterwards may report `settings` against an older snapshot, even though the user changed nothing there.
 - **A restore can be refused.** Snapshots are not re-validated when they are stored, only when they are restored. An old version that names a removed skill or a disallowed model shows its diff fine, but its Restore answers 422.
 - **The bridge addresses by catalog id, the agents service by slug.** The bridge resolves an owned `agent_id` to its slug, so a version URL can never reach another user's agent.
@@ -163,7 +162,7 @@ The history belongs to the agent and goes with it.
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| Change parts, cap, kinds | [magenticx/agents/harness/agent_registry/versions.py](../../magenticx/agents/harness/agent_registry/versions.py) | `describe_changes`, `MAX_VERSIONS`, `CHANGE_ORDER` |
+| Change parts, kinds | [magenticx/agents/harness/agent_registry/versions.py](../../magenticx/agents/harness/agent_registry/versions.py) | `describe_changes`, `CHANGE_ORDER` |
 | Table, recording, reads, purge, export paging | [magenticx/agents/harness/agent_registry/store.py](../../magenticx/agents/harness/agent_registry/store.py) | `_DDL`, `save`, `_record_version`, `list_versions`, `get_version`, `page_versions`, `delete`, `purge_user` |
 | List / read / write with `restored_from` | [magenticx/agents/harness/abstractions/user_agents.py](../../magenticx/agents/harness/abstractions/user_agents.py) | `list_user_agent_versions`, `get_user_agent_version`, `write_user_agent` |
 | Agents routes | [magenticx/agents/router/user_agents.py](../../magenticx/agents/router/user_agents.py) | `list_custom_agent_versions`, `get_custom_agent_version`, `restore_custom_agent_version` |

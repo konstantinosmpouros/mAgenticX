@@ -156,12 +156,11 @@ async def test_a_create_that_loses_the_race_is_409_not_a_silent_replace(
     assert definition_store_memory.specs[(USER, "helper")]["name"] == "First"
 
 
-async def test_the_cap_is_429(client, agents_service, internal_headers, builder, monkeypatch):
-    monkeypatch.setattr(agents_service.settings_module.settings.registry, "max_agents_per_user", 1)
-    assert (await client.post(BASE, json={"spec": _spec(), "files": _files()}, headers=internal_headers)).status_code == 201
-    other = _spec(slug="other", id="other-v1", name="Other")
-    response = await client.post(BASE, json={"spec": other, "files": _files()}, headers=internal_headers)
-    assert response.status_code == 429
+async def test_there_is_no_cap_on_how_many_agents(client, internal_headers, builder):
+    for n in range(25):
+        spec = _spec(slug=f"agent-{n}", id=f"agent-{n}-v1", name=f"Agent {n}")
+        response = await client.post(BASE, json={"spec": spec, "files": _files()}, headers=internal_headers)
+        assert response.status_code == 201
 
 
 async def test_an_invalid_write_is_a_422_with_every_issue_pinned(client, internal_headers, builder):

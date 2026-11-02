@@ -512,10 +512,9 @@ class FakeAgentDefinitionStore:
     survive as a row the agent goes on reading.
 
     It also keeps the version history the way the real store does (created /
-    saved / baseline, nothing for a no-op save, the oldest dropped past the
-    cap; a restore adds no version and moves the ``current`` pointer instead),
-    with ``describe_changes`` and ``MAX_VERSIONS`` taken from the service's own
-    ``versions`` module so the two cannot disagree on what changed. The SQL of
+    saved / baseline, nothing for a no-op save, every version kept; a restore
+    adds no version and moves the ``current`` pointer instead), with
+    ``describe_changes`` taken from the service's own ``versions`` module so the two cannot disagree on what changed. The SQL of
     that bookkeeping is pinned in ``test_agent_definition_versions.py``.
     """
 
@@ -591,7 +590,6 @@ class FakeAgentDefinitionStore:
             kind = "saved"
         history.append(self._version(number, kind, changes, based_on, saved))
         self.current_version[key] = number
-        history[:] = [v for v in history if v["version_no"] > number - self._versions_module.MAX_VERSIONS]
 
     def _version(self, number, kind, changes, based_on, state):
         return {

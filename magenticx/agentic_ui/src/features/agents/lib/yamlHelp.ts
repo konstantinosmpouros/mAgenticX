@@ -14,6 +14,7 @@ import {
   MAX_FILES,
   MAX_NAME_CHARS,
   MAX_PATH_DEPTH,
+  MAX_PROMPT_BYTES,
   MAX_SUBAGENT_DEPTH,
   MAX_SUBAGENT_NAME_CHARS,
 } from "./agentRules";
@@ -115,6 +116,7 @@ export const HELP_FIELDS: HelpField[] = [
     rules: [
       "Written inline (use | for several lines), or ./AGENT.md sent along with the YAML.",
       "Inline text is saved as AGENT.md.",
+      `At most ${MAX_PROMPT_BYTES / 1024} KiB.`,
     ],
   },
   {
@@ -179,7 +181,10 @@ export const HELP_FIELDS: HelpField[] = [
     label: "subagents[].prompt",
     required: true,
     meaning: "Its instructions, inline or a file (./subagents/researcher.md).",
-    rules: ["Inline text is saved as subagents/<name>.md (subagents/<parent>--<name>.md deeper down)."],
+    rules: [
+      "Inline text is saved as subagents/<name>.md (subagents/<parent>--<name>.md deeper down).",
+      `At most ${MAX_PROMPT_BYTES / 1024} KiB.`,
+    ],
   },
   {
     id: "subagents.model",

@@ -110,6 +110,6 @@ def test_several_parts_come_back_in_the_tabs_order(versions):
     ]
 
 
-def test_the_cap_and_kinds(versions):
-    assert versions.MAX_VERSIONS == 20
+def test_the_kinds_and_no_cap(versions):
+    assert not hasattr(versions, "MAX_VERSIONS")
     assert set(versions.KINDS) == {"created", "saved", "restored", "baseline"}

@@ -13,7 +13,7 @@ Pinned:
 * first save → v1 ``created``; an edit → the next number, ``saved``, with the
   parts it changed; a save that changes nothing adds no version;
 * an agent saved before history existed gets its old state as v1 ``baseline``;
-* past ``MAX_VERSIONS`` the oldest go;
+* every version is kept, however many saves;
 * a save with ``restored_from`` adds no version: it moves the ``current``
   pointer to that version; the next save is ``max + 1``, ``based_on`` the
   restored version, its changes measured against the restored state;
@@ -268,13 +268,11 @@ async def test_a_no_op_first_save_after_history_began_keeps_only_the_baseline(st
 
 
 @pytest.mark.asyncio
-async def test_only_the_last_twenty_are_kept(agents_service, store, pool):
-    cap = agents_service.agent_versions.MAX_VERSIONS
+async def test_every_version_is_kept(store, pool):
     await store.save(USER, SLUG, spec=_spec(), files=_files(), create_only=True)
-    for n in range(2, cap + 6):
+    for n in range(2, 31):
         await store.save(USER, SLUG, spec=_spec(), files=_files(f"Take {n}."))
-    assert pool.kept() == list(range(6, cap + 6))
-    assert len(pool.kept()) == cap
+    assert pool.kept() == list(range(1, 31))
 
 
 @pytest.mark.asyncio
@@ -379,18 +377,17 @@ async def test_a_save_on_a_null_pointer_is_based_on_the_newest(store, pool):
 
 
 @pytest.mark.asyncio
-async def test_a_restored_version_stays_kept_until_a_save_prunes_it(agents_service, store, pool):
-    cap = agents_service.agent_versions.MAX_VERSIONS
+async def test_a_save_on_an_old_restored_version_keeps_everything(store, pool):
     await store.save(USER, SLUG, spec=_spec(), files=_files(), create_only=True)
-    for n in range(2, cap + 1):
+    for n in range(2, 26):
         await store.save(USER, SLUG, spec=_spec(), files=_files(f"Take {n}."))
     await store.save(USER, SLUG, spec=_spec(), files=_files(), restored_from=1)
-    assert pool.kept() == list(range(1, cap + 1)) and await _current(store) == [1]
+    assert pool.kept() == list(range(1, 26)) and await _current(store) == [1]
 
     await store.save(USER, SLUG, spec=_spec(), files=_files("Fresh."))
-    assert pool.kept() == list(range(2, cap + 2))
+    assert pool.kept() == list(range(1, 27))
     [latest, *_] = await store.list_versions(USER, SLUG)
-    assert (latest["version_no"], latest["based_on"], latest["current"]) == (cap + 1, 1, True)
+    assert (latest["version_no"], latest["based_on"], latest["current"]) == (26, 1, True)
 
 
 @pytest.mark.asyncio

@@ -7,13 +7,18 @@
 import type { LucideIcon } from "lucide-react";
 import type { AgentFile, AgentKind, CustomAgentSummary } from "../schemas";
 
-// `AgentFile`, `CustomAgentDetail`, `CustomAgentValidation`, `AgentToolRow` and
-// `AgentToolsResponse` are inferred from their Zod schemas (see `../schemas`).
+// `AgentFile`, `CustomAgentDetail`, `CustomAgentValidation`, `AgentToolRow`,
+// `AgentToolsResponse` and the agent.yaml `AgentSpec` family are inferred from
+// (or, for the recursive sub-agent, declared beside) their Zod schemas.
 export type {
   AgentFile,
   AgentIssue,
   AgentKind,
   AgentModelOption,
+  AgentModelSpec,
+  AgentSpec,
+  AgentSubAgentSpec,
+  AgentToolRef,
   AgentVersionDetail,
   AgentVersionKind,
   AgentVersionSummary,

@@ -286,10 +286,6 @@ class AgentRegistrySettings(BaseSettings):
         validation_alias="ALLOWED_AGENT_MODELS",
     )
 
-    # Per-user cap on authored agents — bounds both storage and the amount of
-    # prompt surface one account can introduce.
-    max_agents_per_user: int = Field(20, validation_alias="MAX_AGENTS_PER_USER")
-
     @field_validator("allowed_agent_models", mode="before")
     @classmethod
     def _parse_models(cls, value: object) -> object:

@@ -959,7 +959,7 @@ These rows also back the **`/reference/`** mount, read-only, namespaced `(user_i
 
 ### `agent_definition_versions`
 
-The version history of a user agent: the whole definition as of each save, the last 20 per agent. `PRIMARY KEY (user_id, agent_slug, version_no)`. See [agent-version-history](../flows/agent-version-history.md).
+The version history of a user agent: the whole definition as of each save, every one kept until the agent is deleted. `PRIMARY KEY (user_id, agent_slug, version_no)`. See [agent-version-history](../flows/agent-version-history.md).
 
 | Column | Type | Null | Default | Notes |
 | --- | --- | --- | --- | --- |
@@ -973,7 +973,7 @@ The version history of a user agent: the whole definition as of each save, the l
 | `files` | `jsonb` | No | `'{}'` | Every authored file, as `{path: {content, encoding}}` |
 | `created_at` | `timestamptz` | No | `now()` | — |
 
-Written **in the save's own transaction**, so the history can neither miss a save nor hold one that did not happen. A save that changes nothing adds no row; a new row is numbered `max(version_no) + 1` and becomes `agent_definitions.current_version`; past 20 the oldest rows are deleted in the same transaction. A **restore adds no row** — it rewrites the definition and moves `current_version`. Removed with the agent (`delete`) and with the account (`purge_user`).
+Written **in the save's own transaction**, so the history can neither miss a save nor hold one that did not happen. A save that changes nothing adds no row; a new row is numbered `max(version_no) + 1` and becomes `agent_definitions.current_version`; no row is deleted while the agent exists. A **restore adds no row** — it rewrites the definition and moves `current_version`. Removed with the agent (`delete`) and with the account (`purge_user`).
 
 ### `agent_memories`
 

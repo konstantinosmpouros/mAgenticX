@@ -28,6 +28,7 @@ import {
   writeStoredDraft,
 } from "@/features/agents/lib/draftStorage";
 import { helpFieldFor } from "@/features/agents/lib/yamlHelp";
+import { AgentSpecSchema } from "@/shared/lib/schemas";
 import type {
   AgentDraft,
   AgentDraftSubAgent,
@@ -202,7 +203,12 @@ describe("the builder's rules, against the server's table", () => {
         icon: "Bot",
         version: undefined,
         type: "deep agent",
-        spec: { slug: "agent", tools: c.tools, subagents: withPrompts(c.subagents) },
+        // Parsed as the wire would be: the fixture's spec is untyped JSON.
+        spec: AgentSpecSchema.parse({
+          slug: "agent",
+          tools: c.tools,
+          subagents: withPrompts(c.subagents),
+        }),
         files: [{ path: "AGENT.md", content: "Help.", encoding: "utf-8" }, ...filesFor(c.subagents)],
       };
       const draft = draftFromDetail(detail);

@@ -88,6 +88,7 @@ logger = get_logger(__name__)
 _ALLOWED_EXTENSIONS = frozenset({".md", ".txt", ".yaml", ".yml"})
 _MAX_FILES = 20
 _MAX_FILE_BYTES = 256 * 1024            # 256 KiB — a prompt, not a payload
+_MAX_PROMPT_BYTES = 64 * 1024           # one agent's instructions; reference text goes in files
 _MAX_TOTAL_BYTES = 1024 * 1024          # 1 MiB per agent
 _MAX_PATH_DEPTH = 3
 _MAX_YAML_BYTES = 256 * 1024            # an uploaded agent.yaml
@@ -499,6 +500,11 @@ def validate_definition(
             ))
         elif rel not in seen:
             issues.append(_issue(path, f"The {label} points at {rel!r}, which is not among the uploaded files."))
+        elif len(seen[rel]) > _MAX_PROMPT_BYTES:
+            issues.append(_issue(path, (
+                f"The {label} is over {_MAX_PROMPT_BYTES // 1024} KiB; move reference material "
+                "into a file of its own."
+            )))
 
     blocking = any(issue.severity == "error" for issue in issues)
     return (None if blocking else spec), issues

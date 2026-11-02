@@ -11,6 +11,8 @@ import type {
   AgentDraft,
   AgentDraftFile,
   AgentDraftSubAgent,
+  AgentSubAgentSpec,
+  AgentToolRef,
   CustomAgentDetail,
   CustomAgentImportResult,
   CustomAgentWritePayload,
@@ -125,17 +127,6 @@ export const emptySubagent = (): AgentDraftSubAgent => ({
   subagents: [],
 });
 
-/** One MCP entry in the spec's `tools` list. A native ref has neither field. */
-type SpecToolRef = { server_id?: unknown; tool_name?: unknown; native?: unknown };
-type SpecSubAgent = {
-  name?: unknown;
-  description?: unknown;
-  prompt?: unknown;
-  model?: unknown;
-  tools?: unknown;
-  subagents?: unknown;
-};
-
 /**
  * A `server/tool` key in the spec's MCP form. The split is on the FIRST slash
  * only: a server id cannot contain one, a tool name can.
@@ -155,12 +146,10 @@ export const toolNameOf = (key: string): string => {
  * The spec's tool list back to `server/tool` keys. Native refs are skipped:
  * built-ins are on for every agent, so listing one changes nothing.
  */
-const toolKeys = (raw: unknown): string[] =>
-  Array.isArray(raw)
-    ? (raw as SpecToolRef[])
-        .filter((ref) => ref?.server_id && ref?.tool_name)
-        .map((ref) => `${String(ref.server_id)}/${String(ref.tool_name)}`)
-    : [];
+const toolKeys = (refs: AgentToolRef[] = []): string[] =>
+  refs
+    .filter((ref) => ref.server_id && ref.tool_name)
+    .map((ref) => `${ref.server_id}/${ref.tool_name}`);
 
 /**
  * Assemble the agent.yaml document + its prompt files from the draft.
@@ -246,63 +235,44 @@ export const buildAgentPayload = (draft: AgentDraft): CustomAgentWritePayload =>
  * explicit `model` on the node still wins, as at runtime).
  */
 export const draftFromDetail = (detail: CustomAgentDetail): AgentDraft => {
-  const spec = (detail.spec ?? {}) as Record<string, unknown>;
-  const model = (spec.model ?? {}) as { main?: unknown; subagents?: unknown };
-  const legacyModels =
-    model.subagents && typeof model.subagents === "object"
-      ? (model.subagents as Record<string, unknown>)
-      : {};
+  const spec = detail.spec;
+  const mainModel = typeof spec.model === "string" ? spec.model : spec.model?.main;
+  const legacyModels = (typeof spec.model === "object" && spec.model.subagents) || {};
   const fileFor = (path: string) => detail.files.find((f) => f.path === path)?.content ?? "";
   // Paths the builder regenerates from prompt fields; the rest are the user's own.
   const claimed = new Set<string>([PROMPT_FILE, MANIFEST_FILE]);
-  const readSubagents = (raw: unknown): AgentDraftSubAgent[] =>
-    Array.isArray(raw)
-      ? (raw as SpecSubAgent[]).map((sa) => {
-          const path = String(sa?.prompt ?? "").replace(/^\.\//, "");
-          claimed.add(path);
-          const name = String(sa?.name ?? "");
-          const legacy = legacyModels[name];
-          return {
-            uid: newUid(),
-            name,
-            description: String(sa?.description ?? ""),
-            prompt: fileFor(path),
-            model:
-              typeof sa?.model === "string"
-                ? sa.model
-                : typeof legacy === "string"
-                  ? legacy
-                  : "",
-            tools: toolKeys(sa?.tools),
-            subagents: readSubagents(sa?.subagents),
-          };
-        })
-      : [];
+  const readSubagents = (specs: AgentSubAgentSpec[] = []): AgentDraftSubAgent[] =>
+    specs.map((sa) => {
+      const path = (sa.prompt ?? "").replace(/^\.\//, "");
+      claimed.add(path);
+      const name = sa.name ?? "";
+      return {
+        uid: newUid(),
+        name,
+        description: sa.description ?? "",
+        prompt: fileFor(path),
+        model: sa.model ?? legacyModels[name] ?? "",
+        tools: toolKeys(sa.tools),
+        subagents: readSubagents(sa.subagents),
+      };
+    });
   const subagents = readSubagents(spec.subagents);
   const files: AgentDraftFile[] = detail.files
     .filter((file) => !claimed.has(file.path) && file.encoding !== "base64")
     .map((file) => ({ path: file.path, content: file.content }));
-  const hitl =
-    spec.hitl && typeof spec.hitl === "object"
-      ? Object.fromEntries(
-          Object.entries(spec.hitl as Record<string, unknown>).filter(
-            (entry): entry is [string, boolean] => typeof entry[1] === "boolean",
-          ),
-        )
-      : {};
   return {
     files,
     slug: detail.slug,
     name: detail.name,
     description: detail.description,
     icon: detail.icon || "Bot",
-    model: typeof model.main === "string" && model.main ? model.main : FALLBACK_MODEL,
+    model: mainModel || FALLBACK_MODEL,
     prompt: fileFor(PROMPT_FILE),
     memory: spec.memory !== false,
     tools: toolKeys(spec.tools),
-    skills: Array.isArray(spec.skills) ? spec.skills.map(String) : [],
+    skills: spec.skills ?? [],
     subagents,
-    hitl,
+    hitl: spec.hitl ?? {},
     approvals: {},
   };
 };
@@ -314,13 +284,12 @@ export const draftFromDetail = (detail: CustomAgentDetail): AgentDraft => {
 export const draftFromImport = (result: CustomAgentImportResult): AgentDraft | null => {
   const spec = result.spec;
   if (!spec) return null;
-  const text = (key: string) => (typeof spec[key] === "string" ? (spec[key] as string) : "");
   return draftFromDetail({
     id: "",
-    slug: text("slug"),
-    name: text("name"),
-    description: text("description"),
-    icon: text("icon"),
+    slug: spec.slug ?? "",
+    name: spec.name ?? "",
+    description: spec.description ?? "",
+    icon: spec.icon ?? "",
     version: undefined,
     type: "deep agent",
     spec,
@@ -334,8 +303,8 @@ export const draftFromImport = (result: CustomAgentImportResult): AgentDraft | n
  * collides — and `-copy` is the least surprising suffix.
  */
 export function duplicateDefinition(detail: CustomAgentDetail): CustomAgentDetail {
-  const spec = detail.spec as Record<string, unknown>;
-  const baseSlug = typeof spec.slug === "string" ? spec.slug : detail.slug;
+  const spec = detail.spec;
+  const baseSlug = spec.slug ?? detail.slug;
   return {
     ...detail,
     id: "",

@@ -64,7 +64,7 @@ logger = get_logger(__name__)
 AGENTS_SERVICE_URL = settings.upstream.agents_service_url
 
 # Upstream statuses re-raised as themselves, with the agents service's
-# ``detail``: a duplicate slug (409), the per-user cap (429), an invalid
+# ``detail``: a duplicate slug (409), an invalid
 # definition (422, whose detail is an object carrying ``issues``), and so on.
 # Anything else becomes a 502 with the caller's public message.
 _FORWARDED_STATUSES = frozenset({400, 404, 409, 413, 422, 429})
