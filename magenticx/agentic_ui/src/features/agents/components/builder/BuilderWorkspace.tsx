@@ -1,6 +1,6 @@
 import * as React from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ArrowLeft, ChevronUp, Code2, History, Loader2, X } from "lucide-react";
+import { ArrowLeft, ChevronUp, Code2, History, Loader2, PanelRightOpen, X } from "lucide-react";
 
 import { cn } from "@/shared/lib/utils";
 import { mapIcon } from "@/shared/lib/consts";
@@ -15,6 +15,7 @@ import type { UserAgentsHandlers } from "@/features/agents/hooks/useUserAgents";
 import type { AgentCatalogs } from "@/features/agents/hooks/useAgentCatalogs";
 import { depthOf, ensureUids, locate, useAgentDraft } from "@/features/agents/hooks/useAgentDraft";
 import { useDraftAutosave } from "@/features/agents/hooks/useDraftAutosave";
+import { useInspectorPanel } from "@/features/agents/hooks/useInspectorPanel";
 import { useLeaveGuard } from "@/features/agents/hooks/useLeaveGuard";
 import { useServerValidation } from "@/features/agents/hooks/useServerValidation";
 import {
@@ -122,6 +123,9 @@ export function BuilderWorkspace({
   const [saving, setSaving] = React.useState<"checking" | "saving" | "approvals" | null>(null);
   const [approvalsFailed, setApprovalsFailed] = React.useState(false);
   const [sheetOpen, setSheetOpen] = React.useState(false);
+  const panel = useInspectorPanel();
+  // Too narrow to share the row: the inspector slides over the canvas on a pick.
+  const drawer = !mobile && panel.layout === "drawer";
   // Once created, every later save (a Retry, a further edit) is an update.
   const savedRef = React.useRef<{ id: string; created: boolean } | null>(
     agentId ? { id: agentId, created: false } : null,
@@ -243,10 +247,12 @@ export function BuilderWorkspace({
       const uid = newUid();
       dispatch({ type: "add-child", parentUid, uid });
       setSelectedUid(uid);
+      // The drawer waits for a click on the new node itself: a "+" only adds.
+      if (drawer) return;
       setSheetOpen(true);
       if (!mobile) focusField(uid, "name");
     },
-    [draft, dispatch, focusField, mobile],
+    [draft, dispatch, focusField, mobile, drawer],
   );
 
   const duplicate = React.useCallback(
@@ -547,7 +553,7 @@ export function BuilderWorkspace({
         </AnimatePresence>
 
         {/* ---- canvas + inspector ---- */}
-        <div className="relative flex min-h-0 flex-1 flex-col md:flex-row">
+        <div ref={panel.areaRef} className="relative flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
           <div
             className={cn(
               "relative min-h-0 min-w-0 flex-1 bg-[radial-gradient(ellipse_at_top,hsl(var(--primary)/0.05),transparent_60%)]",
@@ -569,6 +575,16 @@ export function BuilderWorkspace({
                 refit={mobile ? String(sheetOpen) : null}
               />
             </React.Suspense>
+            {drawer && !sheetOpen ? (
+              <button
+                type="button"
+                onClick={() => setSheetOpen(true)}
+                className={cn(SECONDARY_BUTTON, "absolute right-3 top-3 z-10 px-3 py-1.5 text-xs shadow-sm")}
+              >
+                <PanelRightOpen className="h-3.5 w-3.5" aria-hidden />
+                Edit panel
+              </button>
+            ) : null}
           </div>
           <aside
             className={cn(
@@ -579,10 +595,50 @@ export function BuilderWorkspace({
                     "relative z-20 -mt-5 rounded-t-[1.5rem] border-t border-border/60 bg-card shadow-[0_-18px_40px_-24px_hsl(var(--foreground)/0.45)] transition-[height] duration-300 ease-out motion-reduce:transition-none",
                     sheetOpen ? "h-[62%]" : "h-[4.25rem]",
                   )
-                : "w-[400px] border-l border-border/50 bg-card/60 xl:w-[420px]",
+                : drawer
+                  ? cn(
+                      // Over the canvas from the right; hidden (and out of the tab order) when shut.
+                      "absolute inset-y-0 right-0 z-20 w-[min(440px,calc(100%-2.5rem))] border-l border-border/60 bg-card shadow-[-24px_0_48px_-28px_hsl(var(--foreground)/0.5)] transition-[transform,visibility] duration-300 ease-out motion-reduce:transition-none",
+                      sheetOpen ? "visible translate-x-0" : "invisible translate-x-full",
+                    )
+                  : "relative border-l border-border/50 bg-card/60",
             )}
+            style={!mobile && !drawer ? { width: panel.width } : undefined}
+            onKeyDown={
+              drawer
+                ? (event) => {
+                    // A key from a portalled menu bubbles here through React too: not ours.
+                    const inside = event.currentTarget.contains(event.target as Node);
+                    if (event.key === "Escape" && inside && !event.defaultPrevented) setSheetOpen(false);
+                  }
+                : undefined
+            }
             aria-label="Edit the selected agent"
           >
+            {!mobile && !drawer ? (
+              <div
+                {...panel.separatorProps}
+                className="group absolute inset-y-0 -left-1.5 z-10 flex w-3 cursor-col-resize justify-center focus-visible:outline-none"
+              >
+                <span
+                  className={cn(
+                    "h-full w-px bg-transparent transition-colors group-hover:bg-primary/50 group-focus-visible:bg-primary",
+                    panel.dragging && "bg-primary",
+                  )}
+                  aria-hidden
+                />
+              </div>
+            ) : null}
+            {drawer ? (
+              <button
+                type="button"
+                onClick={() => setSheetOpen(false)}
+                aria-label="Close the inspector"
+                className="absolute right-3 top-3.5 z-10 flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+              >
+                <X className="h-4 w-4" aria-hidden />
+              </button>
+            ) : null}
             {mobile ? (
               <button
                 type="button"
