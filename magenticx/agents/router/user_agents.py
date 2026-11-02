@@ -147,10 +147,11 @@ async def validate_custom_agent(user_id: str, payload: CustomAgentWrite) -> Cust
 async def import_custom_agent(user_id: str, payload: CustomAgentImport) -> CustomAgentImportResult:
     """Read an uploaded ``agent.yaml`` (and its files) into a definition and check
     it — never saves. The spec comes back whenever the YAML parsed, valid or
-    not, so the builder can open it in the form to fix."""
-    spec, files, issues = parse_agent_yaml(payload.yaml, payload.files)
+    not, so the builder can open it in the form to fix. With ``slug`` it is
+    checked as a replacement for that agent, as a ``PUT`` would check it."""
+    spec, files, issues = parse_agent_yaml(payload.yaml, payload.files, slug=payload.slug)
     if spec is not None:
-        _, checked = await _validate(user_id, spec, files)
+        _, checked = await _validate(user_id, spec, files, existing_slug=payload.slug)
         issues = [*issues, *checked]
     errors = errors_of(issues)
     logger.info(

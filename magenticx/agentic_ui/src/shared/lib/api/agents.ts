@@ -177,13 +177,16 @@ export async function renderMyAgentYaml(
 // Check an agent.yaml without saving it: pasted text, or files — `agent.yaml`
 // with its `.md`/`.txt` prompts, or one `.zip` of the folder (unpacked by the
 // bridge). The answer carries the parsed spec whenever the YAML parsed, valid
-// or not, so the builder can open it to fix.
+// or not, so the builder can open it to fix. `replacing` is the id of the
+// user's agent the YAML is to replace: it is then checked as an update of it
+// (a YAML without `slug:` keeps that agent's slug; another slug is an issue).
 export async function importMyAgent(
   userId: string,
-  { yaml, files = [] }: { yaml?: string; files?: File[] },
+  { yaml, files = [], replacing }: { yaml?: string; files?: File[]; replacing?: string },
 ): Promise<CustomAgentImportResult> {
   const form = new FormData();
   if (yaml !== undefined) form.append("yaml", yaml);
+  if (replacing) form.append("replacing", replacing);
   for (const file of files) form.append("files", file, file.name);
   return requestJson(`${customAgentsUrl(userId)}/import`, {
     method: "POST",

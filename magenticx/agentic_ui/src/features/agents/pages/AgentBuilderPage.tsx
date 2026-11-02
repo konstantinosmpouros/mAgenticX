@@ -39,8 +39,10 @@ type Opened = Extract<ImportOutcome, { kind: "valid" | "invalid" }>;
  * (`?via=canvas|import`), a starter template (`?via=canvas&template=<id>`), or
  * the unsaved agent an earlier visit left (`?via=canvas&resume=1`);
  * `?from=<agentId>` (Duplicate) skips it and opens the copy on the canvas. Editing opens the saved definition on the canvas, with
- * its current approval settings as the starting point. An imported YAML is
- * shown read-only first and opens in the builder from there.
+ * its current approval settings as the starting point; its YAML view offers
+ * "Replace from YAML…" (`/agents/:id/edit?via=import`), an import checked as an
+ * update of the agent. An imported YAML is shown read-only first and opens in
+ * the builder from there.
  *
  * The page only gathers what the builder starts from (the definition, the
  * catalogs, the live tool rows) and where it goes after: a save lands on the
@@ -114,7 +116,9 @@ export default function AgentBuilderPage({ mode }: { mode: "create" | "edit" }) 
   const [creating, setCreating] = useState(false);
 
   const title = isEdit
-    ? `Edit ${source?.name ?? "agent"}`
+    ? via === "import"
+      ? `Replace ${source?.name ?? "agent"} from YAML`
+      : `Edit ${source?.name ?? "agent"}`
     : fromId
       ? `Duplicate ${source?.name ?? "agent"}`
       : via === "import"
@@ -141,11 +145,20 @@ export default function AgentBuilderPage({ mode }: { mode: "create" | "edit" }) 
   const createImported = useCallback(
     async (outcome: Opened) => {
       setCreating(true);
-      const agent = await userAgents.createAgent(outcome.payload, { quiet: true });
+      const agent = isEdit
+        ? await userAgents.updateAgent(routeAgentId, outcome.payload, { quiet: true })
+        : await userAgents.createAgent(outcome.payload, { quiet: true });
       setCreating(false);
-      if (agent) onSaved({ agentId: agent.id, created: true });
+      if (agent) onSaved({ agentId: agent.id, created: !isEdit });
     },
-    [userAgents, onSaved],
+    [userAgents, onSaved, isEdit, routeAgentId],
+  );
+  const openImported = useCallback(
+    (outcome: Opened) => {
+      setOpened({ draft: outcome.draft, issues: outcome.issues, at: Date.now() });
+      setParam("via", "canvas", false);
+    },
+    [setParam],
   );
 
   const startDraft = useMemo(
@@ -191,6 +204,7 @@ export default function AgentBuilderPage({ mode }: { mode: "create" | "edit" }) 
     initialDraft: AgentDraft;
     key: string;
     initialServerIssues?: PlacedIssue[];
+    savedDraft?: AgentDraft;
     unsaved?: boolean;
     offerRestore?: boolean;
   }) => (
@@ -200,6 +214,7 @@ export default function AgentBuilderPage({ mode }: { mode: "create" | "edit" }) 
       agentId={isEdit ? routeAgentId : null}
       initialDraft={props.initialDraft}
       initialServerIssues={props.initialServerIssues}
+      savedDraft={props.savedDraft}
       unsaved={props.unsaved}
       offerRestore={props.offerRestore}
       userId={userId}
@@ -214,6 +229,7 @@ export default function AgentBuilderPage({ mode }: { mode: "create" | "edit" }) 
       onExit={exit}
       onSaved={onSaved}
       onDownloadZip={isEdit && source ? () => void exportAgent(source) : null}
+      onReplaceFromYaml={isEdit ? () => guardedLeave(() => setParam("via", "import", false)) : null}
       downloading={exportingId !== null}
     />
   );
@@ -225,6 +241,40 @@ export default function AgentBuilderPage({ mode }: { mode: "create" | "edit" }) 
     if (!isEdit && !sourceIsCustom) {
       // Duplicating a platform agent (or an unknown id): a blank canvas.
       return startDraft ? workspace({ key: "blank", initialDraft: startDraft }) : <PageLoading />;
+    }
+    // Replace from YAML: the import, then (optionally) the builder with it,
+    // its changes measured against the agent as saved.
+    if (isEdit && via === "import") {
+      const name = source?.name ?? "agent";
+      return (
+        <div className="flex h-full min-h-0 flex-col overflow-y-auto">
+          <PageHeader
+            back={{ label: name, onClick: () => setParam("via", null, false) }}
+            title={`Replace ${name} from YAML`}
+            subtitle="Its definition becomes the YAML you bring in. It's checked first; nothing changes until you replace it."
+          />
+          <div className="flex min-h-0 flex-1 flex-col">
+            <ImportView
+              userId={userId}
+              catalogs={catalogs}
+              creating={creating}
+              replacing={{ id: routeAgentId, name }}
+              onCreate={createImported}
+              onOpen={openImported}
+            />
+          </div>
+        </div>
+      );
+    }
+    if (isEdit && via === "canvas" && opened) {
+      return workspace({
+        key: `import-${opened.at}`,
+        initialDraft: opened.draft,
+        initialServerIssues: opened.issues,
+        savedDraft: draftFromDetail(detail as CustomAgentDetail),
+        unsaved: true,
+        offerRestore: false,
+      });
     }
     return workspace({
       key: detail?.id || detail?.slug || "definition",
@@ -297,10 +347,7 @@ export default function AgentBuilderPage({ mode }: { mode: "create" | "edit" }) 
           catalogs={catalogs}
           creating={creating}
           onCreate={(outcome) => void createImported(outcome)}
-          onOpen={(outcome) => {
-            setOpened({ draft: outcome.draft, issues: outcome.issues, at: Date.now() });
-            setParam("via", "canvas", false);
-          }}
+          onOpen={openImported}
         />
       ) : null}
     </ImportOrStart>

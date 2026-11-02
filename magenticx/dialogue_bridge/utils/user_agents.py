@@ -377,7 +377,12 @@ async def render_custom_agent_yaml(
 
 
 async def import_custom_agent(
-    user_id: str, yaml_text: str | None, uploads: Sequence[UploadFile]
+    db: AsyncSession,
+    user_id: str,
+    yaml_text: str | None,
+    uploads: Sequence[UploadFile],
+    *,
+    replacing: str | None = None,
 ) -> dict[str, Any]:
     """Check an uploaded ``agent.yaml`` (+ files, or one ``.zip``). Saves nothing.
 
@@ -386,8 +391,15 @@ async def import_custom_agent(
     ``issues``, the parsed ``spec`` and the ``files`` to send — goes back to
     the builder, which opens it as a draft; the later create is what saves it,
     and what refuses a slug the user already has.
+
+    ``replacing`` is the id of the caller's agent the YAML is to replace: its
+    slug goes upstream so the YAML is checked as an update of it (404 when the
+    caller owns no such agent).
     """
+    slug = (await _require_owned_row(db, user_id, replacing)).slug if replacing else None
     body = await build_import_payload(yaml_text, uploads)
+    if slug:
+        body["slug"] = slug
     result = await _proxy(
         "POST", f"{_base_url(user_id)}/import",
         operation="custom_agent_import",

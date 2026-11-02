@@ -588,7 +588,7 @@ def _is_inline_prompt(value: Any) -> bool:
 
 
 def parse_agent_yaml(
-    text: str, files: List[AgentFile]
+    text: str, files: List[AgentFile], *, slug: Optional[str] = None
 ) -> Tuple[Optional[Dict[str, Any]], List[AgentFile], List[AgentIssue]]:
     """An uploaded ``agent.yaml`` as a spec mapping the builder can use.
 
@@ -599,7 +599,8 @@ def parse_agent_yaml(
     * a ``prompt:`` written inline (main or any sub-agent) moves into a
       generated file — ``AGENT.md``, ``subagents/<name>--<name>.md`` — and the
       spec points at it;
-    * a missing ``slug`` comes from the name; a missing ``type``, ``version``
+    * a missing ``slug`` is ``slug`` (the agent being replaced) or else comes
+      from the name; a missing ``type``, ``version``
       or ``id`` gets the builder's defaults;
     * ``model: openai:gpt-5`` is read as ``model: {main: openai:gpt-5}``.
     """
@@ -619,7 +620,9 @@ def parse_agent_yaml(
         return None, files, [_issue("", "The YAML must be a mapping of fields (name:, prompt:, …).")]
 
     spec: Dict[str, Any] = dict(data)
-    if not spec.get("slug") and isinstance(spec.get("name"), str):
+    if not spec.get("slug") and slug:
+        spec["slug"] = slug
+    elif not spec.get("slug") and isinstance(spec.get("name"), str):
         spec["slug"] = slugify(spec["name"])
     spec.setdefault("type", "deep_agent")
     spec.setdefault("version", "1.0.0")

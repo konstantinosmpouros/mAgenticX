@@ -68,6 +68,7 @@ export function BuilderWorkspace({
   agentId,
   initialDraft,
   initialServerIssues = [],
+  savedDraft,
   unsaved = false,
   offerRestore = true,
   userId,
@@ -82,6 +83,7 @@ export function BuilderWorkspace({
   onExit,
   onSaved,
   onDownloadZip,
+  onReplaceFromYaml = null,
   downloading = false,
 }: {
   mode: "create" | "edit";
@@ -90,6 +92,8 @@ export function BuilderWorkspace({
   initialDraft: AgentDraft;
   /** Issues already known for the initial draft (an import's), placed on its nodes. */
   initialServerIssues?: PlacedIssue[];
+  /** The agent as saved, when the initial draft is not it (a YAML replacing it). */
+  savedDraft?: AgentDraft;
   /** The initial draft is itself unsaved work (an imported YAML): guard and autosave it. */
   unsaved?: boolean;
   /** Offer a draft an earlier visit left behind (not when opening an import). */
@@ -106,12 +110,16 @@ export function BuilderWorkspace({
   onExit: () => void;
   onSaved: (saved: BuilderSaved) => void;
   onDownloadZip: (() => void) | null;
+  /** Editing: import a YAML that replaces the saved agent. */
+  onReplaceFromYaml?: (() => void) | null;
   downloading?: boolean;
 }) {
   const { toast } = useToast();
   const mobile = useIsMobile();
   const reduceMotion = useReducedMotion();
-  const [savedAs] = React.useState(() => (unsaved ? emptyDraft(initialDraft.model) : initialDraft));
+  const [savedAs] = React.useState(
+    () => savedDraft ?? (unsaved ? emptyDraft(initialDraft.model) : initialDraft),
+  );
   const { draft, dispatch, dirty, reset, markSaved } = useAgentDraft(initialDraft, savedAs);
   const [selectedUid, setSelectedUid] = React.useState(ROOT_UID);
   const [reveal, setReveal] = React.useState<{ uid: string; at: number } | null>(null);
@@ -681,6 +689,7 @@ export function BuilderWorkspace({
         models={catalogs.models}
         builtins={catalogs.builtins}
         onDownloadZip={agentId || savedRef.current ? onDownloadZip : null}
+        onReplace={onReplaceFromYaml}
         downloading={downloading}
         dirty={dirty}
       />

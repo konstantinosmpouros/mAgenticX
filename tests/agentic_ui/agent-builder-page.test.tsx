@@ -6,8 +6,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 /**
  * The canvas builder as a page (plan 37 P3+P4): the start screen, building a
  * team on the canvas down to the third level, the restore banner, the leave
- * guard, the two-step save with Retry, and the YAML help with the server's
- * live lists. React Flow is swapped for a light stand-in that renders the
+ * guard, the two-step save with Retry, the YAML help with the server's
+ * live lists, and Replace from YAML on an existing agent. React Flow is swapped for a light stand-in that renders the
  * builder's own node components.
  */
 
@@ -136,6 +136,7 @@ function renderAt(path: string, ctx: AgentsPageContext = context()) {
               <Route index element={<p>Gallery</p>} />
               <Route path="new" element={<AgentBuilderPage mode="create" />} />
               <Route path=":agentId" element={<p>Agent page</p>} />
+              <Route path=":agentId/edit" element={<AgentBuilderPage mode="edit" />} />
             </Route>
           </Routes>
           <Where />
@@ -294,5 +295,61 @@ describe("the YAML help", () => {
     expect(within(tools).getByText("always asks")).toBeInTheDocument();
     expect(within(tools).getByText("never asks")).toBeInTheDocument();
     expect(panel.querySelector("#yaml-help-subagents-tools")).not.toBeNull();
+  });
+});
+
+describe("replace from YAML", () => {
+  const detail = {
+    id: "c9",
+    slug: "market-researcher",
+    name: "Market Researcher",
+    description: "",
+    icon: "Bot",
+    version: "1.0.0",
+    type: "deep agent",
+    spec: { slug: "market-researcher", name: "Market Researcher", prompt: "./AGENT.md", model: { main: "openai:gpt-5" } },
+    files: [{ path: "AGENT.md", content: "Old.", encoding: "utf-8" as const }],
+  };
+  const editing = () => {
+    const handlers = userAgents({ getAgentDefinition: vi.fn(async () => detail) });
+    return context({ agents: [created], userAgents: handlers });
+  };
+
+  it("is offered in the YAML view of an existing agent", async () => {
+    renderAt("/agents/c9/edit", editing());
+    fireEvent.click(await screen.findByRole("button", { name: /^YAML/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Replace from YAML…" }));
+    await waitFor(() => expect(where()).toBe("/agents/c9/edit?via=import"));
+    expect(await screen.findByText("Nothing changes until you replace Market Researcher.")).toBeInTheDocument();
+  });
+
+  it("checks the YAML as an update of the agent, and replaces it once confirmed", async () => {
+    api.importMyAgent.mockResolvedValue({
+      valid: true,
+      errors: [],
+      issues: [],
+      spec: { ...detail.spec, name: "Market Researcher", description: "Sharper." },
+      files: [{ path: "AGENT.md", content: "New.", encoding: "utf-8" }],
+    });
+    const ctx = renderAt("/agents/c9/edit?via=import", editing());
+    fireEvent.click(await screen.findByRole("tab", { name: /Paste YAML/ }));
+    fireEvent.change(screen.getByLabelText("agent.yaml"), { target: { value: "name: Market Researcher\n" } });
+    fireEvent.click(screen.getByRole("button", { name: "Check it" }));
+    await waitFor(() =>
+      expect(api.importMyAgent).toHaveBeenCalledWith("u1", expect.objectContaining({ replacing: "c9" })),
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Replace Market Researcher" }));
+    expect(ctx.userAgents.updateAgent).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("button", { name: "Replace" }));
+    await waitFor(() =>
+      expect(ctx.userAgents.updateAgent).toHaveBeenCalledWith(
+        "c9",
+        expect.objectContaining({ files: [{ path: "AGENT.md", content: "New.", encoding: "utf-8" }] }),
+        { quiet: true },
+      ),
+    );
+    expect(ctx.userAgents.createAgent).not.toHaveBeenCalled();
+    await waitFor(() => expect(where()).toBe("/agents/c9"));
   });
 });

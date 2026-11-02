@@ -306,6 +306,25 @@ async def test_an_invalid_import_still_returns_the_spec_to_fix_in_the_form(clien
     assert "model.main" in _paths(body)
 
 
+async def test_a_replacing_import_keeps_the_agents_slug_when_the_yaml_has_none(client, internal_headers, builder):
+    text = HAND_WRITTEN.replace("name: Vendor Research", "name: Renamed Research")
+    body = (await client.post(
+        f"{BASE}/import", json={"yaml": text, "slug": "vendor-research"}, headers=internal_headers
+    )).json()
+    assert body["valid"], body["issues"]
+    assert body["spec"]["slug"] == "vendor-research" and body["spec"]["name"] == "Renamed Research"
+    assert body["spec"]["id"] == "vendor-research-v1"
+
+
+async def test_a_replacing_import_with_another_slug_is_refused(client, internal_headers, builder):
+    text = "slug: something-else\n" + HAND_WRITTEN
+    body = (await client.post(
+        f"{BASE}/import", json={"yaml": text, "slug": "vendor-research"}, headers=internal_headers
+    )).json()
+    assert not body["valid"]
+    assert "slug" in _paths(body)
+
+
 async def test_export_is_a_zip_that_imports_back_to_the_same_agent(client, internal_headers, builder):
     created = (await client.post(f"{BASE}/import", json={"yaml": HAND_WRITTEN}, headers=internal_headers)).json()
     write = {"spec": created["spec"], "files": created["files"]}

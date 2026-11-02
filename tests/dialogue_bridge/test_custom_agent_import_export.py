@@ -299,7 +299,7 @@ async def test_a_corrupt_zip_is_refused(client, agents_service, seeded_user):
 
 
 # ---------------------------------------------------------------------------
-# Export
+# Export, and Replace from YAML
 # ---------------------------------------------------------------------------
 async def _owned_agent(session_factory, owner_id: str, slug: str = "research-bot") -> str:
     async with session_factory() as session:
@@ -310,6 +310,23 @@ async def _owned_agent(session_factory, owner_id: str, slug: str = "research-bot
         session.add(row)
         await session.commit()
         return row.id
+
+
+async def test_a_replacing_import_sends_the_agents_slug(
+    client, upstream_import, seeded_user, session_factory
+):
+    agent_id = await _owned_agent(session_factory, seeded_user.id)
+    response = await _import(client, seeded_user.id, data={"yaml": MANIFEST, "replacing": agent_id})
+    assert response.status_code == 200
+    assert _sent(upstream_import, seeded_user.id) == {"yaml": MANIFEST, "files": [], "slug": "research-bot"}
+
+
+async def test_replacing_an_agent_that_is_not_yours_is_404_without_calling_upstream(
+    client, agents_service, seeded_user
+):
+    response = await _import(client, seeded_user.id, data={"yaml": MANIFEST, "replacing": "not-an-agent"})
+    assert response.status_code == 404
+    assert agents_service.calls == []
 
 
 async def test_export_streams_the_upstream_zip(client, agents_service, seeded_user, session_factory):

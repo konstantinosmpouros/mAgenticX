@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/shared/lib/utils";
+import { ConfirmDialog } from "@/shared/ui/confirm-dialog";
 import { importMyAgent } from "@/shared/lib/api";
 import { mapIcon } from "@/shared/lib/consts";
 import type { AgentCatalogs } from "@/features/agents/hooks/useAgentCatalogs";
@@ -41,18 +42,26 @@ type Opened = Extract<ImportOutcome, { kind: "valid" | "invalid" }>;
  * it in the builder (to change or fix it), or choose another file. The help
  * ("How to write an agent.yaml") is one click away throughout, and each issue
  * links into it at its own field.
+ *
+ * With `replacing` it is "Replace from YAML…" on an existing agent
+ * (`/agents/:id/edit?via=import`): the YAML is checked as an update of that
+ * agent — it keeps its slug — and Create becomes Replace, confirmed first. The
+ * replaced definition stays in the agent's History.
  */
 export function ImportView({
   userId,
   catalogs,
   creating,
+  replacing = null,
   onCreate,
   onOpen,
 }: {
   userId: string | null;
   catalogs: AgentCatalogs;
   creating: boolean;
-  onCreate: (outcome: Opened) => void;
+  /** The agent the YAML is to replace; null to create a new one. */
+  replacing?: { id: string; name: string } | null;
+  onCreate: (outcome: Opened) => void | Promise<void>;
   onOpen: (outcome: Opened) => void;
 }) {
   const reduceMotion = useReducedMotion();
@@ -64,6 +73,7 @@ export function ImportView({
   const [outcome, setOutcome] = React.useState<ImportOutcome | null>(null);
   const [help, setHelp] = React.useState<{ open: boolean; focus: string | null }>({ open: false, focus: null });
   const [dragOver, setDragOver] = React.useState(false);
+  const [confirming, setConfirming] = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
   const openHelp = (focus: string | null = null) => setHelp({ open: true, focus });
@@ -85,7 +95,10 @@ export function ImportView({
     setChecking(true);
     setError(null);
     try {
-      const result = await importMyAgent(userId, tab === "files" ? { files } : { yaml: text });
+      const result = await importMyAgent(userId, {
+        ...(tab === "files" ? { files } : { yaml: text }),
+        replacing: replacing?.id,
+      });
       setOutcome(importOutcome(result));
     } catch (err) {
       setError(err instanceof Error ? err.message : "The file couldn't be checked. Please try again.");
@@ -234,7 +247,11 @@ export function ImportView({
               </p>
             ) : null}
             <div className="flex items-center justify-end gap-2">
-              <p className="mr-auto text-xs text-muted-foreground">Nothing is saved until you create it.</p>
+              <p className="mr-auto text-xs text-muted-foreground">
+                {replacing
+                  ? `Nothing changes until you replace ${replacing.name}.`
+                  : "Nothing is saved until you create it."}
+              </p>
               <button type="button" className={PRIMARY_BUTTON} disabled={!ready || checking} onClick={() => void check()}>
                 {checking ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
                 {checking ? "Checking…" : "Check it"}
@@ -277,7 +294,8 @@ export function ImportView({
               outcome={outcome}
               catalogs={catalogs}
               creating={creating}
-              onCreate={() => onCreate(outcome)}
+              replacing={replacing?.name ?? null}
+              onCreate={() => (replacing ? setConfirming(true) : void onCreate(outcome))}
               onOpen={() => onOpen(outcome)}
               onAgain={reset}
               onHelp={openHelp}
@@ -295,6 +313,19 @@ export function ImportView({
       >
         <YamlHelp models={catalogs.models} builtins={catalogs.builtins} focus={help.open ? help.focus : null} />
       </SidePanel>
+
+      {replacing ? (
+        <ConfirmDialog
+          open={confirming}
+          onOpenChange={setConfirming}
+          title={`Replace ${replacing.name}?`}
+          description="Its definition becomes this YAML: instructions, model, tools, team and files. The current one stays in its History, so you can restore it."
+          confirmLabel="Replace"
+          onConfirm={async () => {
+            if (outcome && outcome.kind !== "unparsed") await onCreate(outcome);
+          }}
+        />
+      ) : null}
     </>
   );
 }
@@ -303,6 +334,7 @@ function ImportResult({
   outcome,
   catalogs,
   creating,
+  replacing,
   onCreate,
   onOpen,
   onAgain,
@@ -311,6 +343,8 @@ function ImportResult({
   outcome: Opened;
   catalogs: AgentCatalogs;
   creating: boolean;
+  /** The name of the agent it replaces; null when it creates one. */
+  replacing: string | null;
   onCreate: () => void;
   onOpen: () => void;
   onAgain: () => void;
@@ -359,8 +393,10 @@ function ImportResult({
         >
           {valid ? <CheckCircle2 className="h-4 w-4" aria-hidden /> : <AlertCircle className="h-4 w-4" aria-hidden />}
           {valid
-            ? "Ready to create"
-            : `${errors.length} issue${errors.length === 1 ? "" : "s"} to fix before it can be created`}
+            ? replacing
+              ? `Ready to replace ${replacing}`
+              : "Ready to create"
+            : `${errors.length} issue${errors.length === 1 ? "" : "s"} to fix before it can be ${replacing ? "saved" : "created"}`}
         </div>
 
         <div className="flex items-start gap-3">
@@ -431,7 +467,7 @@ function ImportResult({
             <>
               <button type="button" className={cn(PRIMARY_BUTTON, "justify-center")} onClick={onCreate} disabled={creating}>
                 {creating ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
-                Create agent
+                {replacing ? `Replace ${replacing}` : "Create agent"}
               </button>
               <button type="button" className={cn(SECONDARY_BUTTON, "justify-center")} onClick={onOpen} disabled={creating}>
                 Open in the builder

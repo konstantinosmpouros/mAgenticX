@@ -119,6 +119,8 @@ async def import_my_agent(
     user_id: str,
     yaml: str | None = Form(None),
     files: list[UploadFile] | None = File(None),
+    replacing: str | None = Form(None),
+    db: AsyncSession = Depends(get_db),
     _: AuthUser = Depends(validate_userId),
     __: None = Depends(require_csrf_protection),
     # Unpacks an upload in memory and has the agents service parse it — per-user
@@ -129,9 +131,11 @@ async def import_my_agent(
     """Check an ``agent.yaml`` (text or file, with its files) or one ``.zip``.
 
     Saves nothing: the builder opens the result as a draft, and Create saves it.
+    ``replacing`` is the id of an agent of the caller's that the YAML is to
+    replace ("Replace from YAML…"); it is then checked as an update of it.
     """
     set_context(user_id=user_id)
-    result = await import_custom_agent(user_id, yaml, files or [])
+    result = await import_custom_agent(db, user_id, yaml, files or [], replacing=replacing)
     return CustomAgentImportResult.model_validate(result)
 
 

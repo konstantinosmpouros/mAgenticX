@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Download, Loader2, RotateCw } from "lucide-react";
+import { ArrowLeft, Download, FileUp, Loader2, RotateCw } from "lucide-react";
 
 import { renderMyAgentYaml } from "@/shared/lib/api";
 import type { AgentModelOption, BuiltinToolInfo, CustomAgentWritePayload } from "@/shared/lib/types";
@@ -14,7 +14,8 @@ const RENDER_DELAY_MS = 400;
 /**
  * The builder's YAML view: the draft as `agent.yaml`, read-only, re-rendered
  * by the server as the draft changes (it stays open beside the canvas), with
- * Copy and — for a saved agent — Download .zip, the saved version's export.
+ * Copy and — for a saved agent — Download .zip, the saved version's export,
+ * and Replace from YAML…, which imports a YAML over it.
  * "How to write an agent.yaml" swaps the panel to the help and back.
  */
 export function YamlPanel({
@@ -25,6 +26,7 @@ export function YamlPanel({
   models,
   builtins,
   onDownloadZip,
+  onReplace = null,
   downloading,
   dirty,
 }: {
@@ -36,6 +38,8 @@ export function YamlPanel({
   builtins: BuiltinToolInfo[];
   /** Only for a saved agent; null on a new one. */
   onDownloadZip: (() => void) | null;
+  /** Only for a saved agent: import a YAML that replaces its definition. */
+  onReplace?: (() => void) | null;
   downloading: boolean;
   /** Unsaved changes: the .zip is the saved version, not this one. */
   dirty: boolean;
@@ -121,6 +125,12 @@ export function YamlPanel({
                   <Download className="h-3.5 w-3.5" aria-hidden />
                 )}
                 {dirty ? "Download saved .zip" : "Download .zip"}
+              </button>
+            ) : null}
+            {onReplace ? (
+              <button type="button" className={SMALL_BUTTON} onClick={onReplace}>
+                <FileUp className="h-3.5 w-3.5" aria-hidden />
+                Replace from YAML…
               </button>
             ) : null}
             <YamlHelpButton onClick={() => setView("help")} className="ml-auto" />

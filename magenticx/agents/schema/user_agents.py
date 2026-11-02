@@ -60,10 +60,16 @@ class CustomAgentValidation(BaseModel):
 
 
 class CustomAgentImport(BaseModel):
-    """An ``agent.yaml`` as text, with the files its prompts point at."""
+    """An ``agent.yaml`` as text, with the files its prompts point at.
+
+    ``slug`` names the agent the YAML is to replace ("Replace from YAML…" on an
+    existing agent): a YAML without a ``slug:`` takes it, and one with another
+    slug is refused, because a slug never changes.
+    """
 
     yaml: str
     files: List[AgentFile] = Field(default_factory=list)
+    slug: Optional[str] = None
 
 
 class CustomAgentImportResult(CustomAgentValidation):
