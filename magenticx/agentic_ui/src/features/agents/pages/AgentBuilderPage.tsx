@@ -11,6 +11,7 @@ import { useAgentTools } from "@/features/agents/hooks/useAgentTools";
 import { useExportAgent } from "@/features/agents/hooks/useExportAgent";
 import { useResolvedAgent } from "@/features/agents/hooks/useResolvedAgent";
 import { draftFromDetail, duplicateDefinition, emptyDraft } from "@/features/agents/lib/agentSpec";
+import { findTemplate } from "@/features/agents/lib/agentTemplates";
 import { draftStorageKey, formatSavedAt, readStoredDraft } from "@/features/agents/lib/draftStorage";
 import type { ImportOutcome } from "@/features/agents/lib/importResult";
 import type { PlacedIssue } from "@/features/agents/lib/agentIssues";
@@ -35,8 +36,9 @@ type Opened = Extract<ImportOutcome, { kind: "valid" | "invalid" }>;
  * `/agents/new` and `/agents/:agentId/edit`.
  *
  * A new agent starts on a short start screen — the canvas, or import a YAML
- * (`?via=canvas|import`); `?from=<agentId>` (Duplicate) skips it and opens the
- * copy on the canvas. Editing opens the saved definition on the canvas, with
+ * (`?via=canvas|import`), a starter template (`?via=canvas&template=<id>`), or
+ * the unsaved agent an earlier visit left (`?via=canvas&resume=1`);
+ * `?from=<agentId>` (Duplicate) skips it and opens the copy on the canvas. Editing opens the saved definition on the canvas, with
  * its current approval settings as the starting point. An imported YAML is
  * shown read-only first and opens in the builder from there.
  *
@@ -152,6 +154,22 @@ export default function AgentBuilderPage({ mode }: { mode: "create" | "edit" }) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [catalogs.modelsLoaded],
   );
+  // A starter template is the draft's starting point, not work of the user's:
+  // nothing is autosaved or guarded until they change something.
+  const template = findTemplate(searchParams.get("template"));
+  const templateDraft = useMemo(
+    () => (template && catalogs.modelsLoaded ? template.draft(catalogs.defaultModel) : null),
+    // Built once per template: a later catalog change must not reset the draft.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [template?.id, catalogs.modelsLoaded],
+  );
+  // "Continue the agent you left unsaved": that draft itself, on the canvas —
+  // read once per visit, so the autosave writing it again never resets it.
+  const resume = searchParams.get("resume") === "1";
+  const resumed = useMemo(
+    () => (resume && userId && !isEdit ? readStoredDraft(draftStorageKey(userId, null)) : null),
+    [resume, userId, isEdit],
+  );
   const leftover = useMemo(() => {
     if (!userId || isEdit) return null;
     const stored = readStoredDraft(draftStorageKey(userId, null));
@@ -226,6 +244,23 @@ export default function AgentBuilderPage({ mode }: { mode: "create" | "edit" }) 
       offerRestore: false,
     });
   }
+  if (via === "canvas" && resumed) {
+    return workspace({
+      key: `resume-${resumed.savedAt}`,
+      initialDraft: resumed.draft,
+      unsaved: true,
+      offerRestore: false,
+    });
+  }
+  if (via === "canvas" && template) {
+    return templateDraft
+      ? workspace({
+          key: `template-${template.id}`,
+          initialDraft: templateDraft,
+          offerRestore: false,
+        })
+      : <PageLoading />;
+  }
   if (via === "canvas") {
     return startDraft ? workspace({ key: "new", initialDraft: startDraft }) : <PageLoading />;
   }
@@ -239,6 +274,22 @@ export default function AgentBuilderPage({ mode }: { mode: "create" | "edit" }) 
         via === "import" ? setParam("via", null, false) : guardedLeave(() => navigate(AGENTS_PATH))
       }
       onChoose={(next) => setParam("via", next, false)}
+      onResume={() =>
+        setSearchParams((prev) => {
+          const params = new URLSearchParams(prev);
+          params.set("via", "canvas");
+          params.set("resume", "1");
+          return params;
+        })
+      }
+      onTemplate={(id) =>
+        setSearchParams((prev) => {
+          const params = new URLSearchParams(prev);
+          params.set("via", "canvas");
+          params.set("template", id);
+          return params;
+        })
+      }
     >
       {via === "import" ? (
         <ImportView
@@ -262,12 +313,16 @@ function ImportOrStart({
   leftover,
   onBack,
   onChoose,
+  onResume,
+  onTemplate,
   children,
 }: {
   via: StartVia | "start";
   leftover: string | null;
   onBack: () => void;
   onChoose: (via: StartVia) => void;
+  onResume: () => void;
+  onTemplate: (id: string) => void;
   children: React.ReactNode;
 }) {
   return (
@@ -284,7 +339,13 @@ function ImportOrStart({
       {via === "import" ? (
         <div className="flex min-h-0 flex-1 flex-col">{children}</div>
       ) : (
-        <StartScreen onCanvas={() => onChoose("canvas")} onImport={() => onChoose("import")} leftover={leftover} />
+        <StartScreen
+          onCanvas={() => onChoose("canvas")}
+          onImport={() => onChoose("import")}
+          onResume={onResume}
+          onTemplate={onTemplate}
+          leftover={leftover}
+        />
       )}
     </div>
   );

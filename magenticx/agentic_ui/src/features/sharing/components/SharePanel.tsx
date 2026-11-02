@@ -182,7 +182,7 @@ function ShareConversationCard({
 
         <div className="relative min-h-[15.5rem] overflow-hidden rounded-2xl border border-white/[0.12] bg-[#252525] p-5 text-[1rem] leading-7 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.07)] md:min-h-[17rem] md:p-6">
           <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/15" />
-          <div className="max-h-[12.5rem] overflow-hidden text-white/92 [mask-image:linear-gradient(to_bottom,black_78%,transparent_100%)] md:max-h-[14rem]">
+          <div className="max-h-[12.5rem] overflow-hidden text-white/92 [&_[data-streamdown=inline-code]]:bg-white/[0.14] [&_[data-streamdown=inline-code]]:text-inherit [mask-image:linear-gradient(to_bottom,black_78%,transparent_100%)] md:max-h-[14rem]">
             <MessageContent message={message} isEditing={false} />
           </div>
         </div>

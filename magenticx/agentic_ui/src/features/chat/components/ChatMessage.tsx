@@ -112,7 +112,7 @@ export function ChatMessage({
     ? resolveMessageAgent(message)
     : { name: message.agentName ?? currentAgent?.name ?? "Unknown agent", Icon: AgentIcon };
   const bubbleClass = isUser
-    ? `p-5 bg-chat-user text-chat-user-foreground ml-auto shadow-card border-border ${
+    ? `chat-user-bubble p-5 bg-chat-user text-chat-user-foreground ml-auto shadow-card border-border ${
         isEditing ? "w-full max-w-full" : "max-w-[85%] md:max-w-[75%]"
       }`
     : "bg-gradient-card text-card-foreground bg-transparent shadow-none border-transparent w-full max-w-full";

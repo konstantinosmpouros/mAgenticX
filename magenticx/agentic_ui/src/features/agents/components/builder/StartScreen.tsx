@@ -3,19 +3,27 @@ import { ArrowRight, FileUp, History, Workflow } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { cn } from "@/shared/lib/utils";
+import { mapIcon } from "@/shared/lib/consts/icons";
+import { AGENT_TEMPLATES, teamSize, type AgentTemplate } from "@/features/agents/lib/agentTemplates";
 
 /**
  * `/agents/new`: how to start — on the canvas, or from a YAML file. Two large
- * choices, each with a small picture of what it leads to, and a way back into
- * an unsaved agent an earlier visit left behind.
+ * choices, each with a small picture of what it leads to; below them, starter
+ * templates that open a ready-made agent and team on the canvas; and a way
+ * back into an unsaved agent an earlier visit left behind.
  */
 export function StartScreen({
   onCanvas,
   onImport,
+  onResume,
+  onTemplate,
   leftover,
 }: {
   onCanvas: () => void;
   onImport: () => void;
+  /** Open the unsaved agent an earlier visit left, as it was. */
+  onResume: () => void;
+  onTemplate: (id: string) => void;
   /** When an unsaved new agent is stored on this device: when it was saved. */
   leftover: string | null;
 }) {
@@ -29,7 +37,7 @@ export function StartScreen({
           transition: { duration: 0.42, delay: 0.06 + index * 0.07, ease: [0.22, 1, 0.36, 1] as const },
         };
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 pb-10 sm:px-6">
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-4 pb-10 sm:px-6">
       <div className="grid gap-4 md:grid-cols-2">
         <motion.div {...rise(0)}>
           <StartCard
@@ -54,7 +62,7 @@ export function StartScreen({
         <motion.button
           {...rise(2)}
           type="button"
-          onClick={onCanvas}
+          onClick={onResume}
           className="mx-auto inline-flex items-center gap-2 rounded-full border border-border/60 bg-muted/30 px-4 py-2 text-[13px] text-muted-foreground transition-colors hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
         >
           <History className="h-3.5 w-3.5 text-primary" aria-hidden />
@@ -62,6 +70,23 @@ export function StartScreen({
           <ArrowRight className="h-3.5 w-3.5" aria-hidden />
         </motion.button>
       ) : null}
+      <motion.section {...rise(3)} aria-labelledby="start-templates" className="flex flex-col gap-2.5">
+        <div className="flex items-baseline justify-between gap-3 px-1">
+          <h2 id="start-templates" className="text-sm font-semibold text-foreground">
+            Or start from a template
+          </h2>
+          <p className="hidden text-xs text-muted-foreground sm:block">
+            Opens on the canvas, ready to change before you create it.
+          </p>
+        </div>
+        <ul className="grid gap-2.5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+          {AGENT_TEMPLATES.map((template) => (
+            <li key={template.id}>
+              <TemplateCard template={template} onClick={() => onTemplate(template.id)} />
+            </li>
+          ))}
+        </ul>
+      </motion.section>
     </div>
   );
 }
@@ -110,6 +135,42 @@ function StartCard({
           <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" aria-hidden />
         </span>
       </div>
+    </button>
+  );
+}
+
+/** A starter agent, compact: icon and name, one line on what it does, its team. */
+function TemplateCard({ template, onClick }: { template: AgentTemplate; onClick: () => void }) {
+  const Icon = mapIcon(template.icon);
+  const draft = template.draft("");
+  const guides = draft.files.length;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={template.blurb}
+      className={cn(
+        "group flex h-full w-full items-start gap-3 rounded-2xl border border-border/70 bg-card px-3.5 py-3 text-left",
+        "transition-[border-color,box-shadow] duration-200 ease-out hover:border-primary/40 hover:shadow-[0_12px_28px_-22px_hsl(var(--primary)/0.5)]",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+      )}
+    >
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/[0.1] text-primary">
+        <Icon size={15} aria-hidden />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="flex items-center gap-1.5">
+          <span className="truncate text-sm font-semibold text-foreground">{template.name}</span>
+          <ArrowRight
+            className="h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 transition-[opacity,transform] duration-200 group-hover:translate-x-0.5 group-hover:opacity-100 group-focus-visible:opacity-100"
+            aria-hidden
+          />
+        </span>
+        <span className="line-clamp-1 text-xs text-muted-foreground">{template.blurb}</span>
+        <span className="truncate pt-0.5 text-[11px] font-medium text-muted-foreground/80">
+          {teamSize(draft)} sub-agents{guides ? ` · ${guides} guides` : ""}
+        </span>
+      </span>
     </button>
   );
 }

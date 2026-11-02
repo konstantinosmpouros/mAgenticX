@@ -14,7 +14,8 @@ const AUTOSAVE_DELAY_MS = 700;
 
 /**
  * Autosave the draft while it has unsaved changes, and offer what an earlier
- * visit left behind.
+ * visit left behind. A draft with no changes stores nothing: opening a page
+ * (or a starter template) and leaving it untouched leaves no trace.
  *
  * On open, a stored draft that differs from what the page starts with becomes
  * `offer` (the "Restore unsaved changes from 10:42?" banner); one identical to
@@ -55,10 +56,23 @@ export function useDraftAutosave({
 
   const offerOpen = useRef(offer !== null);
   offerOpen.current = offer !== null;
+  // Whether this visit stored a draft: edits undone back to the start leave
+  // nothing to continue, so that copy goes — but never one an earlier visit left.
+  const wrote = useRef(false);
 
   useEffect(() => {
-    if (!key || !enabled || !dirty || offerOpen.current) return;
-    const timer = window.setTimeout(() => writeStoredDraft(key, draft), AUTOSAVE_DELAY_MS);
+    if (!key || !enabled || offerOpen.current) return;
+    if (!dirty) {
+      if (wrote.current) {
+        clearStoredDraft(key);
+        wrote.current = false;
+      }
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      writeStoredDraft(key, draft);
+      wrote.current = true;
+    }, AUTOSAVE_DELAY_MS);
     return () => window.clearTimeout(timer);
   }, [key, enabled, dirty, draft]);
 

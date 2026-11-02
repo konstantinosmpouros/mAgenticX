@@ -159,7 +159,7 @@ export function AgentsIndex({
                 animate={{ opacity: 1, y: 0 }}
                 // Capped, so a long list does not keep the last cards waiting.
                 transition={{ duration: 0.22, ease: "easeOut", delay: Math.min(index, 8) * 0.035 }}
-                className="relative"
+                className="group/card relative"
               >
                 <button
                   type="button"
@@ -167,14 +167,20 @@ export function AgentsIndex({
                   aria-label={`${agent.name}, ${card.custom ? "custom" : "platform"} agent`}
                   aria-describedby={agent.description ? `agent-card-desc-${agent.id}` : undefined}
                   className={cn(
-                    "group flex h-full w-full flex-col gap-3 rounded-[1.4rem] bg-muted/30 p-5 text-left",
-                    "transition-all hover:bg-muted/50 active:scale-[0.99]",
+                    // A card of its own on the page: a surface, a hairline
+                    // edge and a soft shadow; hover lifts it a little.
+                    "group flex h-full w-full flex-col gap-3 rounded-[1.4rem] border border-border/70 bg-card p-5 text-left",
+                    "shadow-[0_1px_2px_hsl(var(--foreground)/0.05),0_8px_24px_-16px_hsl(var(--foreground)/0.25)]",
+                    "transition-[border-color,box-shadow,transform] duration-200 ease-out",
+                    // The lift follows the whole card (menu included), not just this button.
+                    "group-hover/card:-translate-y-0.5 group-hover/card:border-primary/35 group-hover/card:shadow-[0_1px_2px_hsl(var(--foreground)/0.05),0_16px_32px_-18px_hsl(var(--primary)/0.4)]",
+                    "active:translate-y-0 motion-reduce:transform-none",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     busy && "opacity-60",
                   )}
                 >
                   <div className="flex items-start gap-3">
-                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-background/60 text-primary transition-colors group-hover:bg-background">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/[0.08] text-primary ring-1 ring-primary/10 transition-colors group-hover:bg-primary/[0.12]">
                       <Icon size={19} aria-hidden />
                     </span>
                     {/* Room on the right for the menu button, which sits over
@@ -195,10 +201,10 @@ export function AgentsIndex({
                   {facts.length ? (
                     <ul
                       aria-label="Made of"
-                      className="mt-auto flex flex-wrap gap-1.5 text-[11px] tabular-nums text-muted-foreground"
+                      className="mt-auto flex flex-wrap gap-1.5 border-t border-border/50 pt-3 text-[11px] tabular-nums text-muted-foreground"
                     >
                       {facts.map((fact) => (
-                        <li key={fact} className="rounded-md bg-background/50 px-1.5 py-0.5">
+                        <li key={fact} className="rounded-md bg-muted/60 px-1.5 py-0.5">
                           {fact}
                         </li>
                       ))}
@@ -212,7 +218,7 @@ export function AgentsIndex({
                       <button
                         type="button"
                         aria-label={`Actions for ${agent.name}`}
-                        className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 data-[state=open]:bg-background data-[state=open]:text-foreground"
+                        className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-[color,background-color,transform] duration-200 ease-out group-hover/card:-translate-y-0.5 motion-reduce:transform-none hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 data-[state=open]:bg-muted data-[state=open]:text-foreground"
                       >
                         <MoreHorizontal size={16} aria-hidden />
                       </button>
