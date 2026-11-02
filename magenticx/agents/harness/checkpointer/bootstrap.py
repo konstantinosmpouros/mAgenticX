@@ -133,7 +133,7 @@ async def init_durable_checkpointer(app: FastAPI) -> None:
         # consumer owns it. Only the catalog row (id, name, is_active) stays in
         # `chat_db`, where the bridge lists and routes agents without a hop.
         await AgentDefinitionStore(pool).setup()
-        # A conversation's files (plan 43): the agent reads and writes them on
+        # A conversation's files (plan 36): the agent reads and writes them on
         # nearly every tool call, so they are local SQL on this pool, not a
         # hop to the bridge.
         await ConversationFileStore(pool).setup()

@@ -1,4 +1,4 @@
-"""Internal routes over a conversation's files (plan 43): the bridge's calls.
+"""Internal routes over a conversation's files (plan 36): the bridge's calls.
 
 Keyed by user and conversation — never by agent: a conversation's files belong
 to the conversation, whichever agents worked in it. Internal-caller only.

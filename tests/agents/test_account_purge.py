@@ -80,16 +80,18 @@ async def test_skill_store_purge_deletes_every_skill_table_for_that_user_only(ag
 
 
 @pytest.mark.asyncio
-async def test_definition_store_purge_deletes_definitions_and_files(agents_service):
+async def test_definition_store_purge_deletes_definitions_files_and_versions(agents_service):
     pool = FakePool(rowcount=2)
     counts = await agents_service.definition_store.AgentDefinitionStore(pool).purge_user("u1")
 
-    assert counts == {"agent_definitions": 2, "agent_definition_files": 2}
+    assert counts == {"agent_definitions": 2, "agent_definition_files": 2, "agent_definition_versions": 2}
     assert pool.transactions == 1
     assert {sql for sql, _ in pool.calls} == {
         "DELETE FROM agent_definition_files WHERE user_id = %s",
         "DELETE FROM agent_definitions WHERE user_id = %s",
+        "DELETE FROM agent_definition_versions WHERE user_id = %s",
     }
+    assert all(params == ("u1",) for _, params in pool.calls)
 
 
 @pytest.mark.asyncio
@@ -137,6 +139,7 @@ async def test_purge_user_removes_rows_and_cached_agents(purge, agents_service):
 
         assert ("u1", "mine") not in cache and ("u2", "theirs") in cache
         assert counts["agent_memories"] == 1 and counts["skill_pool"] == 1 and counts["agent_definitions"] == 1
+        assert counts["agent_definition_versions"] == 1
         assert counts["conversation_files"] == 1 and counts["conversation_file_blobs"] == 1
     finally:
         cache.pop(("u2", "theirs"), None)
@@ -210,6 +213,6 @@ async def test_delete_route_reports_what_was_removed(client, internal_headers, p
     body = resp.json()
     assert set(body) == {
         "agent_memories", "skill_pool", "skill_files", "agent_skills",
-        "agent_definitions", "agent_definition_files",
+        "agent_definitions", "agent_definition_files", "agent_definition_versions",
         "conversation_files", "conversation_file_blobs",
     }

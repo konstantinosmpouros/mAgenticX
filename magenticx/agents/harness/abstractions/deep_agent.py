@@ -203,7 +203,7 @@ class DeepAgent(BaseAgent, ABC):
     # ---------------------------------------------------------------------
     @property
     def conversation_files(self) -> ConversationFiles:
-        """This run's view of its conversation's files (plan 43).
+        """This run's view of its conversation's files (plan 36).
 
         One instance per run, so the mounts, ``view_image`` and
         ``present_artifact`` share it — the uploads are listed once per run

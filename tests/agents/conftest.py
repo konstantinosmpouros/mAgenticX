@@ -102,6 +102,7 @@ def _load_agents_service(monkeypatch):
         memory_store=importlib.import_module("harness.memory.store"),
         skill_store=importlib.import_module("harness.skill_registry.store"),
         definition_store=importlib.import_module("harness.agent_registry.store"),
+        agent_versions=importlib.import_module("harness.agent_registry.versions"),
         conversation_files=importlib.import_module("harness.conversation_files"),
         # other utils
         suggestions=importlib.import_module("utils.suggestions"),
@@ -509,12 +510,23 @@ class FakeAgentDefinitionStore:
     Postgres. What it must mirror exactly is the *replace, never merge* rule — a
     save carries the whole definition, so a file the user deleted must not
     survive as a row the agent goes on reading.
+
+    It also keeps the version history the way the real store does (created /
+    saved / baseline, nothing for a no-op save, the oldest dropped past the
+    cap; a restore adds no version and moves the ``current`` pointer instead),
+    with ``describe_changes`` and ``MAX_VERSIONS`` taken from the service's own
+    ``versions`` module so the two cannot disagree on what changed. The SQL of
+    that bookkeeping is pinned in ``test_agent_definition_versions.py``.
     """
 
-    def __init__(self):
+    def __init__(self, versions_module):
+        self._versions_module = versions_module
         self.specs: dict[tuple[str, str], dict] = {}
         self.files: dict[tuple[str, str], dict[str, tuple[str, str]]] = {}
         self.updated: dict[tuple[str, str], int] = {}
+        self.versions: dict[tuple[str, str], list[dict]] = {}
+        # ``agent_definitions.current_version``: None means the newest.
+        self.current_version: dict[tuple[str, str], int | None] = {}
         self._clock = 0
 
     async def list_specs(self, user_id):
@@ -539,31 +551,89 @@ class FakeAgentDefinitionStore:
     async def read_files(self, user_id, agent_slug):
         return dict(self.files.get((user_id, agent_slug), {}))
 
-    async def save(self, user_id, agent_slug, *, spec, files, create_only=False):
+    async def save(self, user_id, agent_slug, *, spec, files, create_only=False, restored_from=None):
         key = (user_id, agent_slug)
         replaced = key in self.specs
         if create_only and replaced:
             from harness.agent_registry.store import AgentDefinitionExistsError
 
             raise AgentDefinitionExistsError(agent_slug)
+        previous = None if create_only or not replaced else (self.specs[key], dict(self.files[key]))
         self._clock += 1
         self.specs[key] = spec
         self.files[key] = dict(files)      # replace, never merge
         self.updated[key] = self._clock
+        if not replaced:
+            self.current_version[key] = None
+        if restored_from is not None:
+            self.current_version[key] = restored_from
+        else:
+            self._record_version(key, previous, (spec, dict(files)))
         return replaced
+
+    def _record_version(self, key, previous, saved):
+        history = self.versions.setdefault(key, [])
+        if history:
+            number = history[-1]["version_no"] + 1
+            pointer = self.current_version.get(key)
+            based_on = pointer if pointer is not None else history[-1]["version_no"]
+        elif previous is not None:
+            history.append(self._version(1, "baseline", [], None, previous))
+            number, based_on = 2, 1
+        else:
+            number, based_on = 1, None
+        if previous is None:
+            kind, changes = "created", []
+        else:
+            changes = self._versions_module.describe_changes(previous, saved)
+            if not changes:
+                return
+            kind = "saved"
+        history.append(self._version(number, kind, changes, based_on, saved))
+        self.current_version[key] = number
+        history[:] = [v for v in history if v["version_no"] > number - self._versions_module.MAX_VERSIONS]
+
+    def _version(self, number, kind, changes, based_on, state):
+        return {
+            "version_no": number, "kind": kind, "changes": list(changes),
+            "restored_from": None, "based_on": based_on, "created_at": STORE_NOW,
+            "spec": state[0], "files": dict(state[1]),
+        }
+
+    async def list_versions(self, user_id, agent_slug):
+        key = (user_id, agent_slug)
+        rows = list(reversed(self.versions.get(key, [])))
+        if not rows:
+            return []
+        kept = {row["version_no"] for row in rows}
+        pointer = self.current_version.get(key)
+        current = pointer if pointer in kept else rows[0]["version_no"]
+        return [
+            {**{k: v for k, v in row.items() if k not in ("spec", "files")},
+             "current": row["version_no"] == current}
+            for row in rows
+        ]
+
+    async def get_version(self, user_id, agent_slug, version_no):
+        for row in self.versions.get((user_id, agent_slug), []):
+            if row["version_no"] == version_no:
+                return dict(row)
+        return None
 
     async def delete(self, user_id, agent_slug):
         key = (user_id, agent_slug)
         removed = self.specs.pop(key, None) is not None
         self.files.pop(key, None)
         self.updated.pop(key, None)
+        self.versions.pop(key, None)
+        self.current_version.pop(key, None)
         return removed
 
 
 @pytest.fixture()
 def definition_store_memory(agents_service, monkeypatch):
     """Install the in-memory definition store behind the agent CRUD and loader."""
-    fake = FakeAgentDefinitionStore()
+    fake = FakeAgentDefinitionStore(agents_service.agent_versions)
     monkeypatch.setattr(agents_service.user_agents, "_store", lambda: fake)
     monkeypatch.setattr(agents_service.agents_utils, "_definition_store", lambda: fake)
     return fake
@@ -612,7 +682,7 @@ def skills_fs(agents_service, tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# A conversation's files (plan 43)
+# A conversation's files (plan 36)
 # ---------------------------------------------------------------------------
 class MemoryFileStore:
     """``ConversationFileStore`` in memory, for the backend and route tests.

@@ -1,4 +1,4 @@
-"""The agent builder's backend over HTTP (plan 44, P1).
+"""The agent builder's backend over HTTP (plan 37, P1).
 
 The custom-agent routes end to end on the in-memory definition store: issues
 pinned to paths, the structured 422, the atomic create, YAML import and export,

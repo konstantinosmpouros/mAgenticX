@@ -8,6 +8,9 @@ import { useEscapeTo, usePageTitle } from "@/features/agents/hooks/usePageChrome
 import { PRIMARY_BUTTON, SECONDARY_BUTTON } from "@/features/agents/lib/styles";
 import { AgentDetail } from "@/features/agents/components/detail/AgentDetail";
 import { AgentMemory } from "@/features/agents/components/detail/AgentMemory";
+import { AgentHistory } from "@/features/agents/components/detail/AgentHistory";
+import { useAgentHistory } from "@/features/agents/hooks/useAgentHistory";
+import { currentVersion } from "@/features/agents/lib/agentHistory";
 import { useAgentTools } from "@/features/agents/hooks/useAgentTools";
 import { useExportAgent } from "@/features/agents/hooks/useExportAgent";
 import { useResolvedAgent } from "@/features/agents/hooks/useResolvedAgent";
@@ -32,7 +35,7 @@ export type AgentPageState = { notice?: string } | null;
  */
 export default function AgentPage() {
   const { agentId = "" } = useParams();
-  const { userId, userAgents, onChatWith, onSchedule } = useAgentsPage();
+  const { userId, userAgents, onChatWith, onSchedule, refreshCatalog } = useAgentsPage();
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -56,9 +59,34 @@ export default function AgentPage() {
   const custom = agent?.kind === "custom";
   // Only deep agents have a per-agent tool model to load.
   const configurable = agent?.type === "deep agent";
-  // Memory, like tools, is a deep-agent concept: another agent opens on Overview.
-  const section: DetailSection = requested === "memory" && !configurable ? "overview" : requested;
+  // Memory, like tools, is a deep-agent concept, and History exists only for
+  // your own agents: any other agent asked for either opens on Overview.
+  const section: DetailSection =
+    (requested === "memory" && !configurable) || (requested === "history" && !custom)
+      ? "overview"
+      : requested;
   const tools = useAgentTools({ userId, agentId: agent?.id ?? null, enabled: configurable });
+  // Loaded once per page open: the Overview's Version row and the History tab
+  // read the same list. A restore re-pulls the catalog (the header's name) and
+  // the user's list (the cards' counts).
+  const { refreshMyAgents } = userAgents;
+  const onRestored = useCallback(async () => {
+    await Promise.all([refreshCatalog(), refreshMyAgents()]);
+  }, [refreshCatalog, refreshMyAgents]);
+  const history = useAgentHistory({
+    userId,
+    agentId: agent?.id ?? "",
+    enabled: custom,
+    onRestored,
+  });
+  const latestVersion = currentVersion(history.versions)?.versionNo;
+  const versionLabel = !custom
+    ? null
+    : latestVersion !== undefined
+      ? String(latestVersion)
+      : history.versions === null && !history.error
+        ? "…"
+        : "—";
   const summary = useMemo(() => {
     const mine = custom ? userAgents.myAgents.find((a) => a.id === agentId) : undefined;
     return mine
@@ -160,6 +188,16 @@ export default function AgentPage() {
             memory={
               section === "memory" ? (
                 <AgentMemory userId={userId} agentId={agent.id} agentName={agent.name} />
+              ) : null
+            }
+            versionLabel={versionLabel}
+            history={
+              section === "history" ? (
+                <AgentHistory
+                  history={history}
+                  agentName={agent.name}
+                  onEdit={() => navigate(agentEditPath(agent.id))}
+                />
               ) : null
             }
           />

@@ -82,7 +82,7 @@ magenticx/agents/
 │   │   ├── deep_agent.py       DeepAgent(BaseAgent, ABC): deepagents lifecycle, filesystem, subagents, HITL
 │   │   ├── agent_spec.py       AgentSpec/ModelSpec/SubAgentSpec/ToolRef — the parsed agent.yaml contract
 │   │   ├── yaml_agent.py       YamlDeepAgent: one generic deep agent built from an AgentSpec
-│   │   ├── user_agents.py      User-authored agent validation + atomic write/read/delete
+│   │   ├── user_agents.py      User-authored agent validation + atomic write/read/delete + version list/read
 │   │   └── agent_seed.py       Boot: seed the image's platform agent folders onto the volume
 │   ├── agui/                   ★ AG-UI protocol (NOT runtime/protocols/agui)
 │   │   ├── emitter.py          AGUIEmitter — encodes every AG-UI event to SSE bytes
@@ -103,7 +103,10 @@ magenticx/agents/
 │   ├── checkpointer/
 │   │   ├── store.py            Process-wide AsyncPostgresSaver handle (set/get/has)
 │   │   └── fork.py             seed_thread_from_checkpoint (copy-on-fork for branches)
-│   ├── conversation_files/     a conversation's files in agent_runtime (plan 43)
+│   ├── agent_registry/         user-authored agent definitions in agent_runtime (plan 37)
+│   │   ├── store.py            AgentDefinitionStore — definitions, files, version history; also the /reference/ mount
+│   │   └── versions.py         describe_changes (what a save changed), MAX_VERSIONS = 20, the version kinds
+│   ├── conversation_files/     a conversation's files in agent_runtime (plan 36)
 │   │   ├── store.py            ConversationFileStore — path rows + encrypted, content-addressed blobs
 │   │   ├── backend.py          ConversationFilesBackend (BackendProtocol) for /conversation/ + the offload dirs
 │   │   ├── inputs.py           InputView — /conversation/input/ read from the bridge, LRU by hash
@@ -138,6 +141,7 @@ magenticx/agents/
 │   ├── conversation_files.py   GET files (presented snapshot), POST files/copy (fork), POST reap
 │   ├── memories.py             GET/GET/DELETE memories
 │   ├── skills.py               11 skill endpoints (catalogue search, sources, user pool, remote Add, per-agent enablement)
+│   ├── user_agents.py          the agent builder: custom-agent CRUD, validate, import/render/export, version history
 │   └── voice.py                POST /dictate/transcribe, /speech/read-aloud, /realtime/session
 ├── langgraph_agents/
 │   ├── __init__.py             re-exports HRPoliciesAgentV1, OrthodoxAgentV1, RetailAgentV1
@@ -262,6 +266,9 @@ Every endpoint below carries `dependencies=[Depends(require_internal_caller)]` (
 | 24 | POST | `/speech/read-aloud` | voice | `ReadAloudRequest` | audio stream | 200 |
 | 25 | POST | `/realtime/session` | voice | `RealtimeSessionRequest` | `RealtimeSessionResponse` | 200 |
 | 26 | GET | `/commands/{uid}/{slug}` | commands | query `agent_owner_id`, `use_memory`, `search_past_convs` | `CommandListResponse` — every slash command, each with `available` / `unavailableReason` (see [slash-commands](../flows/slash-commands.md)) | 200 (404 unknown agent) |
+| 27 | GET | `/users/{uid}/custom-agents/{slug}/versions` | user_agents | — | `List[AgentVersionSummary]` — kept versions, newest first, no content; each with `based_on` and a `current` flag | 200 (404 unknown agent) |
+| 28 | GET | `/users/{uid}/custom-agents/{slug}/versions/{n}` | user_agents | — | `AgentVersionDetail` — one version with its `spec` and `files` | 200 (404 / 422 `n` < 1) |
+| 29 | POST | `/users/{uid}/custom-agents/{slug}/versions/{n}/restore` | user_agents | — | `UserAgentSummary` — the agent with the version written back; adds no version, makes that one current | 200 (404 / 422 with `{message, errors, issues}` when it no longer validates) |
 
 **Selected behaviors:**
 - **`GET /agents`** — reads `definition.manifest` for each `AGENT_REGISTRY` entry (built once at import), sorted by name.
@@ -269,6 +276,7 @@ Every endpoint below carries `dependencies=[Depends(require_internal_caller)]` (
 - **`POST /embed`** — the bridge has no OpenAI key, so it proxies embedding here (used by its pgvector conversation-embedding sweeper). Cached `OpenAIEmbeddings`; order preserved; 503 if no key; 502 on provider failure.
 - **`/titles/generate`, `/suggestions/generate`** — LCEL chain: `RunnableLambda(make_merge_with_template) | init_chat_model(...).with_structured_output(...)`; normalize/trim/dedupe/cap; 502 if too few usable candidates.
 - **`/agents/{slug}/stream` and slash commands** — `context.command = {name, args}` is checked by `harness.commands.resolve_invocation` (422 with the reason when refused) and the last user message is rewritten by `apply_command`; `BaseAgent.command_spec` feeds `command_permissions` (read-only) into the deep-agent build.
+- **Custom-agent version history** — every save through `AgentDefinitionStore.save` (create, update) records the new state in `agent_definition_versions` in the same transaction as `max + 1`, unless nothing changed against the state it replaces; it stores `based_on` (the previous current version) and sets `agent_definitions.current_version` to the new number; the oldest go past 20; an agent from before history gets a `baseline` first. A restore (`save(..., restored_from=n)`) writes version `n` back as the agent and sets `current_version = n` without recording a version, so restoring the previously current version undoes it. `list_versions` returns `based_on` and a `current` flag per row (the pointer if still kept, else the newest). A restore re-runs `validate_definition` on the stored version exactly like a `PUT`, so it can never store what a save would refuse. `DELETE /users/{uid}/custom-agents/{slug}` and `DELETE /users/{uid}` take the history too. See [agent-version-history](../flows/agent-version-history.md).
 - **Voice** — dictation (sync OpenAI STT), read-aloud (TTS via `asyncio.to_thread`, streams audio), realtime (POSTs SDP offer + session config to OpenAI Realtime, returns SDP answer; 503 if no key).
 
 ---
@@ -462,7 +470,7 @@ flowchart TD
 
 ## 13. Filesystem / workspace model
 
-Deep agents get a per-(user, agent, conversation) **virtual** filesystem via a deepagents `CompositeBackend`. **None of it is a directory a run writes to.** Memory, skills and a user-authored agent's own definition are rows in `agent_runtime`, served as `StoreBackend` routes; a conversation's files are rows too (plan 43), served by `ConversationFilesBackend`; the volume holds only the platform's build-time content (`harness/filesystem/layout.py`):
+Deep agents get a per-(user, agent, conversation) **virtual** filesystem via a deepagents `CompositeBackend`. **None of it is a directory a run writes to.** Memory, skills and a user-authored agent's own definition are rows in `agent_runtime`, served as `StoreBackend` routes; a conversation's files are rows too (plan 36), served by `ConversationFilesBackend`; the volume holds only the platform's build-time content (`harness/filesystem/layout.py`):
 ```
 agent_runtime (rows)                → mount
   agent_memories                    → /memories/         (AGENTS.md + entries/<name>.yml)

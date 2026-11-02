@@ -14,8 +14,8 @@ whichever servers the gateway currently has open, owned by nothing here.
 | # | Store | Physical location | What it owns |
 | --- | --- | --- | --- |
 | 1 | **`chat_db`** (Postgres) | `chat_postgres` | Conversations, messages, attachments, users, preferences, agent *metadata*, shares, scheduled tasks, embeddings |
-| 2 | **`agent_runtime`** (Postgres) | Same instance, **different database** | LangGraph checkpoints — the agent's own memory of a thread — and every conversation's files (plan 43) |
-| 3 | **Agents volume** | `magenticx_data:/var/magenticx` | Agent definitions, skills, per-agent memory, tool prefs (conversation files moved to `agent_runtime`, plan 43) |
+| 2 | **`agent_runtime`** (Postgres) | Same instance, **different database** | LangGraph checkpoints — the agent's own memory of a thread — and every conversation's files (plan 36) |
+| 3 | **Agents volume** | `magenticx_data:/var/magenticx` | Agent definitions, skills, per-agent memory, tool prefs (conversation files moved to `agent_runtime`, plan 36) |
 | 4 | **Redis** | `redis` | Run event log (durable-ish), skill caches, logout denylist |
 | 5 | **Vectorstore** | `vectorstore` volume (Chroma) | RAG corpora — unrelated to a conversation's own state |
 
@@ -85,7 +85,7 @@ the durable one.
 | **Agent output** (and offloads) | `agent_runtime` `conversation_files` → encrypted, per-user content-addressed blobs | the conversation's |
 | **Presented output** | also snapshotted as `attachments(origin='generated')` on the answer | the message's |
 
-Since plan 43 nothing a conversation owns is on the volume and nothing expires:
+Since plan 36 nothing a conversation owns is on the volume and nothing expires:
 a file the agent wrote lives until its conversation (or account) is deleted,
 presented or not.
 
@@ -202,7 +202,7 @@ loss would destroy.
 | **Per-agent assigned skills** | Volume | Reverts to nothing assigned |
 | **Per-agent memory** (`AGENTS.md`, entries) | Volume | Everything every agent learned about every user |
 | **Per-(user, agent) tool prefs** | Volume | Enable/disable choices reset |
-| **Agent output** | `agent_runtime` since plan 43 | Backed up with Postgres; no longer a volume risk |
+| **Agent output** | `agent_runtime` since plan 36 | Backed up with Postgres; no longer a volume risk |
 | **Checkpoints** | `agent_runtime` | Recoverable — cold-seed from the message tree |
 
 `chat_db` has an automated story (`pg_dump`). **The volume does not** — and it

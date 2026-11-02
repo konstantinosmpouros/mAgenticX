@@ -262,7 +262,7 @@ Attachments still reach **deep agents** out-of-band of RAG — as read-only file
 
 ## Phase 7 — Attachments and the Agent Filesystem
 
-Deep agents see a conversation's files through their filesystem tools. Since plan 43 every byte a conversation owns lives in Postgres, for exactly as long as the conversation — there is no TTL and no copy on a volume:
+Deep agents see a conversation's files through their filesystem tools. Since plan 36 every byte a conversation owns lives in Postgres, for exactly as long as the conversation — there is no TTL and no copy on a volume:
 
 | Route | Mode | Backed by |
 | --- | --- | --- |
@@ -316,7 +316,7 @@ sequenceDiagram
 | **A snapshot.** The attachment keeps the version presented, even if the agent edits the file later | Cards, share links, forks and the PDF export show what the user was shown |
 | **Bounded.** `/conversation/output/` only, ≤ `OUTPUT_MAX_FILE_BYTES` (25 MB) each, fetched `OUTPUT_CAPTURE_BATCH_FILES` (20) at a time | An upload or offload can never become a deliverable; the snapshot is a downloadable attachment |
 | **Fail-open** | The answer is already persisted: an unreachable agents service or bad base64 is logged and skipped |
-| **`presented = false` rows** (stored by the capture of every written file before plan 43) are kept and stay the owner's: shares and the PDF export carry uploads and presented files only (`is_shareable`) | |
+| **`presented = false` rows** (stored by the capture of every written file before plan 36) are kept and stay the owner's: shares and the PDF export carry uploads and presented files only (`is_shareable`) | |
 
 ### Forks and deletion
 

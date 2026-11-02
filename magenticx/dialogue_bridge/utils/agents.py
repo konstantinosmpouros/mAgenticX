@@ -109,7 +109,7 @@ def build_agent_resume_url(agent: AgentTable) -> str:
 
 
 def build_conversation_files_url(user_id: str, conversation_id: str) -> str:
-    """A conversation's files in the agents service (plan 43): keyed by the
+    """A conversation's files in the agents service (plan 36): keyed by the
     conversation, never by agent — the files belong to the conversation."""
     base = AGENTS_SERVICE_URL.rstrip("/")
     return f"{base}/users/{user_id}/conversations/{conversation_id}/files"

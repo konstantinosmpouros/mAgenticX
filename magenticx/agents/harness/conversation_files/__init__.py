@@ -1,4 +1,4 @@
-"""A conversation's files, stored in ``agent_runtime`` (plan 43).
+"""A conversation's files, stored in ``agent_runtime`` (plan 36).
 
 Everything a conversation owns used to be a directory on the agents volume; it
 is now rows, and lives exactly as long as the conversation:

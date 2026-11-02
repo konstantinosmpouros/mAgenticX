@@ -1,4 +1,4 @@
-"""The files an agent presented are snapshotted on its answer (plan 43).
+"""The files an agent presented are snapshotted on its answer (plan 36).
 
 A conversation's files are durable in the agents service, so the bridge stores
 only what the agent *presented*: in the finalize transaction, so the card finds
@@ -12,7 +12,7 @@ Pinned:
 * fetches are batched; failed and cancelled runs are captured too;
 * a failed fetch or bad base64 never fails the run;
 * a fork keeps generated files generated, and share links drop files that were
-  never presented (rows captured before plan 43 can be such files).
+  never presented (rows captured before plan 36 can be such files).
 """
 from __future__ import annotations
 
@@ -181,7 +181,7 @@ async def test_a_fork_keeps_generated_files_generated_and_shares_drop_unpresente
 ):
     """The clone used to copy name, type and bytes only, so a presented file came
     back as an "upload" (in the user's file stack, its card broken). A generated
-    file that was never presented — captured before plan 43 — stays private."""
+    file that was never presented — captured before plan 36 — stays private."""
     agents.files = {"/conversation/output/report.md": b"# Q3"}
     conv_id, run_id = await _new_run(session_factory, seeded_user, seeded_agent)
     await ir._mark_run_completed(run_id, _presented("/conversation/output/report.md"))

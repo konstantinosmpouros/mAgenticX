@@ -4,7 +4,7 @@ Revision ID: 0042_conversation_files
 Revises: 0041_inference_metrics
 Create Date: 2026-10-24
 
-Plan 43 moves a conversation's files off the agents volume. The uploads stay
+Plan 36 moves a conversation's files off the agents volume. The uploads stay
 where they are — here — and the agent reads them through an internal endpoint
 instead of a copy on its volume. Two things make that work:
 

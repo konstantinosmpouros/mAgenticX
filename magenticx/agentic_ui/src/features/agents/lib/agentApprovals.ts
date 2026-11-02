@@ -2,7 +2,7 @@
  * The builder's Approvals: Ask / Don't ask for every tool the agent will have,
  * chosen while building and saved after the agent itself as this user's
  * approval preferences — the rows the agent's own Approvals tab edits, so the
- * two always agree (plan 44 §0, decision 4).
+ * two always agree (plan 37 §0, decision 4).
  *
  * Each switch has three values to keep apart:
  *

@@ -519,7 +519,7 @@ class FilesystemSettings(BaseSettings):
 
 
 class ConversationFilesSettings(BaseSettings):
-    """A conversation's files, stored in ``agent_runtime`` (plan 43).
+    """A conversation's files, stored in ``agent_runtime`` (plan 36).
 
     Files live exactly as long as their conversation — there is no TTL and no
     quota. The per-file cap is a technical safety limit (one file is held in
@@ -649,7 +649,7 @@ class BridgeSettings(BaseSettings):
 
     base_url: str = Field("https://dialogue_bridge:8002", validation_alias="DIALOGUE_BRIDGE_URL")
     memory_search_path: str = Field("/v1/internal/memory/search", validation_alias="BRIDGE_MEMORY_SEARCH_PATH")
-    # The user's uploads behind /conversation/input/ (plan 43).
+    # The user's uploads behind /conversation/input/ (plan 36).
     conversations_path: str = Field(
         "/v1/internal/conversations", validation_alias="BRIDGE_CONVERSATIONS_PATH"
     )

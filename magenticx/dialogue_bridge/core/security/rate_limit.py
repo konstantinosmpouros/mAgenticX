@@ -159,7 +159,7 @@ skill_remote_add_rate_limit = rate_limit(
     emit_headers=True,
 )
 
-# Agent-builder import (plan 44) — per user, after auth + CSRF.
+# Agent-builder import (plan 37) — per user, after auth + CSRF.
 agent_import_rate_limit = rate_limit(
     (settings.rate_limit.agent_import_max_attempts, settings.rate_limit.agent_import_window_seconds),
     scope="agent-import",

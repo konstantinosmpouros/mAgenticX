@@ -1,4 +1,4 @@
-"""Import and export of a custom agent (plan 44, the builder's YAML path).
+"""Import and export of a custom agent (plan 37, the builder's YAML path).
 
 **Import** takes an ``agent.yaml`` as text or as a file (with its prompt files),
 or one ``.zip``; the bridge unpacks it in memory under fixed limits and forwards

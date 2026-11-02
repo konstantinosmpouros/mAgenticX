@@ -87,7 +87,7 @@ STEPS = (STEP_SESSIONS, STEP_AGENT_THREADS, STEP_AGENT_RUNTIME, STEP_CONVERSATIO
 
 _AGENT_COUNT_KEYS = (
     "agent_memories", "skill_pool", "skill_files", "agent_skills",
-    "agent_definitions", "agent_definition_files",
+    "agent_definitions", "agent_definition_files", "agent_definition_versions",
     "conversation_files", "conversation_file_blobs",
 )
 

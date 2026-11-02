@@ -1,4 +1,4 @@
-"""The deepagents filesystem over a conversation's files (plan 43).
+"""The deepagents filesystem over a conversation's files (plan 36).
 
 The agent's file tools now read and write rows, so this pins what it sees:
 the same results and error texts ``FilesystemBackend`` gave on the volume

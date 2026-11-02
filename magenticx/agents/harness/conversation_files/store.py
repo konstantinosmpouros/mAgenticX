@@ -1,4 +1,4 @@
-"""A conversation's files as rows in ``agent_runtime`` (plan 43).
+"""A conversation's files as rows in ``agent_runtime`` (plan 36).
 
 Two tables, so that a byte is stored once however many paths name it:
 
@@ -78,7 +78,7 @@ _DDL = (
 
 _COMMENTS = (
     "COMMENT ON TABLE conversation_files IS "
-    "'A conversation''s files by virtual path (plan 43). Bytes live in conversation_file_blobs.'",
+    "'A conversation''s files by virtual path (plan 36). Bytes live in conversation_file_blobs.'",
     "COMMENT ON COLUMN conversation_files.agent_slug IS "
     "'The agent that last wrote the file. Provenance only; files belong to the conversation.'",
     "COMMENT ON COLUMN conversation_file_blobs.cipher IS "

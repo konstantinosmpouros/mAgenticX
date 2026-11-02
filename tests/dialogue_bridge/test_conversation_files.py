@@ -1,4 +1,4 @@
-"""Conversation files in Postgres — the bridge's half (plan 43).
+"""Conversation files in Postgres — the bridge's half (plan 36).
 
 The agent's ``/conversation/input/`` folder is a view of this database's
 uploads, so the bridge now owns three promises:

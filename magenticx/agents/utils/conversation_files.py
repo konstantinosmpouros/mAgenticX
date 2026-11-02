@@ -2,7 +2,7 @@
 
 Thin over :class:`~harness.conversation_files.ConversationFileStore`; the routes
 in ``router/conversation_files.py`` only translate. None of it needs to know
-which agent wrote a file — files belong to the conversation (plan 43).
+which agent wrote a file — files belong to the conversation (plan 36).
 """
 from __future__ import annotations
 

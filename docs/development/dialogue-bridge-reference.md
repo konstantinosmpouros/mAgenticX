@@ -118,7 +118,7 @@ Import-time `sys.path.append(PACKAGE_ROOT)` (`main.py:1-7`) → absolute imports
 3. `scheduler.start()` — in-process scheduled-tasks loop (no-op if `SCHEDULER_ENABLED=false`).
 4. Launch `run_embedding_sweeper(stop_event)` as a background task (no-op if `EMBEDDINGS_ENABLED=false`).
 5. Launch `run_account_purger(stop_event)` — purges accounts whose deletion grace period is over, one at a time, and resumes any purge a restart interrupted (no-op if `ACCOUNT_DELETION_ENABLED=false`; see [account-deletion](../flows/account-deletion.md)).
-6. Launch `drain_runtime_reaps()` once — sends the reaps of conversations deleted while the agents service could not be reached (`pending_runtime_reaps`, plan 43; see [conversation-management](../flows/conversation-management.md)).
+6. Launch `drain_runtime_reaps()` once — sends the reaps of conversations deleted while the agents service could not be reached (`pending_runtime_reaps`, plan 36; see [conversation-management](../flows/conversation-management.md)).
 7. `yield`. Shutdown: set both stop events → `scheduler.stop()` → `await asyncio.wait_for(task, 10)` for the sweeper, the purger and the reap drain (cancel on timeout).
 
 **App** — `FastAPI(title="Bridge Service", lifespan=lifespan)`, `register_exception_handlers(app)` (handles `HTTPException`, `RequestValidationError`, catch-all `Exception`; 429s are produced by fastapi-redis-sdk's own `RateLimitExceeded` handler, registered by `install_redis_sdk`).
@@ -210,7 +210,7 @@ The `conversations ↔ messages` cross-FK cycle is resolved via `use_alter` in t
 | `0016` | **destructive** — retire global tool enablement: drop `user_preferences.tools`, `messages.streaming_enabled_tools`, `scheduled_tasks.enabled_tools`. Tools are now per-agent (`agent.yaml`) + per-(user, agent) disables on the agents service. |
 | `0017`–`0040` | See [database-schema](../architecture/database-schema.md) (usage tables `0032`–`0034`, compaction `0035`, generated-file capture `0039`, `messages.command` `0040`, …). |
 | `0041_inference_metrics` | Plan 41: cost (`BIGINT` micro-USD), unpriced / truncated calls, time to first token and generation speed on `messages`, `message_usage`, `conversations`, `usage_daily`, `usage_daily_groups`; new `tool_usage` + `tool_usage_daily`. Additive, no backfill. |
-| `0042_conversation_files` | Plan 43: `attachments.workspace_name` (an upload's stable name in the agent's `/conversation/input/`, backfilled per conversation in upload order with a frozen copy of the naming rule) + `content_sha256` for uploads (computed in Postgres); new `pending_runtime_reaps` outbox. Additive. **Current head.** |
+| `0042_conversation_files` | Plan 36: `attachments.workspace_name` (an upload's stable name in the agent's `/conversation/input/`, backfilled per conversation in upload order with a frozen copy of the naming rule) + `content_sha256` for uploads (computed in Postgres); new `pending_runtime_reaps` outbox. Additive. **Current head.** |
 
 Partial/`postgresql_where` and pgvector-opclass indexes are always hand-written (autogenerate blind spots). **No inference-run table exists** — the run is the `messages.streaming_*` columns, present since the baseline.
 
@@ -268,6 +268,8 @@ nginx strips `/api/`, so the browser calls `/api/v1/...` and FastAPI sees `/v1/.
 **Attachments** `/v1/attachments`: `GET /download/…/{blob_id}` (byte-range 206), `GET /preview/…` (inline), `GET /preview-token/…` (`DocxPreviewTokenOut`), `GET /public/{token}` (**public**, token-gated Office blob), `GET /images/{uid}` (paginated base64).
 
 **Catalog** `/v1/catalog`: `GET /agents` (cache→sync), `GET /tools` (proxy agents `/tools`), `GET /{uid}/suggestions`.
+
+**Custom agents** `/v1/agents` (the agent builder — proxies the agents service's `/users/{uid}/custom-agents/*`, addressed here by the catalog `agent_id`, ownership checked against `agents.owner_user_id`): `GET /{uid}/custom`, `POST /{uid}/custom` (CSRF), `GET|PUT|DELETE /{uid}/custom/{agent_id}` (writes CSRF), `GET …/export`, `POST /{uid}/custom/validate` · `…/render` · `…/import`; **version history** `GET /{uid}/custom/{agent_id}/versions`, `GET …/versions/{versionNo}` (adds `spec`, `files`), `POST …/versions/{versionNo}/restore` (CSRF; refreshes the catalog row, as an update does; adds no version — the restored one becomes `current`). Versions are camelCase on the wire: `versionNo`, `kind`, `changes`, `restoredFrom` (legacy `restored` rows only), `basedOn`, `current`, `createdAt`. See [agent-version-history](../flows/agent-version-history.md).
 
 **Preferences** `/v1/preferences`: `GET /{uid}`, `PUT /{uid}` (CSRF).
 

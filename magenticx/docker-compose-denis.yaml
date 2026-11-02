@@ -104,7 +104,7 @@ services:
       - TRUSTED_PROXY_SECRET_FILE=/run/secrets/trusted_proxy_secret
       # The global plane (agent definitions, skills catalogue) is on the
       # magenticx_data volume. A conversation's files are rows in agent_runtime
-      # (plan 43); the per-file cap is a technical safety limit, not a quota.
+      # (plan 36); the per-file cap is a technical safety limit, not a quota.
       - MAGENTICX_GLOBAL_ROOT=/var/magenticx/global
       - CONVERSATION_FILE_MAX_BYTES=104857600
       # Uploads are read from the bridge on demand, cached by content hash.

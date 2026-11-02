@@ -3,6 +3,8 @@
  */
 import type {
   Agent,
+  AgentVersionDetail,
+  AgentVersionSummary,
   CustomAgentDetail,
   CustomAgentImportResult,
   CustomAgentValidation,
@@ -14,6 +16,8 @@ import { PROXY_LIMIT_MB } from "../uploadGuards";
 import { getFilenameFromDisposition, triggerBrowserDownload } from "../download";
 import {
   AgentToolsResponseSchema,
+  AgentVersionDetailSchema,
+  AgentVersionListSchema,
   CustomAgentDetailSchema,
   CustomAgentImportResultSchema,
   CustomAgentSummarySchema,
@@ -222,6 +226,53 @@ export async function updateMyAgent(
     body: payload,
     schema: WireObjectSchema,
     fallbackMessage: "Failed to update the agent",
+  });
+  return transformAgent(data);
+}
+
+// ---------------------------------------------------------------------------
+// An owned agent's version history: every save keeps a copy (the newest 20).
+// The first row of the list is the agent as it is now. Restoring an older
+// version saves it as a new one, so the current version stays in history.
+// ---------------------------------------------------------------------------
+const versionsUrl = (userId: string, agentId: string, versionNo?: number) =>
+  `${customAgentsUrl(userId, agentId)}/versions` +
+  (versionNo === undefined ? "" : `/${encodeURIComponent(String(versionNo))}`);
+
+export async function listMyAgentVersions(
+  userId: string,
+  agentId: string,
+): Promise<AgentVersionSummary[]> {
+  return requestJson(versionsUrl(userId, agentId), {
+    schema: AgentVersionListSchema,
+    fallbackMessage: "Failed to load the agent's history",
+  });
+}
+
+// One version in full: its agent.yaml and files, to compare with another.
+export async function getMyAgentVersion(
+  userId: string,
+  agentId: string,
+  versionNo: number,
+): Promise<AgentVersionDetail> {
+  return requestJson(versionsUrl(userId, agentId, versionNo), {
+    schema: AgentVersionDetailSchema,
+    fallbackMessage: "Failed to load this version",
+  });
+}
+
+// A 422 carries `{message, errors, issues}` (the version no longer validates,
+// e.g. a model since withdrawn) on the thrown ApiError's `detailObject`.
+export async function restoreMyAgentVersion(
+  userId: string,
+  agentId: string,
+  versionNo: number,
+): Promise<Agent> {
+  const data = await requestJson(`${versionsUrl(userId, agentId, versionNo)}/restore`, {
+    method: "POST",
+    csrf: true,
+    schema: WireObjectSchema,
+    fallbackMessage: "Failed to restore this version",
   });
   return transformAgent(data);
 }

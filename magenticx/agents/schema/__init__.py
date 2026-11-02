@@ -47,6 +47,8 @@ from schema.skills import (
 from schema.user_agents import (
     AgentFile,
     AgentIssue,
+    AgentVersionDetail,
+    AgentVersionSummary,
     CustomAgentImport,
     CustomAgentImportResult,
     CustomAgentValidation,
@@ -114,6 +116,8 @@ __all__ = [
     "TranscriptionResponse",
     "UndoCompactionRequest",
     "UndoCompactionResponse",
+    "AgentVersionDetail",
+    "AgentVersionSummary",
     "UserAgentDetail",
     "UserAgentSummary",
     "UserSkillDetail",

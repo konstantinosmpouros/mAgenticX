@@ -29,7 +29,7 @@ const FALLBACK_MODELS: AgentModelOption[] = MODEL_CHOICES.map((m, index) => ({
 
 /**
  * What the builder offers to pick from, read from the server rather than kept
- * in the UI (plan 44 §0, decision 3). Each read fails quietly: the builder
+ * in the UI (plan 37 §0, decision 3). Each read fails quietly: the builder
  * explains an empty list where it shows one, and the server re-checks every
  * save anyway.
  */

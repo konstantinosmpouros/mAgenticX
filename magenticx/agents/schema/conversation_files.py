@@ -1,4 +1,4 @@
-"""Bridge ↔ agents: a conversation's files (plan 43)."""
+"""Bridge ↔ agents: a conversation's files (plan 36)."""
 from pydantic import BaseModel, Field
 
 

@@ -8,7 +8,7 @@ import { SidebarProvider } from "@/shared/ui/sidebar";
 import type { Agent } from "@/shared/lib/types";
 
 /**
- * The Agents section's bridge calls (plan 44, P2).
+ * The Agents section's bridge calls (plan 37, P2).
  *
  * Pinned: Export fetches the agent's `.zip` and saves it under the server's
  * filename (the slug fallback only without a Content-Disposition), and a

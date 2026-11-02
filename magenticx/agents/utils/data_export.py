@@ -104,7 +104,10 @@ async def stream_user_export(user_id: str) -> AsyncIterator[bytes]:
     pool = get_memory_pool()
     definitions = AgentDefinitionStore(pool)
     skills = SkillStore(pool)
-    counts = {"agents": 0, "agent_files": 0, "skills": 0, "skill_files": 0, "assignments": 0}
+    counts = {
+        "agents": 0, "agent_files": 0, "agent_versions": 0,
+        "skills": 0, "skill_files": 0, "assignments": 0,
+    }
 
     # agents/agents.ndjson — the specs.
     yield _frame({"op": "open", "path": "agents/agents.ndjson", "encoding": "utf-8"})
@@ -138,6 +141,24 @@ async def stream_user_export(user_id: str) -> AsyncIterator[bytes]:
         if len(refs) < PAGE_ROWS:
             break
         after = (refs[-1]["agent_slug"], refs[-1]["path"])
+
+    # agents/versions.ndjson — every kept version, whole (spec and files).
+    yield _frame({"op": "open", "path": "agents/versions.ndjson", "encoding": "utf-8"})
+    after_version: tuple[str, int] = ("", 0)
+    while True:
+        versions = await definitions.page_versions(user_id, after_version, PAGE_ROWS)
+        for row in versions:
+            counts["agent_versions"] += 1
+            yield _record({
+                "slug": row["agent_slug"], "version": row["version_no"], "kind": row["kind"],
+                "changes": row["changes"], "restored_from": row["restored_from"],
+                "based_on": row["based_on"],
+                "created_at": row["created_at"], "spec": row["spec"], "files": row["files"],
+            })
+        if len(versions) < PAGE_ROWS:
+            break
+        after_version = (versions[-1]["agent_slug"], versions[-1]["version_no"])
+    yield _frame({"op": "close"})
 
     # skills/skills.ndjson — every pool entry; remote ones as references.
     yield _frame({"op": "open", "path": "skills/skills.ndjson", "encoding": "utf-8"})

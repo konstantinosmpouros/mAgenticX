@@ -338,7 +338,7 @@ LangGraph + DeepAgents runtime. Configuration splits into runtime infra, the dur
 | `AGENT_RUNTIME_POOL_TIMEOUT` | `30.0` | Wait for a pool connection (seconds). |
 | `AGENT_RUNTIME_SETUP_ON_STARTUP` | `true` | Run `AsyncPostgresSaver.setup()` (idempotent DDL) on boot. Emergency opt-out, mirrors the bridge's migration knob. |
 | `LANGGRAPH_STRICT_MSGPACK` | `true` | Strict msgpack deserialization allow-list — blocks the `JsonPlusSerializer` RCE class (CVE-2025-64439). Exported into the env LangGraph reads. **Leave on.** |
-| `LANGGRAPH_AES_KEY` | (secret, optional) | AES key for `EncryptedSerializer` (at-rest checkpoint encryption) — and, through the same cipher, for conversation file bytes (plan 43). Empty ⇒ no encryption of either. |
+| `LANGGRAPH_AES_KEY` | (secret, optional) | AES key for `EncryptedSerializer` (at-rest checkpoint encryption) — and, through the same cipher, for conversation file bytes (plan 36). Empty ⇒ no encryption of either. |
 
 ### Proxy trust, logging & redaction
 
@@ -403,7 +403,7 @@ Each built-in workflow agent picks its models per node. All accept `openai:<mode
 | Env var | Default | What it does |
 | --- | --- | --- |
 | `MAGENTICX_GLOBAL_ROOT` | `/var/magenticx/global` | The global plane on the `magenticx_data` volume: built-in agent definitions and the skills catalogue (build-time content). |
-| `CONVERSATION_FILE_MAX_BYTES` | `104857600` (100 MB) | Largest single conversation file (plan 43). A technical safety limit — one file is held in memory to encrypt and write it — not a quota: there is none, and no TTL. An over-cap `write_file`/`edit_file` returns an error the model can act on. |
+| `CONVERSATION_FILE_MAX_BYTES` | `104857600` (100 MB) | Largest single conversation file (plan 36). A technical safety limit — one file is held in memory to encrypt and write it — not a quota: there is none, and no TTL. An over-cap `write_file`/`edit_file` returns an error the model can act on. |
 | `CONVERSATION_INPUT_CACHE_BYTES` | `134217728` (128 MB) | Process-wide cache of upload bytes read from the bridge for `/conversation/input/`, keyed by content hash. `0` disables it. |
 | `BRIDGE_CONVERSATIONS_PATH` | `/v1/internal/conversations` | The bridge's internal routes behind `/conversation/input/` (on `DIALOGUE_BRIDGE_URL`). |
 | `VIEW_IMAGE_MAX_BYTES` | `10485760` (10 MB) | Largest image `view_image` will hand to the model. Unlike the AG-UI preview bounds this caps the **model's** copy, so it guards context cost rather than display size. |

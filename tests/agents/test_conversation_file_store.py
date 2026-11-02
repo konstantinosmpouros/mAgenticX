@@ -1,4 +1,4 @@
-"""``ConversationFileStore`` — a conversation's files as rows (plan 43).
+"""``ConversationFileStore`` — a conversation's files as rows (plan 36).
 
 Pinned here:
 

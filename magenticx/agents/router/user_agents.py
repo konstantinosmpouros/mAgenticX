@@ -1,8 +1,9 @@
 """User-authored agent endpoints (the agent builder's backend).
 
 Thin handlers over ``harness.abstractions.user_agents``: list, read, validate,
-write, delete, import and export the agent definitions of one user, and render
-an unsaved draft as ``agent.yaml`` for the builder's YAML view.
+write, delete, import and export the agent definitions of one user, render
+an unsaved draft as ``agent.yaml`` for the builder's YAML view, and read or
+restore the versions every save keeps.
 Internal-caller only — the bridge proxies these and owns the session/CSRF
 checks, exactly like the per-user skill endpoints.
 
@@ -12,7 +13,7 @@ regardless, because the UI is never the authority. Problems come back as issues
 pinned to a path in the spec; an invalid write is a 422 whose ``detail`` is
 ``{message, errors, issues}`` (409 and 429 keep a string ``detail``).
 """
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Response, status
 from fastapi.responses import JSONResponse
 
 from core.logging import get_logger
@@ -24,6 +25,8 @@ from harness.abstractions.user_agents import (
     errors_of,
     export_user_agent,
     get_user_agent,
+    get_user_agent_version,
+    list_user_agent_versions,
     list_user_agents,
     parse_agent_yaml,
     render_agent_yaml,
@@ -33,6 +36,8 @@ from harness.abstractions.user_agents import (
 from harness.skill_registry.user_registry import list_user_skill_names
 from schema import (
     AgentIssue,
+    AgentVersionDetail,
+    AgentVersionSummary,
     CustomAgentImport,
     CustomAgentImportResult,
     CustomAgentValidation,
@@ -261,12 +266,82 @@ async def update_custom_agent(
     return summary
 
 
+@router.get(
+    "/users/{user_id}/custom-agents/{agent_slug}/versions",
+    response_model=list[AgentVersionSummary],
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_internal_caller)],
+)
+async def list_custom_agent_versions(user_id: str, agent_slug: str) -> list[AgentVersionSummary]:
+    """The agent's kept versions, newest first, without their content."""
+    versions = await list_user_agent_versions(user_id, agent_slug)
+    if versions is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown agent.")
+    return versions
+
+
+@router.get(
+    "/users/{user_id}/custom-agents/{agent_slug}/versions/{version_no}",
+    response_model=AgentVersionDetail,
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_internal_caller)],
+)
+async def get_custom_agent_version(
+    user_id: str, agent_slug: str, version_no: int = Path(ge=1)
+) -> AgentVersionDetail:
+    """One kept version with its whole definition, for the History tab's diff."""
+    version = await get_user_agent_version(user_id, agent_slug, version_no)
+    if version is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown version.")
+    return version
+
+
+@router.post(
+    "/users/{user_id}/custom-agents/{agent_slug}/versions/{version_no}/restore",
+    response_model=UserAgentSummary,
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_internal_caller)],
+)
+async def restore_custom_agent_version(
+    user_id: str, agent_slug: str, version_no: int = Path(ge=1)
+) -> UserAgentSummary | JSONResponse:
+    """Make an earlier version the agent again — no new version is added.
+
+    The agent's content becomes that version's and the version is marked
+    current, so the history reads the same before and after: restoring the
+    version that was current undoes it.
+
+    The version is validated again like any write: a skill it names may since
+    have been removed, or a rule tightened, and a restore must never store what
+    a save would refuse (422 with the issues).
+    """
+    if await get_user_agent(user_id, agent_slug) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown agent.")
+    version = await get_user_agent_version(user_id, agent_slug, version_no)
+    if version is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown version.")
+
+    spec, issues = await _validate(user_id, version.spec, version.files, existing_slug=agent_slug)
+    if spec is None:
+        return _invalid(issues)
+
+    summary = await write_user_agent(user_id, spec, version.files, restored_from=version_no)
+    logger.info(
+        "user_agent_restored",
+        "Restored an earlier version of a user-authored agent",
+        agent_slug=summary.slug,
+        version_no=version_no,
+    )
+    return summary
+
+
 @router.delete(
     "/users/{user_id}/custom-agents/{agent_slug}",
     status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[Depends(require_internal_caller)],
 )
 async def delete_custom_agent(user_id: str, agent_slug: str) -> None:
-    """Remove a definition. Idempotent, and it removes only the definition — the
-    agent's memory, enabled skills and conversation files are left untouched."""
+    """Remove a definition and its history. Idempotent, and it removes only the
+    definition — the agent's memory, enabled skills and conversation files are
+    left untouched."""
     await delete_user_agent(user_id, agent_slug)

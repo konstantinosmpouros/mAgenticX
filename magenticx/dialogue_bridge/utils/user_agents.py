@@ -33,13 +33,19 @@ definition: ``agents.id`` is referenced by conversations with ``ON DELETE
 CASCADE``, so hard-deleting the row would destroy the user's chat history.
 Recreating the same slug later reuses (reactivates) the dormant row rather than
 tripping the ``(owner_user_id, slug)`` uniqueness rule.
+
+Version history (list, one version, restore) is the agents service's too: the
+bridge proxies it behind the same ownership check, and a restore refreshes the
+catalog row like an update, because the restored version may carry a different
+name, icon or description.
 """
 from collections.abc import Sequence
-from typing import Any, Dict, Optional
+from typing import Any, Dict, NoReturn, Optional
 from uuid import uuid4
 
 import httpx
 from fastapi import HTTPException, UploadFile, status
+from pydantic import TypeAdapter, ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import func
@@ -50,6 +56,7 @@ from core.security.internal_trust import internal_service_headers
 from core.security.tls import get_httpx_client_cert, get_httpx_verify
 from core.settings import settings
 from core.logging import get_context, get_logger
+from schema import CustomAgentVersion, CustomAgentVersionDetail
 from utils.agent_import import build_import_payload
 
 logger = get_logger(__name__)
@@ -73,6 +80,9 @@ _SUMMARY_COUNTS = {
     "skill_count": "skillCount",
     "subagent_count": "subagentCount",
 }
+
+#: Validates the agents service's version list (snake_case in, camelCase out).
+_VERSION_LIST = TypeAdapter(list[CustomAgentVersion])
 
 
 def _base_url(user_id: str) -> str:
@@ -510,6 +520,100 @@ async def update_custom_agent(
     return _public_from_row(updated, summary)
 
 
+# ---------------------------------------------------------------------------
+# Version history
+# ---------------------------------------------------------------------------
+# The agents service keeps a copy of the definition on every save; the bridge
+# only proxies it, behind the same ownership check as every other route. The
+# catalog row resolves the id to a slug, so someone else's id is a 404 before
+# anything is asked upstream.
+def _versions_url(user_id: str, slug: str) -> str:
+    return f"{_base_url(user_id)}/{slug}/versions"
+
+
+def _invalid_version_payload(exc: ValidationError, operation: str, public_detail: str) -> NoReturn:
+    """Refuse an upstream version body that does not match the contract (502).
+
+    Output validation: a malformed body is never passed to the browser. Only
+    the error count is logged — the body can hold the user's prompts.
+    """
+    upstream_error_handler.raise_invalid_response(
+        logger, exc,
+        event=f"{operation}_invalid_payload",
+        message="Agents service returned a malformed agent-version payload",
+        public_detail=public_detail,
+        upstream_service="agents", operation=operation,
+        error_count=exc.error_count(),
+    )
+
+
+async def list_custom_agent_versions(
+    db: AsyncSession, user_id: str, agent_id: str
+) -> list[CustomAgentVersion]:
+    """An owned agent's kept versions, newest first, without their content.
+
+    Unpaged on purpose: the agents service keeps a bounded number per agent
+    (the oldest is pruned on save), so the list cannot grow without limit.
+    """
+    row = await _require_owned_row(db, user_id, agent_id)
+    public_detail = "The agent's history could not be loaded. Please try again."
+    body = await _proxy(
+        "GET", _versions_url(user_id, row.slug),
+        operation="custom_agent_versions_list",
+        public_detail=public_detail,
+    )
+    try:
+        return _VERSION_LIST.validate_python(body)
+    except ValidationError as exc:
+        _invalid_version_payload(exc, "custom_agent_versions_list", public_detail)
+
+
+async def get_custom_agent_version(
+    db: AsyncSession, user_id: str, agent_id: str, version_no: int
+) -> CustomAgentVersionDetail:
+    """One kept version of an owned agent, with the spec and files it holds."""
+    row = await _require_owned_row(db, user_id, agent_id)
+    public_detail = "That version could not be opened. Please try again."
+    body = await _proxy(
+        "GET", f"{_versions_url(user_id, row.slug)}/{version_no}",
+        operation="custom_agent_version_get",
+        public_detail=public_detail,
+    )
+    try:
+        return CustomAgentVersionDetail.model_validate(body)
+    except ValidationError as exc:
+        _invalid_version_payload(exc, "custom_agent_version_get", public_detail)
+
+
+async def restore_custom_agent_version(
+    db: AsyncSession, user_id: str, agent_id: str, version_no: int
+) -> dict[str, Any]:
+    """Bring an earlier version back and refresh the catalog row. Returns the public row.
+
+    Upstream, a restore is a save of its own (a new ``restored`` version, so it
+    can be undone) and is validated again like any write — a refused one comes
+    back as the same 422 ``{message, errors, issues}`` an update does. The
+    restored version can carry a different name, icon or description, so the
+    row is refreshed exactly as :func:`update_custom_agent` does.
+    """
+    row = await _require_owned_row(db, user_id, agent_id)
+    summary = await _proxy(
+        "POST", f"{_versions_url(user_id, row.slug)}/{version_no}/restore",
+        operation="custom_agent_restore",
+        public_detail="That version could not be restored. Please try again.",
+    )
+    restored = await _upsert_row(db, user_id, summary or {})
+    await db.commit()
+    logger.info(
+        "custom_agent_restored",
+        "Restored an earlier version of a user-authored agent",
+        agent_id=restored.id,
+        agent_slug=restored.slug,
+        version_no=version_no,
+    )
+    return _public_from_row(restored, summary)
+
+
 async def delete_custom_agent(db: AsyncSession, user_id: str, agent_id: str) -> None:
     """Remove the definition and deactivate the row — never a hard delete.
 
@@ -562,8 +666,11 @@ __all__ = [
     "delete_custom_agent",
     "export_custom_agent",
     "get_custom_agent_definition",
+    "get_custom_agent_version",
     "import_custom_agent",
     "list_custom_agent_definitions",
+    "list_custom_agent_versions",
+    "restore_custom_agent_version",
     "update_custom_agent",
     "validate_custom_agent_definition",
 ]

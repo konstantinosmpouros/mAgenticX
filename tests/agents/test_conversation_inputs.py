@@ -1,4 +1,4 @@
-"""``/conversation/input/`` — the uploads, read from the bridge (plan 43).
+"""``/conversation/input/`` — the uploads, read from the bridge (plan 36).
 
 Nothing is copied to the agents service any more: the bridge lists every
 upload of the conversation and serves the bytes on demand. Pinned: the list is

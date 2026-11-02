@@ -1,4 +1,4 @@
-"""A conversation's uploads, served to the agents service (plan 43).
+"""A conversation's uploads, served to the agents service (plan 36).
 
 The agent's ``/conversation/input/`` folder is a view of these rows — nothing is
 copied to the agents service any more. It lists every upload of the

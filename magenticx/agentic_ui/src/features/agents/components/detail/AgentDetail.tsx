@@ -54,6 +54,8 @@ export function AgentDetail({
   notice,
   summary = null,
   memory = null,
+  history = null,
+  versionLabel = null,
 }: {
   agent: Agent;
   mine: boolean;
@@ -78,6 +80,14 @@ export function AgentDetail({
   summary?: CustomAgentSummary | null;
   /** The Memory section's body (the page owns its data); deep agents only. */
   memory?: ReactNode;
+  /** The History section's body (the page owns its data); your own agents only. */
+  history?: ReactNode;
+  /**
+   * What the Overview's Version row shows instead of the spec's `version`: for
+   * your own agent, its latest saved version number. A custom agent's spec
+   * version is always 1.0.0, which reads as if no save had ever happened.
+   */
+  versionLabel?: string | null;
 }) {
   const reduceMotion = useReducedMotion();
 
@@ -90,6 +100,8 @@ export function AgentDetail({
     { id: "approvals", label: "Approvals", count: gatedCount },
     // What it remembers about the user — a deep-agent concept, like its tools.
     ...(configurable ? [{ id: "memory" as const, label: "Memory" }] : []),
+    // Saved versions of the definition — only an agent you own has one.
+    ...(mine ? [{ id: "history" as const, label: "History" }] : []),
   ];
 
   return (
@@ -187,7 +199,7 @@ export function AgentDetail({
                   ...(typeof summary?.subagentCount === "number"
                     ? [{ label: "Sub-agents", value: String(summary.subagentCount) }]
                     : []),
-                  { label: "Version", value: agent.version ?? "—" },
+                  { label: "Version", value: versionLabel ?? agent.version ?? "—" },
                   { label: "Source", value: mine ? "Yours" : "Built in" },
                   { label: "Status", value: agent.isActive ? "Available" : "Unavailable" },
                 ].map((row) => (
@@ -218,6 +230,8 @@ export function AgentDetail({
           ) : null}
 
           {section === "memory" && configurable ? memory : null}
+
+          {section === "history" && mine ? history : null}
 
           {section === "approvals" ? (
             configurable ? (

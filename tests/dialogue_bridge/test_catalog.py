@@ -89,7 +89,7 @@ async def test_get_available_tools_proxies_tool_manifests(app, client, seeded_us
 
 
 # ---------------------------------------------------------------------------
-# Builder catalogs: the model allowlist and the built-in tools (plan 44)
+# Builder catalogs: the model allowlist and the built-in tools (plan 37)
 # ---------------------------------------------------------------------------
 MODELS = [
     {"id": "openai:gpt-5", "label": "GPT-5", "default": True},

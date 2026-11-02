@@ -1,7 +1,7 @@
 """Snapshot the files an agent presented this run, as attachments on its answer.
 
 A deep agent's files are durable in the agents service (``agent_runtime``,
-plan 43) for as long as the conversation exists, so only the files it
+plan 36) for as long as the conversation exists, so only the files it
 *presented* (``present_artifact``) are copied here — in the finalize
 transaction, so each card finds its file when the run's terminal frame reaches
 the UI. The copy is a deliberate snapshot: the card on an answer keeps the

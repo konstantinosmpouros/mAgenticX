@@ -4,7 +4,7 @@
 proxy secret) AND blocked at the nginx edge (`/api/v1/internal/`), so only the
 agents service — reaching the bridge directly on the `backend` network — can
 call them. They back the agent's read-only ``/conversation/input/`` folder
-(plan 43): the uploads stay here, and the agent reads them on demand.
+(plan 36): the uploads stay here, and the agent reads them on demand.
 """
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession

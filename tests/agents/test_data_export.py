@@ -3,7 +3,8 @@
 The bridge copies these frames straight into the user's zip, so what is pinned
 here is exactly what ends up in the archive under ``agents/`` and ``skills/``:
 
-* every definition and every custom-skill file, once, across page boundaries;
+* every definition, every kept version and every custom-skill file, once,
+  across page boundaries;
 * file contents sliced, with every base64 slice decodable on its own;
 * remote skills exported as references with provenance — never their content;
 * nothing from a deleted skill, nothing from another user;
@@ -21,8 +22,9 @@ NOW = datetime(2026, 10, 4, 12, 0, tzinfo=timezone.utc)
 
 
 class FakeDefinitions:
-    def __init__(self, user_id, specs, files):
+    def __init__(self, user_id, specs, files, versions=()):
         self.user_id, self.specs, self.files = user_id, specs, files
+        self.versions = sorted(versions, key=lambda v: (v["agent_slug"], v["version_no"]))
 
     async def page_definitions(self, user_id, after_slug, limit):
         rows = [{"agent_slug": s, "spec": spec, "created_at": NOW, "updated_at": NOW}
@@ -36,6 +38,18 @@ class FakeDefinitions:
 
     async def read_file_slice(self, user_id, slug, path, start, length):
         return self.files[(slug, path)][0][start - 1:start - 1 + length]
+
+    async def page_versions(self, user_id, after, limit):
+        rows = [v for v in self.versions
+                if user_id == self.user_id and (v["agent_slug"], v["version_no"]) > after]
+        return rows[:limit]
+
+
+def _version(slug, number, kind, changes=(), restored_from=None, based_on=None):
+    return {"agent_slug": slug, "version_no": number, "kind": kind, "changes": list(changes),
+            "restored_from": restored_from, "based_on": based_on, "created_at": NOW,
+            "spec": {"name": f"{slug} v{number}"},
+            "files": {"AGENT.md": {"content": f"Prompt {number}.", "encoding": "utf-8"}}}
 
 
 class FakeSkills:
@@ -79,6 +93,10 @@ def export(agents_service, monkeypatch):
         {f"bot-{i}": {"name": f"Bot {i}"} for i in range(5)},
         {("bot-0", "AGENT.md"): ("You are bot zero. " * 10, "utf-8"),
          ("bot-1", "assets/logo.png"): (base64.b64encode(PNG).decode(), "base64")},
+        [_version("bot-0", 1, "created"), _version("bot-0", 2, "saved", ["instructions"], based_on=1),
+         # A row from before a restore stopped adding a version.
+         _version("bot-0", 3, "restored", ["instructions"], restored_from=1),
+         _version("bot-1", 1, "baseline"), _version("bot-1", 2, "saved", ["details"], based_on=1)],
     )
     skills = FakeSkills(
         "u1",
@@ -126,6 +144,24 @@ async def test_every_definition_and_file_arrives_once_across_pages(export):
 
 
 @pytest.mark.asyncio
+async def test_every_kept_version_arrives_whole_once_across_pages(export):
+    """Version history goes out as one record per version — spec and files
+    inline, so a restore point can be read back without the live agent."""
+    files = _files(await _frames(export))
+    versions = [json.loads(line) for line in files["agents/versions.ndjson"].decode().splitlines()]
+    assert [(v["slug"], v["version"]) for v in versions] == [
+        ("bot-0", 1), ("bot-0", 2), ("bot-0", 3), ("bot-1", 1), ("bot-1", 2),
+    ]
+    restored = versions[2]
+    assert restored["kind"] == "restored" and restored["restored_from"] == 1
+    assert restored["changes"] == ["instructions"]
+    assert restored["spec"] == {"name": "bot-0 v3"}
+    assert restored["files"] == {"AGENT.md": {"content": "Prompt 3.", "encoding": "utf-8"}}
+    assert versions[3]["kind"] == "baseline"
+    assert [v["based_on"] for v in versions] == [None, 1, None, None, 1]
+
+
+@pytest.mark.asyncio
 async def test_each_base64_slice_decodes_on_its_own(export):
     frames = await _frames(export)
     in_png = False
@@ -154,7 +190,10 @@ async def test_remote_skills_are_references_never_content(export):
 async def test_the_stream_ends_with_an_end_frame_and_counts(export):
     frames = await _frames(export)
     assert frames[-1]["op"] == "end"
-    assert frames[-1]["counts"] == {"agents": 5, "agent_files": 2, "skills": 2, "skill_files": 1, "assignments": 1}
+    assert frames[-1]["counts"] == {
+        "agents": 5, "agent_files": 2, "agent_versions": 5,
+        "skills": 2, "skill_files": 1, "assignments": 1,
+    }
     # Every open is closed before the next opens.
     depth = 0
     for f in frames:
@@ -167,6 +206,7 @@ async def test_the_stream_ends_with_an_end_frame_and_counts(export):
 async def test_another_user_gets_an_empty_but_complete_stream(export):
     files = _files(await _frames(export, user_id="someone-else"))
     assert files["agents/agents.ndjson"] == b"" and files["skills/skills.ndjson"] == b""
+    assert files["agents/versions.ndjson"] == b""
     assert not [p for p in files if p.count("/") > 1]
 
 

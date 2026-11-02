@@ -1,4 +1,4 @@
-"""Internal (agents → bridge) shapes for a conversation's uploads (plan 43)."""
+"""Internal (agents → bridge) shapes for a conversation's uploads (plan 36)."""
 from pydantic import BaseModel
 
 

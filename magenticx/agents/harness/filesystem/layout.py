@@ -16,7 +16,7 @@ user or a run produces lives in a database instead: per-agent tool choices in
 (``agent_memories``), the skill pool, custom skill files and assignments
 (``skill_pool`` / ``skill_files`` / ``agent_skills``), user-authored agent
 definitions (``agent_definitions`` / ``agent_definition_files``) and every
-conversation's files (``conversation_files``, plan 43). None of them has a path
+conversation's files (``conversation_files``, plan 36). None of them has a path
 here.
 """
 from __future__ import annotations

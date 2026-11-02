@@ -52,7 +52,7 @@ class NativeToolContext:
     run_id: Optional[str] = None
     thread_id: Optional[str] = None
     trust_level: str = "unknown"
-    # The run's conversation files (plan 43), shared with its filesystem
+    # The run's conversation files (plan 36), shared with its filesystem
     # mounts. None when the run has no conversation.
     files: ConversationFiles | None = None
     # Someone is there to answer: a chat turn. A scheduled task's run is not

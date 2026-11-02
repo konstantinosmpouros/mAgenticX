@@ -35,5 +35,6 @@ class PurgeUserResponse(BaseModel):
     agent_skills: int
     agent_definitions: int
     agent_definition_files: int
+    agent_definition_versions: int = 0
     conversation_files: int
     conversation_file_blobs: int

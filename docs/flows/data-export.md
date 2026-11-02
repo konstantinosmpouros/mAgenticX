@@ -78,7 +78,7 @@ Measured locally: a 40 MB attachment streamed in 0.59 s with a 4.2 MB memory pea
 
 ## Phase 3 — The agents service's part
 
-`GET /users/{user_id}/export` (internal only) streams framed NDJSON: `{"op":"open","path":…,"encoding":"utf-8"|"base64"}`, `{"op":"data","text":…}` (≤ 1 MiB of text, a multiple of 4 so base64 slices decode on their own), `{"op":"close"}`, and a final `{"op":"end","counts":…}`. The bridge copies each frame into the zip. It accepts paths only under `agents/` and `skills/`, and every archive path is checked for `..`, absolute paths and control characters before an entry is created.
+`GET /users/{user_id}/export` (internal only) streams framed NDJSON: `{"op":"open","path":…,"encoding":"utf-8"|"base64"}`, `{"op":"data","text":…}` (≤ 1 MiB of text, a multiple of 4 so base64 slices decode on their own), `{"op":"close"}`, and a final `{"op":"end","counts":…}`. Custom agents' version history goes out as `agents/versions.ndjson`, one record per kept version — `slug`, `version`, `kind`, `changes`, `restored_from` (legacy `restored` rows), `based_on`, `created_at`, `spec`, and `files` as `{path: {content, encoding}}` — paged by `(agent_slug, version_no)`; whole rows are fine because a version is bounded by the per-file cap and the 20-version limit ([agent-version-history](agent-version-history.md)). The bridge copies each frame into the zip. It accepts paths only under `agents/` and `skills/`, and every archive path is checked for `..`, absolute paths and control characters before an entry is created.
 
 If the agents service cannot be reached **before** anything was written, the export continues without this part and `manifest.json` says so (`complete: false`, `missing: [...]`). After a frame has been written the zip cannot be rolled back, so a later failure aborts the whole export.
 
@@ -101,6 +101,7 @@ conversations/shares.ndjson          which conversations were shared — never t
 scheduled_tasks.ndjson
 attachments/<id>/<safe name>         full export only
 agents/agents.ndjson + agents/<slug>/<files>
+agents/versions.ndjson               every kept version of each custom agent, whole: spec + files inline
 skills/skills.ndjson + skills/<name>/<files> + skills/assignments.ndjson
 manifest.json                        counts, sizes, missing parts — written last
 ```
@@ -112,7 +113,7 @@ manifest.json                        counts, sizes, missing parts — written la
 - **Open during an account's deletion grace period.** The three export routes use `validate_userId_even_if_pending`, so a user whose account awaits deletion can still download their data — the pending screen offers it ([account-deletion](account-deletion.md)).
 
 - **Allowlists, not `SELECT *`.** Every exported column is named in `utils/data_export.py`. A column added to any of these tables later is not exported until someone adds it there — so a future secret can never ship by accident.
-- **The agent's working files are not exported as such.** Since plan 43 they live in `agent_runtime.conversation_files`; the export carries the attachments — uploads and the files the agent *presented* (snapshotted on the answer), plus generated files captured before plan 43 — i.e. what the user was shown. Offloaded tool results, summarised history and unpresented scratch files are agent internals, like checkpoints.
+- **The agent's working files are not exported as such.** Since plan 36 they live in `agent_runtime.conversation_files`; the export carries the attachments — uploads and the files the agent *presented* (snapshotted on the answer), plus generated files captured before plan 36 — i.e. what the user was shown. Offloaded tool results, summarised history and unpresented scratch files are agent internals, like checkpoints.
 - **Never exported:** session or refresh tokens, CSRF secrets, share-link tokens and snapshots, raw agent event logs (`messages.raw_events`), message embeddings, agent memories (the user's choice), and the shared copies of remote skills (exported as references with source, commit and licence).
 - **A cut download is not a valid zip.** `manifest.json` and the zip directory are written last, so a stream that stops early fails to open rather than passing for a partial archive.
 - **A client that stops reading is cut off.** Under backpressure a write simply waits — forever, if the client neither reads nor disconnects — and the generator, suspended at its `yield`, cannot notice. `StallGuardedStreamingResponse` bounds every write by `EXPORT_STALL_SECONDS` (5 min); past it the download is abandoned and the generator closed, which frees the slot and hands the cooldown back.

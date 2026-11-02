@@ -1,4 +1,4 @@
-"""The name an upload has in the agent's ``/conversation/input/`` folder (plan 43).
+"""The name an upload has in the agent's ``/conversation/input/`` folder (plan 36).
 
 The agent reads a conversation's uploads straight from ``attachments``, by name,
 and the history it is given points at those names. So the name is assigned

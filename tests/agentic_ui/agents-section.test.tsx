@@ -4,7 +4,7 @@ import { MemoryRouter, Outlet, Route, Routes, useLocation } from "react-router-d
 import { describe, expect, it, vi } from "vitest";
 
 /**
- * The Agents section (plan 44, P2): its routes, the gallery and the picker.
+ * The Agents section (plan 37, P2): its routes, the gallery and the picker.
  *
  * Pinned: an agent id that is not in the catalog gets one fresh look at the
  * catalog and then a friendly "Agent not found" with a way back; editing a
@@ -21,6 +21,8 @@ vi.mock("@/shared/lib/api", async (importOriginal) => ({
   getAgentTools: vi.fn(async () => ({ agentSlug: "x", tools: [] })),
   getTools: vi.fn(async () => []),
   getAgentModels: vi.fn(async () => []),
+  // A custom agent's page loads its version list (the Overview's Version row).
+  listMyAgentVersions: vi.fn(async () => []),
   getBuiltinTools: vi.fn(async () => []),
 }));
 

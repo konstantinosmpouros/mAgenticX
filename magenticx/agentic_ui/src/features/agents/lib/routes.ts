@@ -4,7 +4,8 @@
  *   /agents                     the gallery
  *   /agents/new                 create: a start screen (the canvas, or import a YAML);
  *                               `?from=<agentId>` duplicates that agent on the canvas
- *   /agents/:agentId            an agent's page (`?section=overview|tools|approvals`)
+ *   /agents/:agentId            an agent's page (`?section=overview|tools|approvals|memory|history`;
+ *                               memory is deep agents' only, history your own agents' only)
  *   /agents/:agentId/edit       edit (`?section=identity|…`)
  *
  * The id is the catalog id (`chat_db.agents.id`), as every bridge route uses:
@@ -39,7 +40,7 @@ export const START_VIAS = ["canvas", "import"] as const;
 export type StartVia = (typeof START_VIAS)[number];
 
 /** The sections of an agent's page, in tab order. */
-export const DETAIL_SECTIONS = ["overview", "tools", "approvals", "memory"] as const;
+export const DETAIL_SECTIONS = ["overview", "tools", "approvals", "memory", "history"] as const;
 export type DetailSection = (typeof DETAIL_SECTIONS)[number];
 
 /**

@@ -38,6 +38,9 @@ export {
   exportMyAgent,
   importMyAgent,
   renderMyAgentYaml,
+  listMyAgentVersions,
+  getMyAgentVersion,
+  restoreMyAgentVersion,
 } from "./agents";
 
 export { getTools, getAgentModels, getBuiltinTools, getSuggestions } from "./catalog";

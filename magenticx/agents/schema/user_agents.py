@@ -1,5 +1,6 @@
 """User-authored agent DTOs: the agent-folder file shape and the write /
 validate / list / detail payloads for the builder UI."""
+from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field
 
@@ -104,6 +105,35 @@ class UserAgentSummary(BaseModel):
 
 class UserAgentDetail(UserAgentSummary):
     """One user-authored agent with its full definition, for editing."""
+
+    spec: Dict[str, Any] = Field(default_factory=dict)
+    files: List[AgentFile] = Field(default_factory=list)
+
+
+class AgentVersionSummary(BaseModel):
+    """One kept version of a user-authored agent, as the History list shows it.
+
+    ``kind`` says why it exists: ``created``, ``saved``, ``restored`` (from
+    ``restored_from``; only versions kept before a restore stopped adding
+    one), or ``baseline`` — the agent as it stood before history
+    began. ``changes`` names the parts the save touched, against the version
+    it was saved on top of (``details``, ``instructions``, ``model``, ``tools``, ``skills``,
+    ``team``, ``files``, ``settings``). ``based_on`` is the version the save
+    was made on top of, and ``current`` marks the version the agent is now —
+    a restore moves it back instead of adding a version.
+    """
+
+    version_no: int
+    kind: Literal["created", "saved", "restored", "baseline"]
+    changes: List[str] = Field(default_factory=list)
+    restored_from: Optional[int] = None
+    based_on: Optional[int] = None
+    current: bool = False
+    created_at: datetime
+
+
+class AgentVersionDetail(AgentVersionSummary):
+    """One version with the whole definition it kept, for a diff or a restore."""
 
     spec: Dict[str, Any] = Field(default_factory=dict)
     files: List[AgentFile] = Field(default_factory=list)

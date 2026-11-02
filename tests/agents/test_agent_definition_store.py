@@ -217,11 +217,13 @@ async def test_listing_namespaces_is_empty_rather_than_unsupported(Store):
 # ---------------------------------------------------------------------------
 # Writes
 # ---------------------------------------------------------------------------
+# A save first reads the state it replaces (for the version history), so the
+# leading ``[]`` batch is that read finding no agent yet.
 @pytest.mark.asyncio
 async def test_saving_replaces_the_files_rather_than_merging(Store):
     """A save carries the whole definition, so a file the user deleted in the
     builder must not survive as a row the agent goes on reading."""
-    pool = FakePool([{"replaced": False}])
+    pool = FakePool([], [{"replaced": False}])
     await Store(pool).save(
         USER, SLUG, spec={"slug": SLUG}, files={"AGENT.md": ("x", "utf-8")}
     )
@@ -235,10 +237,10 @@ async def test_saving_replaces_the_files_rather_than_merging(Store):
 
 @pytest.mark.asyncio
 async def test_a_save_reports_whether_it_replaced_an_existing_agent(Store):
-    assert await Store(FakePool([{"replaced": True}])).save(
+    assert await Store(FakePool([], [{"replaced": True}])).save(
         USER, SLUG, spec={}, files={}
     ) is True
-    assert await Store(FakePool([{"replaced": False}])).save(
+    assert await Store(FakePool([], [{"replaced": False}])).save(
         USER, SLUG, spec={}, files={}
     ) is False
 
@@ -248,7 +250,7 @@ async def test_the_spec_and_its_files_land_in_one_transaction(Store):
     """Separately, there is a window where the spec's ``prompt:`` points at a
     file that has not been written — an agent that fails to build. The folder
     layout's staging-and-rename dance could not close it; a transaction does."""
-    pool = FakePool([{"replaced": False}])
+    pool = FakePool([], [{"replaced": False}])
     await Store(pool).save(
         USER, SLUG, spec={"slug": SLUG, "prompt": "./AGENT.md"},
         files={"AGENT.md": ("x", "utf-8")},
@@ -259,12 +261,29 @@ async def test_the_spec_and_its_files_land_in_one_transaction(Store):
 
 
 @pytest.mark.asyncio
-async def test_deleting_removes_the_spec_and_its_files(Store):
+async def test_a_restore_moves_the_current_pointer_and_records_no_version(Store):
+    """A restore writes the version's content as the agent and points
+    ``current_version`` at it — it never inserts a version of its own."""
+    pool = FakePool(
+        [{"spec": {"slug": SLUG}}], [], [{"replaced": True}],
+    )
+    await Store(pool).save(
+        USER, SLUG, spec={"slug": SLUG}, files={"AGENT.md": ("x", "utf-8")}, restored_from=3,
+    )
+    # The leading batches are the read of the state being replaced (spec, files).
+    assert not any(s.startswith("INSERT INTO agent_definition_versions") for s, _ in pool.calls)
+    [params] = [p for s, p in pool.calls if s.startswith("UPDATE agent_definitions SET current_version")]
+    assert params == (3, USER, SLUG)
+
+
+@pytest.mark.asyncio
+async def test_deleting_removes_the_spec_its_files_and_its_history(Store):
     pool = FakePool(rowcount=1)
     assert await Store(pool).delete(USER, SLUG) is True
     statements = [sql for sql, _ in pool.calls]
     assert any("DELETE FROM agent_definitions" in s for s in statements)
     assert any("DELETE FROM agent_definition_files" in s for s in statements)
+    assert any("DELETE FROM agent_definition_versions" in s for s in statements)
 
 
 @pytest.mark.asyncio

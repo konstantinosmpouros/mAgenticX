@@ -265,6 +265,57 @@ export const CustomAgentDetailSchema = z.record(z.unknown()).transform((raw) => 
 }));
 export type CustomAgentDetail = z.infer<typeof CustomAgentDetailSchema>;
 
+// One saved version of a user-authored agent (`/custom/{id}/versions`). `kind`
+// is how it came to be: the first save, a later save, a restore of an older
+// version (`restoredFrom`), or `baseline` — the agent as it was before history
+// began. `changes` names the areas that save touched (details, instructions,
+// model, tools, skills, team, files, settings). A row without a number is
+// dropped: it could be neither shown in order nor opened.
+export const AGENT_VERSION_KINDS = ["created", "saved", "restored", "baseline"] as const;
+export type AgentVersionKind = (typeof AGENT_VERSION_KINDS)[number];
+
+const toAgentVersionSummary = (raw: Record<string, unknown>) => {
+  const no = raw.versionNo ?? raw.version_no;
+  const from = raw.restoredFrom ?? raw.restored_from;
+  const base = raw.basedOn ?? raw.based_on;
+  const created = raw.createdAt ?? raw.created_at;
+  return {
+    versionNo: typeof no === "number" && Number.isInteger(no) ? no : 0,
+    kind: ((AGENT_VERSION_KINDS as readonly string[]).includes(String(raw.kind))
+      ? raw.kind
+      : "saved") as AgentVersionKind,
+    changes: Array.isArray(raw.changes)
+      ? raw.changes.filter((c): c is string => typeof c === "string")
+      : [],
+    restoredFrom: typeof from === "number" ? from : null,
+    basedOn: typeof base === "number" ? base : null,
+    current: raw.current === true,
+    createdAt: typeof created === "string" ? created : null,
+  };
+};
+export type AgentVersionSummary = ReturnType<typeof toAgentVersionSummary>;
+
+// The kept versions, newest first. `current` marks the agent as it is now: the
+// newest, unless an older one was restored (a restore adds no version).
+export const AgentVersionListSchema = z
+  .array(z.unknown())
+  .transform((rows) =>
+    rows
+      .map((row) => toAgentVersionSummary((row ?? {}) as Record<string, unknown>))
+      .filter((row) => row.versionNo > 0),
+  );
+
+// One version in full: the summary plus that version's agent.yaml (`spec`,
+// opaque like CustomAgentDetail's) and every file it carried.
+export const AgentVersionDetailSchema = z.record(z.unknown()).transform((raw) => ({
+  ...toAgentVersionSummary(raw),
+  spec: (raw.spec && typeof raw.spec === "object" ? raw.spec : {}) as Record<string, unknown>,
+  files: Array.isArray(raw.files)
+    ? raw.files.map((f) => toAgentFile((f ?? {}) as Record<string, unknown>)).filter((f) => f.path)
+    : [],
+}));
+export type AgentVersionDetail = z.infer<typeof AgentVersionDetailSchema>;
+
 // One problem with a definition, pinned to where it is: a dotted path into the
 // spec (`subagents.0.subagents.1.name`), a file (`files[AGENT.md]`), or "" for
 // the definition as a whole. A warning never blocks a save.

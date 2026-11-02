@@ -4,7 +4,7 @@ import { MemoryRouter, Outlet, Route, Routes, useLocation } from "react-router-d
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
- * The canvas builder as a page (plan 44 P3+P4): the start screen, building a
+ * The canvas builder as a page (plan 37 P3+P4): the start screen, building a
  * team on the canvas down to the third level, the restore banner, the leave
  * guard, the two-step save with Retry, and the YAML help with the server's
  * live lists. React Flow is swapped for a light stand-in that renders the

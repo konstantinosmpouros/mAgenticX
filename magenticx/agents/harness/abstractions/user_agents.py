@@ -72,7 +72,14 @@ from harness.filesystem import layout
 from harness.memory import get_memory_pool
 from harness.tools.builtins import BUILTIN_BY_NAME
 from harness.tools.registry import is_known_native_tool
-from schema import AgentFile, AgentIssue, UserAgentDetail, UserAgentSummary
+from schema import (
+    AgentFile,
+    AgentIssue,
+    AgentVersionDetail,
+    AgentVersionSummary,
+    UserAgentDetail,
+    UserAgentSummary,
+)
 
 logger = get_logger(__name__)
 
@@ -748,12 +755,33 @@ async def get_user_agent(user_id: str, slug: str) -> Optional[UserAgentDetail]:
         return None
     raw, stored = loaded
 
-    files = [
+    summary = _summary_from_spec(raw, slug)
+    return UserAgentDetail(**summary.model_dump(), spec=raw, files=_agent_files(stored))
+
+
+def _agent_files(stored: Dict[str, tuple[str, str]]) -> List[AgentFile]:
+    return [
         AgentFile(path=path, content=content, encoding=encoding, size=len(content))
         for path, (content, encoding) in sorted(stored.items())
     ]
-    summary = _summary_from_spec(raw, slug)
-    return UserAgentDetail(**summary.model_dump(), spec=raw, files=files)
+
+
+async def list_user_agent_versions(user_id: str, slug: str) -> Optional[List[AgentVersionSummary]]:
+    """The agent's kept versions, newest first; ``None`` for an unknown agent."""
+    store = _store()
+    if await store.get_spec(user_id, slug) is None:
+        return None
+    return [AgentVersionSummary(**row) for row in await store.list_versions(user_id, slug)]
+
+
+async def get_user_agent_version(
+    user_id: str, slug: str, version_no: int
+) -> Optional[AgentVersionDetail]:
+    """One kept version with its whole definition, or ``None``."""
+    row = await _store().get_version(user_id, slug, version_no)
+    if row is None:
+        return None
+    return AgentVersionDetail(**{**row, "files": _agent_files(row["files"])})
 
 
 async def export_user_agent(user_id: str, slug: str) -> Optional[bytes]:
@@ -776,7 +804,12 @@ async def export_user_agent(user_id: str, slug: str) -> Optional[bytes]:
 # Write / delete
 # ---------------------------------------------------------------------------
 async def write_user_agent(
-    user_id: str, spec: AgentSpec, files: List[AgentFile], *, create: bool = False
+    user_id: str,
+    spec: AgentSpec,
+    files: List[AgentFile],
+    *,
+    create: bool = False,
+    restored_from: Optional[int] = None,
 ) -> UserAgentSummary:
     """Persist a validated definition, replacing any previous version.
 
@@ -791,6 +824,10 @@ async def write_user_agent(
 
     The spec is stored as the **validated** model dump rather than the raw
     request, so what runs is exactly what passed validation.
+
+    Every save that changes the agent becomes a version in its history;
+    ``restored_from`` brings back an earlier version: it adds no version, it
+    makes that one the agent's current version again.
     """
     staged: Dict[str, tuple[str, str]] = {}
     for item in files:
@@ -802,7 +839,12 @@ async def write_user_agent(
 
     dumped = spec.model_dump(mode="json")
     replaced = await _store().save(
-        user_id, spec.slug, spec=dumped, files=staged, create_only=create
+        user_id,
+        spec.slug,
+        spec=dumped,
+        files=staged,
+        create_only=create,
+        restored_from=restored_from,
     )
     logger.info(
         "user_agent_written",
@@ -811,6 +853,7 @@ async def write_user_agent(
         agent_slug=spec.slug,
         file_count=len(staged),
         replaced=replaced,
+        restored_from=restored_from,
         declared_skills=len(spec.skills),
     )
     return _summary_from_spec(dumped, spec.slug)
@@ -842,6 +885,8 @@ __all__ = [
     "errors_of",
     "export_user_agent",
     "get_user_agent",
+    "get_user_agent_version",
+    "list_user_agent_versions",
     "list_user_agents",
     "model_label",
     "parse_agent_yaml",

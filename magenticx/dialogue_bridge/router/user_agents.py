@@ -8,14 +8,16 @@ Mutations require a CSRF token.
 
 Literal segments (``validate``, ``render``, ``import``) are declared before the
 ``{agent_id}`` routes, and this router is mounted before the tools router
-(``main.py``), so a literal is never read as an agent id.
+(``main.py``), so a literal is never read as an agent id. The version-history
+routes sit one level deeper (``{agent_id}/versions``), where no other route
+lives.
 
 Business logic — the agents-service proxy and the catalog-row lifecycle — lives
 in ``utils.user_agents``; these handlers stay thin.
 """
 from typing import Literal
 
-from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Path, Query, Response, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth.session import AuthUser, require_csrf_protection
@@ -27,6 +29,8 @@ from schema import (
     CustomAgentDetail,
     CustomAgentImportResult,
     CustomAgentValidation,
+    CustomAgentVersion,
+    CustomAgentVersionDetail,
     CustomAgentWrite,
     RenderedAgentYaml,
 )
@@ -36,9 +40,12 @@ from utils.user_agents import (
     delete_custom_agent,
     export_custom_agent,
     get_custom_agent_definition,
+    get_custom_agent_version,
     import_custom_agent,
     list_custom_agent_definitions,
+    list_custom_agent_versions,
     render_custom_agent_yaml,
+    restore_custom_agent_version,
     update_custom_agent,
     validate_custom_agent_definition,
 )
@@ -204,6 +211,62 @@ async def update_my_agent(
     """Replace an owned agent's definition."""
     set_context(user_id=user_id)
     row = await update_custom_agent(db, user_id, agent_id, payload.model_dump(mode="json"))
+    return AgentPublic.model_validate(row)
+
+
+@router.get(
+    "/{user_id}/custom/{agent_id}/versions",
+    response_model=list[CustomAgentVersion],
+    status_code=status.HTTP_200_OK,
+)
+async def list_my_agent_versions(
+    user_id: str,
+    agent_id: str,
+    _: AuthUser = Depends(validate_userId),
+    db: AsyncSession = Depends(get_db),
+) -> list[CustomAgentVersion]:
+    """An owned agent's kept versions, newest first, for the History tab."""
+    set_context(user_id=user_id)
+    return await list_custom_agent_versions(db, user_id, agent_id)
+
+
+@router.get(
+    "/{user_id}/custom/{agent_id}/versions/{version_no}",
+    response_model=CustomAgentVersionDetail,
+    status_code=status.HTTP_200_OK,
+)
+async def get_my_agent_version(
+    user_id: str,
+    agent_id: str,
+    version_no: int = Path(..., ge=1),
+    _: AuthUser = Depends(validate_userId),
+    db: AsyncSession = Depends(get_db),
+) -> CustomAgentVersionDetail:
+    """One kept version with its whole definition, for a diff against the current one."""
+    set_context(user_id=user_id)
+    return await get_custom_agent_version(db, user_id, agent_id, version_no)
+
+
+@router.post(
+    "/{user_id}/custom/{agent_id}/versions/{version_no}/restore",
+    response_model=AgentPublic,
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_csrf_protection)],
+)
+async def restore_my_agent_version(
+    user_id: str,
+    agent_id: str,
+    version_no: int = Path(..., ge=1),
+    _: AuthUser = Depends(validate_userId),
+    db: AsyncSession = Depends(get_db),
+) -> AgentPublic:
+    """Bring an earlier version back, saved as a new version so it can be undone.
+
+    Rate limited like update — by the global per-user budget only: a restore is
+    one bounded write, no costlier than a save.
+    """
+    set_context(user_id=user_id)
+    row = await restore_custom_agent_version(db, user_id, agent_id, version_no)
     return AgentPublic.model_validate(row)
 
 

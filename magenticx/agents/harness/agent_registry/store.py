@@ -49,6 +49,7 @@ from langgraph.store.base import (
 )
 
 from core.logging import get_logger
+from harness.agent_registry.versions import MAX_VERSIONS, describe_changes
 
 logger = get_logger(__name__)
 
@@ -88,6 +89,23 @@ CREATE TABLE IF NOT EXISTS agent_definition_files (
 -- keep the DDL genuinely idempotent: every column the code reads is asserted
 -- here, not just in the CREATE above. Add a matching line with every new column.
 ALTER TABLE agent_definition_files ADD COLUMN IF NOT EXISTS encoding text NOT NULL DEFAULT 'utf-8';
+
+CREATE TABLE IF NOT EXISTS agent_definition_versions (
+    user_id        text NOT NULL,
+    agent_slug     text NOT NULL,
+    version_no     integer NOT NULL,
+    kind           text NOT NULL,
+    changes        jsonb NOT NULL DEFAULT '[]'::jsonb,
+    restored_from  integer,
+    spec           jsonb NOT NULL,
+    files          jsonb NOT NULL DEFAULT '{}'::jsonb,
+    created_at     timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, agent_slug, version_no)
+);
+-- The version the agent is now; NULL (before restores existed) means the newest.
+ALTER TABLE agent_definitions ADD COLUMN IF NOT EXISTS current_version integer;
+-- The version a save was made on top of: the one before it, or one restored.
+ALTER TABLE agent_definition_versions ADD COLUMN IF NOT EXISTS based_on integer;
 """
 
 _COMMENTS = [
@@ -97,6 +115,9 @@ _COMMENTS = [
     "COMMENT ON TABLE agent_definition_files IS "
     "'Authored files of a user agent — AGENT.md, subagents/*.md, reference "
     "material. agent.yaml is never stored; it is rendered from the spec.'",
+    "COMMENT ON TABLE agent_definition_versions IS "
+    "'Version history of a user agent: the whole definition (spec, and files as "
+    "{path: {content, encoding}}) as of each save, the last 20 per agent.'",
 ]
 
 
@@ -131,7 +152,8 @@ class AgentDefinitionStore(BaseStore):
 
         ``agent_runtime`` has no alembic chain; DDL-on-boot is the convention
         the checkpointer established and agent memory and skills follow. The
-        trade is deliberate: no versioned history for these tables.
+        trade is deliberate: no migration history for these tables, so every
+        column the code reads is asserted in the DDL.
         """
         async with self._pool.connection() as conn:
             await conn.execute(_DDL)
@@ -213,6 +235,7 @@ class AgentDefinitionStore(BaseStore):
         spec: dict[str, Any],
         files: dict[str, tuple[str, str]],
         create_only: bool = False,
+        restored_from: int | None = None,
     ) -> bool:
         """Create or replace one agent's definition. Returns whether it existed.
 
@@ -225,8 +248,17 @@ class AgentDefinitionStore(BaseStore):
         ``create_only`` refuses to replace: the insert does nothing on a taken
         slug and :class:`AgentDefinitionExistsError` is raised, so of two
         concurrent creates exactly one wins.
+
+        Every save that changes something also becomes a version, in the same
+        transaction (:meth:`_record_version`), so the history can never miss a
+        save or hold one that did not happen. ``restored_from`` marks a save
+        that brings an earlier version back: it adds no version, it makes that
+        version the agent's current one again.
         """
         async with self._pool.connection() as conn, conn.transaction():
+            # The state being replaced, read under the row's lock: two saves of
+            # one agent queue here, so each compares against the one before it.
+            previous = None if create_only else await self._current(conn, user_id, agent_slug)
             if create_only:
                 cur = await conn.execute(
                     "INSERT INTO agent_definitions (user_id, agent_slug, spec) "
@@ -261,10 +293,184 @@ class AgentDefinitionStore(BaseStore):
                     "VALUES (%s, %s, %s, %s, %s)",
                     (user_id, agent_slug, path, content, encoding),
                 )
+            if restored_from is not None:
+                await conn.execute(
+                    "UPDATE agent_definitions SET current_version = %s "
+                    "WHERE user_id = %s AND agent_slug = %s",
+                    (restored_from, user_id, agent_slug),
+                )
+            else:
+                await self._record_version(conn, user_id, agent_slug, previous, (spec, files))
         return replaced
 
+    async def _current(
+        self, conn: Any, user_id: str, agent_slug: str
+    ) -> tuple[dict[str, Any], dict[str, tuple[str, str]]] | None:
+        """The stored definition, row-locked until the transaction ends; ``None`` if absent."""
+        cur = await conn.execute(
+            "SELECT spec FROM agent_definitions "
+            "WHERE user_id = %s AND agent_slug = %s FOR UPDATE",
+            (user_id, agent_slug),
+        )
+        row = await cur.fetchone()
+        if row is None:
+            return None
+        cur = await conn.execute(
+            "SELECT path, content, encoding FROM agent_definition_files "
+            "WHERE user_id = %s AND agent_slug = %s",
+            (user_id, agent_slug),
+        )
+        files = {r["path"]: (r["content"], r["encoding"]) for r in await cur.fetchall()}
+        return _spec(row["spec"]), files
+
+    async def _record_version(
+        self,
+        conn: Any,
+        user_id: str,
+        agent_slug: str,
+        previous: tuple[dict[str, Any], dict[str, tuple[str, str]]] | None,
+        saved: tuple[dict[str, Any], dict[str, tuple[str, str]]],
+    ) -> None:
+        """Add ``saved`` as the agent's next version and make it current, unless nothing changed.
+
+        The changes are against the state being replaced — after a restore
+        that is the restored version, not the newest one — and ``based_on``
+        names it. An agent saved before history began has no versions yet: its
+        state before this save goes in first as a ``baseline``, so the first
+        edit after the feature shipped can still be compared and undone. Past
+        :data:`MAX_VERSIONS` the oldest are dropped; the current version is
+        always the newest after a save, so it is never one of them.
+        """
+        cur = await conn.execute(
+            "SELECT max(v.version_no) AS last, max(d.current_version) AS current "
+            "FROM agent_definition_versions v "
+            "LEFT JOIN agent_definitions d "
+            "ON d.user_id = v.user_id AND d.agent_slug = v.agent_slug "
+            "WHERE v.user_id = %s AND v.agent_slug = %s",
+            (user_id, agent_slug),
+        )
+        row = await cur.fetchone()
+        last = row["last"] if row else None
+        based_on: int | None
+        if last is not None:
+            number = last + 1
+            based_on = row["current"] if row["current"] is not None else last
+        elif previous is not None:
+            await self._insert_version(
+                conn, user_id, agent_slug, 1, "baseline", [], None, previous
+            )
+            number, based_on = 2, 1
+        else:
+            number, based_on = 1, None
+
+        if previous is None:
+            kind, changes = "created", []
+        else:
+            changes = describe_changes(previous, saved)
+            if not changes:
+                return
+            kind = "saved"
+        await self._insert_version(
+            conn, user_id, agent_slug, number, kind, changes, based_on, saved
+        )
+        await conn.execute(
+            "UPDATE agent_definitions SET current_version = %s "
+            "WHERE user_id = %s AND agent_slug = %s",
+            (number, user_id, agent_slug),
+        )
+        await conn.execute(
+            "DELETE FROM agent_definition_versions "
+            "WHERE user_id = %s AND agent_slug = %s AND version_no <= %s",
+            (user_id, agent_slug, number - MAX_VERSIONS),
+        )
+
+    async def _insert_version(
+        self,
+        conn: Any,
+        user_id: str,
+        agent_slug: str,
+        number: int,
+        kind: str,
+        changes: list[str],
+        based_on: int | None,
+        state: tuple[dict[str, Any], dict[str, tuple[str, str]]],
+    ) -> None:
+        spec, files = state
+        stored_files = {
+            path: {"content": content, "encoding": encoding}
+            for path, (content, encoding) in files.items()
+        }
+        await conn.execute(
+            "INSERT INTO agent_definition_versions "
+            "(user_id, agent_slug, version_no, kind, changes, based_on, spec, files) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+            (
+                user_id,
+                agent_slug,
+                number,
+                kind,
+                json.dumps(changes),
+                based_on,
+                json.dumps(spec),
+                json.dumps(stored_files),
+            ),
+        )
+
+    # -- version history ---------------------------------------------------
+    async def list_versions(self, user_id: str, agent_slug: str) -> list[dict[str, Any]]:
+        """The agent's kept versions, newest first, without their content.
+
+        ``current`` marks the version the agent is now: the restored one after
+        a restore, the newest otherwise.
+        """
+        async with self._pool.connection() as conn:
+            cur = await conn.execute(
+                "SELECT v.version_no, v.kind, v.changes, v.restored_from, v.based_on, "
+                "v.created_at, d.current_version "
+                "FROM agent_definition_versions v "
+                "LEFT JOIN agent_definitions d "
+                "ON d.user_id = v.user_id AND d.agent_slug = v.agent_slug "
+                "WHERE v.user_id = %s AND v.agent_slug = %s ORDER BY v.version_no DESC",
+                (user_id, agent_slug),
+            )
+            rows = await cur.fetchall()
+        if not rows:
+            return []
+        kept = {row["version_no"] for row in rows}
+        pointer = rows[0]["current_version"]
+        current = pointer if pointer in kept else rows[0]["version_no"]
+        return [
+            {
+                **{k: v for k, v in row.items() if k != "current_version"},
+                "changes": _changes(row["changes"]),
+                "current": row["version_no"] == current,
+            }
+            for row in rows
+        ]
+
+    async def get_version(
+        self, user_id: str, agent_slug: str, version_no: int
+    ) -> dict[str, Any] | None:
+        """One version with its spec and files, or ``None`` when it is not kept."""
+        async with self._pool.connection() as conn:
+            cur = await conn.execute(
+                "SELECT version_no, kind, changes, restored_from, based_on, created_at, "
+                "spec, files FROM agent_definition_versions "
+                "WHERE user_id = %s AND agent_slug = %s AND version_no = %s",
+                (user_id, agent_slug, version_no),
+            )
+            row = await cur.fetchone()
+        if row is None:
+            return None
+        return {
+            **row,
+            "changes": _changes(row["changes"]),
+            "spec": _spec(row["spec"]),
+            "files": _version_files(row["files"]),
+        }
+
     async def delete(self, user_id: str, agent_slug: str) -> bool:
-        """Remove a definition and its files. Returns whether anything was held.
+        """Remove a definition, its files and its history. Returns whether anything was held.
 
         Only the *definition* goes. The per-agent state tree — conversations,
         memory rows, tool preferences — is keyed separately and survives, so
@@ -278,6 +484,11 @@ class AgentDefinitionStore(BaseStore):
             removed = cur.rowcount > 0
             await conn.execute(
                 "DELETE FROM agent_definition_files "
+                "WHERE user_id = %s AND agent_slug = %s",
+                (user_id, agent_slug),
+            )
+            await conn.execute(
+                "DELETE FROM agent_definition_versions "
                 "WHERE user_id = %s AND agent_slug = %s",
                 (user_id, agent_slug),
             )
@@ -298,9 +509,13 @@ class AgentDefinitionStore(BaseStore):
             definitions = await conn.execute(
                 "DELETE FROM agent_definitions WHERE user_id = %s", (user_id,)
             )
+            versions = await conn.execute(
+                "DELETE FROM agent_definition_versions WHERE user_id = %s", (user_id,)
+            )
             return {
                 "agent_definitions": definitions.rowcount,
                 "agent_definition_files": files.rowcount,
+                "agent_definition_versions": versions.rowcount,
             }
 
     # -- export (plan 27): pages and slices, never a whole user at once ------
@@ -335,6 +550,33 @@ class AgentDefinitionStore(BaseStore):
                 (user_id, after[0], after[1], limit),
             )
             return list(await cur.fetchall())
+
+    async def page_versions(
+        self, user_id: str, after: tuple[str, int], limit: int
+    ) -> list[dict[str, Any]]:
+        """One page of whole versions, keyed after ``(agent_slug, version_no)``.
+
+        Whole rows, content included: a version is one agent's prompts and
+        config, bounded by the per-file cap and the 20-version limit.
+        """
+        async with self._pool.connection() as conn:
+            cur = await conn.execute(
+                "SELECT agent_slug, version_no, kind, changes, restored_from, based_on, "
+                "created_at, spec, files FROM agent_definition_versions "
+                "WHERE user_id = %s AND (agent_slug, version_no) > (%s, %s) "
+                "ORDER BY agent_slug, version_no LIMIT %s",
+                (user_id, after[0], after[1], limit),
+            )
+            rows = await cur.fetchall()
+        return [
+            {
+                **row,
+                "changes": _changes(row["changes"]),
+                "spec": _spec(row["spec"]),
+                "files": _decoded(row["files"]) or {},
+            }
+            for row in rows
+        ]
 
     async def read_file_slice(
         self, user_id: str, agent_slug: str, path: str, start: int, length: int
@@ -428,6 +670,33 @@ def _spec(value: Any) -> dict[str, Any]:
             return {}
         return decoded if isinstance(decoded, dict) else {}
     return {}
+
+
+def _decoded(value: Any) -> Any:
+    """A ``jsonb`` column's value, decoded if the driver handed back text."""
+    if isinstance(value, (str, bytes)):
+        try:
+            return json.loads(value)
+        except ValueError:
+            return None
+    return value
+
+
+def _changes(value: Any) -> list[str]:
+    decoded = _decoded(value)
+    return [str(item) for item in decoded] if isinstance(decoded, list) else []
+
+
+def _version_files(value: Any) -> dict[str, tuple[str, str]]:
+    """A version's ``files`` column as ``{path: (content, encoding)}``."""
+    decoded = _decoded(value)
+    if not isinstance(decoded, dict):
+        return {}
+    return {
+        str(path): (str(body.get("content", "")), str(body.get("encoding", "utf-8")))
+        for path, body in decoded.items()
+        if isinstance(body, dict)
+    }
 
 
 def _as_item(namespace: tuple[str, ...], key: str, content: str, encoding: str) -> Item:

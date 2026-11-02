@@ -37,7 +37,7 @@ import type {
 } from "@/shared/lib/types";
 
 /**
- * The canvas builder's logic (plan 44 P3+P4), without a page: the draft
+ * The canvas builder's logic (plan 37 P3+P4), without a page: the draft
  * reducer (stable uids, updates by path, the tool cascade), the client rules
  * against the same table the server is tested on, issue paths landing on
  * nodes and fields, a 3-level round trip through the spec, the approvals
