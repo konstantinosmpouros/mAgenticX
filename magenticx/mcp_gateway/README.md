@@ -2,7 +2,7 @@
 
 Wrapper around the `docker/mcp-gateway` image that serves a curated Model Context Protocol catalog over SSE for the agents service.
 
-**This is an optional, opt-in add-on.** The core stack (`magenticx/docker-compose.yaml`) runs without it: the agents service has MCP off unless `MCP_GATEWAY_URL` is set, and then runs use each agent's own tools and the tool catalog is empty. Production (`docker-compose-denis*.yaml`) sets the URL and runs the gateway.
+**It is part of the core stack.** Locally it is the `mcp_gateway` service in `magenticx/docker-compose.yaml`; on Dennis it runs as its own plain-Compose project (`docker-compose-denis-mcp.yaml`), because Swarm ignores `privileged` and the dind image can't start there. A run never depends on it: with the gateway down, runs use each agent's own tools.
 
 ## What it does
 
@@ -13,34 +13,30 @@ Wrapper around the `docker/mcp-gateway` image that serves a curated Model Contex
 
 ## Files
 
-- `mcp_catalog.yaml` – Docker MCP catalog used by the gateway; edit to add/remove servers or tweak metadata. Compose mounts this read-write if you need to iterate locally.
+- `mcp_catalog.yaml` – Docker MCP catalog used by the gateway; edit to add/remove servers or tweak metadata. Compose mounts it read-only; recreate the gateway after editing.
 - `mcp_config.yaml` – optional per-server configuration (e.g., `arxiv-mcp-server.storage_path`).
 - `mcp_secret.env` – key/value pairs for MCP server credentials (e.g. `tavily.api_token=...`). Copy `mcp_secret.example.env` to `mcp_secret.env` and fill it in.
 
 ## Running
 
-### Turning MCP on locally
+### Locally
 
-`magenticx/docker-compose-mcp.yaml` is its own compose project (`magenticx-mcp`) and joins the `mcp_net` network as **external** — `docker-compose.yaml` creates that network, so start the core stack first.
+The gateway starts with the rest of the stack — nothing extra to run:
 
-1. In `magenticx/.env`, set `MCP_GATEWAY_URL=http://mcp_gateway:8005/sse` (the core compose passes `${MCP_GATEWAY_URL-}` to agents; unset = MCP off).
-2. In `magenticx/mcp_gateway/mcp_secret.env`, put `tavily.api_token=...`.
-3. Start the core stack, then the gateway:
+1. In `magenticx/mcp_gateway/mcp_secret.env`, put `tavily.api_token=...`.
+2. `docker-compose -p magenticx -f magenticx/docker-compose.yaml up -d --build`.
 
-   ```bash
-   docker compose -f magenticx/docker-compose.yaml up -d
-   docker compose -f magenticx/docker-compose-mcp.yaml up -d
-   ```
+The compose passes `${MCP_GATEWAY_URL-http://mcp_gateway:8005/sse}` to agents. To run without MCP, set `MCP_GATEWAY_URL=` (empty) in `magenticx/.env` and recreate `agents`; stopping the gateway alone leaves MCP on but unreachable, so each run waits up to `MCP_CONNECT_TIMEOUT_SECONDS` (default 10) before continuing without MCP tools, and the tool catalog returns 502.
 
-4. Recreate `agents` so it picks up the URL: `docker compose -f magenticx/docker-compose.yaml up -d --force-recreate agents`.
+### On Dennis
 
-To turn MCP off again, unset `MCP_GATEWAY_URL` and recreate `agents`; stopping the gateway alone leaves MCP on but unreachable, so each run waits up to `MCP_CONNECT_TIMEOUT_SECONDS` (default 10) before continuing without MCP tools, and the tool catalog returns 502.
+Plain Compose next to the Swarm stack, files in `/opt/magenticx/mcp_gateway/` — see `CLAUDE.md § Deployment` for the workflow.
 
 ### Details
 
-- Docker Compose starts the container privileged (dind) with `--transport=sse --port=8005 --servers=tavily,arxiv-mcp-server --catalog=./app/mcp_catalog.yaml --config=./app/mcp_config.yaml --secrets=/app/secrets/mcp_secret.env`.
+- Compose starts the container privileged (dind) with no host port with `--transport=sse --port=8005 --servers=tavily,arxiv-mcp-server --catalog=./app/mcp_catalog.yaml --config=./app/mcp_config.yaml --secrets=/app/secrets/mcp_secret.env`.
 - Agents use `http://mcp_gateway:8005/sse`; adjust `MCP_GATEWAY_URL` in the agents service if you change the port or transport.
-- To enable more MCP servers, add them to `mcp_catalog.yaml`, supply any required credentials in `mcp_secret.env`, and append their ids to the `--servers` flag in `magenticx/docker-compose-mcp.yaml` (and `docker-compose-denis-mcp.yaml` for production).
+- To enable more MCP servers, add them to `mcp_catalog.yaml`, supply any required credentials in `mcp_secret.env`, and append their ids to the `--servers` flag in `magenticx/docker-compose.yaml` (and `docker-compose-denis-mcp.yaml` for production).
 
 ## Security — trust boundary
 

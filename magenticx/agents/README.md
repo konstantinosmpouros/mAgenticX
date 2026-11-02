@@ -4,7 +4,7 @@ The `agents` service is the inference and orchestration layer for the project. I
 
 - discovers all registered agent templates at startup
 - streams agent execution as AG-UI compatible Server-Sent Events (SSE)
-- loads MCP tools on demand for each run, when the optional MCP gateway is enabled (`MCP_GATEWAY_URL`; off by default)
+- loads MCP tools on demand for each run from the MCP gateway (`MCP_GATEWAY_URL`; empty in the code = off, set by both composes)
 - delegates retrieval and SQL execution to the RAG service
 - provides utility endpoints for speech-to-text and conversation title generation
 
@@ -542,7 +542,7 @@ uvicorn main:app --host 0.0.0.0 --port 8003 --reload
 Recommended companion services during development:
 
 - `rag_service`
-- `mcp_gateway` (optional — only if `MCP_GATEWAY_URL` is set)
+- `mcp_gateway` (not required — a run without it uses the agent's own tools)
 
 Without them:
 
@@ -572,16 +572,14 @@ From `magenticx/docker-compose.yaml`:
 - it is configured with:
   - `OPENAI_API_KEY`
   - `RAG_BASE_URL=http://rag_service:8001`
-  - `MCP_GATEWAY_URL=${MCP_GATEWAY_URL-}` — MCP off unless `magenticx/.env` sets it (e.g. `http://mcp_gateway:8005/sse`)
+  - `MCP_GATEWAY_URL=${MCP_GATEWAY_URL-http://mcp_gateway:8005/sse}` — on by default; `magenticx/.env` can set it empty for MCP off
   - `DISABLED_AGENT_SLUGS`
-- `docker-compose.yaml` creates the `mcp_net` network itself, so the core stack starts without the gateway
 
-From `magenticx/docker-compose-mcp.yaml` (optional add-on, project `magenticx-mcp`; start it after the core stack):
+The `mcp_gateway` service in the same compose:
 
-- the MCP gateway is exposed on `8005`
-- it runs in SSE mode
-- it joins `mcp_net` as an external network
-- it serves configured MCP servers such as Tavily and Arxiv
+- runs in SSE mode on `8005`, with no host port
+- shares `mcp_net` with agents
+- serves configured MCP servers such as Tavily and Arxiv
 - see [`mcp_gateway/README.md`](../mcp_gateway/README.md) for turning it on
 
 ## 15. Known Operational Characteristics

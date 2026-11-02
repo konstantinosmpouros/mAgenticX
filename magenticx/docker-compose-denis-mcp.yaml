@@ -1,3 +1,7 @@
+# Plain Compose, not the Swarm stack: Swarm ignores privileged, so dind's inner
+# dockerd never starts there. Fixed project name, so it doesn't follow the folder.
+name: magenticx-mcp
+
 services:
 
   mcp_gateway: # 8005
@@ -14,9 +18,9 @@ services:
     - --config=./app/mcp_config.yaml
     - --secrets=/app/mcp_secret
     volumes:
-      - /opt/magenticx/mcp_config/mcp_catalog.yaml:/app/mcp_catalog.yaml:ro
-      - /opt/magenticx/mcp_config/mcp_secret.env:/app/mcp_secret:ro
-      - /opt/magenticx/mcp_config/mcp_config.yaml:/app/mcp_config.yaml:ro
+      - /opt/magenticx/mcp_gateway/mcp_catalog.yaml:/app/mcp_catalog.yaml:ro
+      - /opt/magenticx/mcp_gateway/mcp_secret.env:/app/mcp_secret:ro
+      - /opt/magenticx/mcp_gateway/mcp_config.yaml:/app/mcp_config.yaml:ro
     # In memory, so every start is clean. A reboot kills this container
     # mid-flight and Docker *restarts* (not re-creates) it, which kept the inner
     # dockerd's PID files from the previous run; containerd then refused to

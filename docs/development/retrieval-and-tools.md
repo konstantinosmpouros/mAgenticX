@@ -1,6 +1,6 @@
 # Retrieval and Tools
 
-The platform exposes two kinds of external capability to agents: **retrieval** (semantic search over a vector store and SQL queries over uploaded spreadsheets) and **tools** (arbitrary actions provided by MCP servers). Both are accessed through the same request path — the agent is loaded, MCP tools are attached, and the agent decides at runtime which tools to call. MCP is an **opt-in add-on**: with `MCP_GATEWAY_URL` unset (the default) or a gateway that can't be reached, no MCP tools are attached and the run goes ahead with the agent's own tools. The RAG service is a separate FastAPI process that agents reach through a dedicated endpoint; it never talks to the dialogue bridge directly.
+The platform exposes two kinds of external capability to agents: **retrieval** (semantic search over a vector store and SQL queries over uploaded spreadsheets) and **tools** (arbitrary actions provided by MCP servers). Both are accessed through the same request path — the agent is loaded, MCP tools are attached, and the agent decides at runtime which tools to call. MCP is part of the core stack, but never required: with `MCP_GATEWAY_URL` empty or a gateway that can't be reached, no MCP tools are attached and the run goes ahead with the agent's own tools. The RAG service is a separate FastAPI process that agents reach through a dedicated endpoint; it never talks to the dialogue bridge directly.
 
 ---
 

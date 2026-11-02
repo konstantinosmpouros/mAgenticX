@@ -39,7 +39,7 @@ The agents service is an **internal** microservice. The browser never talks to i
 
 1. **Agent registry & runtime selection** — discovers agent templates at import, instantiates one per request.
 2. **Per-request orchestration & SSE streaming** — runs the agent graph and streams AG-UI events.
-3. **Tool discovery & MCP session management** — loads MCP tools per run from the gateway, when MCP is on (an opt-in add-on; off by default).
+3. **Tool discovery & MCP session management** — loads MCP tools per run from the gateway, when MCP is on (both composes set `MCP_GATEWAY_URL`; empty = off).
 4. **Adjacent utility inference** — title/suggestion generation, dictation (STT), read-aloud (TTS), realtime voice, embeddings (proxied for the bridge), and the skills/memory management surface.
 
 It does **not** own auth, chat persistence, rate limiting, or CSRF — those live in `dialogue_bridge`.

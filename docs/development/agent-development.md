@@ -628,7 +628,7 @@ tools:
 
 At stream time, the MCP gateway provides live LangChain tool objects. `attach_tools()` keeps only the ones whose cache key is in `(config_tool_names ∪ user-enabled) − user-disabled` (`_filter_live_tools`; the user's choices come from Settings → Agents on the run config).
 
-MCP is an **opt-in add-on** (`MCP_GATEWAY_URL` empty by default). With MCP off, or a gateway that can't be reached within `MCP_CONNECT_TIMEOUT_SECONDS`, the run gets no MCP tools and goes ahead with the agent's native and framework tools — so write instructions that still make sense without the MCP tools. Declared MCP refs stay in `agent.yaml`; the Agents tab lists them as unavailable ("MCP is not enabled on this deployment").
+MCP is part of the core stack, but never required (`MCP_GATEWAY_URL` empty = off). With MCP off, or a gateway that can't be reached within `MCP_CONNECT_TIMEOUT_SECONDS`, the run gets no MCP tools and goes ahead with the agent's native and framework tools — so write instructions that still make sense without the MCP tools. Declared MCP refs stay in `agent.yaml`; the Agents tab lists them as unavailable ("MCP is not enabled on this deployment").
 
 ### Tool Cache Key Format
 

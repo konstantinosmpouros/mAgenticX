@@ -1,6 +1,6 @@
 # Catalog
 
-The catalog is the discovery layer that tells the frontend which agents and tools are available at any given moment. `dialogue_bridge` exposes three endpoints under `/v1/catalog`: one for agents (backed by an in-memory cache synced from the agents service), one for tools (proxied per request to the agents service, which serves them from its cached MCP gateway manifest — or an empty list when MCP is off, since the gateway is an opt-in add-on), and one that generates personalized conversation starter suggestions via an LLM call. On page load the frontend fetches both lists in parallel, merges them with any previously cached snapshot from IndexedDB, and uses the result to populate the agent selector and the **read-only** MCP Servers browse tab. The catalog is purely informational for tools: an inference request carries only the selected agent UUID — it does **not** carry a tool list. Tool enablement is owned by the agents service (declared per agent in `agent.yaml`, disabled per (user, agent) in Settings → Agents), not computed from the catalog and sent per request. See [user-preferences.md § Tool control moved to the Agents tab](user-preferences.md#tool-control-moved-to-the-agents-tab).
+The catalog is the discovery layer that tells the frontend which agents and tools are available at any given moment. `dialogue_bridge` exposes three endpoints under `/v1/catalog`: one for agents (backed by an in-memory cache synced from the agents service), one for tools (proxied per request to the agents service, which serves them from its cached MCP gateway manifest — or an empty list when MCP is off), and one that generates personalized conversation starter suggestions via an LLM call. On page load the frontend fetches both lists in parallel, merges them with any previously cached snapshot from IndexedDB, and uses the result to populate the agent selector and the **read-only** MCP Servers browse tab. The catalog is purely informational for tools: an inference request carries only the selected agent UUID — it does **not** carry a tool list. Tool enablement is owned by the agents service (declared per agent in `agent.yaml`, disabled per (user, agent) in Settings → Agents), not computed from the catalog and sent per request. See [user-preferences.md § Tool control moved to the Agents tab](user-preferences.md#tool-control-moved-to-the-agents-tab).
 
 ---
 
@@ -12,7 +12,7 @@ flowchart LR
     nginx --> bridge["dialogue_bridge :8002"]
     bridge -->|"GET /agents (cached)"| agents["agents service :8003"]
     bridge -->|"GET /tools (per-request)"| agents
-    agents -.->|"SSE tool manifest\n(only when MCP is on)"| mcp["mcp_gateway :8005\n(optional add-on)"]
+    agents -.->|"SSE tool manifest\n(only when MCP is on)"| mcp["mcp_gateway :8005\n(core stack)"]
     mcp --> servers["MCP Servers\n(tavily, arxiv, ...)"]
     bridge --- pg[("chat_postgres\nagents table")]
 ```

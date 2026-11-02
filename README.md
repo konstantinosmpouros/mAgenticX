@@ -26,7 +26,7 @@ flowchart TB
         UI["agentic_ui<br/>(served by nginx)"]
         Bridge["dialogue_bridge<br/>(FastAPI BFF)"]
         Agents["agents<br/>(LangGraph workflows)"]
-        MCP["mcp_gateway (optional add-on)<br/>(MCP tool catalog SSE)"]
+        MCP["mcp_gateway<br/>(MCP tool catalog SSE)"]
         RAG["rag_service<br/>(retrieval and analytics)"]
     end
 
@@ -42,7 +42,7 @@ flowchart TB
     UI -->|"REST + WebSocket via /api"| Bridge
     Bridge -->|"Detached run tasks"| Agents
     Bridge -->|"XADD / XREAD per-run event log"| Redis["redis<br/>(inference event log Streams)"]
-    Agents -.->|"Tool catalog SSE (opt-in)"| MCP
+    Agents -.->|"Tool catalog SSE"| MCP
     Bridge -->|"Persist conversations"| PG
     Bridge -->|"userpass login"| Vault
     Agents -->|"Document and analytics tools"| RAG
@@ -142,7 +142,7 @@ sequenceDiagram
 
 ### Retrieval and Tooling Flow
 
-The agents service can combine model reasoning with vector retrieval, spreadsheet analytics, and MCP tools, then emit the resulting activity back to the UI as structured events. MCP tools are an opt-in add-on: with no gateway configured (or one that cannot be reached), a run goes ahead with the agent's own tools.
+The agents service can combine model reasoning with vector retrieval, spreadsheet analytics, and MCP tools, then emit the resulting activity back to the UI as structured events. The MCP gateway is part of the stack, but a run never depends on it: with the gateway unreachable (or `MCP_GATEWAY_URL` empty), a run goes ahead with the agent's own tools.
 
 ```mermaid
 flowchart TD
@@ -215,7 +215,7 @@ Representative use cases supported by the current codebase:
 | `dialogue_bridge` | Authenticated BFF, persistence layer, detached run manager | `8002` | FastAPI, SQLAlchemy, Postgres | [Bridge README](magenticx/dialogue_bridge/README.md) |
 | `agents` | Streaming agent runtime and AG-UI normalization | `8003` | FastAPI, LangGraph, OpenAI | [Agents README](magenticx/agents/README.md) |
 | `rag_service` | Retrieval and SQL over spreadsheet-backed data | `8001` | FastAPI, Chroma, DuckDB | [RAG README](magenticx/rag_service/README.md) |
-| `mcp_gateway` | Optional add-on: tool catalog and MCP SSE endpoint (off unless `MCP_GATEWAY_URL` is set) | `8005` | docker/mcp-gateway | [MCP Gateway README](magenticx/mcp_gateway/README.md) |
+| `mcp_gateway` | Tool catalog and MCP SSE endpoint (Tavily, arXiv) | `8005` (internal) | docker/mcp-gateway | [MCP Gateway README](magenticx/mcp_gateway/README.md) |
 | `vectordb` | Persistent vector storage for retrieval | `8000` | Chroma | integrated |
 | `chat_postgres` | Durable chat state, attachments, feedback, and the `streaming_*` inference-run lifecycle on `messages` | `5432` | PostgreSQL | integrated |
 | `redis` | Per-run AG-UI event log (Redis Streams) backing the WebSocket observer's cursor-based replay | `6379` | Redis 7.4 alpine | integrated |
@@ -240,7 +240,6 @@ Representative use cases supported by the current codebase:
     ├── vectorstores/        Chroma persistence
     ├── vault/               Vault config and bootstrap assets
     ├── docker-compose.yaml
-    ├── docker-compose-mcp.yaml
     └── docker-compose-hashicorp.yaml
 ```
 
@@ -270,15 +269,15 @@ This core stack includes:
 - `vectordb`
 - `chat_postgres`
 - `redis`
+- `mcp_gateway` (Tavily, arXiv — put the Tavily token in `magenticx/mcp_gateway/mcp_secret.env`)
 
 ### Supporting Services
 
 The repo also includes separate Compose files for infrastructure that may be run alongside or independently of the core stack:
 
-- `magenticx/docker-compose-mcp.yaml` for the optional MCP gateway (project `magenticx-mcp`)
 - `magenticx/docker-compose-hashicorp.yaml` for Vault
 
-The core stack starts on its own: `docker-compose.yaml` creates the `mcp_net` network, and MCP is off unless `MCP_GATEWAY_URL` is set. To turn MCP on, start the core stack first, set `MCP_GATEWAY_URL=http://mcp_gateway:8005/sse` in `magenticx/.env` and the Tavily token in `magenticx/mcp_gateway/mcp_secret.env`, then run `docker compose -f magenticx/docker-compose-mcp.yaml up -d` and recreate `agents` — see the [MCP Gateway README](magenticx/mcp_gateway/README.md). Review the Compose files before assuming a single-command full-environment startup.
+MCP is on by default; set `MCP_GATEWAY_URL=` (empty) in `magenticx/.env` to run without it — see the [MCP Gateway README](magenticx/mcp_gateway/README.md).
 
 ### Main URLs
 
@@ -289,7 +288,7 @@ When the default Compose setup is running:
 - Agents: `http://localhost:8003`
 - RAG Service: `http://localhost:8001`
 - Redis (inference event log): `redis://redis:6379/0` (internal only — not host-bound)
-- MCP Gateway: `http://localhost:8005/sse` when the optional add-on is started
+- MCP Gateway: `http://mcp_gateway:8005/sse` (internal only — reached by agents on `mcp_net`)
 - Vault: `http://localhost:8004` when started
 
 ### Local Development
@@ -333,7 +332,7 @@ flowchart TB
         UI["agentic_ui\n(served by nginx)"]
         Bridge["dialogue_bridge\n(FastAPI BFF)"]
         Agents["agents\n(LangGraph workflows)"]
-        MCP["mcp_gateway (optional add-on)\n(MCP tool catalog SSE)"]
+        MCP["mcp_gateway\n(MCP tool catalog SSE)"]
         RAG["rag_service\n(retrieval and analytics)"]
     end
 
@@ -349,7 +348,7 @@ flowchart TB
     UI -->|"REST + WebSocket via /api"| Bridge
     Bridge -->|"Detached run tasks"| Agents
     Bridge -->|"XADD / XREAD per-run event log"| Redis["redis<br/>(inference event log Streams)"]
-    Agents -.->|"Tool catalog SSE (opt-in)"| MCP
+    Agents -.->|"Tool catalog SSE"| MCP
     Bridge -->|"Persist conversations"| PG
     Bridge -->|"userpass login"| Vault
     Agents -->|"Document and analytics tools"| RAG

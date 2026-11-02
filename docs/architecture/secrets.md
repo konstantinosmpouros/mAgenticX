@@ -11,7 +11,7 @@ flowchart LR
     Portainer["Portainer\nSecrets tab"] -->|"Swarm secret\n(magenticx_*)"| Tmpfs["/run/secrets/<alias>\n(tmpfs, ro)"]
     Tmpfs -->|"<NAME>_FILE env\n→ _resolve_file_backed_secret()"| Py["dialogue_bridge\nagents\nrag_service"]
     Tmpfs -->|"load-secrets-and-exec.sh\n(file → env var)"| Nginx["agentic_ui (nginx)"]
-    File["/opt/magenticx/mcp_config/\nmcp_secret.env (bind mount)"] --> Gw["mcp_gateway"]
+    File["/opt/magenticx/mcp_gateway/\nmcp_secret.env (bind mount)"] --> Gw["mcp_gateway"]
     KMS["OCI KMS\n(HSM signing key)"] -->|"Sign(digest)\nAPI key scoped to Dennis"| Py
 ```
 
@@ -70,7 +70,7 @@ The MCP gateway runs as **plain `docker compose`** (the dind variant can't run u
 
 | Source file (on VM) | Mount → flag | Consumed by | Purpose / functionality |
 | --- | --- | --- | --- |
-| `/opt/magenticx/mcp_config/mcp_secret.env` | `→ /app/mcp_secret` (`--secrets`) | `mcp_gateway` | API keys for the upstream MCP servers the gateway spawns (e.g. the **Tavily** API key for web search; `arxiv-mcp-server` needs none). The gateway injects these into the per-server containers it launches. |
+| `/opt/magenticx/mcp_gateway/mcp_secret.env` | `→ /app/mcp_secret` (`--secrets`) | `mcp_gateway` | API keys for the upstream MCP servers the gateway spawns (e.g. the **Tavily** API key for web search; `arxiv-mcp-server` needs none). The gateway injects these into the per-server containers it launches. |
 
 > Treat `mcp_secret.env` like any other secret: `chmod 600`, never commit it. It is the one secret in the production stack not managed by Swarm, so it won't appear in Portainer's Secrets tab.
 

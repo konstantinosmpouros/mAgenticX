@@ -39,6 +39,37 @@ services:
       - frontend
 
 
+  mcp_gateway: # 8005
+    # The MCP tool gateway (Tavily, arXiv). The dind variant runs its own
+    # Docker daemon so the MCP servers it spawns never touch the host's — that
+    # inner daemon is why it must be privileged. Only agents reaches it, by
+    # name on mcp_net; no host port.
+    container_name: mcp_gateway
+    image: docker/mcp-gateway:dind-v0.42.1
+    privileged: true
+    command:
+    - --transport=sse
+    - --port=8005
+    - --servers=tavily,arxiv-mcp-server
+    - --catalog=./app/mcp_catalog.yaml
+    - --secrets=/app/secrets/mcp_secret.env
+    - --config=./app/mcp_config.yaml
+    volumes:
+      - ./mcp_gateway/mcp_catalog.yaml:/app/mcp_catalog.yaml:ro
+      - ./mcp_gateway/mcp_config.yaml:/app/mcp_config.yaml:ro
+      - ./mcp_gateway/mcp_secret.env:/app/secrets/mcp_secret.env:ro
+    # In memory, so every start is clean. A reboot kills this container
+    # mid-flight and Docker *restarts* (not re-creates) it, which kept the inner
+    # dockerd's PID files from the previous run; containerd then refused to
+    # start and the gateway waited for dockerd forever (Dennis, 2026-10-02).
+    # /run, not /var/run: in this image /var/run is a symlink to it.
+    tmpfs:
+      - /run
+    restart: unless-stopped
+    networks:
+      - mcp_net
+
+
   agents: # 8003
     container_name: agents
     image: agents
@@ -60,10 +91,10 @@ services:
       # Reverse hop for the memory-search tool (agent → bridge). HTTP in local
       # dev (the bridge serves plaintext here); prod uses https (see denis compose).
       - DIALOGUE_BRIDGE_URL=http://dialogue_bridge:8002
-      # MCP is an opt-in add-on (docker-compose-mcp.yaml): off unless .env sets
-      # MCP_GATEWAY_URL=http://mcp_gateway:8005/sse. A configured but unreachable
-      # gateway only costs its tools — runs carry on without them.
-      - MCP_GATEWAY_URL=${MCP_GATEWAY_URL-}
+      # The gateway is part of this stack. An unreachable gateway only costs its
+      # tools — runs carry on without them; set MCP_GATEWAY_URL= (empty) in .env
+      # to run with no MCP at all.
+      - MCP_GATEWAY_URL=${MCP_GATEWAY_URL-http://mcp_gateway:8005/sse}
       - TRUSTED_PROXY_SECRET=${TRUSTED_PROXY_SECRET}
       - LOG_FORMAT=${LOG_FORMAT:-console}   # json for the local monitoring add-on
       # The global plane (agent definitions, skills catalogue) is on the
@@ -85,6 +116,7 @@ services:
     depends_on:
       - rag_service
       - chat_postgres
+      - mcp_gateway
     restart: unless-stopped
     ports:
       - "8003:8003"
@@ -210,8 +242,8 @@ networks:
   backend:
     internal: true
   frontend:
-  # Owned here, so the core stack starts on its own; the optional MCP gateway
-  # (docker-compose-mcp.yaml) joins it.
+  # agents ↔ mcp_gateway only. Not internal: the gateway needs the internet to
+  # pull MCP server images and reach Tavily/arXiv.
   mcp_net:
     name: mcp_net
 
