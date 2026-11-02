@@ -59,7 +59,11 @@ export default function VoiceModeBody({
   const item = rm ? fadeVariants : textVariants;
 
   return (
-    <div className="flex flex-1 min-h-0 items-center justify-center overflow-hidden px-6 py-8">
+    // The orb's halo reaches well past the sphere, and this box clips (it sits
+    // right under the chat header). The mask fades the halo out before either
+    // edge, so it never ends in a hard line; on a short window the orb also
+    // shrinks with the height, leaving the halo room.
+    <div className="flex flex-1 min-h-0 items-center justify-center overflow-hidden px-6 py-10 [mask-image:linear-gradient(to_bottom,transparent,#000_3.5rem,#000_calc(100%-2.5rem),transparent)]">
       <motion.div
         variants={rm ? undefined : stackVariants}
         className="flex w-full max-w-2xl flex-col items-center text-center"
@@ -67,7 +71,7 @@ export default function VoiceModeBody({
         <motion.div variants={rm ? fadeVariants : orbVariants}>
           <Orb
             state={orbStateForVoice(status, muted)}
-            className="size-[clamp(11.5rem,34vw,14rem)]"
+            className="size-[clamp(9rem,min(34vw,30vh),14rem)]"
           />
         </motion.div>
 
