@@ -74,9 +74,12 @@ async def _known_skills(user_id: str) -> frozenset[str]:
     return frozenset(await list_user_skill_names(user_id))
 
 
-async def _validate(
+async def validate_agent_payload(
     user_id: str, spec: dict, files: list, existing_slug: str | None = None
 ):
+    """``validate_definition`` with this service's live context: reserved slugs,
+    the user's skill pool and the MCP catalog. Every write runs it, and so does
+    a trial run (``router.inference``), so a draft is held to the same rules."""
     return validate_definition(
         user_id,
         spec,
@@ -94,7 +97,7 @@ def _result(issues: list[AgentIssue]) -> CustomAgentValidation:
     return CustomAgentValidation(valid=not errors, errors=errors, issues=issues)
 
 
-def _invalid(issues: list[AgentIssue]) -> JSONResponse:
+def invalid_definition_response(issues: list[AgentIssue]) -> JSONResponse:
     """422 with every issue, so the builder can mark each field.
 
     Returned rather than raised: the service's ``HTTPException`` handler keeps
@@ -134,7 +137,7 @@ async def list_custom_agents(user_id: str) -> list[UserAgentSummary]:
 )
 async def validate_custom_agent(user_id: str, payload: CustomAgentWrite) -> CustomAgentValidation:
     """Dry run: report every problem with a definition and write nothing."""
-    _, issues = await _validate(user_id, payload.spec, payload.files)
+    _, issues = await validate_agent_payload(user_id, payload.spec, payload.files)
     return _result(issues)
 
 
@@ -151,7 +154,7 @@ async def import_custom_agent(user_id: str, payload: CustomAgentImport) -> Custo
     checked as a replacement for that agent, as a ``PUT`` would check it."""
     spec, files, issues = parse_agent_yaml(payload.yaml, payload.files, slug=payload.slug)
     if spec is not None:
-        _, checked = await _validate(user_id, spec, files, existing_slug=payload.slug)
+        _, checked = await validate_agent_payload(user_id, spec, files, existing_slug=payload.slug)
         issues = [*issues, *checked]
     errors = errors_of(issues)
     logger.info(
@@ -220,9 +223,9 @@ async def export_custom_agent(user_id: str, agent_slug: str) -> Response:
 async def create_custom_agent(user_id: str, payload: CustomAgentWrite) -> UserAgentSummary | JSONResponse:
     """Create an agent. 409 if the slug is already taken by this user, 422 on an
     invalid definition."""
-    spec, issues = await _validate(user_id, payload.spec, payload.files)
+    spec, issues = await validate_agent_payload(user_id, payload.spec, payload.files)
     if spec is None:
-        return _invalid(issues)
+        return invalid_definition_response(issues)
 
     taken = f"You already have an agent named {spec.slug!r}."
     existing = await list_user_agents(user_id)
@@ -251,9 +254,9 @@ async def update_custom_agent(
     if await get_user_agent(user_id, agent_slug) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown agent.")
 
-    spec, issues = await _validate(user_id, payload.spec, payload.files, existing_slug=agent_slug)
+    spec, issues = await validate_agent_payload(user_id, payload.spec, payload.files, existing_slug=agent_slug)
     if spec is None:
-        return _invalid(issues)
+        return invalid_definition_response(issues)
 
     summary = await write_user_agent(user_id, spec, payload.files)
     logger.info("user_agent_updated", "Updated a user-authored agent", agent_slug=summary.slug)
@@ -315,9 +318,9 @@ async def restore_custom_agent_version(
     if version is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown version.")
 
-    spec, issues = await _validate(user_id, version.spec, version.files, existing_slug=agent_slug)
+    spec, issues = await validate_agent_payload(user_id, version.spec, version.files, existing_slug=agent_slug)
     if spec is None:
-        return _invalid(issues)
+        return invalid_definition_response(issues)
 
     summary = await write_user_agent(user_id, spec, version.files, restored_from=version_no)
     logger.info(

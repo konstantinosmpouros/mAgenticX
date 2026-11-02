@@ -3,12 +3,14 @@
  */
 import type {
   Agent,
+  AgentTrialStartRequest,
   AgentVersionDetail,
   AgentVersionSummary,
   CustomAgentDetail,
   CustomAgentImportResult,
   CustomAgentValidation,
   CustomAgentWritePayload,
+  InferenceStartResponse,
   MyAgent,
 } from "../types";
 import { requestJson, requestRaw, requestVoid } from "../http";
@@ -28,6 +30,7 @@ import {
 } from "../schemas";
 import { transformAgent } from "../consts";
 import { AGENTS_BASE_PATH, CATALOG_BASE_PATH } from "./paths";
+import { toInferenceStartResponse } from "./inference";
 
 // Fetch agents from backend via nginx proxy. The wire shape is validated as an
 // array of objects; each row is coerced into the app `Agent` by the shared
@@ -231,6 +234,42 @@ export async function updateMyAgent(
     fallbackMessage: "Failed to update the agent",
   });
   return transformAgent(data);
+}
+
+// ---------------------------------------------------------------------------
+// "Try it" (plan 40): chat with the builder's uncommitted draft. A message
+// starts a run on a private, ephemeral trial conversation; the answer is the
+// same as an inference start's, so the run is followed with the ordinary run
+// WebSocket, resume and cancel. A 422 carries `{message, errors, issues}` (the
+// draft does not validate) on the thrown ApiError's `detailObject`, as a
+// create or update does.
+// ---------------------------------------------------------------------------
+export async function startAgentTrial(
+  userId: string,
+  body: AgentTrialStartRequest,
+): Promise<InferenceStartResponse> {
+  const data = await requestJson(`${customAgentsUrl(userId)}/try`, {
+    method: "POST",
+    csrf: true,
+    body,
+    schema: WireObjectSchema,
+    errorMessages: {
+      413: `This agent definition is too large for the server (limit ${PROXY_LIMIT_MB} MB including base64 overhead).`,
+      429: "Too many messages in a short time. Wait a minute and try again.",
+    },
+    fallbackMessage: "Failed to try the agent",
+  });
+  return toInferenceStartResponse(data);
+}
+
+// Reset, or leaving the builder: the trial conversation is deleted, with its
+// checkpoints and files.
+export async function resetAgentTrial(userId: string, conversationId: string): Promise<void> {
+  return requestVoid(`${customAgentsUrl(userId)}/try/${encodeURIComponent(conversationId)}`, {
+    method: "DELETE",
+    csrf: true,
+    fallbackMessage: "Failed to clear the trial chat",
+  });
 }
 
 // ---------------------------------------------------------------------------

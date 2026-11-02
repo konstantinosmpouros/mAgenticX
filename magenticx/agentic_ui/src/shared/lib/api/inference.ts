@@ -53,21 +53,27 @@ export async function startInference(
   if (payload.messagePath?.length) body.messagePath = payload.messagePath;
   if (payload.message) body.message = payload.message;
 
-  const data = (await requestJson(`${INFERENCE_BASE_PATH}/runs/${userId}/start`, {
+  const data = await requestJson(`${INFERENCE_BASE_PATH}/runs/${userId}/start`, {
     method: "POST",
     csrf: true,
     body,
     schema: WireObjectSchema,
     fallbackMessage: "Failed to start inference",
-  })) as Record<string, unknown>;
-
-  return {
-    detail: transformConversationDetail(data.detail as Record<string, unknown>),
-    summary: transformConversationSummary(data.summary as Record<string, unknown>),
-    run: transformInferenceRun(data.run as Record<string, unknown>),
-    message: transformMessage(data.message as Record<string, unknown>),
-  };
+  });
+  return toInferenceStartResponse(data);
 }
+
+// Folder-internal: the wire→app coercion of a run start's answer, shared with
+// the builder's "Try it" start (`./agents`), which answers in the same shape.
+// The caller validates the body with `WireObjectSchema` first.
+export const toInferenceStartResponse = (
+  data: Record<string, unknown>,
+): InferenceStartResponse => ({
+  detail: transformConversationDetail(data.detail as Record<string, unknown>),
+  summary: transformConversationSummary(data.summary as Record<string, unknown>),
+  run: transformInferenceRun(data.run as Record<string, unknown>),
+  message: transformMessage(data.message as Record<string, unknown>),
+});
 
 export async function getActiveInferenceRuns(userId: string): Promise<InferenceRun[]> {
   const data = await requestJson(`${INFERENCE_BASE_PATH}/runs/${userId}?status=active`, {

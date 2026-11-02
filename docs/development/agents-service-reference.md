@@ -292,6 +292,8 @@ Every endpoint below carries `dependencies=[Depends(require_internal_caller)]` (
 - **No `config["tools"]`** — the retired global tool-enablement model used to pass the client's enabled list here; it is gone. An agent resolves its own tools (a deep agent's declared `agent.yaml` `tools:` set minus the per-(user, agent) disables in `tool_prefs.json`), so the request carries no tool list.
 - `config["fork_from"]` = `{thread_id, checkpoint_id}` for edit/retry forks.
 
+**Trial runs (plan 40, "Try it").** `Request` and `AgentResumeRequest` carry an optional `definition: {spec, files}` (the `CustomAgentWrite` shape) — the builder's uncommitted draft, sent by the bridge on the stream and on every resume leg. When present, `router/inference.py:_run_definition` validates it with the same `validate_agent_payload` every write runs (reserved slugs, the owner's skill pool, the MCP catalog; invalid → the write routes' 422 `{message, errors, issues}`), requires `context.agent_owner_id` (400 without) and the URL slug to equal the draft's (400 otherwise), then builds it with `utils.agents.build_trial_definition` — **never** stored in `_USER_AGENT_CACHE`, so a draft cannot be served to a normal run of the same slug. Its `/reference/` is the draft's files from memory (below); memory, skills and conversation files stay keyed `(user_id, slug)` (the bridge decides `use_memory`).
+
 **Pre-flight:** `set_context(...)` for logging → `AGENT_REGISTRY.get(slug)` (404 if unknown) → `agent = definition.cls(config=req.config)` (400 on config-validation error).
 
 **Streaming generator `event_stream()`:**
@@ -478,6 +480,7 @@ agent_runtime (rows)                → mount
   skill_pool + skill_files          → /skills/           (tier 2, read-only)
                                     → /default_skills/   (tier 1, custom agents)
   agent_definition_files            → /reference/        (custom agents, read-only)
+  (request: a trial's draft files)  → /reference/        (trial runs, in memory, read-only)
   conversation_files + _blobs       → /conversation/     (this conversation's files, every agent of it)
                                     → /large_tool_results/, /conversation_history/  (deepagents offloads)
 
@@ -493,6 +496,8 @@ chat_db attachments (via the bridge) → /conversation/input/  (uploads, read-on
 **`/reference/` — the agent's own definition folder, read-only and optional.** Passed as `reference_dir` and supplied by `DeepAgent.reference_dir` (a policy hook returning `None` by default). `YamlDeepAgent` overrides it with its source directory, so material shipped beside `AGENT.md` — notes, checklists, examples — is readable **on demand** at `/reference/<path>` instead of being inlined into every turn. Agents defined in Python return `None`: their package directory holds source, which must never be readable from a run. Without the mount such a file is *inert* — the path matches no route, falls through to `StateBackend`, and reads "not found" with no error logged anywhere.
 
 **Write-deny stays matched to the mounts.** `workspace_write_deny(include_reference=...)` returns the ladder for a run: the always-on rules (`/skills`, `/large_tool_results`, `/conversation_history`, `/conversation/input`) plus `/reference` only when that route is mounted. A function rather than a constant because deepagents rejects a permission whose path lies outside every mounted route — dormant today (it fires only when the default backend supports execution), a hard failure the day sandbox execute lands. Both the mount and the rule derive from `self.reference_dir is not None`, so they cannot drift. `/reference/` is read-only because the folder is authored through the builder UI (which enforces its own type/size limits) and a run that could rewrite its own definition would be editing its next system prompt. Pinned by `tests/agents/test_workspace_mounts.py`.
+
+**A trial's `/reference/` is the draft, not the saved agent.** A `YamlDeepAgent` built with `trial=True` returns `None` from `reference_namespace` and its in-memory `definition_files` from `DeepAgent.reference_files`; `build_workspace_backend(reference_files=...)` mounts them as a `StoreBackend` over `DraftDefinitionStore` (`harness/agent_registry/store.py`: same keys and item shape as `AgentDefinitionStore`, writes ignored). `_has_reference` counts all three sources, so the write-deny rule follows. Pinned by `tests/agents/test_agent_trial.py`.
 
 **Sandbox-execution guard (fail-closed):** deepagents surfaces its built-in `execute` tool exactly when the composite **default** backend implements `SandboxBackendProtocol` (`StateBackend` does not; `LocalShellBackend` — host-shell execution — does, and its import is test-banned from the whole service). While `SANDBOX_EXECUTION_ENABLED` is false the factory refuses to mint a sandbox-capable default (`RuntimeError`), so a refactor swapping the default class can never silently open a code-execution path. Pinned by `tests/agents/test_execute_lockdown.py`.
 

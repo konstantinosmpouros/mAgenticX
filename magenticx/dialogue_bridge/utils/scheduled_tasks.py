@@ -336,7 +336,12 @@ async def _load_owned_conversation(
     result = await db.execute(
         select(ConversationTable)
         .options(selectinload(ConversationTable.messages))
-        .where(ConversationTable.id == conversation_id, ConversationTable.user_id == user_id)
+        .where(
+            ConversationTable.id == conversation_id,
+            ConversationTable.user_id == user_id,
+            # A builder "Try it" chat (plan 40) is never a task's target.
+            ConversationTable.is_trial.is_(False),
+        )
     )
     return result.scalar_one_or_none()
 

@@ -1,6 +1,6 @@
 """User-authored agent DTOs (proxied to the agents service)."""
 from typing import Literal, Optional
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from schema.base import UTCDateTime
 
@@ -27,6 +27,45 @@ class CustomAgentWrite(BaseModel):
 
     spec: dict = Field(default_factory=dict)
     files: list[AgentFile] = Field(default_factory=list)
+
+
+#: The trial composer is plain text; this only bounds a pasted wall of it.
+TRIAL_MESSAGE_MAX_CHARS = 100_000
+#: More tool keys than any definition can declare.
+TRIAL_MAX_APPROVALS = 500
+
+
+class AgentTrialStart(BaseModel):
+    """One "Try it" message (plan 40): run the draft as it is now, uncommitted.
+
+    ``agentId`` is the catalog id of the agent being edited, ``None`` for a
+    draft that was never created. ``conversationId`` continues that trial's
+    chat; ``None`` starts a new one. ``draft`` is the definition exactly as
+    Commit would send it, and ``approvals`` the draft's Approvals choices
+    (``True``/``False`` to gate or not, ``None`` to follow the baseline) —
+    they override the saved tool rows for this run only.
+    """
+    model_config = ConfigDict(populate_by_name=True)
+
+    agentId: Optional[str] = Field(None, max_length=64)
+    conversationId: Optional[str] = Field(None, max_length=64)
+    message: str = Field(..., min_length=1, max_length=TRIAL_MESSAGE_MAX_CHARS)
+    draft: CustomAgentWrite
+    approvals: dict[str, Optional[bool]] = Field(default_factory=dict, max_length=TRIAL_MAX_APPROVALS)
+
+    @field_validator("message")
+    @classmethod
+    def _message_has_text(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("message must not be blank.")
+        return value
+
+    @field_validator("approvals")
+    @classmethod
+    def _approval_keys_are_bounded(cls, value: dict[str, Optional[bool]]) -> dict[str, Optional[bool]]:
+        if any(not key or len(key) > 200 for key in value):
+            raise ValueError("approval keys must be 1-200 characters.")
+        return value
 
 
 class CustomAgentIssue(BaseModel):

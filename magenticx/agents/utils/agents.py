@@ -228,18 +228,39 @@ async def _load_user_agent(user_id: str, slug: str) -> AgentDefinition | None:
         )
         return None
 
-    definition = AgentDefinition(
+    definition = _user_definition(spec, user_id, files)
+    _USER_AGENT_CACHE[(user_id, slug)] = (updated_at, definition)
+    return definition
+
+
+def _user_definition(
+    spec: AgentSpec, user_id: str, files: Dict[str, str], *, trial: bool = False
+) -> AgentDefinition:
+    """A user-authored agent's definition over an already-loaded spec and files."""
+    return AgentDefinition(
         slug=spec.slug,
         manifest=manifest_from_spec(spec),
         factory=(
-            lambda cfg, s=spec, uid=user_id, f=files: YamlDeepAgent(
-                s, owner_user_id=uid, definition_files=f, config=cfg
+            lambda cfg, s=spec, uid=user_id, f=files, t=trial: YamlDeepAgent(
+                s, owner_user_id=uid, definition_files=f, trial=t, config=cfg
             )
         ),
         spec=spec,
     )
-    _USER_AGENT_CACHE[(user_id, slug)] = (updated_at, definition)
-    return definition
+
+
+def build_trial_definition(
+    owner_user_id: str, spec: AgentSpec, files: Dict[str, str]
+) -> AgentDefinition:
+    """The definition of a **trial** run (plan 40): an unsaved draft.
+
+    ``spec`` must already have passed ``validate_definition`` — this builds, it
+    does not check. Deliberately **not** memoised in ``_USER_AGENT_CACHE``: that
+    cache serves real runs, and a draft in it would be served to the next
+    ordinary run of the same slug. The agent's ``/reference/`` mount serves these
+    files from memory, never the saved agent's rows.
+    """
+    return _user_definition(spec, owner_user_id, dict(files), trial=True)
 
 
 def forget_user_agents(user_id: str) -> int:

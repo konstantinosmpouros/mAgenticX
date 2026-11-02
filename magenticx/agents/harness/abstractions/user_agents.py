@@ -510,6 +510,19 @@ def validate_definition(
     return (None if blocking else spec), issues
 
 
+def definition_texts(files: List[AgentFile]) -> Dict[str, str]:
+    """The files of a validated definition as ``{relative path: text}``.
+
+    The path check runs again on the way out, so what a save stores or a trial
+    runs is the value that was checked, not a second reading of the payload.
+    """
+    return {
+        rel: _decode(item, rel).decode("utf-8")
+        for item in files
+        for rel in (str(_validate_relpath(item.path)),)
+    }
+
+
 def errors_of(issues: List[AgentIssue]) -> List[str]:
     """The messages of the issues that block a save."""
     return [i.message for i in issues if i.severity == "error"]
@@ -838,13 +851,9 @@ async def write_user_agent(
     ``restored_from`` brings back an earlier version: it adds no version, it
     makes that one the agent's current version again.
     """
-    staged: Dict[str, tuple[str, str]] = {}
-    for item in files:
-        rel = str(_validate_relpath(item.path))
-        raw = _decode(item, rel)
-        # Stored as text: the extension allowlist admits prompts and config
-        # only, so there is no binary case to carry an encoding for.
-        staged[rel] = (raw.decode("utf-8"), "utf-8")
+    # Stored as text: the extension allowlist admits prompts and config only,
+    # so there is no binary case to carry an encoding for.
+    staged = {rel: (text, "utf-8") for rel, text in definition_texts(files).items()}
 
     dumped = spec.model_dump(mode="json")
     replaced = await _store().save(
@@ -890,6 +899,7 @@ __all__ = [
     "AgentDefinitionExistsError",
     "AgentValidationError",
     "agent_model_options",
+    "definition_texts",
     "delete_user_agent",
     "errors_of",
     "export_user_agent",

@@ -444,6 +444,9 @@ def conversation_summaries_query(user_id: str, *, archived: bool = False, pinned
         .where(
             ConversationTable.user_id == user_id,
             ConversationTable.is_private == False,
+            # Implied by is_private today; explicit so a trial (plan 40) can
+            # never surface here whatever happens to the private flag.
+            ConversationTable.is_trial.is_(False),
             ConversationTable.is_archived == archived,
         )
     )

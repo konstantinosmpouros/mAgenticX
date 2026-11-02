@@ -135,7 +135,7 @@ export default function AgentBuilderPage({ mode }: { mode: "create" | "edit" }) 
       const state: AgentPageState = {
         notice: created
           ? "Created. It's ready in your chat's agent picker."
-          : "Saved. The changes apply from your next conversation with it.",
+          : "Committed as a new version. It applies from your next conversation with it.",
       };
       navigate(agentPath(agentId), { replace: true, state });
     },

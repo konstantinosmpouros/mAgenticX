@@ -51,7 +51,7 @@ from utils import (
     validate_userId,
 )
 from utils.compaction import compact_conversation, undo_conversation_compaction
-from utils.runtime_reaps import drain_runtime_reaps, enqueue_runtime_reap
+from utils.runtime_reaps import delete_conversation
 from utils.shared_conv import build_share_list_item, resolve_share_expires_at
 
 
@@ -441,14 +441,10 @@ async def deleteConversation(
 ):
     """Delete a conversation entirely (cascades to messages & attachments rows)."""
     set_context(user_id=user_id, conversation_id=conversation_id)
-    # The agents service's threads and files go too: noted in this transaction
-    # (it reads the thread ids off the messages, so before they are gone), then
-    # sent once committed. A failed send is retried later; never blocks delete.
-    await enqueue_runtime_reap(db, user_id, conversation_id)
-    await db.delete(current_conv)
-    await db.commit()
-    logger.info("conversation_deleted", "Conversation deleted", conversation_id=conversation_id, agent_id=current_conv.agent_id)
-    await drain_runtime_reaps()
+    # The agents service's threads and files go too (utils/runtime_reaps.py).
+    agent_id = current_conv.agent_id
+    await delete_conversation(db, user_id, current_conv)
+    logger.info("conversation_deleted", "Conversation deleted", conversation_id=conversation_id, agent_id=agent_id)
     return
 
 

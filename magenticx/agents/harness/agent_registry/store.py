@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
 from typing import Any
 
@@ -648,6 +648,60 @@ class AgentDefinitionStore(BaseStore):
         return items[offset : offset + limit]
 
 
+class DraftDefinitionStore(BaseStore):
+    """``/reference/`` for a **trial** run (plan 40): the draft's files, in memory.
+
+    A trial runs a definition that was never saved, so its reference material
+    is not in ``agent_definition_files`` — and the saved agent of the same slug,
+    if there is one, is exactly what it must *not* see. This serves the files
+    the request carried, with the same keys and item shape as
+    :class:`AgentDefinitionStore`, so ``StoreBackend`` reads both alike. The
+    namespace is ignored: one instance holds one draft.
+
+    Read-only for the same reason as the database mount; the permission ladder
+    denies writes before they get here.
+    """
+
+    supports_ttl = False
+
+    def __init__(self, files: Mapping[str, str]) -> None:
+        # Route-relative absolute keys, as the database mount uses.
+        self._files = {f"/{path.lstrip('/')}": str(text) for path, text in files.items()}
+
+    async def abatch(self, ops: Iterable[Any]) -> list[Result]:
+        return self.batch(ops)
+
+    def batch(self, ops: Iterable[Any]) -> list[Result]:
+        results: list[Result] = []
+        for op in ops:
+            if isinstance(op, GetOp):
+                content = self._files.get(op.key)
+                results.append(
+                    None if content is None
+                    else _as_item(tuple(op.namespace), op.key, content, "utf-8")
+                )
+            elif isinstance(op, SearchOp):
+                items = [
+                    _as_search_item(tuple(op.namespace_prefix), key, content, "utf-8")
+                    for key, content in sorted(self._files.items())
+                ]
+                offset = op.offset or 0
+                limit = op.limit if op.limit is not None else len(items)
+                results.append(items[offset : offset + limit])
+            elif isinstance(op, PutOp):
+                logger.warning(
+                    "agent_definition_write_ignored",
+                    "Ignored a write to the read-only draft definition mount",
+                    key=getattr(op, "key", ""),
+                )
+                results.append(None)
+            elif isinstance(op, ListNamespacesOp):
+                results.append([])
+            else:
+                results.append(None)
+        return results
+
+
 def _spec(value: Any) -> dict[str, Any]:
     """A ``spec`` column as a dict.
 
@@ -722,4 +776,5 @@ __all__ = [
     "MANIFEST_FILENAME",
     "AgentDefinitionExistsError",
     "AgentDefinitionStore",
+    "DraftDefinitionStore",
 ]

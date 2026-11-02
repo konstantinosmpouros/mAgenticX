@@ -1,6 +1,15 @@
 import * as React from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ArrowLeft, ChevronUp, Code2, History, Loader2, PanelRightOpen, X } from "lucide-react";
+import {
+  ArrowLeft,
+  ChevronUp,
+  Code2,
+  FlaskConical,
+  History,
+  Loader2,
+  PanelRightOpen,
+  X,
+} from "lucide-react";
 
 import { cn } from "@/shared/lib/utils";
 import { mapIcon } from "@/shared/lib/consts";
@@ -10,6 +19,7 @@ import { useToast } from "@/shared/hooks/use-toast";
 import { useIsMobile } from "@/shared/hooks/use-mobile";
 import { ConfirmDialog } from "@/shared/ui/confirm-dialog";
 import { SidebarTrigger } from "@/shared/ui/sidebar";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import type { Agent, AgentDraft, AgentToolRow, UserSkill } from "@/shared/lib/types";
 import type { UserAgentsHandlers } from "@/features/agents/hooks/useUserAgents";
 import type { AgentCatalogs } from "@/features/agents/hooks/useAgentCatalogs";
@@ -18,6 +28,7 @@ import { useDraftAutosave } from "@/features/agents/hooks/useDraftAutosave";
 import { useInspectorPanel } from "@/features/agents/hooks/useInspectorPanel";
 import { useLeaveGuard } from "@/features/agents/hooks/useLeaveGuard";
 import { useServerValidation } from "@/features/agents/hooks/useServerValidation";
+import { useAgentTrial } from "@/features/agents/hooks/useAgentTrial";
 import {
   buildAgentPayload,
   emptyDraft,
@@ -40,6 +51,7 @@ import {
   approvalRows as buildApprovalRows,
 } from "@/features/agents/lib/agentApprovals";
 import { formatSavedAt } from "@/features/agents/lib/draftStorage";
+import { trialErrorMessage, trialRefusal } from "@/features/agents/lib/agentTrial";
 import type { BuilderSection } from "@/features/agents/lib/routes";
 import { PRIMARY_BUTTON, SECONDARY_BUTTON } from "@/features/agents/lib/styles";
 import { BuilderContext, type BuilderContextValue } from "./builderContext";
@@ -50,12 +62,18 @@ import { YamlPanel } from "./YamlPanel";
 // The canvas brings React Flow along: its own chunk, fetched when the builder opens.
 const loadBuilderCanvas = () => import("./canvas/BuilderCanvas");
 const BuilderCanvas = React.lazy(loadBuilderCanvas);
+// "Try it" brings the chat's message rendering (markdown, code, charts) along:
+// fetched the first time the panel opens.
+const TryItPanel = React.lazy(() =>
+  import("./TryItPanel").then((module) => ({ default: module.TryItPanel })),
+);
 
 export type BuilderSaved = { agentId: string; created: boolean };
 
 /**
  * The agent builder: a canvas of the agent and its team, the inspector for the
- * picked node, and the bar on top (the name, unsaved state, issues, YAML, Save).
+ * picked node, and the bar on top (the name, unsaved state, issues, YAML, and
+ * Create — or, for a saved agent, Commit: save the changes as a new version).
  *
  * It owns the draft (`useAgentDraft`) and everything that watches it: the
  * builder's own checks on every change, the server's ~800 ms later, the
@@ -126,6 +144,10 @@ export function BuilderWorkspace({
   const [touched, setTouched] = React.useState<ReadonlySet<string>>(() => new Set());
   const [attempted, setAttempted] = React.useState(false);
   const [yamlOpen, setYamlOpen] = React.useState(false);
+  const [tryOpen, setTryOpen] = React.useState(false);
+  // Mounted from the first open on, so closing it plays its exit.
+  const [tryMounted, setTryMounted] = React.useState(false);
+  const [trialNote, setTrialNote] = React.useState<string | null>(null);
   const [openFile, setOpenFile] = React.useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState<"checking" | "saving" | "approvals" | null>(null);
@@ -402,6 +424,57 @@ export function BuilderWorkspace({
     }
   };
 
+  // ---- try it ---------------------------------------------------------------
+  // The trial chat outlives the panel (closing it keeps the chat); leaving the
+  // builder unmounts the hook, which deletes the trial conversation.
+  const trial = useAgentTrial({ userId });
+
+  /**
+   * One "Try it" message with the draft as it is now. The builder's own rules
+   * go first, as on Commit: a blocking issue sends nothing and takes the user
+   * to it. The server's refusal (a 422) is placed on the canvas as Commit's
+   * validate is.
+   */
+  const sendTrial = async (text: string): Promise<boolean> => {
+    setAttempted(true);
+    const blocking = allIssues.find(
+      (item) => item.source === "client" && item.severity === "error",
+    );
+    if (blocking) {
+      goToIssue(blocking);
+      setTrialNote(`Fix this first: ${blocking.message}`);
+      return false;
+    }
+    setTrialNote(null);
+    const sentDraft = draft;
+    const result = await trial.send({
+      message: text,
+      agentId: savedRef.current?.id ?? null,
+      draft: payload,
+      approvals: approvalChanges(approvalRows),
+    });
+    if (result.ok) return true;
+    const refusal = trialRefusal(result.error);
+    if (refusal) {
+      const placed = server.adopt(refusal, sentDraft);
+      const first = placed.find((item) => item.severity === "error");
+      if (first) goToIssue(first);
+      setTrialNote(refusal.message);
+    } else {
+      setTrialNote(trialErrorMessage(result.error));
+    }
+    return false;
+  };
+
+  const stopTrial = () => {
+    trial.stop().catch((error: unknown) => setTrialNote(trialErrorMessage(error)));
+  };
+
+  const resetTrial = () => {
+    setTrialNote(null);
+    trial.reset().catch((error: unknown) => setTrialNote(trialErrorMessage(error)));
+  };
+
   const confirmDelete = pendingDelete ? locate(draft, pendingDelete) : null;
   const countBelow = (uid: string): number => {
     const node = locate(draft, uid)?.node;
@@ -430,15 +503,17 @@ export function BuilderWorkspace({
   };
 
   const Glyph = mapIcon(draft.icon || "Bot");
+  const isNew = mode === "create" && !savedRef.current;
   const busyLabel =
     saving === "checking"
       ? "Checking…"
       : saving === "saving"
-        ? "Saving…"
+        ? isNew
+          ? "Creating…"
+          : "Committing…"
         : saving === "approvals"
           ? "Saving choices…"
           : null;
-  const isNew = mode === "create" && !savedRef.current;
 
   return (
     <BuilderContext.Provider value={context}>
@@ -488,7 +563,7 @@ export function BuilderWorkspace({
                   aria-live="polite"
                 >
                   <span className="h-1.5 w-1.5 rounded-full bg-[hsl(var(--warning))]" aria-hidden />
-                  Unsaved changes
+                  Uncommitted changes
                 </motion.span>
               ) : null}
             </AnimatePresence>
@@ -496,7 +571,30 @@ export function BuilderWorkspace({
           <IssuesMenu issues={visibleIssues} nodeName={nodeName} onPick={goToIssue} />
           <button
             type="button"
-            onClick={() => setYamlOpen((open) => !open)}
+            onClick={() => {
+              setTryOpen((open) => !open);
+              setTryMounted(true);
+              setYamlOpen(false);
+            }}
+            aria-pressed={tryOpen}
+            aria-label="Try it"
+            className={cn(
+              SECONDARY_BUTTON,
+              "px-3 py-1.5 text-xs",
+              tryOpen && "border-primary/40 text-primary",
+            )}
+          >
+            <FlaskConical className="h-3.5 w-3.5" aria-hidden />
+            <span className="hidden sm:inline" aria-hidden>
+              Try it
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setYamlOpen((open) => !open);
+              setTryOpen(false);
+            }}
             aria-pressed={yamlOpen}
             className={cn(
               SECONDARY_BUTTON,
@@ -508,15 +606,22 @@ export function BuilderWorkspace({
             <span className="hidden sm:inline">YAML</span>
             <span className="sr-only sm:hidden">YAML view</span>
           </button>
-          <button
-            type="button"
-            onClick={() => void save()}
-            disabled={saving !== null}
-            className={cn(PRIMARY_BUTTON, "px-3.5 py-1.5 text-[13px]")}
-          >
-            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : null}
-            {busyLabel ?? (isNew ? "Create" : "Save")}
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={() => void save()}
+                disabled={saving !== null}
+                className={cn(PRIMARY_BUTTON, "px-3.5 py-1.5 text-[13px]")}
+              >
+                {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : null}
+                {busyLabel ?? (isNew ? "Create" : "Commit")}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">
+              {isNew ? "Create the agent; this is its first version" : "Save your changes as a new version"}
+            </TooltipContent>
+          </Tooltip>
         </header>
 
         {/* ---- restore banner ---- */}
@@ -693,6 +798,23 @@ export function BuilderWorkspace({
         downloading={downloading}
         dirty={dirty}
       />
+
+      {tryMounted ? (
+        <React.Suspense fallback={null}>
+          <TryItPanel
+            open={tryOpen}
+            onOpenChange={setTryOpen}
+            trial={trial}
+            existing={Boolean(savedRef.current)}
+            agentName={draft.name.trim() || "Untitled agent"}
+            AgentIcon={Glyph}
+            note={trialNote}
+            onSend={sendTrial}
+            onStop={stopTrial}
+            onReset={resetTrial}
+          />
+        </React.Suspense>
+      ) : null}
 
       <ConfirmDialog
         open={pendingDelete !== null}

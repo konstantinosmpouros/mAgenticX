@@ -17,6 +17,7 @@ from core.auth.signing import get_keyring
 from utils.inference_runs import cleanup_orphaned_inference_runs
 from utils.scheduled_tasks import scheduler
 from utils.account_deletion import run_account_purger
+from utils.agent_trials import run_trial_sweeper
 from utils.embeddings import run_embedding_sweeper
 from utils.runtime_reaps import drain_runtime_reaps
 from core.logging import (
@@ -151,11 +152,15 @@ async def lifespan(app: FastAPI):
     # their threads and files are reaped now (utils/runtime_reaps.py). In the
     # background — the agents service may still be starting itself.
     reap_task = asyncio.create_task(drain_runtime_reaps())
+    # "Try it" sweeper (plan 40): deletes builder trial chats nobody Reset.
+    trial_stop_event = asyncio.Event()
+    trial_task = asyncio.create_task(run_trial_sweeper(trial_stop_event))
     yield
     embedding_stop_event.set()
     purger_stop_event.set()
+    trial_stop_event.set()
     await scheduler.stop()
-    for task in (embedding_task, purger_task, reap_task):
+    for task in (embedding_task, purger_task, reap_task, trial_task):
         try:
             await asyncio.wait_for(task, timeout=10)
         except asyncio.TimeoutError:

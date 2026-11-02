@@ -3,11 +3,20 @@ its undo. A conversation's files have their own: ``schema/conversation_files.py`
 from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field
 
+from schema.user_agents import CustomAgentWrite
+
 
 class Request(BaseModel):
-    """Pydantic model for incoming requests: a list of user input dictionaries."""
+    """Pydantic model for incoming requests: a list of user input dictionaries.
+
+    ``definition`` is a **trial** (plan 40, "Try it"): an uncommitted draft of
+    one of the owner's agents, in the same shape the builder writes. When
+    present the agent is built from it — validated like a save, never cached —
+    instead of being loaded from ``agent_runtime``.
+    """
     messages: List[Dict[str, Any]]
     config: Dict[str, Any]
+    definition: Optional[CustomAgentWrite] = None
 
 
 class ResumeActionDecision(BaseModel):
@@ -62,6 +71,8 @@ class AgentResumeRequest(BaseModel):
     interrupt_id: Optional[str] = None
     decisions: Optional[List[ResumeActionDecision]] = None
     resumes: Optional[List[ResumeItem]] = Field(default=None, min_length=1, max_length=64)
+    # A trial's draft, resent on every resume leg (see ``Request.definition``).
+    definition: Optional[CustomAgentWrite] = None
 
 
 class CompactRequest(BaseModel):

@@ -1,6 +1,6 @@
 # Agent Builder
 
-The agent builder is where a user creates and edits their own agents: a lead with a nested team of sub-agents, each with its own instructions, model and tools, plus skills, reference files and approval settings. It lives in the **Agents** section of **agentic_ui** (`/agents/new`, `/agents/:agentId/edit`) and is drawn as a canvas: the agent and its team as a tree of nodes, with an inspector for whichever node is picked. Nothing is saved while the user builds. The draft lives in the browser (autosaved to `localStorage`), the builder's own rules check it live, and only **Create** or **Save** sends it, first to the server's validate and then as a create or update. The **dialogue_bridge** proxies every call under the agent's catalog id and keeps the catalog row (`chat_db.agents`) in step. The **agents** service owns the definition: it validates it (`validate_definition`) and stores it with its files in `agent_runtime`, together with a version for every save ([agent-version-history](agent-version-history.md)). The mental model is **one draft, many ways in**. The blank canvas, a starter template, an imported YAML, a duplicate, an unsaved draft left from an earlier visit, and "Replace from YAML…" on an existing agent all produce the same `AgentDraft`, and from there the builder behaves identically.
+The agent builder is where a user creates and edits their own agents: a lead with a nested team of sub-agents, each with its own instructions, model and tools, plus skills, reference files and approval settings. It lives in the **Agents** section of **agentic_ui** (`/agents/new`, `/agents/:agentId/edit`) and is drawn as a canvas: the agent and its team as a tree of nodes, with an inspector for whichever node is picked. Nothing is saved while the user builds. The draft lives in the browser (autosaved to `localStorage`), the builder's own rules check it live, **Try it** runs it uncommitted in a side chat, and only **Create** or **Commit** (a saved agent's save: "Save your changes as a new version") stores it, first through the server's validate and then as a create or update. The **dialogue_bridge** proxies every call under the agent's catalog id and keeps the catalog row (`chat_db.agents`) in step. The **agents** service owns the definition: it validates it (`validate_definition`) and stores it with its files in `agent_runtime`, together with a version for every save ([agent-version-history](agent-version-history.md)). The mental model is **one draft, many ways in**. The blank canvas, a starter template, an imported YAML, a duplicate, an unsaved draft left from an earlier visit, and "Replace from YAML…" on an existing agent all produce the same `AgentDraft`, and from there the builder behaves identically.
 
 ---
 
@@ -17,9 +17,9 @@ flowchart LR
 
 ---
 
-## Save — Full Sequence
+## Commit — Full Sequence
 
-What Create or Save does once the builder's own rules pass.
+What Create or Commit does once the builder's own rules pass.
 
 ```mermaid
 sequenceDiagram
@@ -121,9 +121,42 @@ The import (`…/import`) takes pasted text, `agent.yaml` with its files, or one
 
 ---
 
-## Phase 5 — Save
+## Phase 5 — Commit
 
-Save runs the client rules, then the server's validate, then the create or update, then the approval choices. The approvals are a separate call: they are the user's per-account preferences for the agent's tools, not part of the definition. If that last call fails, the agent already exists, so the builder stays on **Approvals** with **Retry**, and a later save is an update. A successful save clears the stored draft and lands on the agent's page with a notice. The agents service records a version only when the definition actually changed.
+Create (a new agent) or Commit (a saved one) runs the client rules, then the server's validate, then the create or update, then the approval choices. The approvals are a separate call: they are the user's per-account preferences for the agent's tools, not part of the definition. If that last call fails, the agent already exists, so the builder stays on **Approvals** with **Retry**, and a later save is an update. A successful save clears the stored draft and lands on the agent's page with a notice. The agents service records a version only when the definition actually changed.
+
+---
+
+## Phase 6 — Try it: Chat With the Uncommitted Draft
+
+**Try it** in the builder's bar opens a side chat that runs the draft as it is now. Nothing is saved as the agent and no version is created. Each message sends the current draft (`buildAgentPayload`) and the draft's Approvals choices, so the user can change instructions and keep chatting; a "Draft changed" divider marks a turn whose draft differs from the turn before. The builder's own rules must pass before a message is sent, and a server 422 places its issues on the nodes, as Commit does.
+
+```mermaid
+sequenceDiagram
+    participant UI as agentic_ui (TryItPanel)
+    participant B as dialogue_bridge
+    participant R as Redis
+    participant A as agents
+
+    UI->>B: POST /v1/agents/{uid}/custom/try {agentId?, conversationId?, message, draft, approvals}
+    B->>A: POST /users/{uid}/custom-agents/validate (422 → issues)
+    B->>B: trial conversation (is_trial, is_private) + run record
+    B->>R: trial:draft:{run_id} (TTL 2 h)
+    B-->>UI: InferenceStartResponse (observed over the run WebSocket)
+    B->>A: POST /agents/{slug}/stream {definition, config} (and every /resume leg)
+    A->>A: build_trial_definition — uncached; /reference/ from the draft's files
+```
+
+The bridge reuses the whole run pipeline (event log, WebSocket frames, approvals and ask-user, Stop, usage), with the definition sent inline instead of loaded from the database. A trial of a saved agent runs under that agent's catalog row, so it uses the agent's real memory, skills and saved tool rows, with the draft's approvals laid over them for that run only. A never-created draft has no catalog row: its trial conversation has `agent_id` NULL (allowed only when `is_trial`), runs as a transient agent built from the draft, and has memory off.
+
+| Key fact | Value / detail |
+| --- | --- |
+| Visibility | Hidden everywhere: conversation lists and routes (404), search, suggestions, embeddings, run lists, data export, the Usage conversation list. Tokens still count in the daily rollups |
+| Lifetime | Reset or leaving the builder deletes the trial conversation (checkpoints and files reaped). The sweeper deletes trials older than `AGENT_TRIAL_CONVERSATION_TTL_HOURS` (24) |
+| Draft stash | Redis `trial:draft:{run_id}`, `AGENT_TRIAL_DRAFT_TTL_SECONDS` (7200); missing → the run fails with "draft expired" |
+| Rate limit | `AGENT_TRIAL_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS`, 30 per 60 s per user |
+| Modes | New and continue only: no edit, retry, fork, branch or share |
+| Cache | A trial definition never enters `_USER_AGENT_CACHE`; a normal run of the same slug gets the saved agent |
 
 ---
 
@@ -133,7 +166,7 @@ Save runs the client rules, then the server's validate, then the create or updat
 - **Unknown fields cannot reach a stored agent.** Every spec model is `extra="forbid"`, so a YAML with a field the server doesn't know is refused, not stored. The builder writes back every field the server has (name, description, icon, prompt, model, memory, tools, skills, team, approval defaults, files). Only `version` (always `1.0.0`) and `id` (`<slug>-v1`) are normalised on a builder save. If `AgentSpec` gains a field, `buildAgentPayload` must learn it too, or a builder save will drop it.
 - **The UI reads specs fail-open.** `AgentSpecSchema` (zod, `.passthrough()`) types the spec on reads. A malformed field becomes absent rather than breaking the page.
 - **A save rewrites the whole folder.** `draftFromDetail` must account for every file: generated prompt files fold back into their nodes, and everything else becomes a reference file. A file it dropped would be deleted by the next save.
-- **Replace skips the approval step.** Replacing directly from the import screen updates the definition only. The user's approval preferences stay as they were. "Open in the builder" then Save applies them as usual.
+- **Replace skips the approval step.** Replacing directly from the import screen updates the definition only. The user's approval preferences stay as they were. "Open in the builder" then Commit applies them as usual.
 - **The model list comes from the server.** `GET /v1/catalog/models` drives the pickers. `MODEL_CHOICES` in `agentSpec.ts` is a fallback used only while that list can't be read.
 
 ---
@@ -157,4 +190,7 @@ Save runs the client rules, then the server's validate, then the create or updat
 | Upload unpacking | [magenticx/dialogue_bridge/utils/agent_import.py](../../magenticx/dialogue_bridge/utils/agent_import.py) | `build_import_payload` |
 | Agents routes | [magenticx/agents/router/user_agents.py](../../magenticx/agents/router/user_agents.py) | `validate_custom_agent`, `import_custom_agent`, `create_custom_agent`, `update_custom_agent` |
 | Validation, YAML parse/render | [magenticx/agents/harness/abstractions/user_agents.py](../../magenticx/agents/harness/abstractions/user_agents.py) | `validate_definition`, `parse_agent_yaml`, `render_agent_yaml`, `_MAX_*` |
+| Try it (UI) | [magenticx/agentic_ui/src/features/agents/components/builder/TryItPanel.tsx](../../magenticx/agentic_ui/src/features/agents/components/builder/TryItPanel.tsx), [hooks/useAgentTrial.ts](../../magenticx/agentic_ui/src/features/agents/hooks/useAgentTrial.ts) | the panel, the trial run hook, "Draft changed" |
+| Try it (bridge) | [magenticx/dialogue_bridge/utils/agent_trials.py](../../magenticx/dialogue_bridge/utils/agent_trials.py), [utils/trial_drafts.py](../../magenticx/dialogue_bridge/utils/trial_drafts.py) | start, reset, sweeper; `TrialAgent`, the Redis stash, `overlay_approvals` |
+| Try it (agents) | [magenticx/agents/router/inference.py](../../magenticx/agents/router/inference.py), [utils/agents.py](../../magenticx/agents/utils/agents.py) | `_run_definition`, `build_trial_definition`, `DraftDefinitionStore` |
 | Spec models | [magenticx/agents/harness/abstractions/agent_spec.py](../../magenticx/agents/harness/abstractions/agent_spec.py) | `AgentSpec`, `SubAgentSpec` (`extra="forbid"`) |

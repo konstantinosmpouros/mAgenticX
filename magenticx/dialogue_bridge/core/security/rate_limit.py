@@ -167,6 +167,16 @@ agent_import_rate_limit = rate_limit(
     emit_headers=True,
 )
 
+# Agent-builder "Try it" (plan 40) — per user, after auth + CSRF. Each call
+# starts a run, so the inference bucket's reasoning applies; its own scope so
+# trying a draft never eats into the chat's starts.
+agent_trial_rate_limit = rate_limit(
+    (settings.rate_limit.agent_trial_max_attempts, settings.rate_limit.agent_trial_window_seconds),
+    scope="agent-trial",
+    identifier=user_path_identity,
+    emit_headers=True,
+)
+
 export_token_rate_limit = rate_limit(
     (settings.rate_limit.export_token_max_attempts, settings.rate_limit.export_token_window_seconds),
     scope="export-token",

@@ -1,7 +1,12 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 
 import { validateMyAgent } from "@/shared/lib/api";
-import type { AgentDraft, AgentDraftSubAgent, CustomAgentWritePayload } from "@/shared/lib/types";
+import type {
+  AgentDraft,
+  AgentDraftSubAgent,
+  AgentIssue,
+  CustomAgentWritePayload,
+} from "@/shared/lib/types";
 import { placeIssues, ROOT_UID, type PlacedIssue } from "@/features/agents/lib/agentIssues";
 import type { DraftIssue } from "@/features/agents/lib/agentRules";
 
@@ -18,6 +23,19 @@ function nodeSignatures(draft: AgentDraft): Map<string, string> {
   };
   walk(subagents);
   return signatures;
+}
+
+/** A server answer's issues, placed on the draft it was about; bare `errors` when it has no issues. */
+function placeServerIssues(
+  answer: { issues: AgentIssue[]; errors: string[] },
+  sentDraft: AgentDraft,
+): PlacedIssue[] {
+  const found: DraftIssue[] = (
+    answer.issues.length
+      ? answer.issues
+      : answer.errors.map((message) => ({ path: "", message, severity: "error" as const }))
+  ).map((item) => ({ ...item, source: "server" as const }));
+  return placeIssues(found, sentDraft);
 }
 
 /**
@@ -53,12 +71,7 @@ export function useServerValidation({
       setChecking(true);
       try {
         const result = await validateMyAgent(userId, sent);
-        const found: DraftIssue[] = (
-          result.issues.length
-            ? result.issues
-            : result.errors.map((message) => ({ path: "", message, severity: "error" as const }))
-        ).map((item) => ({ ...item, source: "server" as const }));
-        const placed = placeIssues(found, sentDraft);
+        const placed = placeServerIssues(result, sentDraft);
         if (mine === sequence.current) {
           setChecked({ issues: placed, signatures: nodeSignatures(sentDraft) });
         }
@@ -84,5 +97,20 @@ export function useServerValidation({
   /** Validate this draft now (Save's first step). Null when the call itself failed. */
   const validateNow = useCallback(() => run(draft, payload), [run, draft, payload]);
 
-  return { issues, checking, checked: checked !== null, validateNow };
+  /**
+   * Take a server answer that came from elsewhere — a "Try it" message the
+   * server refused (422) — as the latest check, placed like validate's own.
+   */
+  const adopt = useCallback(
+    (answer: { issues: AgentIssue[]; errors: string[] }, sentDraft: AgentDraft) => {
+      ++sequence.current;
+      const placed = placeServerIssues(answer, sentDraft);
+      setChecked({ issues: placed, signatures: nodeSignatures(sentDraft) });
+      setChecking(false);
+      return placed;
+    },
+    [],
+  );
+
+  return { issues, checking, checked: checked !== null, validateNow, adopt };
 }

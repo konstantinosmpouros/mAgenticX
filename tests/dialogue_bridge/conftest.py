@@ -76,6 +76,7 @@ os.environ.setdefault("EXPORT_PDF_RATE_LIMIT_MAX_ATTEMPTS", "1000000")
 os.environ.setdefault("SHARE_CREATE_RATE_LIMIT_MAX_ATTEMPTS", "1000000")
 os.environ.setdefault("SKILL_UPLOAD_RATE_LIMIT_MAX_ATTEMPTS", "1000000")
 os.environ.setdefault("AGENT_IMPORT_RATE_LIMIT_MAX_ATTEMPTS", "1000000")
+os.environ.setdefault("AGENT_TRIAL_RATE_LIMIT_MAX_ATTEMPTS", "1000000")
 os.environ.setdefault("MESSAGE_RATE_LIMIT_MAX_ATTEMPTS", "1000000")
 os.environ.setdefault("SUGGESTIONS_RATE_LIMIT_MAX_ATTEMPTS", "1000000")
 os.environ.setdefault("USAGE_ANALYTICS_RATE_LIMIT_MAX_ATTEMPTS", "1000000")
@@ -103,13 +104,16 @@ from core.auth.parked import parked_sessions
 from core.auth.session import logout_denylist, refresh_guard, session_revocation
 from utils.compaction_lock import compaction_locks
 from utils.event_log import event_log as run_event_log
+from utils.trial_drafts import trial_drafts
 
 # Every raw-Redis singleton the app holds. Left alone, each would dial the real
 # (absent) server on first use: the logout denylist and revocation checks run
 # on every authenticated request, and on Windows each refused connection takes
 # ~2 s — most of the suite's wall-clock time. Tests that need a specific client
 # still swap their own in (test_event_log, test_multi_account).
-_REDIS_HOLDERS = (logout_denylist, session_revocation, refresh_guard, parked_sessions, compaction_locks, run_event_log)
+_REDIS_HOLDERS = (
+    logout_denylist, session_revocation, refresh_guard, parked_sessions, compaction_locks, run_event_log, trial_drafts,
+)
 import router.auth as auth_router_module
 from core.auth.providers import AuthIdentity
 from core.auth.session import require_csrf_protection

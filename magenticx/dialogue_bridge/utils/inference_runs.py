@@ -56,7 +56,8 @@ from utils.inference import (
     resolve_inference_message_path,
     serialise_message_with_images_for_agent,
 )
-from utils.validators import validate_convId_full
+from utils.trial_drafts import TrialAgent, overlay_approvals, trial_drafts
+from utils.validators import load_conversation_full
 
 ACTIVE_RUN_STATUSES = {"queued", "running", "cancelling"}
 TERMINAL_RUN_STATUSES = {"completed", "cancelled", "failed"}
@@ -83,12 +84,17 @@ async def get_active_run_for_user(db: AsyncSession, user_id: str, run_id: str) -
 async def list_runs_for_user(
     db: AsyncSession, user_id: str, status_filter: str | None
 ) -> list[MessageTable]:
-    """List the user's inference runs, optionally filtered by streaming status."""
+    """List the user's inference runs, optionally filtered by streaming status.
+
+    A "Try it" trial's runs (plan 40) are left out: the builder's panel
+    observes its own run, and the chat's global hydration must not adopt it.
+    """
     stmt = (
         select(MessageTable)
         .join(ConversationTable, ConversationTable.id == MessageTable.conversation_id)
         .where(
             ConversationTable.user_id == user_id,
+            ConversationTable.is_trial.is_(False),
             MessageTable.streaming_status.is_not(None),
         )
     )
@@ -857,7 +863,8 @@ class InferenceRunManager:
                     return
                 user_id = conv_row.user_id
                 # Reload with eager-loaded messages for the inference history builder.
-                conversation = await validate_convId_full(user_id, run.conversation_id, db)
+                # Ordinary and trial conversations alike: this task serves both.
+                conversation = await load_conversation_full(db, user_id, run.conversation_id, trial=None)
                 started_at = run.streaming_started_at or run.created_at
                 # Capture static run fields once so the stream loop can build
                 # lightweight in-memory events without hitting the DB per chunk.
@@ -879,7 +886,21 @@ class InferenceRunManager:
                 # Per-message agent: resolve from the run (the AI message) so a
                 # conversation can mix agents. Fall back to the conversation's
                 # agent for pre-migration runs whose message has no agent_id.
-                agent = await get_agent_by_id(run.agent_id or conversation.agent_id)
+                # A "Try it" trial (plan 40) runs the draft its start stashed:
+                # an existing agent's own row, or a stand-in for a new draft.
+                trial_draft = None
+                if conversation.is_trial:
+                    trial_draft = await trial_drafts.get(run_id)
+                    await trial_drafts.delete(run_id)
+                    if trial_draft is None:
+                        await _mark_run_failed(run_id, runtime, "The draft for this trial run expired. Send it again.")
+                        await self._publish_snapshot(run_id, "terminal")
+                        return
+                    agent = (
+                        await get_agent_by_id(run.agent_id) if run.agent_id else trial_draft.agent_for(str(user_id))
+                    )
+                else:
+                    agent = await get_agent_by_id(run.agent_id or conversation.agent_id)
                 agent_url = build_agent_stream_url(agent)
                 resume_url = build_agent_resume_url(agent)
                 # Deep agents have a per-conversation filesystem; LangGraph
@@ -964,6 +985,11 @@ class InferenceRunManager:
                 ).scalar_one_or_none()
                 search_past_convs = bool(prefs_row.search_past_convs) if prefs_row else False
                 use_memory = bool(prefs_row.use_memory) if prefs_row else True
+                if isinstance(agent, TrialAgent):
+                    # A never-created draft writes no memory under a slug that
+                    # has no agent yet (plan 40). A trial of a saved agent keeps
+                    # the user's setting: it is that agent's real memory.
+                    use_memory = False
                 # Personalization (personality preset + custom instructions) from
                 # the same row — only *effective* data is threaded: the preset
                 # when non-default, the custom-instruction fields only while the
@@ -972,7 +998,14 @@ class InferenceRunManager:
                 # its agent prompt is byte-identical to the pre-feature one. The
                 # agents service re-validates the payload fail-closed on its side.
                 personalization = _effective_personalization(prefs_row)
-                tool_config = await agent_tool_prefs.read_config(db, str(user_id), agent.slug)
+                if isinstance(agent, TrialAgent):
+                    # No saved rows belong to a draft that was never created.
+                    tool_config = {"enabled": [], "disabled": [], "approvals": {}}
+                else:
+                    tool_config = await agent_tool_prefs.read_config(db, str(user_id), agent.slug)
+                if trial_draft is not None:
+                    # The draft's Approvals choices, for this run only.
+                    tool_config = overlay_approvals(tool_config, trial_draft.approvals)
 
                 # Shared config block forwarded to both the initial /stream call
                 # and any /resume legs. thread_id keys the durable saver (branch-
@@ -1022,6 +1055,13 @@ class InferenceRunManager:
                     "messages": history,
                     "config": base_request_config,
                 }
+                # A trial sends its draft inline on the stream and on every
+                # resume leg; the agents service builds it uncached from that
+                # instead of loading (agent_owner_id, slug) from its database.
+                resume_extra: dict[str, Any] = {}
+                if trial_draft is not None:
+                    request_payload["definition"] = trial_draft.definition
+                    resume_extra["definition"] = trial_draft.definition
 
             cancel_waiter = asyncio.create_task(cancel_event.wait())
             # First leg: the initial /stream call. Subsequent legs (if any) come
@@ -1159,7 +1199,10 @@ class InferenceRunManager:
 
                     inflight = list(ready)
                     stream_task = asyncio.create_task(
-                        self._do_resume(run_id, run_meta, runtime, resume_url, base_request_config, resume_payloads)
+                        self._do_resume(
+                            run_id, run_meta, runtime, resume_url, base_request_config, resume_payloads,
+                            **resume_extra,
+                        )
                     )
             finally:
                 if not cancel_waiter.done():
@@ -1214,6 +1257,7 @@ class InferenceRunManager:
         resume_url: str,
         base_request_config: dict[str, Any],
         resume_payloads: dict[str, Any] | list[dict[str, Any]],
+        definition: dict[str, Any] | None = None,
     ) -> str:
         """Resume a paused HITL run via the agents-service /resume endpoint.
 
@@ -1235,6 +1279,9 @@ class InferenceRunManager:
         }
         if len(payloads) > 1:
             body["resumes"] = [_agent_resume_item(payload) for payload in payloads]
+        if definition is not None:
+            # A "Try it" trial (plan 40): the draft rides every leg.
+            body["definition"] = definition
         timeout = settings.http.inference_timeout
         async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()) as client:
             headers = internal_service_headers(get_context().get("request_id"))

@@ -10,6 +10,7 @@ from sqlalchemy import DDL, case, event, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import (
     BigInteger,
+    CheckConstraint,
     Column,
     Date,
     Float,
@@ -230,17 +231,35 @@ class ConversationTable(Base):
             postgresql_where=text("is_pinned"),
             sqlite_where=text("is_pinned"),
         ),
+        # Only a "Try it" trial (plan 40, migration 0043) may run without an
+        # agent row: a never-created draft has none yet. Every other
+        # conversation keeps its agent.
+        CheckConstraint("agent_id IS NOT NULL OR is_trial", name="ck_conversations_agent_or_trial"),
+        # The trial sweeper's scan: trials are few and short-lived, so the
+        # partial index stays tiny however long the history grows.
+        Index(
+            "ix_conversations_trial_created",
+            "created_at",
+            postgresql_where=text("is_trial"),
+            sqlite_where=text("is_trial"),
+        ),
     )
 
     id = Column(String, primary_key=True, default=gen_uuid)
     user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    agent_id = Column(String, ForeignKey("agents.id", ondelete="CASCADE"), nullable=False, index=True)
+    # NULL only on a trial of a never-created draft (see the CHECK above).
+    agent_id = Column(String, ForeignKey("agents.id", ondelete="CASCADE"), nullable=True, index=True)
     forked_parent_id = Column(String, ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True, index=True)
     forked_message_id = Column(String, ForeignKey("messages.id", ondelete="SET NULL"), nullable=True, index=True)
 
     agent_name = Column(String, nullable=True)
     title = Column(String, nullable=True)
     is_private = Column(Boolean, nullable=False, server_default="false")
+    # A builder "Try it" chat (plan 40): always also private, and additionally
+    # kept out of every list, the data export and the Usage conversation list.
+    # Reachable only through the trial routes; deleted by Reset or after a day.
+    # A Python default for the same reason as is_pinned below.
+    is_trial = Column(Boolean, nullable=False, default=False, server_default="false")
     is_archived = Column(Boolean, nullable=False, server_default="false")
     archived_at = Column(DateTime, nullable=True)
     # Pinned to the top of the sidebar. Archiving clears it and a fork starts

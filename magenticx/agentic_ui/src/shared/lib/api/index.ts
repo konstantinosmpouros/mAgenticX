@@ -41,6 +41,8 @@ export {
   listMyAgentVersions,
   getMyAgentVersion,
   restoreMyAgentVersion,
+  startAgentTrial,
+  resetAgentTrial,
 } from "./agents";
 
 export { getTools, getAgentModels, getBuiltinTools, getSuggestions } from "./catalog";

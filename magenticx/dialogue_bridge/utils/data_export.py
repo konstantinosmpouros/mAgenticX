@@ -503,14 +503,16 @@ def _by_id(base: Select, column) -> Callable[[Optional[tuple]], Select]:
     return build
 
 
+# A builder "Try it" chat (plan 40) is a scratch pad, not the user's history:
+# it is left out of the export with everything hanging off it.
 def _conversation_rows(user_id: str) -> AsyncIterator[dict]:
-    return _pages(_by_id(select(*_CONVERSATIONS).where(ConversationTable.user_id == user_id),
-                         ConversationTable.id), lambda r: (r["id"],))
+    base = select(*_CONVERSATIONS).where(ConversationTable.user_id == user_id, ConversationTable.is_trial.is_(False))
+    return _pages(_by_id(base, ConversationTable.id), lambda r: (r["id"],))
 
 
 async def _conversation_ids(user_id: str) -> AsyncIterator[str]:
-    async for row in _pages(_by_id(select(ConversationTable.id).where(ConversationTable.user_id == user_id),
-                                   ConversationTable.id), lambda r: (r["id"],)):
+    base = select(ConversationTable.id).where(ConversationTable.user_id == user_id, ConversationTable.is_trial.is_(False))
+    async for row in _pages(_by_id(base, ConversationTable.id), lambda r: (r["id"],)):
         yield row["id"]
 
 

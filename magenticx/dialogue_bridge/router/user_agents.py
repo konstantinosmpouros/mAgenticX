@@ -6,7 +6,7 @@ handler additionally verifies the target agent is owned by that user (a 404, not
 a 403, so someone else's id is indistinguishable from a nonexistent one).
 Mutations require a CSRF token.
 
-Literal segments (``validate``, ``render``, ``import``) are declared before the
+Literal segments (``validate``, ``render``, ``import``, ``try``) are declared before the
 ``{agent_id}`` routes, and this router is mounted before the tools router
 (``main.py``), so a literal is never read as an agent id. The version-history
 routes sit one level deeper (``{agent_id}/versions``), where no other route
@@ -17,24 +17,28 @@ in ``utils.user_agents``; these handlers stay thin.
 """
 from typing import Literal
 
-from fastapi import APIRouter, Depends, File, Form, Path, Query, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Path, Query, Response, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth.session import AuthUser, require_csrf_protection
 from core.database import get_db
 from core.logging import get_logger, set_context
-from core.security.rate_limit import agent_import_rate_limit
+from core.security.rate_limit import agent_import_rate_limit, agent_trial_rate_limit
 from schema import (
     AgentPublic,
+    AgentTrialStart,
     CustomAgentDetail,
     CustomAgentImportResult,
     CustomAgentValidation,
     CustomAgentVersion,
     CustomAgentVersionDetail,
     CustomAgentWrite,
+    InferenceStartResponse,
     RenderedAgentYaml,
 )
 from utils import validate_userId
+from utils.agent_trials import delete_agent_trial, start_agent_trial
+from utils.inference_runs import inference_run_manager, mark_run_launch_failed
 from utils.user_agents import (
     create_custom_agent,
     delete_custom_agent,
@@ -137,6 +141,57 @@ async def import_my_agent(
     set_context(user_id=user_id)
     result = await import_custom_agent(db, user_id, yaml, files or [], replacing=replacing)
     return CustomAgentImportResult.model_validate(result)
+
+
+@router.post(
+    "/{user_id}/custom/try",
+    response_model=InferenceStartResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def try_my_agent(
+    user_id: str,
+    payload: AgentTrialStart,
+    current_user: AuthUser = Depends(validate_userId),
+    _: None = Depends(require_csrf_protection),
+    # Each message starts a paid run — per-user ceiling. After auth + CSRF on
+    # purpose: the bucket is keyed on the path's {user_id}, so it must only
+    # ever count requests that user actually made.
+    __: None = Depends(agent_trial_rate_limit),
+    db: AsyncSession = Depends(get_db),
+) -> InferenceStartResponse:
+    """"Try it" (plan 40): run the builder's draft as it is now, uncommitted.
+
+    Answers like the chat's run start, so the builder observes the run with
+    the same WebSocket, resume and cancel endpoints.
+    """
+    set_context(user_id=user_id, conversation_id=payload.conversationId)
+    response = await start_agent_trial(db, current_user, payload)
+    try:
+        inference_run_manager.launch(response.run.id)
+    except Exception as exc:
+        await mark_run_launch_failed(response.run.id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Inference run could not be launched.",
+        ) from exc
+    return response
+
+
+@router.delete(
+    "/{user_id}/custom/try/{conversation_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_csrf_protection)],
+)
+async def reset_my_agent_trial(
+    user_id: str,
+    conversation_id: str,
+    _: AuthUser = Depends(validate_userId),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Reset (or leave) a "Try it" chat: deleted like any conversation,
+    which also reaps its agents-service threads and files."""
+    set_context(user_id=user_id, conversation_id=conversation_id)
+    await delete_agent_trial(db, user_id, conversation_id)
 
 
 @router.post(

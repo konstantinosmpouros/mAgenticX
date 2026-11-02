@@ -1,9 +1,44 @@
 """Conversation lifecycle DTOs: create/fork/update, summaries + detail, titles, suggestions, reports."""
-from typing import List, Literal, Optional
+from typing import Any, List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 from schema.base import UTCDateTime
 from schema.catalog import AgentPublic
 from schema.messages import MessageIn, MessageOut
+
+
+class _DraftAgentConversation:
+    """A conversation read through, with a stand-in for the agent it has none of.
+
+    Only a "Try it" trial of a never-created draft (plan 40) has no agent row.
+    Its run frames and start response still carry a summary, so the agent is
+    described from what the conversation recorded: the draft's name, under an
+    empty id (there is no catalog entry to point at).
+    """
+
+    def __init__(self, conversation: Any) -> None:
+        self._conversation = conversation
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._conversation, name)
+
+    @property
+    def agent(self) -> AgentPublic:
+        return AgentPublic(
+            id="",
+            name=getattr(self._conversation, "agent_name", None) or "Draft agent",
+            description="",
+            icon="",
+            type="deep agent",
+            isActive=True,
+            kind="custom",
+        )
+
+
+def _with_draft_agent(data: Any) -> Any:
+    """Validate an agentless conversation (ORM row) through the stand-in above."""
+    if isinstance(data, dict) or getattr(data, "agent", True) is not None:
+        return data
+    return _DraftAgentConversation(data)
 
 
 class ConversationSummary(BaseModel):
@@ -29,6 +64,11 @@ class ConversationSummary(BaseModel):
     lastMessage: Optional[str] = Field(None, validation_alias="last_message_preview")
     created_at: UTCDateTime = Field(..., validation_alias="created_at")
     updated_at: UTCDateTime = Field(..., validation_alias="updated_at")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _agentless_trial(cls, data: Any) -> Any:
+        return _with_draft_agent(data)
 
     @computed_field
     @property
@@ -59,6 +99,11 @@ class ConversationDetail(BaseModel):
     created_at: UTCDateTime = Field(..., validation_alias="created_at")
     updated_at: UTCDateTime = Field(..., validation_alias="updated_at")
     messages: List[MessageOut] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _agentless_trial(cls, data: Any) -> Any:
+        return _with_draft_agent(data)
 
     @computed_field
     @property

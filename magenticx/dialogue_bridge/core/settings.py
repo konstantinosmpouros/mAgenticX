@@ -738,6 +738,25 @@ class ConversationSettings(BaseSettings):
     max_pinned: int = Field(30, ge=1, le=100, validation_alias="MAX_PINNED_CONVERSATIONS")
 
 
+class AgentTrialSettings(BaseSettings):
+    """The agent builder's "Try it" chat (plan 40).
+
+    ``draft_ttl_seconds`` bounds the Redis copy of the draft a trial run reads
+    (``trial:draft:{run_id}``) — the run reads it once at start, so this only
+    has to outlast the gap between the start request and the task starting.
+    ``conversation_ttl_hours`` is how long after it was started a trial
+    conversation the builder never Reset is kept before the sweeper deletes
+    it, checked every ``sweep_interval_seconds``.
+    """
+    model_config = _BASE_MODEL_CONFIG
+
+    draft_ttl_seconds: int = Field(7200, ge=60, le=86400, validation_alias="AGENT_TRIAL_DRAFT_TTL_SECONDS")
+    conversation_ttl_hours: int = Field(24, ge=1, le=720, validation_alias="AGENT_TRIAL_CONVERSATION_TTL_HOURS")
+    sweep_interval_seconds: int = Field(3600, ge=30, le=86400, validation_alias="AGENT_TRIAL_SWEEP_INTERVAL_SECONDS")
+    # Trials deleted per sweep transaction; the rest wait for the next pass.
+    sweep_batch_size: int = Field(50, ge=1, le=1000, validation_alias="AGENT_TRIAL_SWEEP_BATCH_SIZE")
+
+
 class ShareSettings(BaseSettings):
     model_config = _BASE_MODEL_CONFIG
 
@@ -1074,6 +1093,10 @@ class RateLimitSettings(BaseSettings):
     # upload, in its own bucket.
     agent_import_max_attempts: int = Field(10, validation_alias="AGENT_IMPORT_RATE_LIMIT_MAX_ATTEMPTS")
     agent_import_window_seconds: int = Field(60, validation_alias="AGENT_IMPORT_RATE_LIMIT_WINDOW_SECONDS")
+    # Agent-builder "Try it" (plan 40): each message starts a paid run and
+    # carries the whole draft (up to ~1.3 MiB) — its own per-user bucket.
+    agent_trial_max_attempts: int = Field(30, validation_alias="AGENT_TRIAL_RATE_LIMIT_MAX_ATTEMPTS")
+    agent_trial_window_seconds: int = Field(60, validation_alias="AGENT_TRIAL_RATE_LIMIT_WINDOW_SECONDS")
     # Minting an export download token. The export itself is bounded by the
     # cooldown column; this only stops a client hammering the token endpoint.
     export_token_max_attempts: int = Field(10, validation_alias="EXPORT_TOKEN_RATE_LIMIT_MAX_ATTEMPTS")
@@ -1226,6 +1249,7 @@ class Settings(BaseSettings):
     attachments: AttachmentSettings = Field(default_factory=AttachmentSettings)
     output_capture: OutputCaptureSettings = Field(default_factory=OutputCaptureSettings)
     conversations: ConversationSettings = Field(default_factory=ConversationSettings)
+    agent_trial: AgentTrialSettings = Field(default_factory=AgentTrialSettings)
     share: ShareSettings = Field(default_factory=ShareSettings)
     export: ExportSettings = Field(default_factory=ExportSettings)
     account_deletion: AccountDeletionSettings = Field(default_factory=AccountDeletionSettings)

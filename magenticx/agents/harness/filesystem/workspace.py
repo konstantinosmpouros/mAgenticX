@@ -16,7 +16,7 @@ to the route strings) removes the footgun of editing one without the other.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -30,7 +30,7 @@ from deepagents.backends import (
 from deepagents.backends.protocol import SandboxBackendProtocol
 
 from core.settings import settings
-from harness.agent_registry.store import AgentDefinitionStore
+from harness.agent_registry.store import AgentDefinitionStore, DraftDefinitionStore
 from harness.conversation_files import ConversationFiles, ConversationFilesBackend
 from harness.conversation_files.paths import (
     CONVERSATION_HISTORY_ROOT,
@@ -102,6 +102,7 @@ def build_workspace_backend(
     use_memory: bool,
     reference_dir: Path | None = None,
     reference_namespace: tuple[str, ...] | None = None,
+    reference_files: Mapping[str, str] | None = None,
     default_skills_dir: Path | None = None,
     declared_skills: Sequence[str] = (),
 ) -> Callable[[Any], CompositeBackend]:
@@ -118,7 +119,7 @@ def build_workspace_backend(
         /large_tool_results/    → agent_runtime rows        (offloaded tool results)
         /conversation_history/  → agent_runtime rows        (offloaded history)
         /default_skills/        → image folder OR agent_runtime rows (read-only, optional)
-        /reference/             → image folder OR agent_runtime rows (read-only, optional)
+        /reference/             → image folder OR agent_runtime rows OR a draft (read-only, optional)
         default                 → StateBackend(rt)          (ephemeral scratch)
 
     Per-conversation isolation: ``files`` is bound to one conversation, so
@@ -141,9 +142,11 @@ def build_workspace_backend(
     demand instead of being inlined into every turn's context. It arrives by one
     of two routes and never both: ``reference_dir`` for a **platform** agent,
     whose definition is a directory in the image, and ``reference_namespace`` for
-    a **user-authored** one, whose definition is rows in ``agent_runtime``. An
-    agent defined in code passes neither and the route is simply absent. Keep the
-    write-deny in step via :func:`workspace_write_deny`.
+    a **user-authored** one, whose definition is rows in ``agent_runtime``. A
+    **trial** of an uncommitted draft (plan 40) passes ``reference_files``
+    instead: the draft's own files, served from memory, so it never reads the
+    saved agent's. An agent defined in code passes none and the route is simply
+    absent. Keep the write-deny in step via :func:`workspace_write_deny`.
     """
     try:
         # The conversation mounts bridge their sync methods onto this loop.
@@ -219,6 +222,12 @@ def build_workspace_backend(
             # content, identical for every user and not writable at runtime.
             routes["/reference/"] = FilesystemBackend(
                 root_dir=str(reference_dir), virtual_mode=True
+            )
+        elif reference_files is not None:
+            # A trial: the draft the request carried, never the saved rows.
+            routes["/reference/"] = StoreBackend(
+                store=DraftDefinitionStore(reference_files),
+                namespace=lambda _rt: ("draft",),
             )
         elif reference_namespace is not None:
             # A user-authored agent's definition is rows. Same read-only mount,

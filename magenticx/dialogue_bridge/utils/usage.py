@@ -285,7 +285,9 @@ async def compute_usage_summary(db: AsyncSession, user_id: str) -> UsageSummary:
                 conv.last_context_window > 0,
                 conv.last_context_tokens >= conv.last_context_window * NEAR_COMPACTION_FRACTION,
             ),
-        ).where(conv.user_id == user_id, conv.usage_answers > 0)
+        # A "Try it" trial (plan 40) is not a conversation of the user's: its
+        # tokens count in the daily totals, but it is never counted or listed.
+        ).where(conv.user_id == user_id, conv.usage_answers > 0, conv.is_trial.is_(False))
     )).one()
 
     return UsageSummary(
@@ -443,7 +445,9 @@ async def list_usage_conversations(
     if cursor is None and not agent_id and not query:
         private_stmt = select(
             func.count(), func.sum(conv.usage_answers), func.sum(conv.usage_total_tokens)
-        ).where(conv.user_id == user_id, conv.is_private.is_(True), conv.usage_answers > 0)
+        ).where(
+            conv.user_id == user_id, conv.is_private.is_(True), conv.is_trial.is_(False), conv.usage_answers > 0
+        )
         if cutoff is not None:
             private_stmt = private_stmt.where(conv.usage_updated_at >= cutoff)
         count, answers, total = (await db.execute(private_stmt)).one()
@@ -681,7 +685,7 @@ async def _conversation_counts(
     conv = ConversationTable
     stmt = (
         select(conv.agent_id, func.count())
-        .where(conv.user_id == user_id, conv.usage_answers > 0)
+        .where(conv.user_id == user_id, conv.usage_answers > 0, conv.is_trial.is_(False))
         .group_by(conv.agent_id)
     )
     cutoff = _range_cutoff(range_key)

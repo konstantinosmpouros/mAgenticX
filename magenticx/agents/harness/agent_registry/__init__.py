@@ -8,9 +8,14 @@ service owns, and ``/reference/`` is a virtual route over the same rows.
 Platform agent definitions stay on the volume: they ship in the image, are
 identical for every user and are never written at runtime.
 """
-from harness.agent_registry.store import MANIFEST_FILENAME, AgentDefinitionStore
+from harness.agent_registry.store import (
+    MANIFEST_FILENAME,
+    AgentDefinitionStore,
+    DraftDefinitionStore,
+)
 
 __all__ = [
     "MANIFEST_FILENAME",
     "AgentDefinitionStore",
+    "DraftDefinitionStore",
 ]

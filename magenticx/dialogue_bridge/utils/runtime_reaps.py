@@ -20,7 +20,7 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.database import MessageTable, PendingRuntimeReapTable, SessionLocal
+from core.database import ConversationTable, MessageTable, PendingRuntimeReapTable, SessionLocal
 from core.logging import get_context, get_logger
 from core.security.internal_trust import internal_service_headers
 from core.security.tls import get_httpx_client_cert, get_httpx_verify
@@ -48,6 +48,21 @@ async def enqueue_runtime_reap(db: AsyncSession, user_id: str, conversation_id: 
     await db.merge(PendingRuntimeReapTable(
         conversation_id=conversation_id, user_id=user_id, thread_ids=sorted(thread_ids), attempts=0,
     ))
+
+
+async def delete_conversation(db: AsyncSession, user_id: str, conversation: ConversationTable) -> None:
+    """Delete a conversation and, once committed, its agents-service runtime.
+
+    The one conversation delete: the conversation route, a "Try it" Reset and
+    the trial sweeper (plan 40) all come through here. The reap is noted in
+    this transaction (it reads the thread ids off the messages, so before they
+    are gone), then sent once committed; a failed send is retried later and
+    never blocks the delete.
+    """
+    await enqueue_runtime_reap(db, user_id, conversation.id)
+    await db.delete(conversation)
+    await db.commit()
+    await drain_runtime_reaps()
 
 
 async def _send(client: httpx.AsyncClient, row: PendingRuntimeReapTable) -> None:

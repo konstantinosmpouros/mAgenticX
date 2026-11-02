@@ -53,6 +53,7 @@ class YamlDeepAgent(DeepAgent):
         *,
         owner_user_id: str | None = None,
         definition_files: Mapping[str, str] | None = None,
+        trial: bool = False,
         config: Optional[Mapping[str, Any]] = None,
     ) -> None:
         super().__init__(config=config)
@@ -64,6 +65,9 @@ class YamlDeepAgent(DeepAgent):
         # was always a fragile way to ask "who owns this?".
         self._owner_user_id = owner_user_id
         self._definition_files = dict(definition_files or {})
+        # A trial (plan 40) runs an unsaved draft: `/reference/` must serve the
+        # draft's files, not the saved agent's rows under the same slug.
+        self._trial = trial and owner_user_id is not None
 
         # Per-instance identity (overrides the shared class attributes) so every
         # `self.name`/`self.label`/… read across the base resolves to this spec.
@@ -140,9 +144,14 @@ class YamlDeepAgent(DeepAgent):
         rather than from a directory that would have to be kept in step with the
         database.
         """
-        if not self.is_user_authored:
+        if not self.is_user_authored or self._trial:
             return None
         return (self._owner_user_id or "", self.name)
+
+    @property
+    def reference_files(self) -> Mapping[str, str] | None:
+        """``/reference/`` for a **trial** — the draft's files, from memory."""
+        return self._definition_files if self._trial else None
 
 
     @property

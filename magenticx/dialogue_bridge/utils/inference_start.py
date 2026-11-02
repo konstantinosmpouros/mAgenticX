@@ -1,5 +1,6 @@
+from collections.abc import Awaitable, Callable
 from datetime import datetime
-from typing import cast
+from typing import Any, cast
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
@@ -22,7 +23,7 @@ from utils.inference import resolve_inference_message_path
 from utils.inference_runs import build_run_out_from_message, create_inference_run_record
 from utils.shared_conv import create_conversation_from_share_record, load_active_share
 from utils.titles import resolve_conversation_title
-from utils.validators import validate_convId_full
+from utils.validators import load_conversation_full, validate_convId_full
 
 
 def _require_message(payload: InferenceStartPayload) -> MessageIn:
@@ -96,6 +97,39 @@ async def start_inference_flow(
     # so any client path necessarily ends before the real parent. Retry is the
     # only start mode where the client can provide a path ending at the run parent.
     message_path = payload.messagePath if mode == "retry" else None
+    return await create_run_and_respond(
+        db=db,
+        user_id=user_id,
+        conversation=conversation,
+        parent_message_id=parent_message_id,
+        message_path=message_path,
+        agent=agent,
+        mode=mode,
+        scheduled_task_id=scheduled_task_id,
+    )
+
+
+async def create_run_and_respond(
+    *,
+    db: AsyncSession,
+    user_id: str,
+    conversation: ConversationTable,
+    parent_message_id: str,
+    message_path: list[str] | None,
+    agent: Any,
+    mode: str,
+    scheduled_task_id: str | None = None,
+    trial: bool = False,
+    before_commit: Callable[[MessageTable], Awaitable[None]] | None = None,
+) -> InferenceStartResponse:
+    """The shared tail of every start: create the run, commit, answer.
+
+    ``agent`` is an agent row, or a "Try it" trial's stand-in for a draft
+    that has none (plan 40). ``before_commit`` runs with the new run's row
+    before anything is committed — a trial stashes its draft there, so a run
+    whose draft could not be kept is never created. ``trial`` reloads the
+    conversation through the trial lookup (every other route cannot see it).
+    """
     assistant_message = await create_inference_run_record(
         db=db,
         user_id=user_id,
@@ -108,10 +142,12 @@ async def start_inference_flow(
     )
     conversation_id = conversation.id
     assistant_message_id = assistant_message.id
+    if before_commit is not None:
+        await before_commit(assistant_message)
     await db.commit()
     db.expire_all()
 
-    detail = await validate_convId_full(user_id, conversation_id, db)
+    detail = await load_conversation_full(db, user_id, conversation_id, trial=trial)
     loaded_message = await _load_message(db, assistant_message_id)
     if loaded_message is None:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Inference run start could not be loaded after creation.")

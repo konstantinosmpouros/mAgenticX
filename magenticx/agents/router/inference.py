@@ -1,30 +1,74 @@
 import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from langchain_mcp_adapters.tools import load_mcp_tools
 
 from core.security.internal_trust import require_internal_caller
 from core.logging import get_context, get_logger, set_context
+from harness.abstractions.user_agents import definition_texts, errors_of
 from harness.checkpointer import has_checkpointer_initialized
 from harness.checkpointer.fork import seed_thread_from_checkpoint
 from harness.commands import AgentFacts, CommandRefused, apply_command, resolve_invocation
 from schema import (
+    AgentDefinition,
     AgentResumeRequest,
     CompactRequest,
     CompactResponse,
+    CustomAgentWrite,
     Request,
     UndoCompactionRequest,
     UndoCompactionResponse,
 )
+from router.user_agents import invalid_definition_response, validate_agent_payload
 from utils import emit_checkpoint_committed, optional_mcp_session, release_checkpoint_unless_paused
-from utils.agents import resolve_agent_definition
+from utils.agents import build_trial_definition, resolve_agent_definition
 from utils.compaction import compact_agent_thread, undo_agent_compaction
 from utils.hitl_resume import build_resume_command
 
 logger = get_logger(__name__)
 
 router = APIRouter()
+
+
+async def _run_definition(
+    agent_slug: str, context_data: dict, draft: CustomAgentWrite | None
+) -> AgentDefinition | JSONResponse:
+    """The definition a stream or resume runs: saved, or a trial's draft.
+
+    Without ``draft``, the platform agent or the owner's saved agent, as always.
+    With it (plan 40, "Try it"), the draft the bridge sent — validated exactly
+    like a save (reserved slugs, the owner's skills, the MCP catalog) and built
+    uncached, so it is never served to a normal run. An invalid draft is the
+    write routes' structured 422. A trial needs an owner (drafts are always
+    user-authored) and must be for the slug in the URL.
+    """
+    if draft is None:
+        definition = await resolve_agent_definition(agent_slug, context_data.get("agent_owner_id"))
+        if definition is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown agent.")
+        return definition
+    owner_id = context_data.get("agent_owner_id")
+    if not owner_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A trial definition needs the agent's owner.",
+        )
+    spec, issues = await validate_agent_payload(owner_id, draft.spec, draft.files)
+    if spec is None:
+        logger.info(
+            "agent_trial_invalid",
+            "Refused an invalid trial definition",
+            agent_slug=agent_slug,
+            error_count=len(errors_of(issues)),
+        )
+        return invalid_definition_response(issues)
+    if spec.slug != agent_slug:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The trial definition is for a different agent.",
+        )
+    return build_trial_definition(owner_id, spec, definition_texts(draft.files))
 
 
 # ------------------------------------------------------------------
@@ -49,14 +93,12 @@ async def stream_agent(agent_slug: str, req: Request):
         input_messages=len(req.messages),
     )
     try:
-        # Platform agent, or one this user authored in their own workspace —
-        # `agent_owner_id` is set by the bridge from the agents table.
-        definition = await resolve_agent_definition(agent_slug, context_data.get("agent_owner_id"))
-        if definition is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Unknown agent.",
-            )
+        # Platform agent, one this user authored in their own workspace
+        # (`agent_owner_id` is set by the bridge from the agents table), or a
+        # trial's uncommitted draft.
+        definition = await _run_definition(agent_slug, context_data, req.definition)
+        if isinstance(definition, JSONResponse):
+            return definition
         # A slash command (plan 35): checked here even though the bridge checked
         # it — this service never trusts that alone — and applied to this turn's
         # message only.
@@ -191,12 +233,10 @@ async def resume_agent(agent_slug: str, req: AgentResumeRequest):
             detail="Checkpointer is not ready.",
         )
 
-    definition = await resolve_agent_definition(agent_slug, context_data.get("agent_owner_id"))
-    if definition is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Unknown agent.",
-        )
+    # A trial resends its draft on every resume leg; it is rebuilt the same way.
+    definition = await _run_definition(agent_slug, context_data, req.definition)
+    if isinstance(definition, JSONResponse):
+        return definition
 
     try:
         # Force the thread_id onto the run_config so the agent binds the shared

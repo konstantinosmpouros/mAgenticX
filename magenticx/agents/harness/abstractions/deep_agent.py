@@ -241,6 +241,7 @@ class DeepAgent(BaseAgent, ABC):
             use_memory=self.use_memory,
             reference_dir=self.reference_dir,
             reference_namespace=self.reference_namespace,
+            reference_files=self.reference_files,
             default_skills_dir=self.default_skills_dir,
             declared_skills=self.declared_skills,
         )
@@ -276,6 +277,16 @@ class DeepAgent(BaseAgent, ABC):
 
 
     @property
+    def reference_files(self) -> Mapping[str, str] | None:
+        """In-memory files to mount read-only at ``/reference/``, or ``None``.
+
+        The third source, for a **trial** of an uncommitted draft (plan 40): its
+        definition is neither in the image nor saved, only in the request.
+        """
+        return None
+
+
+    @property
     def _has_reference(self) -> bool:
         """Whether this run mounts ``/reference/`` at all, from either source.
 
@@ -285,7 +296,11 @@ class DeepAgent(BaseAgent, ABC):
         rule pointing at nothing. Same shape as :attr:`_has_default_skills`, for
         the same reason.
         """
-        return self.reference_dir is not None or self.reference_namespace is not None
+        return (
+            self.reference_dir is not None
+            or self.reference_namespace is not None
+            or self.reference_files is not None
+        )
 
 
     def default_middleware(self, model: Any, backend: Any) -> list[Any]:

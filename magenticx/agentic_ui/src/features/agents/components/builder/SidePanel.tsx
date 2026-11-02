@@ -19,6 +19,7 @@ export function SidePanel({
   description,
   actions,
   children,
+  footer,
   wide = false,
 }: {
   open: boolean;
@@ -28,6 +29,8 @@ export function SidePanel({
   /** Buttons in the panel's header, left of its close button. */
   actions?: ReactNode;
   children: ReactNode;
+  /** Pinned under the scrolling body (a composer), outside its scroll. */
+  footer?: ReactNode;
   wide?: boolean;
 }) {
   const mobile = useIsMobile();
@@ -81,6 +84,9 @@ export function SidePanel({
           <div className="scrollbar-muted min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4">
             {children}
           </div>
+          {footer ? (
+            <div className="flex-shrink-0 border-t border-border/50 px-5 pb-4 pt-3">{footer}</div>
+          ) : null}
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>

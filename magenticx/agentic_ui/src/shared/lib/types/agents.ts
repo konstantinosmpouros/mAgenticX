@@ -142,3 +142,17 @@ export type CustomAgentWritePayload = {
   spec: Record<string, unknown>;
   files: AgentFile[];
 };
+
+// "Try it" (plan 40): one message to the builder's uncommitted draft. The
+// draft rides inline on every message, so each turn runs the draft as it is
+// now; `approvals` are the builder's Ask / Don't ask choices (the same changes
+// a save would send), applied to this run only.
+export type AgentTrialStartRequest = {
+  /** The saved agent being edited; null for a draft that was never created. */
+  agentId: string | null;
+  /** The trial conversation to continue; null starts a new one. */
+  conversationId: string | null;
+  message: string;
+  draft: CustomAgentWritePayload;
+  approvals: Record<string, boolean | null>;
+};

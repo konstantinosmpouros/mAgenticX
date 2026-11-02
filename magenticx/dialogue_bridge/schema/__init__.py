@@ -144,6 +144,7 @@ from schema.usage import (
 )
 from schema.user_agents import (
     AgentFile,
+    AgentTrialStart,
     CustomAgentDetail,
     CustomAgentImportResult,
     CustomAgentIssue,
@@ -180,6 +181,7 @@ __all__ = [
     "AgentCompactionUndoResult",
     "AgentCompactionUsage",
     "AgentFile",
+    "AgentTrialStart",
     "AgentFull",
     "AgentPublic",
     "AgentToolRow",

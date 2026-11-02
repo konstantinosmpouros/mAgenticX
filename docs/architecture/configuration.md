@@ -144,6 +144,7 @@ Who signs session JWTs and which public keys verify them. Production signs with 
 | `AVATAR_SIZE_PX` | `256` | Side of the square WebP that is stored. |
 | `SKILL_REMOTE_ADD_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Remote-skill Adds per user — each can make the agents service download a skill, so the Add route cannot be used as a fetch amplifier. |
 | `AGENT_IMPORT_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Agent-builder imports per user (`POST /v1/agents/{user_id}/custom/import`): each unpacks an upload in memory and has the agents service parse it. |
+| `AGENT_TRIAL_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `30` / `60` | Agent-builder "Try it" messages per user (`POST /v1/agents/{user_id}/custom/try`, plan 40): each starts a run and carries the whole draft. Its own bucket, so trying a draft never uses up chat starts. |
 | `MESSAGE_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `30` / `60` | Message creation (attachment/blob growth) per user. |
 | `SUGGESTIONS_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Starter-suggestion generation (LLM-backed) per user. |
 | `COMPACTION_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `600` | Compacting a conversation from the context ring, or undoing it (plan 34), per user, after auth — each compaction is a summary call over most of the conversation. |
@@ -247,6 +248,15 @@ See [account-deletion](../flows/account-deletion.md). The batch and rate bounds 
 | `GENERATION_SUGGESTION_MIN_CANDIDATES` | `6` | Min suggestion candidates expected. |
 | `GENERATION_SUGGESTION_COUNT` | `10` | Suggestions requested. |
 | `GENERATION_SUGGESTION_RECENT_CONTEXT_COUNT` | `8` | Recent messages fed as suggestion context. |
+
+### Agent-builder "Try it" (`AgentTrialSettings`)
+
+| Env var | Default | What it does |
+| --- | --- | --- |
+| `AGENT_TRIAL_DRAFT_TTL_SECONDS` | `7200` | Lifetime of a trial run's draft in Redis (`trial:draft:{run_id}`). The run reads it once at start and drops it. |
+| `AGENT_TRIAL_CONVERSATION_TTL_HOURS` | `24` | A trial conversation nobody Reset is deleted this long after it started (with its agents-service threads and files). |
+| `AGENT_TRIAL_SWEEP_INTERVAL_SECONDS` | `3600` | How often the trial sweeper looks for expired trials. |
+| `AGENT_TRIAL_SWEEP_BATCH_SIZE` | `50` | Trials deleted per sweep transaction; a full batch looks again at once. |
 
 ### Voice (`VoiceSettings`)
 
