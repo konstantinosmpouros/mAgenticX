@@ -39,7 +39,8 @@ import {
 import { isAgentsPath, parseSection, DETAIL_SECTIONS } from "@/features/agents/lib/routes";
 import { duplicateDefinition } from "@/features/agents/lib/agentSpec";
 import { resolveSettingsTab } from "@/features/settings/lib/settingsTabs";
-import { groupPickerAgents } from "@/features/chat/lib/agentPicker";
+import { PICKER_LIMIT, pickerDefaults, rememberAgentPick, searchPickerAgents } from "@/features/chat/lib/agentPicker";
+import { AgentSearchDialog } from "@/features/chat/components/AgentSearchDialog";
 import ChatHeader from "@/features/chat/components/ChatHeader";
 import { SidebarProvider } from "@/shared/ui/sidebar";
 import { TooltipProvider } from "@/shared/ui/tooltip";
@@ -265,25 +266,41 @@ describe("settings without the Agents tab", () => {
 });
 
 describe("chat picker", () => {
-  it("groups my agents above the platform's, and stays one list without any", () => {
-    expect(groupPickerAgents([platform, mine])).toEqual([
-      { label: "My agents", agents: [mine] },
-      { label: "Platform", agents: [platform] },
-    ]);
-    expect(groupPickerAgents([platform])).toEqual([{ label: null, agents: [platform] }]);
+  const many = Array.from({ length: 9 }, (_, i) =>
+    agent({ id: `a${i}`, name: `Agent ${i}`, kind: i < 4 ? "custom" : "platform" }),
+  );
+
+  it("never shows more than five rows: the selected, the recent, then mine and the platform's", () => {
+    const rows = pickerDefaults(many, "a6", ["a2", "a6", "gone", "a8"]);
+    expect(rows.map((a) => a.id)).toEqual(["a6", "a2", "a8", "a0", "a1"]);
+    expect(rows).toHaveLength(PICKER_LIMIT);
   });
 
-  it("labels the groups and opens Agents from Manage agents… without selecting it", async () => {
+  it("searches names before descriptions, at most five, and counts the rest", () => {
+    const research = agent({ id: "r", name: "Research", kind: "custom" });
+    const deep = agent({ id: "d", name: "Deep research team", kind: "platform" });
+    const desc = agent({ id: "x", name: "Omni", description: "Does research.", kind: "platform" });
+    expect(searchPickerAgents([desc, deep, research], "res").rows.map((a) => a.id)).toEqual(["r", "d", "x"]);
+    const { rows, total } = searchPickerAgents(many, "agent");
+    expect(rows).toHaveLength(5);
+    expect(total).toBe(9);
+  });
+
+  it("opens on the recent agents, filters as you type, and browses all from the last row", async () => {
+    window.localStorage.clear();
+    rememberAgentPick("c1");
     const onAgentChange = vi.fn();
     const onManageAgents = vi.fn();
+    const onOpenChange = vi.fn();
     render(
       <SidebarProvider>
         <TooltipProvider>
           <ChatHeader
-            agents={[platform, mine]}
+            agents={[platform, mine, ...many]}
             selectedAgent="p1"
             onAgentChange={onAgentChange}
             agentPickerOpen
+            onAgentPickerOpenChange={onOpenChange}
             showPrivateToggle={false}
             isPrivateMode={false}
             onTogglePrivate={() => {}}
@@ -292,19 +309,69 @@ describe("chat picker", () => {
         </TooltipProvider>
       </SidebarProvider>,
     );
-    const listbox = await screen.findByRole("listbox");
-    expect(within(listbox).getByText("My agents")).toBeInTheDocument();
-    expect(within(listbox).getByText("Platform")).toBeInTheDocument();
-    const options = within(listbox).getAllByRole("option");
-    // Mine first, the platform's next, Manage last.
-    expect(options.map((o) => o.textContent)).toEqual([
-      expect.stringContaining("My Researcher"),
-      expect.stringContaining("Platform Analyst"),
-      expect.stringContaining("Manage agents…"),
-    ]);
+    const list = await screen.findByRole("listbox", { name: "Agents" });
+    const names = () => within(list).getAllByRole("option").map((o) => o.textContent ?? "");
+    // The selected first, then the recent pick: five agents and Browse all.
+    expect(names()).toHaveLength(PICKER_LIMIT + 1);
+    expect(names()[0]).toContain("Platform Analyst");
+    expect(names()[1]).toContain("My Researcher");
+    expect(names()[PICKER_LIMIT]).toContain("Browse all agents");
 
-    fireEvent.click(within(listbox).getByRole("option", { name: /Manage agents/ }));
+    fireEvent.change(screen.getByLabelText("Search agents"), { target: { value: "agent" } });
+    // Five matches, "See all 9 results", and Browse all under its separator.
+    await waitFor(() => expect(names()).toHaveLength(PICKER_LIMIT + 2));
+    expect(names()[PICKER_LIMIT]).toContain("See all 9 results");
+    expect(list.querySelector("[cmdk-separator]")).not.toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Search agents"), { target: { value: "research" } });
+    await waitFor(() => expect(names()[0]).toContain("My Researcher"));
+    fireEvent.click(within(list).getByRole("option", { name: /My Researcher/ }));
+    expect(onAgentChange).toHaveBeenCalledWith("c1");
+
+    fireEvent.click(within(list).getByRole("option", { name: /Browse all agents/ }));
     await waitFor(() => expect(onManageAgents).toHaveBeenCalledTimes(1));
-    expect(onAgentChange).not.toHaveBeenCalled();
+  });
+});
+
+describe("agent search panel", () => {
+  const many = Array.from({ length: 14 }, (_, i) =>
+    agent({ id: `s${i}`, name: `Scout ${i}`, description: `Finds things ${i}.`, kind: i < 5 ? "custom" : "platform" }),
+  );
+
+  it("pages the results six at a time, filters by kind, and picks with Enter", async () => {
+    const onPick = vi.fn();
+    render(
+      <AgentSearchDialog
+        open
+        onOpenChange={() => {}}
+        agents={many}
+        selectedId="s0"
+        initialQuery="scout"
+        onPick={onPick}
+      />,
+    );
+    const page = () => screen.getByRole("listbox");
+    expect(within(page()).getAllByRole("option")).toHaveLength(6);
+    expect(screen.getByText("1–6 of 14")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Page 3" }));
+    await waitFor(() => expect(screen.getByText("13–14 of 14")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("tab", { name: /My agents/ }));
+    await waitFor(() => expect(screen.getByText("1–5 of 5")).toBeInTheDocument());
+    expect(screen.queryByRole("navigation", { name: "Result pages" })).not.toBeInTheDocument();
+
+    const input = screen.getByLabelText("Search agents");
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onPick).toHaveBeenCalledWith("s2");
+  });
+
+  it("says when nothing matches", () => {
+    render(
+      <AgentSearchDialog open onOpenChange={() => {}} agents={many} selectedId="s0" initialQuery="zzz" onPick={() => {}} />,
+    );
+    expect(screen.getByText(/No agent matches/)).toBeInTheDocument();
+    expect(screen.getByText("0 results")).toBeInTheDocument();
   });
 });
