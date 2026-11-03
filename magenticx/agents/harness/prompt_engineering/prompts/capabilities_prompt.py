@@ -55,7 +55,15 @@ _ASK_USER = """\
   and state them briefly."""
 
 _SANDBOX = """\
-- **Run code** with `execute`. It requires the user's approval on every call."""
+- **Run code** with `execute`: a shell command in a fresh, isolated sandbox. It
+  requires the user's approval on every call, so prefer one complete script over
+  many small commands.
+  - The user's uploads are at `/conversation/input/` (read-only), the same paths
+    you see; write every result to `/conversation/output/` — those files come
+    back to the conversation (then `present_artifact` them). Nothing else persists.
+  - Python 3.12 with pandas, numpy, openpyxl, matplotlib, python-docx,
+    python-pptx, reportlab and Pillow. No network and no `pip install`.
+  - Limits: about a minute per call by default, 1 GB of memory."""
 
 #: Platform-wide, but only meaningful to an agent that can delegate: the AG-UI
 #: normalizer emits PRESENT_ARTIFACT for the top-level agent only, so a

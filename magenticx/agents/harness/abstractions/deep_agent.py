@@ -474,7 +474,7 @@ class DeepAgent(BaseAgent, ABC):
             has_reference=self._has_reference,
             has_default_skills=self._has_default_skills,
             search_past_convs=bool(ctx.get("search_past_convs")),
-            sandbox_enabled=settings.filesystem.sandbox_execution_enabled,
+            sandbox_enabled=settings.filesystem.sandbox_execution_active,
             now=datetime.now(timezone.utc),
             personalization=build_personalization_prompt(self.personalization),
         )

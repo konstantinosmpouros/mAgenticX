@@ -195,7 +195,8 @@ describe("approval presenter", () => {
     const command = `python -c "${"x".repeat(200)}"`;
     const summary = presentApproval({ toolName: "execute", args: { command } });
     expect(summary.title).toBe("Run a shell command");
-    expect(summary.fields).toEqual([{ kind: "code", value: command, language: "bash" }]);
+    // The whole command, never clipped.
+    expect(summary.fields).toEqual([{ kind: "code", label: "Command", value: command, language: "bash", full: true }]);
   });
 
   it("MCP: 'Server · Tool' and the arguments as labelled values", () => {

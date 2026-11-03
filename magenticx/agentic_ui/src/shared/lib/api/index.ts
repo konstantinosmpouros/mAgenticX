@@ -104,6 +104,7 @@ export { likeMessage, dislikeMessage } from "./messages";
 
 export {
   downloadAttachment,
+  fetchAttachmentBlob,
   fetchAttachmentPreviewBlob,
   fetchDocxPreviewToken,
 } from "./attachments";

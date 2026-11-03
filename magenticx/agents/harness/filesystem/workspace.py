@@ -32,6 +32,7 @@ from deepagents.backends.protocol import SandboxBackendProtocol
 from core.settings import settings
 from harness.agent_registry.store import AgentDefinitionStore, DraftDefinitionStore
 from harness.conversation_files import ConversationFiles, ConversationFilesBackend
+from harness.filesystem.sandbox_backend import RemoteSandboxBackend
 from harness.conversation_files.paths import (
     CONVERSATION_HISTORY_ROOT,
     CONVERSATION_ROOT,
@@ -48,7 +49,9 @@ import harness.skill_registry.store as skill_store
 # Confinement is mainly structural (CompositeBackend + virtual_mode); these only
 # pin the read-only surfaces: /skills/ (UI-managed), the deepagents offload/archive
 # dirs, and /conversation/input/ (uploads — the agent writes to output/). No
-# catch-all deny, which would block reading those. Revisit when execute lands.
+# catch-all deny, which would block reading those. `execute` (plan 11) does not
+# go through these rules: it runs in the sandbox runner, which mounts only the
+# conversation's input/ (read-only) and output/ — never these routes.
 WORKSPACE_WRITE_DENY: list[FilesystemPermission] = [
     FilesystemPermission(operations=["write"], paths=["/skills{,/**}"], mode="deny"),
     FilesystemPermission(operations=["write"], paths=["/large_tool_results{,/**}"], mode="deny"),
@@ -120,7 +123,8 @@ def build_workspace_backend(
         /conversation_history/  → agent_runtime rows        (offloaded history)
         /default_skills/        → image folder OR agent_runtime rows (read-only, optional)
         /reference/             → image folder OR agent_runtime rows OR a draft (read-only, optional)
-        default                 → StateBackend(rt)          (ephemeral scratch)
+        default                 → StateBackend()            (ephemeral scratch)
+                                  or RemoteSandboxBackend   (the same + `execute`, when sandbox execution is active)
 
     Per-conversation isolation: ``files`` is bound to one conversation, so
     files written in one chat are not visible from the next. Every agent of
@@ -163,13 +167,33 @@ def build_workspace_backend(
         # swapping this class can never silently open a code-execution path.
         # Raising here fails the tool call (and the run) rather than degrading
         # open.
-        default_backend = StateBackend()
-        if not settings.filesystem.sandbox_execution_enabled and isinstance(
-            default_backend, SandboxBackendProtocol
-        ):
+        #
+        # When execution IS active (the flag AND a runner URL, plan 11) the
+        # default is the runner-backed sandbox on purpose: same StateBackend
+        # file operations, plus `execute` bound to this run's identity. It has
+        # no fallback — a runner outage is an error result, never a quiet
+        # switch to some other default.
+        sandbox_active = settings.filesystem.sandbox_execution_active
+        # One `/conversation/` mount per call, shared by the route below and —
+        # when execution is active — the sandbox backend, which reads the
+        # conversation's input/ + output/ and writes returned outputs through
+        # it, the same path the agent's own file tools take.
+        conversation_mount = ConversationFilesBackend(files, CONVERSATION_ROOT, loop=loop)
+        default_backend = (
+            RemoteSandboxBackend(
+                user_id=user_id,
+                agent_slug=agent_slug,
+                conversation_id=files.conversation_id,
+                files=files,
+                conversation_mount=conversation_mount,
+            )
+            if sandbox_active
+            else StateBackend()
+        )
+        if not sandbox_active and isinstance(default_backend, SandboxBackendProtocol):
             raise RuntimeError(
                 "Workspace default backend is sandbox-capable but SANDBOX_EXECUTION_ENABLED "
-                "is false — refusing to expose an execution path."
+                "is false (or SANDBOX_RUNNER_URL is unset) — refusing to expose an execution path."
             )
         # `/memories/` is a virtual view over the `agent_memories` table in
         # agent_runtime, so the agent's read_file/write_file on it are queries.
@@ -194,7 +218,7 @@ def build_workspace_backend(
             ),
             # One route for the whole conversation (uploads included), so a
             # grep from the root sees each file once.
-            "/conversation/": ConversationFilesBackend(files, CONVERSATION_ROOT, loop=loop),
+            "/conversation/": conversation_mount,
             # deepagents' offload prefixes: the conversation's too, kept out of
             # /conversation/ so its write-deny cannot be sidestepped from there.
             "/large_tool_results/": ConversationFilesBackend(files, LARGE_TOOL_RESULTS_ROOT, loop=loop),

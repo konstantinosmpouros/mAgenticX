@@ -51,6 +51,8 @@ type ChatMessageProps = {
   liveTimeline?: RunTimeline | null;
   isImageFile: (attachment: any) => boolean;
   onDownloadAttachment: (attachment: any, message: MessageOut) => void;
+  /** Fetches an attachment's bytes (a generated image shown inline). */
+  onLoadAttachment?: (attachment: any, message: MessageOut) => Promise<Blob>;
   onPreviewAttachment: (attachment: any, message: MessageOut) => void;
   onImageClick: (url: string) => void;
   branchData: {
@@ -97,6 +99,7 @@ export function ChatMessage({
   liveTimeline = null,
   isImageFile,
   onDownloadAttachment,
+  onLoadAttachment,
   onPreviewAttachment,
   onImageClick,
   branchData,
@@ -203,6 +206,7 @@ export function ChatMessage({
               onToggleThinking={onToggleThinking}
               message={message}
               onDownloadAttachment={onDownloadAttachment}
+              onLoadAttachment={onLoadAttachment}
               onPreviewAttachment={onPreviewAttachment}
             />
           ) : null}

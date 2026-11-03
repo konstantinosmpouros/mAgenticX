@@ -32,6 +32,8 @@ type TimelineSequenceProps = {
   // generated attachment and reuse the download/preview handlers.
   message?: MessageOut;
   onDownloadAttachment?: (attachment: AttachmentOut, message: MessageOut) => void;
+  /** Fetches an attachment's bytes (a generated image shown inline). */
+  onLoadAttachment?: (attachment: AttachmentOut, message: MessageOut) => Promise<Blob>;
   onPreviewAttachment?: (attachment: AttachmentOut, message: MessageOut) => void;
   subagentLinks?: TimelineSubagentLinks;
 };
@@ -48,6 +50,7 @@ export function TimelineSequence({
   onToggleThinking,
   message,
   onDownloadAttachment,
+  onLoadAttachment,
   onPreviewAttachment,
   subagentLinks,
 }: TimelineSequenceProps) {
@@ -139,6 +142,7 @@ export function TimelineSequence({
           onOpenChange: () => onToggleThinking(expandKey, !open),
           message,
           onDownloadAttachment,
+          onLoadAttachment,
           onPreviewAttachment,
         };
         return <Fragment key={block.id}>{BLOCK_REGISTRY[block.kind](block, ctx)}</Fragment>;

@@ -139,7 +139,11 @@ async def stream_blob_response(
     file_name: str | None = row["file_name"]
     file_size: int | None = row["blob_size"]
 
-    if mime and mime.startswith("image/"):
+    # Images are shown inline through the batch route (/images), never this
+    # preview: an inline image response (an SVG above all) could render as a
+    # page. As a download (attachment + nosniff) it is only saved to disk, so a
+    # generated chart or an edited photo can be downloaded like any file.
+    if mime and mime.startswith("image/") and disposition != "attachment":
         raise HTTPException(status_code=400, detail="Images are not served by this endpoint.")
 
     if require_pdf and mime != "application/pdf":
@@ -162,6 +166,8 @@ async def stream_blob_response(
     base_headers = {
         "Accept-Ranges": "bytes",
         "Content-Disposition": encode_disposition(file_name, disposition),
+        # nginx sets it too; the bridge does not rely on the proxy for it.
+        "X-Content-Type-Options": "nosniff",
     }
     if disposition == "inline":
         base_headers["Cache-Control"] = f"private, max-age={settings.attachments.inline_cache_max_age_seconds}"

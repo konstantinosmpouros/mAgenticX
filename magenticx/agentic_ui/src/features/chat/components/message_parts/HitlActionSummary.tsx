@@ -10,7 +10,7 @@ import {
   type ApprovalSummary,
 } from "@/features/chat/lib/approvalPresentation";
 import { useApprovalSummaries } from "@/features/chat/hooks/useApprovalSummaries";
-import { COMPACT_MARKDOWN, CodePane } from "./ToolCallViews";
+import { COMPACT_MARKDOWN, CodePane, TerminalCommand } from "./ToolCallViews";
 
 /**
  * The body of an approval: the fields `presentApproval` chose, each in its
@@ -66,6 +66,9 @@ const Block = ({ field }: { field: Exclude<ApprovalField, { kind: "text" }> }) =
         />
       </div>
     );
+  } else if (field.kind === "code" && field.language === "bash" && field.full) {
+    // A sandbox command reads as it will run: in a terminal, behind a prompt.
+    body = <TerminalCommand command={field.value} />;
   } else if (field.kind === "code") {
     body = <CodePane code={field.value} language={field.language as BundledLanguage} />;
   } else {
@@ -78,7 +81,7 @@ const Block = ({ field }: { field: Exclude<ApprovalField, { kind: "text" }> }) =
   return (
     <div className="min-w-0">
       <BlockLabel label={field.label} />
-      <Clipped long={long}>{body}</Clipped>
+      <Clipped long={long && !(field.kind === "code" && field.full)}>{body}</Clipped>
     </div>
   );
 };

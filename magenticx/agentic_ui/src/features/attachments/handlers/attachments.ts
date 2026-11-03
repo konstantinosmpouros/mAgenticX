@@ -1,5 +1,5 @@
 import { validateAdd } from "@/shared/lib/uploadGuards";
-import { downloadAttachment } from "@/shared/lib/api";
+import { downloadAttachment, fetchAttachmentBlob } from "@/shared/lib/api";
 import { toastError } from "@/shared/lib/toast";
 import type { ConversationDetail, MessageOut } from "@/shared/lib/types";
 
@@ -186,6 +186,24 @@ export function createAttachmentHandlers(ctx: AttachmentsCtx) {
     setAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
+  // A stored attachment's bytes, for showing it in place (a generated image).
+  // Throws when there is nothing to fetch; the caller falls back to its card.
+  const handleFileLoad = async (
+    attachment: { blobId?: string | null },
+    message: MessageOut,
+  ): Promise<Blob> => {
+    const { userId, currentConversation } = ctx;
+    if (!userId || !currentConversation || !attachment.blobId) {
+      throw new Error("This file can't be loaded.");
+    }
+    return fetchAttachmentBlob({
+      userId,
+      conversationId: currentConversation.id,
+      messageId: message.id,
+      blobId: attachment.blobId,
+    });
+  };
+
   const handleFileDownload = async (attachment: any, message: MessageOut) => {
     const { userId, currentConversation } = ctx;
     // Downloads only work for persisted blobs tied to a real conversation/message.
@@ -238,5 +256,6 @@ export function createAttachmentHandlers(ctx: AttachmentsCtx) {
     isImageFile,
     getImageUrl,
     handleFileDownload,
+    handleFileLoad,
   };
 }

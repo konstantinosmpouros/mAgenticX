@@ -1,0 +1,20 @@
+# Keep the build context lean and keep local files (secrets, TLS material,
+# caches, spike results) out of the image.
+.git/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.env
+.env.*
+*.pem
+*.key
+*.crt
+tls/
+results/
+spike/results/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

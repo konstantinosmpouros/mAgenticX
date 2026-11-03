@@ -230,6 +230,7 @@ export function TryItPanel({
                 liveTimeline={streamingId === message.id ? (run?.timeline ?? null) : null}
                 isImageFile={isImage}
                 onDownloadAttachment={download}
+                onLoadAttachment={(attachment, message) => trial.load(attachment as { blobId?: string }, message)}
                 onPreviewAttachment={download}
                 onImageClick={noop}
                 branchData={{ parentId: message.parentMessageId ?? null, selectionIndex: 0 }}

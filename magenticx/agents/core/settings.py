@@ -513,6 +513,34 @@ class FilesystemSettings(BaseSettings):
     # isolation kernel (gVisor-class) is in place.
     sandbox_execution_enabled: bool = Field(False, validation_alias="SANDBOX_EXECUTION_ENABLED")
 
+    # The sandbox runner (plan 11) that `execute` calls: an internal service
+    # behind mTLS + the trusted-proxy header, never routed through nginx. Empty
+    # means no runner — execution stays off whatever the flag says (see
+    # `sandbox_execution_active`). Local compose: https://sandbox_runner:8090.
+    sandbox_runner_url: str = Field("", validation_alias="SANDBOX_RUNNER_URL")
+    # Read timeout of one /v1/exec call. Must be LONGER than the runner's own
+    # wall-clock kill (SANDBOX_MAX_WALL_SECONDS on the runner), so a slow
+    # command comes back as the runner's `killed_reason="timeout"` result rather
+    # than a client-side timeout that cannot say whether the command ran.
+    sandbox_runner_timeout_seconds: float = Field(
+        180.0, gt=0, le=3600, validation_alias="SANDBOX_RUNNER_TIMEOUT_SECONDS"
+    )
+    sandbox_runner_connect_timeout_seconds: float = Field(
+        10.0, gt=0, le=120, validation_alias="SANDBOX_RUNNER_CONNECT_TIMEOUT_SECONDS"
+    )
+
+    @field_validator("sandbox_runner_url", mode="before")
+    @classmethod
+    def _strip_runner_url(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
+
+    @property
+    def sandbox_execution_active(self) -> bool:
+        """The one "does this deployment have `execute`" check: the kill switch
+        is on AND a runner is configured. Either missing keeps execution off,
+        so a half-configured deployment fails closed."""
+        return self.sandbox_execution_enabled and bool(self.sandbox_runner_url)
+
 
 class ConversationFilesSettings(BaseSettings):
     """A conversation's files, stored in ``agent_runtime`` (plan 36).

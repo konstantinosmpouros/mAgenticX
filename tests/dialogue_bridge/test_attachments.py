@@ -200,8 +200,17 @@ async def test_download_blob_stream_rejects_images_and_missing_blobs(
         f"/v1/attachments/download/{seeded_user.id}/{image_attachment['conversation_id']}/{image_attachment['message_id']}/missing-blob"
     )
 
-    assert image_response.status_code == 400
-    assert image_response.json()["detail"] == "Images are not served by this endpoint."
+    # An image downloads as a file (a generated chart, an edited photo)…
+    assert image_response.status_code == 200
+    assert image_response.content == b"image bytes"
+    assert image_response.headers["content-disposition"].startswith("attachment")
+    assert image_response.headers["x-content-type-options"] == "nosniff"
+    # …but is never served inline by the preview route.
+    preview_response = await client.get(
+        f"/v1/attachments/preview/{seeded_user.id}/{image_attachment['conversation_id']}/{image_attachment['message_id']}/{image_attachment['blob_id']}"
+    )
+    assert preview_response.status_code == 400
+    assert preview_response.json()["detail"] == "Images are not served by this endpoint."
     assert missing_response.status_code == 404
     assert missing_response.json()["detail"] == "Blob not found or not accessible."
 

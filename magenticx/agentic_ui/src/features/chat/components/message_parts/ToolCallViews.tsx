@@ -29,6 +29,7 @@ import {
   isRoutineSuccess,
   languageForPath,
   parseCommandOutput,
+  splitCommandStreams,
   parseGrep,
   parseNumberedFile,
   parsePastChats,
@@ -69,6 +70,49 @@ export const CodePane = ({ code, language }: { code: string; language: BundledLa
     <CodeBlock className={CODE} code={code} language={language} />
   </div>
 );
+
+// A sandbox run reads as a terminal: always dark (as terminals are, whatever
+// the app's theme), monospace, the command behind a `$` prompt, the error
+// stream in red and the exit code at the foot.
+const TERMINAL = cn(
+  "min-w-0 overflow-hidden rounded-lg border border-white/10 bg-[#0d1117] font-mono text-[12px] leading-5 text-zinc-200 shadow-inner",
+  PAYLOAD_PANE,
+);
+
+export const TerminalCommand = ({ command }: { command: string }) => (
+  <div className={TERMINAL}>
+    <pre className="m-0 flex gap-2 whitespace-pre-wrap break-words px-3 py-2.5">
+      <span aria-hidden className="shrink-0 select-none text-emerald-400">
+        $
+      </span>
+      <code className="min-w-0 flex-1">{command}</code>
+    </pre>
+  </div>
+);
+
+const TerminalOutput = ({ stdout, stderr, exitCode }: { stdout: string; stderr: string; exitCode?: number }) => {
+  const out = stdout.trim();
+  const err = stderr.trim();
+  return (
+    <div className={TERMINAL}>
+      <pre className="m-0 whitespace-pre-wrap break-words px-3 py-2.5">
+        {out ? <span>{out}</span> : null}
+        {out && err ? "\n" : null}
+        {err ? <span className="text-red-300">{err}</span> : null}
+        {!out && !err ? <span className="italic text-zinc-500">(no output)</span> : null}
+      </pre>
+      {exitCode !== undefined ? (
+        <div className="flex items-center justify-end gap-1.5 border-t border-white/10 px-3 py-1 text-[11px] text-zinc-400">
+          <span
+            aria-hidden
+            className={cn("h-1.5 w-1.5 rounded-full", exitCode === 0 ? "bg-emerald-400" : "bg-red-400")}
+          />
+          exit {exitCode}
+        </div>
+      ) : null}
+    </div>
+  );
+};
 
 const PathList = ({ paths }: { paths: string[] }) => (
   <ul className={cn(PANE, "space-y-0.5 p-2 font-mono")}>
@@ -133,7 +177,7 @@ export const ToolCallArgsView = ({
       return <CodePane code={toDiff(text(a, "old_string"), text(a, "new_string"))} language="diff" />;
 
     case "execute":
-      return text(a, "command") ? <CodePane code={text(a, "command")} language="bash" /> : null;
+      return text(a, "command") ? <TerminalCommand command={text(a, "command")} /> : null;
 
     // The title names the sub-agent; the brief it is handed reads as Markdown.
     case "task":
@@ -281,11 +325,10 @@ export const ToolCallResultView = ({
     case "execute": {
       const out = parseCommandOutput(result);
       if (!out) return generic;
+      const streams = splitCommandStreams(out.output);
       return (
         <div className="space-y-1.5">
-          <pre className={cn(PANE, "m-0 whitespace-pre-wrap break-words p-3 font-mono")}>
-            {out.output.trim() || "(no output)"}
-          </pre>
+          <TerminalOutput stdout={streams.stdout} stderr={streams.stderr} exitCode={out.exitCode} />
           <TruncatedNote show={tool.resultTruncated} />
         </div>
       );

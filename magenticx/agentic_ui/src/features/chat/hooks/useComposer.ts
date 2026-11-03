@@ -108,6 +108,7 @@ export function useComposer({
     isImageFile,
     getImageUrl,
     handleFileDownload,
+    handleFileLoad,
   } = useMemo(
     () =>
       createAttachmentHandlers({
@@ -173,5 +174,6 @@ export function useComposer({
     isImageFile,
     getImageUrl,
     handleFileDownload,
+    handleFileLoad,
   };
 }

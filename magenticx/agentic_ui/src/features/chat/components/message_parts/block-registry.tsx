@@ -48,6 +48,8 @@ export type BlockRenderContext = {
   // handlers. Absent in read-only render contexts.
   message?: MessageOut;
   onDownloadAttachment?: (attachment: AttachmentOut, message: MessageOut) => void;
+  /** Fetches an attachment's bytes (a generated image shown inline). */
+  onLoadAttachment?: (attachment: AttachmentOut, message: MessageOut) => Promise<Blob>;
   onPreviewAttachment?: (attachment: AttachmentOut, message: MessageOut) => void;
 };
 
@@ -84,6 +86,7 @@ export const BLOCK_REGISTRY: Record<
       block={block as ArtifactBlock}
       message={ctx.message}
       onDownload={ctx.onDownloadAttachment}
+      onLoad={ctx.onLoadAttachment}
       onPreview={ctx.onPreviewAttachment}
     />
   ),

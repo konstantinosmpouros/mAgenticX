@@ -54,6 +54,11 @@ class BuiltinTool:
     availability: Availability = Availability.ALWAYS
 
 
+#: deepagents' sandbox tool. Named once so the approval merge can force its
+#: gate by name (``gates.resolve_interrupt_on``) and validation can refuse a
+#: definition that tries to clear it.
+EXECUTE_TOOL_NAME = "execute"
+
 BUILTIN_TOOLS: tuple[BuiltinTool, ...] = (
     BuiltinTool("write_todos", "Planning", "Track a structured task list for the run."),
     BuiltinTool("ls", "Filesystem", "List a directory."),
@@ -63,9 +68,10 @@ BUILTIN_TOOLS: tuple[BuiltinTool, ...] = (
     BuiltinTool("write_file", "Filesystem", "Create a file in the conversation workspace.", hitl_default=True),
     BuiltinTool("edit_file", "Filesystem", "Replace text in an existing file.", hitl_default=True),
     BuiltinTool(
-        "execute",
+        EXECUTE_TOOL_NAME,
         "Execution",
-        "Run code in the sandbox.",
+        "Run a shell command in an isolated sandbox (no network; the conversation's "
+        "input/ read-only, output/ writable). Always asks for approval.",
         hitl_default=True,
         locked=True,
         availability=Availability.SANDBOX,
@@ -107,9 +113,14 @@ def locked_gates() -> dict[str, bool]:
 MAIN_ONLY_TOOLS: frozenset[str] = frozenset({"ask_user"})
 
 
-def builtin_tool_catalog() -> list[dict[str, Any]]:
+def builtin_tool_catalog(*, sandbox_enabled: bool = False) -> list[dict[str, Any]]:
     """Every prebuilt tool as the agent builder lists it (``GET /builtin-tools``):
-    what it does, its group, and how its approval behaves."""
+    what it does, its group, and how its approval behaves.
+
+    A sandbox-only tool (``execute``) is listed only where sandboxed execution
+    is active, so the builder never offers a gate for a tool no run can have.
+    It stays in :data:`BUILTIN_BY_NAME` either way — that roster is also the
+    reserved-name list MCP tools are filtered against."""
     return [
         {
             "name": t.name,
@@ -121,6 +132,7 @@ def builtin_tool_catalog() -> list[dict[str, Any]]:
             "mainOnly": t.name in MAIN_ONLY_TOOLS,
         }
         for t in BUILTIN_TOOLS
+        if sandbox_enabled or t.availability is not Availability.SANDBOX
     ]
 
 
@@ -154,6 +166,7 @@ __all__ = [
     "MAIN_ONLY_TOOLS",
     "Availability",
     "BuiltinTool",
+    "EXECUTE_TOOL_NAME",
     "builtin_hitl_defaults",
     "builtin_tool_catalog",
     "is_builtin",

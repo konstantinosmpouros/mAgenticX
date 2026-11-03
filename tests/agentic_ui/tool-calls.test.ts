@@ -4,6 +4,7 @@ import {
   isRoutineSuccess,
   languageForPath,
   parseCommandOutput,
+  splitCommandStreams,
   parseGrep,
   parseNumberedFile,
   parsePastChats,
@@ -179,6 +180,12 @@ describe("execute", () => {
 
   it("keeps output without an exit line as-is", () => {
     expect(parseCommandOutput("just text")).toEqual({ output: "just text" });
+  });
+
+  it("splits stdout from the error stream for the terminal view", () => {
+    expect(splitCommandStreams("totals\n[stderr]\nwarning: x")).toEqual({ stdout: "totals", stderr: "warning: x" });
+    expect(splitCommandStreams("[stderr]\nTraceback")).toEqual({ stdout: "", stderr: "Traceback" });
+    expect(splitCommandStreams("only out")).toEqual({ stdout: "only out", stderr: "" });
   });
 });
 

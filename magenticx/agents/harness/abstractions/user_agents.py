@@ -393,7 +393,10 @@ def _reference_issues(
         elif builtin is not None and not builtin.gateable and asks:
             issues.append(_issue(path, f"{tool_name!r} is itself a question to you; it can't ask first."))
         elif builtin is not None and builtin.locked and not asks:
-            issues.append(_issue(path, f"{tool_name!r} always asks for approval."))
+            issues.append(_issue(path, (
+                f"{tool_name!r} always asks for approval — every command it runs needs your OK, "
+                "so this can't be set to false. Remove the line or set it to true."
+            )))
     return issues
 
 

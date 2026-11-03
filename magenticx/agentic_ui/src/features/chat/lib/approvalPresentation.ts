@@ -43,8 +43,9 @@ export type ApprovalField =
   | { kind: "markdown"; label?: string; value: string }
   /** Multi-line plain text, line breaks kept. */
   | { kind: "prose"; label?: string; value: string }
-  /** A command, file content, a diff or structured data. */
-  | { kind: "code"; label?: string; value: string; language: string };
+  /** A command, file content, a diff or structured data. `full`: never clipped
+      behind "Show more" (a command to run must be read whole before approving). */
+  | { kind: "code"; label?: string; value: string; language: string; full?: boolean };
 
 export type ApprovalSummary = {
   title: string;
@@ -157,10 +158,12 @@ const PRESENTERS: Record<string, (a: ToolArgs) => Omit<ApprovalSummary, "note">>
       },
     ],
   }),
+  // Code runs in the sandbox (plan 11): the whole command, never clipped, so
+  // the approval is an informed one.
   execute: (a) => ({
     title: "Run a shell command",
     fields: str(a, "command")
-      ? [{ kind: "code", value: str(a, "command"), language: "bash" }]
+      ? [{ kind: "code", label: "Command", value: str(a, "command"), language: "bash", full: true }]
       : [],
   }),
   read_file: (a) => ({

@@ -27,7 +27,7 @@ logger = get_logger(__name__)
 
 @router.get(
     "/download/{user_id}/{conversation_id}/{message_id}/{blob_id}",
-    summary="Stream a blob (non-image) with HTTP byte-range support",
+    summary="Stream a blob as a download, with HTTP byte-range support",
 )
 async def downloadBlobStream(
     user_id: str,
@@ -39,8 +39,9 @@ async def downloadBlobStream(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Stream a blob (non-image) with HTTP byte-range support.
-    Returns 200 for full content or 206 for partial content.
+    Stream a blob as a download (Content-Disposition: attachment, nosniff),
+    images included, with HTTP byte-range support. Returns 200 for full content
+    or 206 for partial content.
     """
     return await stream_blob_response(
         user_id=user_id,

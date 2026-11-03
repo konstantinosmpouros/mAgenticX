@@ -374,6 +374,7 @@ export function useChatWorkspace({
     dictationStatus,
     cancelDictation,
     handleFileDownload,
+    handleFileLoad,
   } = composer;
 
   const stopActiveInferenceRun = useCallback(() => {
@@ -1314,6 +1315,7 @@ export function useChatWorkspace({
         expandedThinking={expandedThinking}
         isImageFile={composer.isImageFile}
         onDownloadAttachment={handleFileDownload}
+        onLoadAttachment={handleFileLoad}
         onPreviewAttachment={openFilePreview}
         onImageClick={handleImageClick}
         onToggleThinking={toggleThinking}

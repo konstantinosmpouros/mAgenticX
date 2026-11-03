@@ -79,6 +79,8 @@ type ChatBody = {
   expandedThinking: Record<string, boolean>;
   isImageFile: (attachment: AttachmentLike) => boolean;
   onDownloadAttachment: (attachment: AttachmentLike, message: MessageOut) => void;
+  /** Fetches an attachment's bytes (a generated image shown inline). */
+  onLoadAttachment?: (attachment: { blobId?: string | null }, message: MessageOut) => Promise<Blob>;
   onPreviewAttachment: (attachment: AttachmentLike, message: MessageOut) => void;
   onImageClick: (imageUrl: string) => void;
   onToggleThinking: (messageId: string, next?: boolean) => void;
@@ -138,6 +140,7 @@ export default function ChatBody({
   expandedThinking,
   isImageFile,
   onDownloadAttachment,
+  onLoadAttachment,
   onPreviewAttachment,
   onImageClick,
   onToggleThinking,
@@ -833,6 +836,7 @@ export default function ChatBody({
                     liveTimeline={streamingMessageId === message.id ? liveTimeline : null}
                     isImageFile={isImageFile}
                     onDownloadAttachment={onDownloadAttachment}
+                    onLoadAttachment={onLoadAttachment}
                     onPreviewAttachment={onPreviewAttachment}
                     onImageClick={onImageClick}
                     branchData={{

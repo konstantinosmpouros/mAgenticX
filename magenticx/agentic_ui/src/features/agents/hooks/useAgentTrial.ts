@@ -4,6 +4,7 @@ import {
   cancelInferenceRun,
   connectInferenceWebSocket,
   downloadAttachment,
+  fetchAttachmentBlob,
   resetAgentTrial,
   resumeInferenceRun,
   startAgentTrial,
@@ -62,6 +63,8 @@ export type AgentTrial = {
   reset: () => Promise<void>;
   /** Save a file the agent attached to an answer. */
   download: (attachment: { blobId?: string | null; name?: string | null }, message: MessageOut) => Promise<void>;
+  /** A stored attachment's bytes (a generated image shown in place). */
+  load: (attachment: { blobId?: string | null }, message: MessageOut) => Promise<Blob>;
 };
 
 /**
@@ -322,6 +325,16 @@ export function useAgentTrial({ userId }: { userId: string | null }): AgentTrial
     [],
   );
 
+  const load = useCallback(
+    async (attachment: { blobId?: string | null }, message: MessageOut): Promise<Blob> => {
+      const owner = userIdRef.current;
+      const id = conversationIdRef.current;
+      if (!owner || !id || !attachment.blobId) throw new Error("This file can't be loaded.");
+      return fetchAttachmentBlob({ userId: owner, conversationId: id, messageId: message.id, blobId: attachment.blobId });
+    },
+    [],
+  );
+
   // Leaving the builder discards the chat: stop following it, stop its run
   // and delete the conversation. Fire-and-forget — the page is going away,
   // and the bridge sweeps trial conversations it missed.
@@ -376,5 +389,6 @@ export function useAgentTrial({ userId }: { userId: string | null }): AgentTrial
     resume,
     reset,
     download,
+    load,
   };
 }

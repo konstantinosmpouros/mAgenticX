@@ -14,6 +14,8 @@ type AgentRunTimelineProps = {
   // Threaded down to inline artifact blocks (present_artifact deliverables).
   message?: MessageOut;
   onDownloadAttachment?: (attachment: AttachmentOut, message: MessageOut) => void;
+  /** Fetches an attachment's bytes (a generated image shown inline). */
+  onLoadAttachment?: (attachment: AttachmentOut, message: MessageOut) => Promise<Blob>;
   onPreviewAttachment?: (attachment: AttachmentOut, message: MessageOut) => void;
 };
 
@@ -34,6 +36,7 @@ export function AgentRunTimeline({
   className,
   message,
   onDownloadAttachment,
+  onLoadAttachment,
   onPreviewAttachment,
 }: AgentRunTimelineProps) {
   if (!timeline.blocks.length) {
@@ -63,6 +66,7 @@ export function AgentRunTimeline({
         onToggleThinking={onToggleThinking}
         message={message}
         onDownloadAttachment={onDownloadAttachment}
+        onLoadAttachment={onLoadAttachment}
         onPreviewAttachment={onPreviewAttachment}
       />
     </div>

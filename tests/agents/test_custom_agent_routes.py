@@ -95,7 +95,11 @@ def test_model_labels_read_as_people_say_them(agents_service, model_id, label):
     assert agents_service.user_agents.model_label(model_id) == label
 
 
-async def test_builtin_tools_say_how_their_approval_behaves(client, internal_headers):
+async def test_builtin_tools_say_how_their_approval_behaves(client, internal_headers, agents_service):
+    # `execute` is listed only where sandboxed execution is active (plan 11).
+    fs = agents_service.settings_module.settings.filesystem
+    fs.sandbox_execution_enabled = True
+    fs.sandbox_runner_url = "https://sandbox_runner:8090"
     response = await client.get("/builtin-tools", headers=internal_headers)
     assert response.status_code == 200
     tools = {t["name"]: t for t in response.json()}

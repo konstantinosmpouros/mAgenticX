@@ -186,7 +186,7 @@ flowchart LR
 | Guarantee | How it holds |
 | --- | --- |
 | No user-supplied tool code | `tools:` entries are *references* — an MCP `server/tool` pair validated against the live gateway manifest, or a native name validated against the in-code registry. There is no path by which a spec contributes executable code. |
-| `execute` always asks | `locked_gates()` is merged last at run time, and `validate_definition` rejects a spec with `hitl: {execute: false}`. The other default gates are the user's choice per agent (their approval preferences, set from the builder or the agent's Approvals tab), not a floor in the spec. |
+| `execute` always asks | `locked_gates()` is merged last at run time and `resolve_interrupt_on` then forces `execute` by name, at every depth (sub-agents and Try-it trials resolve through it too); `validate_definition` and the spec loader (`AgentSpec.reference_errors`) reject `hitl: {execute: false}`. `GET /builtin-tools` lists `execute` only where sandboxed execution is active. The other default gates are the user's choice per agent (their approval preferences, set from the builder or the agent's Approvals tab), not a floor in the spec. |
 | Models are allowlisted | `settings.registry.allowed_agent_models`, not free text — a user cannot select something nonexistent or costly. |
 | Definitions are config, never code | `extra="forbid"` on every spec model; the agent folder accepts `.md/.txt/.yaml/.yml` only, ≤20 files, ≤256 KiB each, ≤1 MiB total, depth ≤3; a user agent's prompt (main or sub-agent) ≤64 KiB. No cap on how many agents a user has or how many versions an agent keeps. |
 | Overrides work identically | The rows are keyed on `(user_id, agent_slug, tool_key)`, so a user agent and a platform one are handled the same way and two users' same-named agents cannot alias. |
@@ -360,7 +360,7 @@ than dropping the row — a tool that silently disappears reads as a bug:
 | `search_past_conversations` | `search_past_convs` |
 | `present_artifact` | a conversation exists |
 | `ask_user` | a conversation exists (and, per run, an interactive one) |
-| `execute` | `SANDBOX_EXECUTION_ENABLED` (**default false**) |
+| `execute` | `SANDBOX_EXECUTION_ENABLED` (**default false**) **and** `SANDBOX_RUNNER_URL` set — then the workspace default is `RemoteSandboxBackend` and deepagents adds the tool (plan 11) |
 
 The first two are the user's preferences, which the agents service cannot see —
 the bridge passes them on the catalog request rather than the far side guessing.

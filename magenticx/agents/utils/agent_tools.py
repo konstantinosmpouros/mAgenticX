@@ -76,7 +76,7 @@ def _builtin_rows(gates: Set[str], *, use_memory: bool, search_past_convs: bool)
             use_memory=use_memory,
             search_past_convs=search_past_convs,
             has_conversation=True,
-            sandbox_enabled=settings.filesystem.sandbox_execution_enabled,
+            sandbox_enabled=settings.filesystem.sandbox_execution_active,
         )
         native = NATIVE_TOOLS.get(tool.name)
         rows.append(

@@ -25,6 +25,8 @@ from typing import Callable, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from harness.tools.builtins import locked_gates
+
 
 # Kebab-case: lowercase alnum groups joined by single hyphens. Doubles as a
 # path-safety guard — a slug is used as an on-disk directory name.
@@ -263,6 +265,15 @@ class AgentSpec(BaseModel):
         for tool_name in self.native_tool_names():
             if not is_known_native_tool(tool_name):
                 errors.append(f"unknown native tool: {tool_name!r}")
+        # A mandated gate (``execute``) cannot be cleared from YAML: the run
+        # would force it back on anyway, so a definition saying otherwise is
+        # refused at load time rather than silently overridden (plan 11 §3.4).
+        locked = locked_gates()
+        for tool_name, asks in self.hitl.items():
+            if tool_name in locked and not asks:
+                errors.append(
+                    f"hitl.{tool_name}: {tool_name!r} always asks for approval and cannot be set to false"
+                )
         return errors
 
 

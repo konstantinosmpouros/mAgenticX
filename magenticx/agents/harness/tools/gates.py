@@ -19,7 +19,13 @@ import types
 from typing import Any, Mapping, Protocol, Sequence
 
 from core.logging import get_logger
-from harness.tools.builtins import BUILTIN_BY_NAME, builtin_hitl_defaults, locked_gates, ungateable_tools
+from harness.tools.builtins import (
+    BUILTIN_BY_NAME,
+    EXECUTE_TOOL_NAME,
+    builtin_hitl_defaults,
+    locked_gates,
+    ungateable_tools,
+)
 from utils import get_tool_cache_key
 
 logger = get_logger(__name__)
@@ -153,6 +159,10 @@ def resolve_interrupt_on(
 
     Step 4 is last so no layer beneath it can clear a mandated gate: a user
     switching off approval for ``execute`` must not be able to succeed.
+    ``execute`` is then forced once more **by name** (plan 11 §3.4), so the
+    sandbox gate does not hang on a single ``locked=True`` in the roster: a
+    code-execution tool that runs unapproved is the one failure this merge
+    must never produce, at any depth (sub-agents resolve through here too).
 
     Then the ungateable tools are dropped from the result, whichever layer set
     them: ``ask_user`` is itself the pause, and a gate in front of it would
@@ -165,6 +175,7 @@ def resolve_interrupt_on(
         else:
             resolved.pop(name, None)
     resolved.update(locked_gates())
+    resolved[EXECUTE_TOOL_NAME] = True
     for name in ungateable_tools():
         resolved.pop(name, None)
     return resolved

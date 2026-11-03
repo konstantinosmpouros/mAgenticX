@@ -70,6 +70,38 @@ services:
       - mcp_net
 
 
+  sandbox_runner: # 8090
+    # Runs the agents' `execute` calls (plan 11): one throwaway gVisor box per
+    # command — no network, read-only input, non-root, hard limits. Its own
+    # Docker daemon (dind, like the MCP gateway) is why it is privileged. Only
+    # agents reaches it, on sandbox_net; no host port. Local dev is plaintext
+    # (as every internal hop here); Dennis requires TLS + mTLS.
+    container_name: sandbox_runner
+    image: sandbox_runner
+    build:
+      context: ./sandbox_runner
+      dockerfile: Dockerfile
+    privileged: true
+    environment:
+      - TRUSTED_PROXY_SECRET=${TRUSTED_PROXY_SECRET}
+      - SANDBOX_REQUIRE_TLS=false
+      - SANDBOX_REQUIRE_MTLS=false
+      - LOG_FORMAT=${LOG_FORMAT:-console}
+    # In memory, so every start is clean (the MCP gateway's lesson: a restarted
+    # dind keeps stale PID files and never comes up).
+    tmpfs:
+      - /run
+    healthcheck:
+      test: ["CMD", "python", "/app/healthcheck.py"]
+      interval: 30s
+      timeout: 40s
+      start_period: 90s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - sandbox_net
+
+
   agents: # 8003
     container_name: agents
     image: agents
@@ -109,6 +141,12 @@ services:
       # an AES key (see docker-compose-denis.yaml).
       - AGENT_RUNTIME_DATABASE_URL=postgresql://admin:admin@chat_postgres:5432/agent_runtime
       - LANGGRAPH_STRICT_MSGPACK=true
+      # Every deep agent gets `execute`, run in sandbox_runner and always
+      # approved first (plan 11). The runner's wall clock is 300 s at most;
+      # this client waits a little longer.
+      - SANDBOX_EXECUTION_ENABLED=${SANDBOX_EXECUTION_ENABLED:-true}
+      - SANDBOX_RUNNER_URL=http://sandbox_runner:8090
+      - SANDBOX_RUNNER_TIMEOUT_SECONDS=330
     volumes:
       # The agents filesystem's global plane (agent definitions + skills
       # catalogue). See harness/filesystem/layout.py.
@@ -124,6 +162,7 @@ services:
       - backend
       - frontend
       - mcp_net
+      - sandbox_net
 
 
   chat_postgres: # 5432
@@ -246,6 +285,10 @@ networks:
   # pull MCP server images and reach Tavily/arXiv.
   mcp_net:
     name: mcp_net
+  # agents ↔ sandbox_runner only, and internal: no route out (the boxes have
+  # no network of their own either).
+  sandbox_net:
+    internal: true
 
 
 

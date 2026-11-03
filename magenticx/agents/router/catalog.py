@@ -92,4 +92,6 @@ async def get_agent_models() -> List[AgentModelOption]:
 async def get_builtin_tools() -> List[BuiltinToolInfo]:
     """Every prebuilt tool an agent has, with how its approval behaves — for the
     builder, before the agent exists (the per-agent tool rows need a saved one)."""
-    return [BuiltinToolInfo.model_validate(item) for item in builtin_tool_catalog()]
+    return [BuiltinToolInfo.model_validate(item) for item in builtin_tool_catalog(
+        sandbox_enabled=settings.filesystem.sandbox_execution_active
+    )]

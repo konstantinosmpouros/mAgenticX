@@ -254,6 +254,20 @@ export const parseCommandOutput = (result: string | undefined): { output: string
   return { output: result.slice(0, match.index), exitCode: Number(match[1]) };
 };
 
+/**
+ * A sandbox run's output split into its streams: the agents service writes
+ * stdout first, then `[stderr]` and the error stream, then any notes (files
+ * written, a kill reason). Either part may be empty.
+ */
+export const splitCommandStreams = (output: string): { stdout: string; stderr: string } => {
+  const marker = /(^|\n)\[stderr\]\n/.exec(output);
+  if (!marker) return { stdout: output, stderr: "" };
+  return {
+    stdout: output.slice(0, marker.index),
+    stderr: output.slice(marker.index + marker[0].length),
+  };
+};
+
 export type PastChatHit = { header: string; snippet: string };
 
 /** `search_past_conversations` lines: `- [Title · User · created 2026-09-01] text`. */
