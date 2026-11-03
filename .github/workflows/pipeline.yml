@@ -232,6 +232,12 @@ jobs:
     name: cd
     needs: [ci]
     if: needs.ci.outputs.deploy == 'true'
+    # Dennis is the `production` environment: its deploy secrets (the Portainer
+    # webhook) are readable only by this job, on main. No required reviewers:
+    # a publish deploys automatically, as before.
+    environment:
+      name: production
+      url: https://agents.magenticx.com
     runs-on: ubuntu-latest
     timeout-minutes: 30
     concurrency:
