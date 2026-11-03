@@ -332,7 +332,7 @@ flowchart LR
 
 | Signal | Path | What selects the stack |
 | --- | --- | --- |
-| Logs | Alloy tails the Docker socket | keep rule on `com.docker.stack.namespace` = `magenticx\|orthodoxai`. The regex is anchored, so `magenticx_monitoring` itself is dropped |
+| Logs | Alloy tails the Docker socket | keep rule on `com.docker.stack.namespace` = `magenticx\|orthodoxai`. The regex is anchored, so `monitoring` itself is dropped |
 | Container metrics | cAdvisor reads host cgroups | panels filter `container_label_com_docker_swarm_service_name` on `magenticx_.*` / `orthodoxai_.*` |
 | Host metrics | node-exporter | shared by both stacks |
 | Alerts | one Alertmanager, one inbox | Loki rules group `by (stack)`; container rules add a `project` label. Prometheus's external label is `monitor: dennis` (was `stack: magenticx`, which would have stamped every OrthodoxAI alert as mAgenticX) |
@@ -368,7 +368,7 @@ Every panel counts an event the OrthodoxAI services actually emit (verified agai
 | Where | How |
 | --- | --- |
 | Locally | `docker compose up -d` from `../monitoring` (project `monitoring`, Grafana on `http://localhost:3000`) — see [../monitoring/CLAUDE.md § Run locally](../../../monitoring/CLAUDE.md). The log panels need `LOG_FORMAT=json` in `magenticx/.env` and the app services recreated (`docker-compose -p magenticx -f magenticx/docker-compose.yaml up -d --no-deps dialogue_bridge agents rag_service`) |
-| Denis | Portainer Swarm stack `magenticx_monitoring`, deployed from the monitoring repo; configs bind-mounted from `/opt/magenticx/monitoring/` — see [../monitoring/CLAUDE.md § Dennis](../../../monitoring/CLAUDE.md) |
+| Denis | Portainer Swarm stack `monitoring`, deployed from the monitoring repo; configs bind-mounted from `/opt/magenticx/monitoring/` — see [../monitoring/CLAUDE.md § Dennis](../../../monitoring/CLAUDE.md) |
 
 ---
 

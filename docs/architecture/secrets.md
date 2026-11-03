@@ -56,12 +56,12 @@ Nine Swarm secrets, declared at the bottom of the compose with `external: true` 
 
 ## Monitoring stack secrets — `../monitoring/docker-compose-denis.yml`
 
-Two Swarm secrets, in the sibling project's Portainer stack (`magenticx_monitoring`). Runbook: [../monitoring/CLAUDE.md](../../../monitoring/CLAUDE.md).
+Two Swarm secrets, in the sibling project's Portainer stack (`monitoring`). Runbook: [../monitoring/CLAUDE.md](../../../monitoring/CLAUDE.md).
 
 | External Swarm name | Alias / path | Resolved via | Consumed by | Purpose / functionality |
 | --- | --- | --- | --- | --- |
-| `magenticx_grafana_admin_password` | `grafana_admin_password` | `GF_SECURITY_ADMIN_PASSWORD__FILE` | `grafana` | Grafana admin login password. The admin username comes from the non-secret `GRAFANA_USER` stack env var. **Only seeds on first `grafana-data` volume init** — changing it later requires wiping the volume or resetting in-app. |
-| `magenticx_alert_smtp_password` | `alert_smtp_password` | `password_file:` in `alertmanager.yml` | `alertmanager` | SMTP password so Alertmanager can email alerts to the configured recipient (host/from/to are set in `alertmanager.yml`). |
+| `monitoring_grafana_admin_password` | `grafana_admin_password` | `GF_SECURITY_ADMIN_PASSWORD__FILE` | `grafana` | Grafana admin login password. The admin username comes from the non-secret `GRAFANA_USER` stack env var. **Only seeds on first `grafana-data` volume init** — changing it later requires wiping the volume or resetting in-app. |
+| `monitoring_alert_smtp_password` | `alert_smtp_password` | `password_file:` in `alertmanager.yml` | `alertmanager` | SMTP password so Alertmanager can email alerts to the configured recipient (host/from/to are set in `alertmanager.yml`). |
 
 ---
 

@@ -296,9 +296,33 @@ async def test_stream_blob_image_rejected(session_factory, seeded_user, seeded_a
                 blob_id=seed["blob_id"],
                 range_header=None,
                 db=session,
-                disposition="attachment",
+                disposition="inline",
             )
         assert getattr(exc.value, "status_code", None) == 400
+
+
+async def test_stream_blob_image_download_allowed(session_factory, seeded_user, seeded_agent):
+    """Images are refused inline but can still be saved as an attachment download."""
+    seed = await _seed_blob(
+        session_factory=session_factory,
+        seeded_user=seeded_user,
+        seeded_agent=seeded_agent,
+        file_name="pic.png",
+        mime_type="image/png",
+        data=b"img",
+    )
+    async with session_factory() as session:
+        response = await stream_blob_response(
+            user_id=seeded_user.id,
+            conversation_id=seed["conversation_id"],
+            message_id=seed["message_id"],
+            blob_id=seed["blob_id"],
+            range_header=None,
+            db=session,
+            disposition="attachment",
+        )
+    assert response.headers["content-disposition"].startswith("attachment;")
+    assert response.headers["x-content-type-options"] == "nosniff"
 
 
 async def test_stream_blob_missing_blob_404(session_factory, seeded_user, seeded_agent):
