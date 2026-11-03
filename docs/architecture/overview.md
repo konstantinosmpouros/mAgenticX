@@ -15,7 +15,8 @@ This document describes the full mAgenticX platform: every service, its port, it
 | vectordb | `vectordb` | **8000** | ChromaDB 0.6.3 — vector store |
 | chat_postgres | `chat_postgres` | **5432** | PostgreSQL 16 + **pgvector** (`pgvector/pgvector:pg16`) — relational store (`chat_db` + `agent_runtime` DBs); pgvector backs per-message conversation embeddings |
 | redis | `redis` | **6379** | Redis 7.4 — per-run Redis Streams as the inference event log |
-| mcp_gateway | `mcp_gateway` | **8005** | Docker MCP Gateway — part of the core stack (local `docker-compose.yaml`; on Dennis its own plain-Compose project, `docker-compose-denis-mcp.yaml`) |
+| mcp_gateway | `mcp_gateway` | **8005** | Docker MCP Gateway — optional sibling project [`../mcp_gateway`](../../../mcp_gateway/CLAUDE.md), not in this repo's composes |
+| sandbox_runner | `sandbox_runner` | **8090** | Runs `execute` in gVisor boxes — optional sibling project [`../sandbox`](../../../sandbox/CLAUDE.md), not in this repo's composes |
 
 The frontend Vite dev server (no nginx) uses **port 8080**.
 
@@ -244,11 +245,9 @@ Redis 7.4 (alpine) backs the durable per-run AG-UI event log used by the WebSock
 
 ### mcp_gateway (Optional)
 
-The MCP gateway is Docker's MCP Gateway (`docker/mcp-gateway`, dind variant) that wraps external MCP servers (Tavily, arxiv-mcp-server, etc.) into a single SSE endpoint. The agents service treats it as a single MCP origin. It is part of the core stack: locally it is the `mcp_gateway` service in `docker-compose.yaml`, on `mcp_net` with agents and no host port. On Dennis it is a separate plain-Compose project (`docker-compose-denis-mcp.yaml`, project `magenticx-mcp`), because Swarm ignores `privileged` and dind's inner daemon would never start. With `MCP_GATEWAY_URL` emptied the platform still runs — no MCP tools, an empty tool catalog.
+The MCP gateway is Docker's MCP Gateway (`docker/mcp-gateway`, dind variant) that wraps external MCP servers (Tavily, arxiv-mcp-server, etc.) into a single SSE endpoint. The agents service treats it as a single MCP origin. It is a sibling project, [`../mcp_gateway`](../../../mcp_gateway/CLAUDE.md), with its own composes: locally it joins this stack's `mcp_net` (no host port); on Dennis it is a plain-Compose project on the `mcp_gateway` overlay, because Swarm ignores `privileged` and dind's inner daemon would never start. With `MCP_GATEWAY_URL` empty (the local default) the platform still runs — no MCP tools, an empty tool catalog.
 
-Tool catalog: `magenticx/mcp_gateway/mcp_catalog.yaml`
-Tool configuration: `magenticx/mcp_gateway/mcp_config.yaml`
-Secrets (API keys for MCP tools): `magenticx/mcp_gateway/mcp_secret.env`
+Catalog, per-server config and the secret file live in that project — see [its CLAUDE.md](../../../mcp_gateway/CLAUDE.md).
 
 ---
 
@@ -322,18 +321,19 @@ sequenceDiagram
 
 ### Docker Compose Layers
 
-Locally one compose file runs the whole platform, MCP gateway included:
+Locally one compose file runs the whole platform; the MCP gateway and sandbox runner are optional sibling projects that join its networks:
 
 ```text
-magenticx/docker-compose.yaml              ← ui, bridge, agents, rag, chroma, postgres, redis, mcp_gateway; owns mcp_net
+magenticx/docker-compose.yaml              ← ui, bridge, agents, rag, chroma, postgres, redis; owns mcp_net + sandbox_net
+../mcp_gateway/docker-compose.yaml         ← mcp_gateway (optional), joins mcp_net
+../sandbox/docker-compose.yaml             ← sandbox_runner (optional), joins sandbox_net
 ```
 
 ```bash
-# magenticx/mcp_gateway/mcp_secret.env: tavily.api_token=...
 docker-compose -p magenticx -f magenticx/docker-compose.yaml up -d --build
 ```
 
-The local compose passes `${MCP_GATEWAY_URL-http://mcp_gateway:8005/sse}`; set `MCP_GATEWAY_URL=` (empty) in `magenticx/.env` to run with MCP off. On Dennis the gateway stays a separate plain-Compose project (`docker-compose-denis-mcp.yaml`) — Swarm can't run the privileged dind image.
+`MCP_GATEWAY_URL` and `SANDBOX_RUNNER_URL` default to empty locally (no MCP tools, no `execute`); set them in `magenticx/.env` when the siblings run. On Dennis both siblings are plain-Compose projects outside the Swarm stack — Swarm can't run privileged dind images.
 
 ### Docker Networks
 
@@ -342,6 +342,7 @@ The local compose passes `${MCP_GATEWAY_URL-http://mcp_gateway:8005/sse}`; set `
 | `backend` | dialogue_bridge, agents, rag_service, vectordb, chat_postgres, redis |
 | `frontend` | agentic_ui, dialogue_bridge |
 | `mcp_net` | agents, mcp_gateway — created by `docker-compose.yaml`; the optional gateway joins it |
+| `sandbox_net` | agents, sandbox_runner — internal (no route out), created by `docker-compose.yaml`; the optional runner joins it |
 
 Only `agentic_ui` (port 8050) is bound to the host. All other services are internal.
 
@@ -441,7 +442,8 @@ Only `agentic_ui` (port 8050) is bound to the host. All other services are inter
 | Concept | File | What to look for |
 | --- | --- | --- |
 | Core compose (services, networks, volumes) | [magenticx/docker-compose.yaml](../../magenticx/docker-compose.yaml) | port bindings, environment variable names, volume mounts |
-| MCP gateway (Dennis) | [magenticx/docker-compose-denis-mcp.yaml](../../magenticx/docker-compose-denis-mcp.yaml) | the gateway as plain Compose next to the Swarm stack |
+| MCP gateway | [../mcp_gateway/](../../../mcp_gateway/CLAUDE.md) | sibling project: composes, catalog, secret, Dennis runbook |
+| Sandbox runner | [../sandbox/](../../../sandbox/CLAUDE.md) | sibling project: runner service, box image, Dennis runbook |
 | nginx config template | [magenticx/agentic_ui/nginx.conf.template](../../magenticx/agentic_ui/nginx.conf.template) | proxy_pass rules, header injection, buffer settings |
 | Vite dev config | [magenticx/agentic_ui/vite.config.ts](../../magenticx/agentic_ui/vite.config.ts) | dev server port, API proxy target |
 | dialogue_bridge FastAPI app | [magenticx/dialogue_bridge/main.py](../../magenticx/dialogue_bridge/main.py) | router registrations, middleware, startup events |
@@ -452,6 +454,6 @@ Only `agentic_ui` (port 8050) is bound to the host. All other services are inter
 | RAG service app | [magenticx/rag_service/main.py](../../magenticx/rag_service/main.py) | endpoint definitions, DuckDB table loading |
 | RAG settings | [magenticx/rag_service/core/settings.py](../../magenticx/rag_service/core/settings.py) | Chroma host/port, proxy secret |
 | Internal proxy trust | [magenticx/dialogue_bridge/core/security/internal_trust.py](../../magenticx/dialogue_bridge/core/security/internal_trust.py) | `require_internal_caller` dependency |
-| MCP tool catalog | [magenticx/mcp_gateway/mcp_catalog.yaml](../../magenticx/mcp_gateway/mcp_catalog.yaml) | list of registered MCP servers |
+| MCP tool catalog | [../mcp_gateway/mcp_catalog.yaml](../../../mcp_gateway/mcp_catalog.yaml) | list of registered MCP servers |
 | Frontend API client | [magenticx/agentic_ui/src/shared/lib/api/](../../magenticx/agentic_ui/src/shared/lib/api/) | all REST call definitions, base URL construction |
 | Frontend constants | [magenticx/agentic_ui/src/shared/lib/consts/](../../magenticx/agentic_ui/src/shared/lib/consts/) | `API_BASE`, feature flags |

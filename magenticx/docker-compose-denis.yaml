@@ -93,10 +93,10 @@ services:
       - OPENAI_API_KEY_FILE=/run/secrets/openai_api_key
       - RAG_BASE_URL=https://rag_service:8001
       - DIALOGUE_BRIDGE_URL=https://dialogue_bridge:8002
-      # MCP is an add-on (docker-compose-denis-mcp.yaml, plain Compose). To run
-      # without it, set this to empty (`- MCP_GATEWAY_URL=`): no gateway calls,
-      # an empty tool catalog. With it set but the gateway down, runs still carry
-      # on with the agents' own tools.
+      # MCP is an add-on: the ../../mcp_gateway sibling project, plain Compose on
+      # the mcp_gateway overlay. To run without it, set this to empty
+      # (`- MCP_GATEWAY_URL=`): no gateway calls, an empty tool catalog. With it
+      # set but the gateway down, runs still carry on with the agents' own tools.
       - MCP_GATEWAY_URL=http://mcp_gateway:8005/sse
       - INTERNAL_CA_CERT_PATH=/app/tls/ca.crt
       - INTERNAL_CLIENT_CERT_PATH=/app/tls/tls.crt

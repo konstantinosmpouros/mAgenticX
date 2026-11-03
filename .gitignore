@@ -18,7 +18,6 @@ notebooks/knowledge_base/
 
 magenticx/vectorstores/
 magenticx/vault/
-magenticx/mcp_gateway/mcp_secret.env
 
 data/
 

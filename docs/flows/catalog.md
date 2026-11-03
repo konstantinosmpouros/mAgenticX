@@ -201,7 +201,7 @@ type ToolMetadata = {
 
 ### MCP gateway tool registration
 
-Tools are registered in two files in `magenticx/mcp_gateway/`:
+Tools are registered in the sibling project [`../mcp_gateway`](../../../mcp_gateway/CLAUDE.md) (optional; with `MCP_GATEWAY_URL` empty the tool catalog is empty):
 
 - **`mcp_catalog.yaml`** — the registry of available MCP server metadata (names, descriptions, tool lists, icons). Large file (~506 KB); used for discovery.
 - **`mcp_config.yaml`** — runtime parameters for each server (e.g., `storage_path` for the arxiv server).
@@ -375,8 +375,8 @@ Edit, retry, and shared conversation continuation use the same `/start` endpoint
 | Agent DB table | [magenticx/dialogue_bridge/core/database/models.py](../../magenticx/dialogue_bridge/core/database/models.py) | `AgentTable`, `is_active` column |
 | Pydantic schemas | [magenticx/dialogue_bridge/schema/catalog.py](../../magenticx/dialogue_bridge/schema/catalog.py) | `AgentPublic`, `ToolManifest`, `ModelChoice`, `BuiltinToolInfo` |
 | Suggestion generation | [magenticx/dialogue_bridge/utils/conversations.py](../../magenticx/dialogue_bridge/utils/conversations.py) | `generate_conversation_suggestions()` |
-| MCP catalog registry | [magenticx/mcp_gateway/mcp_catalog.yaml](../../magenticx/mcp_gateway/mcp_catalog.yaml) | registered MCP servers and tool lists |
-| MCP server config | [magenticx/mcp_gateway/mcp_config.yaml](../../magenticx/mcp_gateway/mcp_config.yaml) | runtime parameters per server |
+| MCP catalog registry | [../mcp_gateway/mcp_catalog.yaml](../../../mcp_gateway/mcp_catalog.yaml) | registered MCP servers and tool lists |
+| MCP server config | [../mcp_gateway/mcp_config.yaml](../../../mcp_gateway/mcp_config.yaml) | runtime parameters per server |
 | Frontend API calls | [magenticx/agentic_ui/src/shared/lib/api/](../../magenticx/agentic_ui/src/shared/lib/api/) | `getAgents()`, `getTools()`, `getSuggestions()` |
 | Frontend types | [magenticx/agentic_ui/src/shared/lib/types/](../../magenticx/agentic_ui/src/shared/lib/types/) | `Agent`, `ToolMetadata` (the `ToolPreference` type was deleted) |
 | Icon mapping | [magenticx/agentic_ui/src/shared/lib/consts/](../../magenticx/agentic_ui/src/shared/lib/consts/) | `mapIcon()`, icon name → LucideIcon lookup |

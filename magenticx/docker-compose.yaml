@@ -39,69 +39,6 @@ services:
       - frontend
 
 
-  mcp_gateway: # 8005
-    # The MCP tool gateway (Tavily, arXiv). The dind variant runs its own
-    # Docker daemon so the MCP servers it spawns never touch the host's — that
-    # inner daemon is why it must be privileged. Only agents reaches it, by
-    # name on mcp_net; no host port.
-    container_name: mcp_gateway
-    image: docker/mcp-gateway:dind-v0.42.1
-    privileged: true
-    command:
-    - --transport=sse
-    - --port=8005
-    - --servers=tavily,arxiv-mcp-server
-    - --catalog=./app/mcp_catalog.yaml
-    - --secrets=/app/secrets/mcp_secret.env
-    - --config=./app/mcp_config.yaml
-    volumes:
-      - ./mcp_gateway/mcp_catalog.yaml:/app/mcp_catalog.yaml:ro
-      - ./mcp_gateway/mcp_config.yaml:/app/mcp_config.yaml:ro
-      - ./mcp_gateway/mcp_secret.env:/app/secrets/mcp_secret.env:ro
-    # In memory, so every start is clean. A reboot kills this container
-    # mid-flight and Docker *restarts* (not re-creates) it, which kept the inner
-    # dockerd's PID files from the previous run; containerd then refused to
-    # start and the gateway waited for dockerd forever (Dennis, 2026-10-02).
-    # /run, not /var/run: in this image /var/run is a symlink to it.
-    tmpfs:
-      - /run
-    restart: unless-stopped
-    networks:
-      - mcp_net
-
-
-  sandbox_runner: # 8090
-    # Runs the agents' `execute` calls (plan 11): one throwaway gVisor box per
-    # command — no network, read-only input, non-root, hard limits. Its own
-    # Docker daemon (dind, like the MCP gateway) is why it is privileged. Only
-    # agents reaches it, on sandbox_net; no host port. Local dev is plaintext
-    # (as every internal hop here); Dennis requires TLS + mTLS.
-    container_name: sandbox_runner
-    image: sandbox_runner
-    build:
-      context: ./sandbox_runner
-      dockerfile: Dockerfile
-    privileged: true
-    environment:
-      - TRUSTED_PROXY_SECRET=${TRUSTED_PROXY_SECRET}
-      - SANDBOX_REQUIRE_TLS=false
-      - SANDBOX_REQUIRE_MTLS=false
-      - LOG_FORMAT=${LOG_FORMAT:-console}
-    # In memory, so every start is clean (the MCP gateway's lesson: a restarted
-    # dind keeps stale PID files and never comes up).
-    tmpfs:
-      - /run
-    healthcheck:
-      test: ["CMD", "python", "/app/healthcheck.py"]
-      interval: 30s
-      timeout: 40s
-      start_period: 90s
-      retries: 3
-    restart: unless-stopped
-    networks:
-      - sandbox_net
-
-
   agents: # 8003
     container_name: agents
     image: agents
@@ -123,12 +60,14 @@ services:
       # Reverse hop for the memory-search tool (agent → bridge). HTTP in local
       # dev (the bridge serves plaintext here); prod uses https (see denis compose).
       - DIALOGUE_BRIDGE_URL=http://dialogue_bridge:8002
-      # The gateway is part of this stack. An unreachable gateway only costs its
-      # tools — runs carry on without them; set MCP_GATEWAY_URL= (empty) in .env
-      # to run with no MCP at all.
-      - MCP_GATEWAY_URL=${MCP_GATEWAY_URL-http://mcp_gateway:8005/sse}
+      # Sibling projects in the workspace, each started on its own (../../mcp_gateway,
+      # ../../sandbox). Unset (the default), mAgenticX boots without them: no MCP
+      # tools, no `execute`. Set them in .env when the siblings run:
+      #   MCP_GATEWAY_URL=http://mcp_gateway:8005/sse
+      #   SANDBOX_RUNNER_URL=http://sandbox_runner:8090
+      - MCP_GATEWAY_URL=${MCP_GATEWAY_URL:-}
       - TRUSTED_PROXY_SECRET=${TRUSTED_PROXY_SECRET}
-      - LOG_FORMAT=${LOG_FORMAT:-console}   # json for the local monitoring add-on
+      - LOG_FORMAT=${LOG_FORMAT:-console}   # json for ../../monitoring's log panels
       # The global plane (agent definitions, skills catalogue) is on the
       # magenticx_data volume. A conversation's files are rows in agent_runtime
       # (plan 36); the per-file cap is a technical safety limit, not a quota.
@@ -141,11 +80,10 @@ services:
       # an AES key (see docker-compose-denis.yaml).
       - AGENT_RUNTIME_DATABASE_URL=postgresql://admin:admin@chat_postgres:5432/agent_runtime
       - LANGGRAPH_STRICT_MSGPACK=true
-      # Every deep agent gets `execute`, run in sandbox_runner and always
-      # approved first (plan 11). The runner's wall clock is 300 s at most;
-      # this client waits a little longer.
+      # `execute` (plan 11) exists only with a runner URL; always approved first.
+      # The runner's wall clock is 300 s at most; this client waits a little longer.
       - SANDBOX_EXECUTION_ENABLED=${SANDBOX_EXECUTION_ENABLED:-true}
-      - SANDBOX_RUNNER_URL=http://sandbox_runner:8090
+      - SANDBOX_RUNNER_URL=${SANDBOX_RUNNER_URL:-}
       - SANDBOX_RUNNER_TIMEOUT_SECONDS=330
     volumes:
       # The agents filesystem's global plane (agent definitions + skills
@@ -154,7 +92,6 @@ services:
     depends_on:
       - rag_service
       - chat_postgres
-      - mcp_gateway
     restart: unless-stopped
     ports:
       - "8003:8003"
@@ -223,7 +160,7 @@ services:
       - AGENTS_SERVICE_URL=http://agents:8003
       - SESSION_TOKEN_SECRET=${SESSION_TOKEN_SECRET}
       - TRUSTED_PROXY_SECRET=${TRUSTED_PROXY_SECRET}
-      - LOG_FORMAT=${LOG_FORMAT:-console}   # json for the local monitoring add-on
+      - LOG_FORMAT=${LOG_FORMAT:-console}   # json for ../../monitoring's log panels
       - REDIS_URL=redis://redis:6379/0
       - REDIS_PASSWORD=${REDIS_PASSWORD:-magenticx-dev-redis}
       # Microsoft Entra ID (OIDC) — the only way to sign in. The bridge refuses
@@ -281,6 +218,8 @@ networks:
   backend:
     internal: true
   frontend:
+  # Owned here, so mAgenticX always boots; the sibling projects join them as
+  # external (../../mcp_gateway, ../../sandbox).
   # agents ↔ mcp_gateway only. Not internal: the gateway needs the internet to
   # pull MCP server images and reach Tavily/arXiv.
   mcp_net:
@@ -288,6 +227,7 @@ networks:
   # agents ↔ sandbox_runner only, and internal: no route out (the boxes have
   # no network of their own either).
   sandbox_net:
+    name: sandbox_net
     internal: true
 
 

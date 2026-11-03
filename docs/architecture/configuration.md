@@ -324,7 +324,7 @@ LangGraph + DeepAgents runtime. Configuration splits into runtime infra, the dur
 | `RAG_BASE_URL` | `https://rag_service:8001` | rag_service base URL. |
 | `RAG_REQUEST_TIMEOUT_SECONDS` | `30` | Read timeout for rag calls. |
 | `RAG_CONNECT_TIMEOUT_SECONDS` | `15` | Connect timeout for rag calls. |
-| `MCP_GATEWAY_URL` | `""` (MCP off) | MCP gateway SSE endpoint (plaintext — the dind gateway can't terminate TLS). **Empty = MCP off**: runs use the agent's own tools only, `GET /tools` returns `[]`, and declared MCP tools list as unavailable. Both composes set it: local passes `${MCP_GATEWAY_URL-http://mcp_gateway:8005/sse}` (the gateway is a service in the same stack), so MCP is on unless `magenticx/.env` sets it empty. |
+| `MCP_GATEWAY_URL` | `""` (MCP off) | MCP gateway SSE endpoint (plaintext — the dind gateway can't terminate TLS). **Empty = MCP off**: runs use the agent's own tools only, `GET /tools` returns `[]`, and declared MCP tools list as unavailable. Local passes `${MCP_GATEWAY_URL:-}` — empty unless `magenticx/.env` sets `http://mcp_gateway:8005/sse`, because the gateway is a sibling project ([`../mcp_gateway`](../../../mcp_gateway/CLAUDE.md)) that may not be running; `docker-compose-denis.yaml` sets it. |
 | `MCP_CONNECT_TIMEOUT_SECONDS` | `10` | Deadline (0 < x ≤ 120) for connecting to the gateway **plus** the MCP handshake, for both run sessions and catalog fetches. A run whose gateway misses it carries on without MCP tools (`mcp_session_unavailable`); a failed catalog fetch is not retried for 30 s. The deadline is lifted once the session is up. |
 | `MCP_MANIFEST_CACHE_ENABLED` | `true` | Cache the MCP tool manifest for the catalog / Agents tab instead of refetching it per listing. Runs never use it — each run loads the live tools from its own session. |
 
@@ -419,6 +419,7 @@ Each built-in workflow agent picks its models per node. All accept `openai:<mode
 | `VIEW_IMAGE_MAX_BYTES` | `10485760` (10 MB) | Largest image `view_image` will hand to the model. Unlike the AG-UI preview bounds this caps the **model's** copy, so it guards context cost rather than display size. |
 | `OUTPUT_MAX_FILE_BYTES` / `OUTPUT_MAX_FILES` | `26214400` (25 MB) / `20` | Caps on the presented-file read the bridge snapshots at run end: larger files are reported missing, more paths per request is a 422. |
 | `SANDBOX_EXECUTION_ENABLED` | `false` | Fail-closed kill switch for sandboxed command execution: while false, workspace assembly refuses to mint a sandbox-capable default backend, which is exactly what would make deepagents expose its `execute` tool. Reserved for the future gVisor-class sandbox rollout. |
+| `SANDBOX_RUNNER_URL` | `""` (no `execute`) | The sandbox runner's base URL (sibling project [`../sandbox`](../../../sandbox/CLAUDE.md)). `execute` exists only when this is set **and** `SANDBOX_EXECUTION_ENABLED` is true. Locally `${SANDBOX_RUNNER_URL:-}`; set `http://sandbox_runner:8090` in `magenticx/.env` when the runner runs. |
 | `SUMMARIZATION_TRIGGER_FRACTION` | `0.95` | Compact automatically when the context reaches this fraction of a model's window (models with a known window — see `MODEL_CONTEXT_WINDOWS`). |
 | `SUMMARIZATION_KEEP_FRACTION` | `0.30` | Only bounds deepagents' overflow clipping: every compaction, automatic or manual, folds everything before the latest question. |
 | `SUMMARIZATION_TRIGGER_TOKENS` | `200000` | Fallback token trigger for profile-less models. |
@@ -508,7 +509,9 @@ Configured entirely by **command flags**, no env vars: password from `/run/secre
 | `TRUSTED_PROXY_SECRET` | (from secret via shim) | Injected as the internal-caller header on proxied requests. |
 | `REQUIRE_TLS` | `true` | Fail-closed HTTPS (via `entrypoint-nginx-tls.sh`). |
 
-### Monitoring stack (`docker-compose-denis-monitoring.yml`)
+### Monitoring stack (`../monitoring/docker-compose-denis.yml`)
+
+A sibling project; full reference in [../monitoring/CLAUDE.md](../../../monitoring/CLAUDE.md).
 
 | Service | Key vars / flags |
 | --- | --- |
@@ -558,7 +561,7 @@ These flip behavior at boot; all are **fail-closed by default** (secure unless e
 | TLS toggles | [magenticx/tls/entrypoint-tls.sh](../../magenticx/tls/entrypoint-tls.sh) | `REQUIRE_TLS`, `REQUIRE_MTLS` |
 | nginx env substitution | [magenticx/agentic_ui/nginx.conf.template](../../magenticx/agentic_ui/nginx.conf.template) | `BFF_BASE_URL`, `TRUSTED_PROXY_SECRET` |
 | core stack compose | [magenticx/docker-compose-denis.yaml](../../magenticx/docker-compose-denis.yaml) | per-service `environment:` overrides |
-| monitoring compose | [magenticx/docker-compose-denis-monitoring.yml](../../magenticx/docker-compose-denis-monitoring.yml) | grafana/prometheus env + flags |
+| monitoring compose | [../monitoring/docker-compose-denis.yml](../../../monitoring/docker-compose-denis.yml) | grafana/prometheus env + flags |
 | secret delivery | [docs/architecture/secrets.md](secrets.md) | which var is backed by which secret |
 
 ### Multi-account sign-in (dialogue_bridge)

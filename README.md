@@ -215,7 +215,8 @@ Representative use cases supported by the current codebase:
 | `dialogue_bridge` | Authenticated BFF, persistence layer, detached run manager | `8002` | FastAPI, SQLAlchemy, Postgres | [Bridge README](magenticx/dialogue_bridge/README.md) |
 | `agents` | Streaming agent runtime and AG-UI normalization | `8003` | FastAPI, LangGraph, OpenAI | [Agents README](magenticx/agents/README.md) |
 | `rag_service` | Retrieval and SQL over spreadsheet-backed data | `8001` | FastAPI, Chroma, DuckDB | [RAG README](magenticx/rag_service/README.md) |
-| `mcp_gateway` | Tool catalog and MCP SSE endpoint (Tavily, arXiv) | `8005` (internal) | docker/mcp-gateway | [MCP Gateway README](magenticx/mcp_gateway/README.md) |
+| `mcp_gateway` | Tool catalog and MCP SSE endpoint (Tavily, arXiv) — optional sibling project | `8005` (internal) | docker/mcp-gateway | [mcp_gateway README](../mcp_gateway/README.md) |
+| `sandbox_runner` | Runs `execute` calls in throwaway gVisor boxes — optional sibling project | `8090` (internal) | FastAPI, dind, gVisor | [sandbox README](../sandbox/README.md) |
 | `vectordb` | Persistent vector storage for retrieval | `8000` | Chroma | integrated |
 | `chat_postgres` | Durable chat state, attachments, feedback, and the `streaming_*` inference-run lifecycle on `messages` | `5432` | PostgreSQL | integrated |
 | `redis` | Per-run AG-UI event log (Redis Streams) backing the WebSocket observer's cursor-based replay | `6379` | Redis 7.4 alpine | integrated |
@@ -236,7 +237,6 @@ Representative use cases supported by the current codebase:
     ├── dialogue_bridge/     FastAPI BFF, auth, persistence, detached inference runs
     ├── agents/              Agent runtime, manifests, AG-UI event output
     ├── rag_service/         Retrieval and DuckDB-backed analytics
-    ├── mcp_gateway/         MCP catalog and gateway config
     ├── vectorstores/        Chroma persistence
     ├── vault/               Vault config and bootstrap assets
     ├── docker-compose.yaml
@@ -269,7 +269,6 @@ This core stack includes:
 - `vectordb`
 - `chat_postgres`
 - `redis`
-- `mcp_gateway` (Tavily, arXiv — put the Tavily token in `magenticx/mcp_gateway/mcp_secret.env`)
 
 ### Supporting Services
 
@@ -277,7 +276,15 @@ The repo also includes separate Compose files for infrastructure that may be run
 
 - `magenticx/docker-compose-hashicorp.yaml` for Vault
 
-MCP is on by default; set `MCP_GATEWAY_URL=` (empty) in `magenticx/.env` to run without it — see the [MCP Gateway README](magenticx/mcp_gateway/README.md).
+Optional sibling projects in the workspace, each started from its own folder after this stack (they join its `mcp_net` / `sandbox_net` networks):
+
+| Project | Adds | Turn on in `magenticx/.env` |
+| --- | --- | --- |
+| [`../mcp_gateway`](../mcp_gateway/README.md) | MCP tools (Tavily, arXiv) | `MCP_GATEWAY_URL=http://mcp_gateway:8005/sse` |
+| [`../sandbox`](../sandbox/README.md) | The `execute` tool | `SANDBOX_RUNNER_URL=http://sandbox_runner:8090` |
+| [`../monitoring`](../monitoring/README.md) | Grafana, Prometheus, Loki on `http://localhost:3000` | `LOG_FORMAT=json` (for the log panels) |
+
+Without them mAgenticX runs with no MCP tools and no `execute`.
 
 ### Main URLs
 
@@ -288,7 +295,8 @@ When the default Compose setup is running:
 - Agents: `http://localhost:8003`
 - RAG Service: `http://localhost:8001`
 - Redis (inference event log): `redis://redis:6379/0` (internal only — not host-bound)
-- MCP Gateway: `http://mcp_gateway:8005/sse` (internal only — reached by agents on `mcp_net`)
+- MCP Gateway (when running): `http://mcp_gateway:8005/sse` (internal only — reached by agents on `mcp_net`)
+- Sandbox runner (when running): `http://sandbox_runner:8090` (internal only — reached by agents on `sandbox_net`)
 - Vault: `http://localhost:8004` when started
 
 ### Local Development
@@ -299,7 +307,7 @@ For service-by-service development, use the implementation READMEs:
 - [Dialogue bridge setup](magenticx/dialogue_bridge/README.md)
 - [Agents setup](magenticx/agents/README.md)
 - [RAG service setup](magenticx/rag_service/README.md)
-- [MCP gateway setup](magenticx/mcp_gateway/README.md)
+- [MCP gateway setup](../mcp_gateway/README.md) (sibling project)
 
 ## Screens and Diagrams
 
@@ -430,7 +438,7 @@ Use the root README for orientation, then jump into the service manuals for impl
 - [Dialogue Bridge](magenticx/dialogue_bridge/README.md)
 - [Agents Service](magenticx/agents/README.md)
 - [RAG Service](magenticx/rag_service/README.md)
-- [MCP Gateway](magenticx/mcp_gateway/README.md)
+- [MCP Gateway](../mcp_gateway/README.md), [Sandbox runner](../sandbox/README.md), [Monitoring](../monitoring/README.md) (sibling projects)
 
 ## Development Notes
 

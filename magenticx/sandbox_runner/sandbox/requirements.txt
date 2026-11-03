@@ -1,9 +1,0 @@
-# The box's fixed library set (no pip at run time, no network in the box).
-pandas==2.2.3
-numpy==2.2.6
-openpyxl==3.1.5
-matplotlib==3.10.3
-python-docx==1.1.2
-python-pptx==1.0.2
-reportlab==4.4.1
-pillow==11.2.1

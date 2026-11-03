@@ -568,19 +568,18 @@ From `magenticx/docker-compose.yaml`:
 
 - the service is exposed on `8003:8003`
 - it depends on `rag_service`
-- it joins `backend`, `frontend`, and `mcp_net`
+- it joins `backend`, `frontend`, `mcp_net` and `sandbox_net`
 - it is configured with:
   - `OPENAI_API_KEY`
   - `RAG_BASE_URL=http://rag_service:8001`
-  - `MCP_GATEWAY_URL=${MCP_GATEWAY_URL-http://mcp_gateway:8005/sse}` — on by default; `magenticx/.env` can set it empty for MCP off
+  - `MCP_GATEWAY_URL=${MCP_GATEWAY_URL:-}` — empty (MCP off) by default; set `http://mcp_gateway:8005/sse` in `magenticx/.env` when the gateway runs
+  - `SANDBOX_RUNNER_URL=${SANDBOX_RUNNER_URL:-}` — empty (no `execute`) by default; set `http://sandbox_runner:8090` when the runner runs
   - `DISABLED_AGENT_SLUGS`
 
-The `mcp_gateway` service in the same compose:
+The MCP gateway and the sandbox runner are sibling projects in the workspace, not services in this compose. They join `mcp_net` / `sandbox_net` (owned here) as external networks:
 
-- runs in SSE mode on `8005`, with no host port
-- shares `mcp_net` with agents
-- serves configured MCP servers such as Tavily and Arxiv
-- see [`mcp_gateway/README.md`](../mcp_gateway/README.md) for turning it on
+- MCP gateway: SSE on `8005`, no host port, serves Tavily and arXiv — see [`../../../mcp_gateway/README.md`](../../../mcp_gateway/README.md)
+- Sandbox runner: `POST /v1/exec` on `8090`, no host port — see [`../../../sandbox/README.md`](../../../sandbox/README.md)
 
 ## 15. Known Operational Characteristics
 

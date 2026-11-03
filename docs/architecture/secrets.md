@@ -1,6 +1,6 @@
 # Secrets — What Each One Is and Where It Belongs
 
-Every sensitive value the production stack needs is delivered as a **file**, never as a plaintext environment variable in the compose YAML or the Portainer "Environment variables" dropdown. The core stack uses **Docker Swarm secrets** (namespaced `magenticx_*`, mounted read-only at `/run/secrets/<alias>` on a tmpfs); the MCP gateway uses a **bind-mounted `.env` file**; and the session-signing private key is **never delivered at all** — it lives in an OCI KMS HSM. This document is the authoritative inventory of every secret across the `docker-compose-denis*.y*ml` files — what it is, which services consume it, and what breaks without it. It does **not** contain any secret values; those live only in Portainer's Secrets tab, OCI, Microsoft Entra, or the operator's offline notes. (HashiCorp Vault was removed in plan 29; it no longer holds anything.)
+Every sensitive value the production stack needs is delivered as a **file**, never as a plaintext environment variable in the compose YAML or the Portainer "Environment variables" dropdown. The core stack uses **Docker Swarm secrets** (namespaced `magenticx_*`, mounted read-only at `/run/secrets/<alias>` on a tmpfs); the plain-Compose siblings (MCP gateway, sandbox runner) use **bind-mounted files**; and the session-signing private key is **never delivered at all** — it lives in an OCI KMS HSM. This document is the authoritative inventory of every secret across `docker-compose-denis.yaml` and the Dennis composes of the sibling projects ([`../monitoring`](../../../monitoring/CLAUDE.md), [`../mcp_gateway`](../../../mcp_gateway/CLAUDE.md), [`../sandbox`](../../../sandbox/CLAUDE.md)) — what it is, which services consume it, and what breaks without it. It does **not** contain any secret values; those live only in Portainer's Secrets tab, OCI, Microsoft Entra, or the operator's offline notes. (HashiCorp Vault was removed in plan 29; it no longer holds anything.)
 
 ---
 
@@ -11,7 +11,8 @@ flowchart LR
     Portainer["Portainer\nSecrets tab"] -->|"Swarm secret\n(magenticx_*)"| Tmpfs["/run/secrets/<alias>\n(tmpfs, ro)"]
     Tmpfs -->|"<NAME>_FILE env\n→ _resolve_file_backed_secret()"| Py["dialogue_bridge\nagents\nrag_service"]
     Tmpfs -->|"load-secrets-and-exec.sh\n(file → env var)"| Nginx["agentic_ui (nginx)"]
-    File["/opt/magenticx/mcp_gateway/\nmcp_secret.env (bind mount)"] --> Gw["mcp_gateway"]
+    File["/opt/magenticx/mcp_gateway/\nmcp_secret.env (bind mount)"] --> Gw["mcp_gateway\n(../mcp_gateway)"]
+    SbFile["/opt/sandbox/secrets/\n(bind mount)"] --> Sb["sandbox_runner\n(../sandbox)"]
     KMS["OCI KMS\n(HSM signing key)"] -->|"Sign(digest)\nAPI key scoped to Dennis"| Py
 ```
 
@@ -26,7 +27,7 @@ There are four delivery paths; a single service may use more than one.
 | **Swarm secret → `*_FILE` env** | the three Python services | The compose `secrets:` list mounts `/run/secrets/<alias>`. A `<NAME>_FILE` env var points at that path; `_resolve_file_backed_secret()` in each `core/settings.py` reads the file, strips it, and feeds the value into a Pydantic `SecretStr`. If `*_FILE` is unset it falls back to the plain env var (this is what local `.env` dev uses). |
 | **Swarm secret → env via shim** | `agentic_ui` (nginx) | nginx's `envsubst` can only read env vars, not files. `load-secrets-and-exec.sh` reads `/run/secrets/trusted_proxy_secret` into `$TRUSTED_PROXY_SECRET`, then exec's the TLS entrypoint. |
 | **Swarm secret → file path in config** | `chat_postgres`, `redis`, `grafana`, `alertmanager` | The service's own config consumes the file directly: Postgres `POSTGRES_PASSWORD_FILE`, Redis `$(cat /run/secrets/redis_password)` in its command, Grafana `GF_SECURITY_ADMIN_PASSWORD__FILE`, Alertmanager `password_file:` in `alertmanager.yml`. |
-| **Bind-mounted file** | `mcp_gateway` | The gateway is plain `docker compose` (not Swarm), so it can't use Swarm secrets. Upstream MCP-server API keys live in `mcp_secret.env`, bind-mounted and passed via `--secrets`. |
+| **Bind-mounted file** | `mcp_gateway`, `sandbox_runner` | Both are plain `docker compose` (not Swarm), so they can't use Swarm secrets. The gateway's upstream MCP-server API keys live in `mcp_secret.env`, passed via `--secrets`; the runner reads copies of two magenticx secrets from `/opt/sandbox/secrets/`. |
 | **Key held in an HSM (never delivered)** | `dialogue_bridge` | The session-JWT signing key lives in OCI KMS and is **never delivered to any service**. The bridge holds only an API key (Swarm secret) permitted to request signatures over a digest, from Dennis only. |
 
 The in-container **alias** (e.g. `openai_api_key`) is intentionally fixed so application code never changes when the external Swarm name is bumped during rotation.
@@ -53,9 +54,9 @@ Nine Swarm secrets, declared at the bottom of the compose with `external: true` 
 
 ---
 
-## Monitoring stack secrets — `docker-compose-denis-monitoring.yml`
+## Monitoring stack secrets — `../monitoring/docker-compose-denis.yml`
 
-Two Swarm secrets, in their own Portainer stack (`magenticx_monitoring`).
+Two Swarm secrets, in the sibling project's Portainer stack (`magenticx_monitoring`). Runbook: [../monitoring/CLAUDE.md](../../../monitoring/CLAUDE.md).
 
 | External Swarm name | Alias / path | Resolved via | Consumed by | Purpose / functionality |
 | --- | --- | --- | --- | --- |
@@ -64,15 +65,24 @@ Two Swarm secrets, in their own Portainer stack (`magenticx_monitoring`).
 
 ---
 
-## MCP gateway secret — `docker-compose-denis-mcp.yaml`
+## MCP gateway secret — `../mcp_gateway/docker-compose-denis.yaml`
 
-The MCP gateway runs as **plain `docker compose`** (the dind variant can't run under Swarm), so it cannot consume Swarm secrets. Its upstream API keys are a bind-mounted file.
+The MCP gateway (sibling project, [../mcp_gateway/CLAUDE.md](../../../mcp_gateway/CLAUDE.md)) runs as **plain `docker compose`** (the dind variant can't run under Swarm), so it cannot consume Swarm secrets. Its upstream API keys are a bind-mounted file.
 
 | Source file (on VM) | Mount → flag | Consumed by | Purpose / functionality |
 | --- | --- | --- | --- |
 | `/opt/magenticx/mcp_gateway/mcp_secret.env` | `→ /app/mcp_secret` (`--secrets`) | `mcp_gateway` | API keys for the upstream MCP servers the gateway spawns (e.g. the **Tavily** API key for web search; `arxiv-mcp-server` needs none). The gateway injects these into the per-server containers it launches. |
 
-> Treat `mcp_secret.env` like any other secret: `chmod 600`, never commit it. It is the one secret in the production stack not managed by Swarm, so it won't appear in Portainer's Secrets tab.
+> Treat `mcp_secret.env` like any other secret: `chmod 600`, never commit it. It is not managed by Swarm, so it won't appear in Portainer's Secrets tab.
+
+## Sandbox runner secrets — `../sandbox/docker-compose-denis.yaml`
+
+The sandbox runner (sibling project, plain `docker compose`) reads bind-mounted copies of two magenticx Swarm secrets. **Rotating either in magenticx means updating the copy too**, or the runner rejects `agents` (proxy secret) or its log hashes stop correlating (redaction secret). Setup: [../sandbox/CLAUDE.md § Dennis](../../../sandbox/CLAUDE.md).
+
+| Source file (on VM) | Same value as | Consumed by |
+| --- | --- | --- |
+| `/opt/sandbox/secrets/trusted_proxy_secret` | `magenticx_trusted_proxy_secret` | `sandbox_runner` (refuses to start without it) |
+| `/opt/sandbox/secrets/log_redaction_secret` | `magenticx_log_redaction_secret` | `sandbox_runner` |
 
 ---
 
@@ -143,8 +153,9 @@ Rotation of a key/cert is a file copy + `chown 1000:1000` + container restart �
 | Concept | File | What to look for |
 | --- | --- | --- |
 | Core stack secret declarations | [magenticx/docker-compose-denis.yaml](../../magenticx/docker-compose-denis.yaml) | top-level `secrets:` block, per-service `secrets:` lists |
-| Monitoring stack secrets | [magenticx/docker-compose-denis-monitoring.yml](../../magenticx/docker-compose-denis-monitoring.yml) | `grafana_admin_password`, `alert_smtp_password` |
-| MCP gateway secret file | [magenticx/docker-compose-denis-mcp.yaml](../../magenticx/docker-compose-denis-mcp.yaml) | `--secrets` flag + `mcp_secret.env` bind mount |
+| Monitoring stack secrets | [../monitoring/docker-compose-denis.yml](../../../monitoring/docker-compose-denis.yml) | `grafana_admin_password`, `alert_smtp_password` |
+| MCP gateway secret file | [../mcp_gateway/docker-compose-denis.yaml](../../../mcp_gateway/docker-compose-denis.yaml) | `--secrets` flag + `mcp_secret.env` bind mount |
+| Sandbox runner secret files | [../sandbox/docker-compose-denis.yaml](../../../sandbox/docker-compose-denis.yaml) | `/opt/sandbox/secrets/` bind mount |
 | File-backed secret resolution | [magenticx/dialogue_bridge/core/settings.py](../../magenticx/dialogue_bridge/core/settings.py) | `_resolve_file_backed_secret` |
 | nginx secret shim | [magenticx/agentic_ui/load-secrets-and-exec.sh](../../magenticx/agentic_ui/load-secrets-and-exec.sh) | `/run/secrets/trusted_proxy_secret` → env |
 | Session signing keys | [magenticx/dialogue_bridge/core/auth/signing.py](../../magenticx/dialogue_bridge/core/auth/signing.py) | KMS signer, public-key loading, the self-check |
