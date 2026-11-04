@@ -21,17 +21,11 @@ magenticx/vault/
 
 data/
 
-# Internal TLS certs (generated, contain private keys)
-magenticx/tls/ca/
-magenticx/tls/agentic_ui/
-magenticx/tls/dialogue_bridge/
-magenticx/tls/agents/
-magenticx/tls/rag_service/
-magenticx/tls/chat_postgres/
-magenticx/tls/vault/
-magenticx/tls/npm/
-magenticx/tls/redis/
-magenticx/tls/monitoring/
+# Internal TLS certs (generated, contain private keys): every per-service
+# folder generate-certs.sh writes, and the CA. Only the scripts in tls/ itself
+# are tracked, so a new service's folder is ignored without editing this list.
+magenticx/tls/*/
+*.key
 
 # pytest bootstrap artifacts (tests/dialogue_bridge/conftest.py seeds a sqlite
 # DATABASE_URL at import time so settings can load; the file itself is disposable)

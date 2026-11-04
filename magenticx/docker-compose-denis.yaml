@@ -98,6 +98,12 @@ services:
       # (`- MCP_GATEWAY_URL=`): no gateway calls, an empty tool catalog. With it
       # set but the gateway down, runs still carry on with the agents' own tools.
       - MCP_GATEWAY_URL=http://mcp_gateway:8005/sse
+      # Sandboxed `execute` (plan 11): the ../../sandbox sibling project, plain
+      # Compose on the `sandbox` overlay, mTLS with the same internal CA. Every
+      # call still needs the user's approval. Kill switch: set this to false and
+      # release (execute disappears on the next agents start).
+      - SANDBOX_EXECUTION_ENABLED=true
+      - SANDBOX_RUNNER_URL=https://sandbox_runner:8090
       - INTERNAL_CA_CERT_PATH=/app/tls/ca.crt
       - INTERNAL_CLIENT_CERT_PATH=/app/tls/tls.crt
       - INTERNAL_CLIENT_KEY_PATH=/app/tls/tls.key
@@ -148,6 +154,7 @@ services:
       - backend
       - frontend
       - mcp_gateway
+      - sandbox
     logging:
       driver: "json-file"
       options:
@@ -411,6 +418,11 @@ networks:
   # whether or not the gateway runs. Keep it: the stack must not create a network
   # of that name, and agents needs it the day MCP is turned back on.
   mcp_gateway:
+    external: true
+  # Created once by hand on Dennis (`docker network create -d overlay
+  # --attachable --internal sandbox`) and shared with the sandbox runner's own
+  # compose: agents ↔ sandbox_runner only, no route out.
+  sandbox:
     external: true
   proxy:
     external: true

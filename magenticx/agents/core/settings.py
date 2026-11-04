@@ -516,14 +516,16 @@ class FilesystemSettings(BaseSettings):
     # The sandbox runner (plan 11) that `execute` calls: an internal service
     # behind mTLS + the trusted-proxy header, never routed through nginx. Empty
     # means no runner — execution stays off whatever the flag says (see
-    # `sandbox_execution_active`). Local compose: https://sandbox_runner:8090.
+    # `sandbox_execution_active`). Local: http://sandbox_runner:8090 (plaintext,
+    # like every local hop); Dennis: https://sandbox_runner:8090 with mTLS.
     sandbox_runner_url: str = Field("", validation_alias="SANDBOX_RUNNER_URL")
     # Read timeout of one /v1/exec call. Must be LONGER than the runner's own
     # wall-clock kill (SANDBOX_MAX_WALL_SECONDS on the runner), so a slow
     # command comes back as the runner's `killed_reason="timeout"` result rather
-    # than a client-side timeout that cannot say whether the command ran.
+    # than a client-side timeout that cannot say whether the command ran. 330 =
+    # the runner's 300 s maximum + headroom for the files riding in the body.
     sandbox_runner_timeout_seconds: float = Field(
-        180.0, gt=0, le=3600, validation_alias="SANDBOX_RUNNER_TIMEOUT_SECONDS"
+        330.0, gt=0, le=3600, validation_alias="SANDBOX_RUNNER_TIMEOUT_SECONDS"
     )
     sandbox_runner_connect_timeout_seconds: float = Field(
         10.0, gt=0, le=120, validation_alias="SANDBOX_RUNNER_CONNECT_TIMEOUT_SECONDS"

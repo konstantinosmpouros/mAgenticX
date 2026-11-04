@@ -269,7 +269,7 @@ jobs:
           WEBHOOK_URL: ${{ secrets.PORTAINER_WEBHOOK_URL }}
         run: |
           if [ -z "$WEBHOOK_URL" ]; then
-            echo "::error::PORTAINER_WEBHOOK_URL is not set (Settings → Secrets and variables → Actions → Repository secrets)."
+            echo "::error::PORTAINER_WEBHOOK_URL is not set (Settings → Environments → production → Environment secrets)."
             exit 1
           fi
           curl -fsS --max-time 60 --retry 3 --retry-all-errors -X POST -o /dev/null "$WEBHOOK_URL"

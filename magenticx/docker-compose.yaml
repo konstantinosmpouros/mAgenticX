@@ -84,7 +84,6 @@ services:
       # The runner's wall clock is 300 s at most; this client waits a little longer.
       - SANDBOX_EXECUTION_ENABLED=${SANDBOX_EXECUTION_ENABLED:-true}
       - SANDBOX_RUNNER_URL=${SANDBOX_RUNNER_URL:-}
-      - SANDBOX_RUNNER_TIMEOUT_SECONDS=330
     volumes:
       # The agents filesystem's global plane (agent definitions + skills
       # catalogue). See harness/filesystem/layout.py.

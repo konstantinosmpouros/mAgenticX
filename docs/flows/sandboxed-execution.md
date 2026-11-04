@@ -77,7 +77,7 @@ Kill reasons come back in plain words: `timeout`, `memory`, `output_limit`, `dis
 - **A fork bomb kills the whole sandbox** under gVisor (its own threads count against the process cap), exit 2 within a second — contained, unlike runc's clean `fork()` failure.
 - **The box sees the same paths as the agent** (`/conversation/input/…`, `/conversation/output/…`), because the files are copied in, not mounted from the host: conversation files live in `agent_runtime` (plan 36), not on disk.
 - **The runner is privileged** (its inner `dockerd`), the second such service after the MCP gateway: no host port, a single-peer internal network, no secrets but its own TLS material.
-- **Requests can be large**: 20 MiB of files is about 27 MB of JSON; the agents client waits `SANDBOX_RUNNER_TIMEOUT_SECONDS` (330 locally).
+- **Requests can be large**: 20 MiB of files is about 27 MB of JSON; the agents client waits `SANDBOX_RUNNER_TIMEOUT_SECONDS` (default 330).
 
 ---
 
