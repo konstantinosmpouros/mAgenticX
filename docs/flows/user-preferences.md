@@ -2,7 +2,7 @@
 
 User preferences capture per-user settings that persist across sessions: whether suggestions are shown, how agents are personalized (personality preset + custom instructions), whether agent memory and cross-conversation recall are active, and which voice and language to use in realtime voice conversations. The source of truth is a single row in the `user_preferences` PostgreSQL table, one per user. The frontend caches preferences in IndexedDB for instant rehydration on page load, applies them optimistically in React state, and writes changes back to the database via a single `PUT` endpoint. The backend reads preferences directly from the database for any server-side decisions (voice session config, voice language, per-run personalization, the memory gates).
 
-**Tool enablement is NOT a user preference.** There is no global "enabled tools" set here anymore. Tools are declared **per agent** (in the agent's `agent.yaml`), and a user disables specific tools **per (user, agent)** in the **Settings → Agents** tab; that disabled set is stored server-side by the agents service, not in `user_preferences`. See [§ Tool control moved to the Agents tab](#tool-control-moved-to-the-agents-tab) below and [catalog.md](catalog.md).
+**Tool enablement is NOT a user preference.** There is no global "enabled tools" set here anymore. Tools are declared **per agent** (in the agent's `agent.yaml`), and a user switches MCP tools **per (user, agent)** on the agent's page; those choices live in `chat_db.user_agent_tool_prefs`, not in `user_preferences`. See [§ Tool control moved to the Agents tab](#tool-control-moved-to-the-agents-tab) below and [catalog.md](catalog.md).
 
 **Where preferences surface in the UI.** The settings modal (`ProfilePanel`, opened from the sidebar profile menu) mirrors ChatGPT's section taxonomy: theme, follow-up suggestions, and per-message token usage live under **General**; the style controls — **Custom instructions** (opened in its own dialog) and the **Personality** preset select — plus the agent-memory (`useMemory`) and reference-chat-history (`searchPastConvs`) toggles under **Personalization**; the realtime voice + spoken language under **Voice**; per-(user, agent) tool disabling under **Agents**; and a **read-only** browse of the MCP catalog under **MCP Servers** (Workspace group) — the MCP Servers tab no longer carries any global tool toggle. Sections mirrored from ChatGPT that aren't built yet render a "Not implemented yet" placeholder. Legacy persisted tab ids (`profile`/`appearance`/`archived`) are remapped to `account`/`personalization`/`data-controls` on load.
 
@@ -12,10 +12,10 @@ User preferences capture per-user settings that persist across sessions: whether
 
 ```mermaid
 flowchart LR
-    Browser["Browser\n(React SPA)"] -->|"GET/PUT /api/v1/preferences/:userId"| nginx["nginx :8050"]
+    Browser["Browser<br/>(React SPA)"] -->|"GET/PUT /api/v1/preferences/:userId"| nginx["nginx :8050"]
     nginx -->|"GET/PUT /v1/preferences/:userId"| bridge["dialogue_bridge :8002"]
-    bridge -->|"SELECT / UPSERT"| pg[("chat_postgres :5432\nuser_preferences")]
-    bridge -->|"normalize voice"| voice_cfg["voice session config\n(voice.py)"]
+    bridge -->|"SELECT / UPSERT"| pg[("chat_postgres :5432<br/>user_preferences")]
+    bridge -->|"normalize voice"| voice_cfg["voice session config<br/>(voice.py)"]
 ```
 
 ---
@@ -189,8 +189,8 @@ Tool enablement used to be a global user preference: the frontend subtracted a g
 Tools are now owned by the agents service:
 
 - **Declared per agent.** A deep agent declares its tool set (native + MCP) in its `agent.yaml` `tools:` list. A `YamlDeepAgent` resolves those tools from its spec at build time, independently of any request — the client no longer tells the agent which tools to attach.
-- **Disabled per (user, agent).** In **Settings → Agents**, a user can disable specific tools for a specific agent. That disabled set is persisted **server-side** by the agents service in a `tool_prefs.json` at the agent's root (`harness/filesystem/tool_prefs.py`), not in `user_preferences`. The agent's effective tool set is `declared − disabled` (`_apply_tool_disables`).
-- **MCP Servers tab is read-only.** The **Settings → MCP Servers** tab is a browse-only view of the MCP catalog; it carries no global toggle. Enable/disable happens only in the per-agent Agents tab.
+- **Switched per (user, agent).** On the agent's page (**Tools**), a user can disable a declared MCP tool or enable another gateway tool for that agent. The bridge stores the choice in `chat_db.user_agent_tool_prefs`, not in `user_preferences`, and sends it on the run config. The agent's effective MCP set is `(declared ∪ enabled) − disabled` (`BaseAgent._filter_live_tools`).
+- **MCP Servers tab is read-only.** The **Settings → MCP Servers** tab is a browse-only view of the MCP catalog; it carries no global toggle. Enable/disable happens only on each agent's page.
 - **MCP can be switched off.** With `MCP_GATEWAY_URL` empty the catalog is empty, so the MCP Servers tab shows nothing and the Agents tab offers no gateway tools to add; an agent's declared MCP tools still list, but as unavailable ("MCP is not enabled on this deployment"). Runs use the agent's own tools only. See [catalog.md § Phase 2](catalog.md#phase-2--tool-catalog).
 - **LangGraph agents are unaffected.** `hr_policies` / `orthodox` / `retail` reach RAG through a graph **node** that calls `rag_service` over HTTP — retrieval is never a bound tool — so they have no tool set to disable and an empty request tool list changes nothing for them.
 
@@ -335,7 +335,7 @@ On the agents side the main logic lives in [`harness/personalization/personaliza
 | Voice router (preference lookup) | [magenticx/dialogue_bridge/router/voice.py](../../magenticx/dialogue_bridge/router/voice.py) | Session config construction, preference resolution |
 | Backend settings (voice) | [magenticx/dialogue_bridge/core/settings.py](../../magenticx/dialogue_bridge/core/settings.py) | `VoiceSettings`, `REALTIME_SUPPORTED_VOICES`, `REALTIME_DEFAULT_VOICE` |
 | TypeScript types | [magenticx/agentic_ui/src/shared/lib/types/](../../magenticx/agentic_ui/src/shared/lib/types/) | `UserPreferences`, `RealtimeVoice`, `VoiceModeLanguage` (the `ToolPreference` type was deleted) |
-| Per-(user, agent) tool disabling | [magenticx/dialogue_bridge/utils/agent_tool_prefs.py](../../magenticx/dialogue_bridge/utils/agent_tool_prefs.py) | `tool_prefs.json` load/save, `_apply_tool_disables()` — the replacement for the old global tool preference |
+| Per-(user, agent) tool disabling | [magenticx/dialogue_bridge/utils/agent_tool_prefs.py](../../magenticx/dialogue_bridge/utils/agent_tool_prefs.py) | `read_config`, `set_enabled`, `set_approval` — the replacement for the old global tool preference |
 | API calls | [magenticx/agentic_ui/src/shared/lib/api/](../../magenticx/agentic_ui/src/shared/lib/api/) | `getUserPreferences()`, `updateUserPreferences()` |
 | Frontend constants | [magenticx/agentic_ui/src/shared/lib/consts/](../../magenticx/agentic_ui/src/shared/lib/consts/) | `REALTIME_VOICES`, `VOICE_MODE_LANGUAGES`, `DEFAULT_REALTIME_VOICE` |
 | Preference handlers | [magenticx/agentic_ui/src/features/settings/handlers/preferences.ts](../../magenticx/agentic_ui/src/features/settings/handlers/preferences.ts) | `usePreferencesHandlers()`, `snapshotPrefs`/`persistPrefs`, optimistic update pattern, rollback |

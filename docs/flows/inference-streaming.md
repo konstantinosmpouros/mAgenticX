@@ -12,9 +12,9 @@ Dictation, read aloud, and realtime voice mode do not use this flow.
 
 ```mermaid
 flowchart LR
-    UI["Agentic UI\nReact"]
-    Bridge["dialogue_bridge\nFastAPI :8002"]
-    Redis["Redis 7\nStreams :6379"]
+    UI["Agentic UI<br/>React"]
+    Bridge["dialogue_bridge<br/>FastAPI :8002"]
+    Redis["Redis 7<br/>Streams :6379"]
     PG["Postgres"]
     Agents["agents service"]
 
@@ -24,7 +24,7 @@ flowchart LR
     Bridge -->|"XADD inference:run:{id}:events"| Redis
     Bridge -->|"XREAD BLOCK ... since=<seq>"| Redis
     Bridge -->|"SQLAlchemy async (start, terminal snapshot)"| PG
-    Bridge -->|"POST /agents/{slug}/stream\ninside detached task"| Agents
+    Bridge -->|"POST /agents/{slug}/stream<br/>inside detached task"| Agents
     Agents -->|"AG-UI SSE frames"| Bridge
 ```
 
@@ -240,16 +240,16 @@ The router is intentionally thin. `router/inference.py::startInferenceFlow()` va
 ```mermaid
 flowchart TD
     A["POST /runs/{user_id}/start"] --> B{mode}
-    B -->|"new"| C["init_conv()\nconversation + first user message"]
-    B -->|"send"| D["validate conversation + path\ninit_message(user)"]
-    B -->|"edit"| E["validate target user message\ninit_message(user sibling)"]
-    B -->|"retry"| F["validate target AI message\nuse its parent user message"]
-    B -->|"shared_continue"| G["load active share\nclone snapshot + continuation user message"]
+    B -->|"new"| C["init_conv()<br/>conversation + first user message"]
+    B -->|"send"| D["validate conversation + path<br/>init_message(user)"]
+    B -->|"edit"| E["validate target user message<br/>init_message(user sibling)"]
+    B -->|"retry"| F["validate target AI message<br/>use its parent user message"]
+    B -->|"shared_continue"| G["load active share<br/>clone snapshot + continuation user message"]
     C & D & E & F & G --> H["create_inference_run_record()"]
-    H --> I["INSERT AI placeholder\n(streaming_status='queued',\n streaming_message_path,\n streaming_started_at)"]
+    H --> I["INSERT AI placeholder<br/>(streaming_status='queued',<br/> streaming_message_path,<br/> streaming_started_at)"]
     I --> K["SET conversation.active_assistant_message_id"]
     K --> L["COMMIT"]
-    L --> M["Reload detail/message;\nbuild_run_out_from_message"]
+    L --> M["Reload detail/message;<br/>build_run_out_from_message"]
     M --> N["launch(message.id)"]
     N --> O["Return start response"]
 ```
@@ -317,7 +317,7 @@ flowchart TD
     C --> E["cancel_waiter = cancel_event.wait()"]
     D & E --> F["asyncio.wait(FIRST_COMPLETED)"]
     F --> G{winner}
-    G -->|"cancel"| H["cancel stream task\n_finish_run(cancelled)"]
+    G -->|"cancel"| H["cancel stream task<br/>_finish_run(cancelled)"]
     G -->|"stream raises"| I["_finish_run(failed)"]
     G -->|"RUN_ERROR event"| I
     G -->|"stream completes"| J["_finish_run(completed)"]
@@ -594,7 +594,7 @@ Shared continuation uses the same start endpoint and run lifecycle as normal cha
 
 ```mermaid
 flowchart TD
-    A["Shared page Continue"] --> B["POST /v1/inference/runs/{user_id}/start\nmode=shared_continue"]
+    A["Shared page Continue"] --> B["POST /v1/inference/runs/{user_id}/start<br/>mode=shared_continue"]
     B --> C["load active share token"]
     C --> D["clone full share snapshot into user's workspace"]
     D --> E["append continuation user message"]

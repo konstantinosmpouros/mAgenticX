@@ -23,7 +23,7 @@ losing it destroyed everything every agent had learned about every user. It sits
 in `agent_runtime` rather than `chat_db` because the **agent** writes it, mid-run,
 with no browser request to hang persistence off — and that is the database this
 service already owns and creates. One consequence: the bridge holds no
-connection to it, so the Memories tab is served by the agents service (below).
+connection to it, so the agent page's Memory section is served by the agents service (below).
 
 ```text
 CompositeBackend route "/memories/"
@@ -165,7 +165,7 @@ inspector wants the columns, including the provenance the yml omits.
 
 ```mermaid
 flowchart LR
-    UI[ProfilePanel → Memories tab<br/>useMemories] -->|/api/v1/memories| BR[dialogue_bridge<br/>router/memories.py]
+    UI[Agent page → Memory section<br/>useMemories] -->|/api/v1/memories| BR[dialogue_bridge<br/>router/memories.py]
     BR -->|mTLS + trusted-proxy<br/>resolve agentId→slug| AG[agents<br/>router/memories.py]
     AG --> ST[(agent_memories<br/>agent_runtime)]
 ```
@@ -176,7 +176,7 @@ flowchart LR
 | Preview | `GET /users/{user_id}/agents/{agent_id}/{name}` | `GET /agents/{slug}/users/{user_id}/memories/{name}` | `read_entry` (full content) |
 | Delete | `DELETE /users/{user_id}/agents/{agent_id}/{name}` (+ CSRF) | `DELETE /agents/{slug}/users/{user_id}/memories/{name}` | `delete_entry` (one row) |
 
-**UI** — the **Memories** tab (`profile_parts/MemoriesTab.tsx`, fed by the `useMemories` hook) lists the user's deep agents; drilling into one (with a Back button) shows that agent's memories **sorted by name**, each clickable to lazily load and preview its content, with a **delete** button behind an inline confirm step. Optimistic delete drops the row immediately and restores it on failure.
+**UI** — the **Memory** section of an agent's own page (`features/agents/components/detail/AgentMemory.tsx`, fed by the `useMemories` hook; it used to be a Settings tab that listed every agent first) shows that agent's memories **sorted by name**, read fresh each time the section opens, each clickable to lazily load and preview its content, with a **delete** button behind an inline confirm step. Optimistic delete drops the row immediately and restores it on failure.
 
 **Two caches, and Refresh has to reconcile both.** The list carries name + summary only; the body comes from a second per-memory fetch cached under `${agentId}::${name}`. Refreshing only the list is what made an agent-rewritten memory show its **new summary above its old content** — the body cache was never invalidated, and since `ensureDetail` fires only on expand, an already-open row could never re-request. `refreshAgent` now compares each cached body's `updatedAt` against the freshly listed row: bodies whose row vanished are dropped, bodies whose timestamp moved are re-fetched in place (so an open row updates without being collapsed), and unchanged bodies are left alone. A missing timestamp on either side counts as stale — it cannot prove the body is current. `updated_at` is `NOT NULL` and set to `now()` by the store's `ON CONFLICT DO UPDATE`, so it is a reliable signal.
 
@@ -222,6 +222,6 @@ flowchart LR
 | Cap setting (`MEMORY_MAX_ENTRIES`) | [magenticx/agents/core/settings.py](../../magenticx/agents/core/settings.py) (`FilesystemSettings`) |
 | Agents inspector endpoints | [magenticx/agents/router/memories.py](../../magenticx/agents/router/memories.py) |
 | Bridge proxy + router | [magenticx/dialogue_bridge/utils/memories.py](../../magenticx/dialogue_bridge/utils/memories.py) · [magenticx/dialogue_bridge/router/memories.py](../../magenticx/dialogue_bridge/router/memories.py) |
-| Frontend API + hook + tab | [magenticx/agentic_ui/src/shared/lib/api/](../../magenticx/agentic_ui/src/shared/lib/api/) · [magenticx/agentic_ui/src/features/settings/hooks/useMemories.ts](../../magenticx/agentic_ui/src/features/settings/hooks/useMemories.ts) · [magenticx/agentic_ui/src/features/settings/components/profile_parts/MemoriesTab.tsx](../../magenticx/agentic_ui/src/features/settings/components/profile_parts/MemoriesTab.tsx) |
+| Frontend API + hook + tab | [magenticx/agentic_ui/src/shared/lib/api/](../../magenticx/agentic_ui/src/shared/lib/api/) · [magenticx/agentic_ui/src/features/agents/hooks/useMemories.ts](../../magenticx/agentic_ui/src/features/agents/hooks/useMemories.ts) · [magenticx/agentic_ui/src/features/agents/components/detail/AgentMemory.tsx](../../magenticx/agentic_ui/src/features/agents/components/detail/AgentMemory.tsx) |
 
 See also: [user-preferences](user-preferences.md#agent-memory) (the `use_memory` gate), [conversation-embeddings](conversation-embeddings.md) (the separate `search_past_conversations` recall tool), [agent-development](../development/agent-development.md#per-user-agent-long-term-memory).

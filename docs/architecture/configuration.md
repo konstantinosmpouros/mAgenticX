@@ -1,6 +1,6 @@
 # Configuration — Every Environment Variable, Per Service
 
-Each Python service is configured entirely through environment variables read by **Pydantic `BaseSettings`** classes in its `core/settings.py`; the infrastructure services (Postgres, Redis, Chroma, nginx, the monitoring stack) are configured by image env vars and command flags. This document is the exhaustive reference for *how much you can tune each service without touching code* — every var, its default, and what it does. For the inverse — the short list of *what each service cannot boot without* — see its companion, [service-startup.md](service-startup.md). Defaults shown are the **in-code defaults**; the production compose overrides only a handful (mostly URLs, TLS paths, `LOG_FORMAT=json`, and `*_FILE` secret pointers). Settings are **case-insensitive**, load from `magenticx/.env` in local dev, and ignore unknown vars (`extra="ignore"`). Anything backed by a secret follows the `<NAME>_FILE` indirection documented in [secrets.md](secrets.md).
+Each Python service is configured entirely through environment variables read by **Pydantic `BaseSettings`** classes in its `core/settings.py`; the infrastructure services (Postgres, Redis, Chroma, nginx) are configured by image env vars and command flags. The sibling projects — the MCP gateway, the sandbox runner and the monitoring stack — are configured in their own repositories. This document is the exhaustive reference for *how much you can tune each service without touching code* — every var, its default, and what it does. For the inverse — the short list of *what each service cannot boot without* — see its companion, [service-startup.md](service-startup.md). Defaults shown are the **in-code defaults**; the production compose overrides only a handful (mostly URLs, TLS paths, `LOG_FORMAT=json`, and `*_FILE` secret pointers). Settings are **case-insensitive**, load from `magenticx/.env` in local dev, and ignore unknown vars (`extra="ignore"`). Anything backed by a secret follows the `<NAME>_FILE` indirection documented in [secrets.md](secrets.md).
 
 ---
 
@@ -8,10 +8,10 @@ Each Python service is configured entirely through environment variables read by
 
 ```mermaid
 flowchart LR
-    Env[".env / compose env / Swarm secret files"] --> S1["dialogue_bridge\ncore/settings.py"]
-    Env --> S2["agents\ncore/settings.py"]
-    Env --> S3["rag_service\ncore/settings.py"]
-    Env --> S4["infra: postgres · redis · chroma\nnginx · monitoring"]
+    Env[".env / compose env / Swarm secret files"] --> S1["dialogue_bridge<br/>core/settings.py"]
+    Env --> S2["agents<br/>core/settings.py"]
+    Env --> S3["rag_service<br/>core/settings.py"]
+    Env --> S4["infra: postgres · redis · chroma<br/>nginx"]
     EP["entrypoint-*.sh"] -->|"REQUIRE_TLS / REQUIRE_MTLS"| S1 & S2 & S3 & S4
 ```
 
@@ -72,7 +72,7 @@ Who signs session JWTs and which public keys verify them. Production signs with 
 | `SESSION_SIGNING_BACKEND` | `kms` | `kms` (production) or `file` (local dev only — refused unless `APP_ENV` is `development`/`test`). |
 | `SESSION_SIGNING_ACTIVE_KID` | `100` | `kid` stamped on newly minted tokens. 1 … 100000. |
 | `SESSION_SIGNING_KEYS` | `None` | `kid:key_version_ocid,…` — the KMS key versions the bridge may sign with. Must include the active kid. Required for `kms`. |
-| `SESSION_SIGNING_LEGACY_KIDS` | `None` | Comma list of **verify-only** kids (e.g. `1`, the exported Vault Transit key) so older tokens keep verifying until they age out. |
+| `SESSION_SIGNING_LEGACY_KIDS` | `None` | Comma list of **verify-only** kids: public keys of a retired signing key whose private half is no longer reachable, so tokens it signed keep verifying until they age out. Each needs its `<kid>.pem`; none may be the active kid or a `SESSION_SIGNING_KEYS` kid. Unset on Dennis — its last use, the pre-plan-29 key `1`, was removed on 2026-10-10. |
 | `SESSION_SIGNING_PUBLIC_KEYS_DIR` | `/app/signing_keys` | Directory of `<kid>.pem` public keys; every accepted kid needs one. Bind-mounted on Dennis from `/opt/magenticx/dialogue_bridge/signing_keys/`. |
 | `SESSION_SIGNING_PRIVATE_KEY_FILE` | (secret) | `file` backend only: the unencrypted PEM private key. |
 | `OCI_KMS_CRYPTO_ENDPOINT` | `None` | The crypto endpoint of the OCI KMS "vault" holding the key (`https://…-crypto.kms.<region>.oraclecloud.com`). Must be `https://`. OCI calls a KMS key container a *vault* — unrelated to the HashiCorp Vault this platform no longer uses. |
@@ -324,7 +324,7 @@ LangGraph + DeepAgents runtime. Configuration splits into runtime infra, the dur
 | `RAG_BASE_URL` | `https://rag_service:8001` | rag_service base URL. |
 | `RAG_REQUEST_TIMEOUT_SECONDS` | `30` | Read timeout for rag calls. |
 | `RAG_CONNECT_TIMEOUT_SECONDS` | `15` | Connect timeout for rag calls. |
-| `MCP_GATEWAY_URL` | `""` (MCP off) | MCP gateway SSE endpoint (plaintext — the dind gateway can't terminate TLS). **Empty = MCP off**: runs use the agent's own tools only, `GET /tools` returns `[]`, and declared MCP tools list as unavailable. Local passes `${MCP_GATEWAY_URL:-}` — empty unless `magenticx/.env` sets `http://mcp_gateway:8005/sse`, because the gateway is a sibling project ([`../mcp_gateway`](../../../mcp_gateway/CLAUDE.md)) that may not be running; `docker-compose-denis.yaml` sets it. |
+| `MCP_GATEWAY_URL` | `""` (MCP off) | MCP gateway SSE endpoint (plaintext — the dind gateway can't terminate TLS). **Empty = MCP off**: runs use the agent's own tools only, `GET /tools` returns `[]`, and declared MCP tools list as unavailable. Local passes `${MCP_GATEWAY_URL:-}` — empty unless `magenticx/.env` sets `http://mcp_gateway:8005/sse`, because the gateway is a sibling project ([mcp_gateway](https://github.com/konstantinosmpouros/mcp_gateway)) that may not be running; `docker-compose-denis.yaml` sets it. |
 | `MCP_CONNECT_TIMEOUT_SECONDS` | `10` | Deadline (0 < x ≤ 120) for connecting to the gateway **plus** the MCP handshake, for both run sessions and catalog fetches. A run whose gateway misses it carries on without MCP tools (`mcp_session_unavailable`); a failed catalog fetch is not retried for 30 s. The deadline is lifted once the session is up. |
 | `MCP_MANIFEST_CACHE_ENABLED` | `true` | Cache the MCP tool manifest for the catalog / Agents tab instead of refetching it per listing. Runs never use it — each run loads the live tools from its own session. |
 
@@ -418,8 +418,10 @@ Each built-in workflow agent picks its models per node. All accept `openai:<mode
 | `BRIDGE_CONVERSATIONS_PATH` | `/v1/internal/conversations` | The bridge's internal routes behind `/conversation/input/` (on `DIALOGUE_BRIDGE_URL`). |
 | `VIEW_IMAGE_MAX_BYTES` | `10485760` (10 MB) | Largest image `view_image` will hand to the model. Unlike the AG-UI preview bounds this caps the **model's** copy, so it guards context cost rather than display size. |
 | `OUTPUT_MAX_FILE_BYTES` / `OUTPUT_MAX_FILES` | `26214400` (25 MB) / `20` | Caps on the presented-file read the bridge snapshots at run end: larger files are reported missing, more paths per request is a 422. |
-| `SANDBOX_EXECUTION_ENABLED` | `false` | Fail-closed kill switch for sandboxed command execution: while false, workspace assembly refuses to mint a sandbox-capable default backend, which is exactly what would make deepagents expose its `execute` tool. Reserved for the future gVisor-class sandbox rollout. |
-| `SANDBOX_RUNNER_URL` | `""` (no `execute`) | The sandbox runner's base URL (sibling project [`../sandbox`](../../../sandbox/CLAUDE.md)). `execute` exists only when this is set **and** `SANDBOX_EXECUTION_ENABLED` is true. Locally `${SANDBOX_RUNNER_URL:-}`; set `http://sandbox_runner:8090` in `magenticx/.env` when the runner runs. |
+| `SANDBOX_EXECUTION_ENABLED` | `false` | Fail-closed kill switch for sandboxed command execution: while false, workspace assembly refuses to mint a sandbox-capable default backend, which is exactly what would make deepagents expose its `execute` tool. Both composes turn it on (local `${SANDBOX_EXECUTION_ENABLED:-true}`, Dennis `true`); set it `false` and release to remove `execute`. See [sandboxed-execution.md](../flows/sandboxed-execution.md). |
+| `SANDBOX_RUNNER_URL` | `""` (no `execute`) | The sandbox runner's base URL (sibling project [sandbox](https://github.com/konstantinosmpouros/sandbox)). `execute` exists only when this is set **and** `SANDBOX_EXECUTION_ENABLED` is true. Locally `${SANDBOX_RUNNER_URL:-}`; set `http://sandbox_runner:8090` in `magenticx/.env` when the runner runs. `docker-compose-denis.yaml` sets `https://sandbox_runner:8090` (mTLS over the `sandbox` overlay). |
+| `SANDBOX_RUNNER_TIMEOUT_SECONDS` | `330` | HTTP read timeout for one `execute` call (0 < x ≤ 3600). Must exceed the runner's own 300 s wall-clock kill, so a slow command comes back as the runner's `timeout` result rather than a client error. |
+| `SANDBOX_RUNNER_CONNECT_TIMEOUT_SECONDS` | `10` | Connect timeout to the runner (0 < x ≤ 120). |
 | `SUMMARIZATION_TRIGGER_FRACTION` | `0.95` | Compact automatically when the context reaches this fraction of a model's window (models with a known window — see `MODEL_CONTEXT_WINDOWS`). |
 | `SUMMARIZATION_KEEP_FRACTION` | `0.30` | Only bounds deepagents' overflow clipping: every compaction, automatic or manual, folds everything before the latest question. |
 | `SUMMARIZATION_TRIGGER_TOKENS` | `200000` | Fallback token trigger for profile-less models. |
@@ -509,15 +511,9 @@ Configured entirely by **command flags**, no env vars: password from `/run/secre
 | `TRUSTED_PROXY_SECRET` | (from secret via shim) | Injected as the internal-caller header on proxied requests. |
 | `REQUIRE_TLS` | `true` | Fail-closed HTTPS (via `entrypoint-nginx-tls.sh`). |
 
-### Monitoring stack (`../monitoring/docker-compose-denis.yml`)
+### Sibling projects
 
-A sibling project; full reference in [../monitoring/CLAUDE.md](../../../monitoring/CLAUDE.md).
-
-| Service | Key vars / flags |
-| --- | --- |
-| **grafana** | `GRAFANA_USER` (admin username), `GF_SECURITY_ADMIN_PASSWORD__FILE` (secret), `GF_USERS_ALLOW_SIGN_UP=false`, `GF_SERVER_PROTOCOL=https` + `GF_SERVER_CERT_FILE`/`_KEY`, `GF_SERVER_ROOT_URL=https://monitoring.<your-domain>`. **Env only seeds on first `grafana-data` init.** |
-| **prometheus** | command flags: `--storage.tsdb.retention.time=90d`, `--storage.tsdb.retention.size=8GB`, `--config.file`, `--web.enable-lifecycle`, `--log.level=error`. |
-| **loki / alloy / alertmanager / cadvisor / node-exporter** | command flags only (config-file paths); no app env vars to tune. SMTP for alerts is configured inside `alertmanager.yml`. |
+The MCP gateway, the sandbox runner and the monitoring stack are separate repositories and are configured there: [mcp_gateway](https://github.com/konstantinosmpouros/mcp_gateway), [sandbox](https://github.com/konstantinosmpouros/sandbox), [monitoring](https://github.com/konstantinosmpouros/monitoring). mAgenticX only points at the first two, through `MCP_GATEWAY_URL` and `SANDBOX_RUNNER_URL` on agents (above). Monitoring needs nothing from it except `LOG_FORMAT=json`.
 
 ---
 
@@ -561,7 +557,6 @@ These flip behavior at boot; all are **fail-closed by default** (secure unless e
 | TLS toggles | [magenticx/tls/entrypoint-tls.sh](../../magenticx/tls/entrypoint-tls.sh) | `REQUIRE_TLS`, `REQUIRE_MTLS` |
 | nginx env substitution | [magenticx/agentic_ui/nginx.conf.template](../../magenticx/agentic_ui/nginx.conf.template) | `BFF_BASE_URL`, `TRUSTED_PROXY_SECRET` |
 | core stack compose | [magenticx/docker-compose-denis.yaml](../../magenticx/docker-compose-denis.yaml) | per-service `environment:` overrides |
-| monitoring compose | [../monitoring/docker-compose-denis.yml](../../../monitoring/docker-compose-denis.yml) | grafana/prometheus env + flags |
 | secret delivery | [docs/architecture/secrets.md](secrets.md) | which var is backed by which secret |
 
 ### Multi-account sign-in (dialogue_bridge)

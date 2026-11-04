@@ -10,9 +10,9 @@ Conversation sharing lets an owner publish a frozen, read-only snapshot of a con
 flowchart LR
     Browser["Browser"] -->|"POST /share, GET /share/token"| nginx["nginx :8050"]
     nginx --> bridge["dialogue_bridge :8002"]
-    bridge -->|"SELECT/INSERT/UPDATE"| pg[("chat_postgres\nconversation_shares\nconversation_reports")]
-    bridge -->|"build snapshot"| snap["snapshot builder\n(utils/conversations.py)"]
-    bridge -->|"render PDF"| pdf["PDF renderer\n(utils/share_export.py)"]
+    bridge -->|"SELECT/INSERT/UPDATE"| pg[("chat_postgres<br/>conversation_shares<br/>conversation_reports")]
+    bridge -->|"build snapshot"| snap["snapshot builder<br/>(utils/conversations.py)"]
+    bridge -->|"render PDF"| pdf["PDF renderer<br/>(utils/share_export.py)"]
 ```
 
 ---
@@ -90,12 +90,12 @@ The three share modes determine which messages are included in the snapshot. All
 
 ```mermaid
 flowchart TD
-    A[shareConversation request\nmessageId + mode] --> B[build_message_lineage\nroot → messageId]
+    A[shareConversation request<br/>messageId + mode] --> B[build_message_lineage<br/>root → messageId]
     B --> C{mode?}
     C -->|full| D[all messages in lineage]
-    C -->|branch| E[all messages in lineage\nvalidated against branchPath]
-    C -->|message| F{has user\npredecessor?}
-    F -->|yes| G[parent user msg\n+ target AI msg]
+    C -->|branch| E[all messages in lineage<br/>validated against branchPath]
+    C -->|message| F{has user<br/>predecessor?}
+    F -->|yes| G[parent user msg<br/>+ target AI msg]
     F -->|no| H[target AI msg only]
     D --> Z[build_share_snapshot]
     E --> Z
@@ -239,14 +239,14 @@ Shared continuation uses the same backend-owned inference start endpoint as norm
 
 ```mermaid
 flowchart TD
-    A[POST /inference/runs/userId/start\nmode=shared_continue] --> B[load active share]
+    A[POST /inference/runs/userId/start<br/>mode=shared_continue] --> B[load active share]
     B --> C{shareMode == full?}
     C -->|no| ERR[400 — only full shares are continuable]
     C -->|yes| D[look up agent from snapshot]
     D --> E[create new ConversationTable for current_user]
     E --> F[iterate snapshot messages]
     F --> G[decode base64 attachments]
-    G --> H[create MessageTable + AttachmentTable + BlobTable\nnew UUIDs, relink parent_message_id via id_map]
+    G --> H[create MessageTable + AttachmentTable + BlobTable<br/>new UUIDs, relink parent_message_id via id_map]
     H --> I[create initial user reply message]
     I --> J[create AI placeholder (streaming_status='queued')]
     J --> K[commit atomically]

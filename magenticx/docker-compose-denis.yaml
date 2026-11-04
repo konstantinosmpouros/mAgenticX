@@ -52,7 +52,7 @@ services:
       update_config:
         order: start-first
         monitor: 30s
-        # CD deploys unattended once approved: a new task that never turns
+        # CD deploys unattended (no approval step): a new task that never turns
         # healthy (or dies inside `monitor`) reverts the service to the
         # previous image by itself instead of leaving it half-updated.
         failure_action: rollback
@@ -135,7 +135,7 @@ services:
       update_config:
         order: start-first
         monitor: 30s
-        # CD deploys unattended once approved: a new task that never turns
+        # CD deploys unattended (no approval step): a new task that never turns
         # healthy (or dies inside `monitor`) reverts the service to the
         # previous image by itself instead of leaving it half-updated.
         failure_action: rollback
@@ -320,7 +320,7 @@ services:
       update_config:
         order: start-first
         monitor: 30s
-        # CD deploys unattended once approved: a new task that never turns
+        # CD deploys unattended (no approval step): a new task that never turns
         # healthy (or dies inside `monitor`) reverts the service to the
         # previous image by itself instead of leaving it half-updated.
         failure_action: rollback

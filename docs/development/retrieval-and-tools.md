@@ -8,12 +8,12 @@ The platform exposes two kinds of external capability to agents: **retrieval** (
 
 ```mermaid
 flowchart LR
-    Bridge["dialogue_bridge\n(:8002)"]
-    Agents["agents\n(:8001)"]
-    MCP["MCP Gateway\n(:8003)"]
-    RAG["rag_service\n(:8005)"]
-    Chroma["ChromaDB\n(:8000)"]
-    Duck["DuckDB\n(in-memory)"]
+    Bridge["dialogue_bridge<br/>(:8002)"]
+    Agents["agents<br/>(:8001)"]
+    MCP["MCP Gateway<br/>(:8003)"]
+    RAG["rag_service<br/>(:8005)"]
+    Chroma["ChromaDB<br/>(:8000)"]
+    Duck["DuckDB<br/>(in-memory)"]
 
     Bridge -->|"POST /agents/{slug}/stream"| Agents
     Agents -.->|"SSE list_tools (MCP on only)"| MCP
@@ -50,7 +50,7 @@ sequenceDiagram
         Agents->>MCP: SSE: initialize + list_tools
         MCP-->>Agents: [Tool definitions]
     end
-    Agents->>Agents: filter live tools to the agent's resolved set\n(agent.yaml declared − tool_prefs.json disabled), attach
+    Agents->>Agents: filter live tools to the agent's resolved set<br/>((agent.yaml declared ∪ user-enabled) − user-disabled), attach
 
     Agents->>Agents: agent.astream() — LangGraph execution
     Agents-->>Bridge: ToolCallStartEvent (SSE)
@@ -114,7 +114,7 @@ With MCP off, `list_mcp_tools()` returns `[]` and `GET /tools` answers `[]` with
 Every inference stream (and resume) request tries to open a fresh MCP session via `optional_mcp_session()` — which yields `None` when MCP is off, the gateway is unreachable, or the connect + handshake misses `MCP_CONNECT_TIMEOUT_SECONDS`, and the run then attaches no MCP tools rather than failing. **Which** tools attach is decided by the agent itself, not by the request. The old model — where the client computed an `enabledTools` list and the bridge forwarded it as `config["tools"]` — is retired. `BaseAgent.__init__` no longer seeds its tool filter from the request config; `config_tools` / `config_tool_names` default empty. Instead:
 
 - A **deep agent declares its tools per agent** in its `agent.yaml` `tools:` list (native + MCP). A `YamlDeepAgent` resolves that declared set from its spec at build time.
-- A user **disables specific tools per (user, agent)** in Settings → Agents. That disabled set is persisted server-side in a `tool_prefs.json` at the agent's root (`harness/filesystem/tool_prefs.py`). The agent's **effective tool set = declared − disabled** (`_apply_tool_disables`).
+- A user **disables a declared MCP tool, or enables another gateway tool, per (user, agent)** on the agent's page. The bridge stores those choices in `chat_db.user_agent_tool_prefs` and sends them on the run config as `tool_config`. The agent's **effective MCP set = (declared ∪ enabled) − disabled** (`BaseAgent._filter_live_tools`). See [tool-harness.md § Phase 4](tool-harness.md).
 
 ```mermaid
 flowchart TD
@@ -123,10 +123,10 @@ flowchart TD
     B -->|"None: MCP off / unreachable / timeout"| N["live_tools = []"]
     N --> F
     C --> D["await load_mcp_tools(session)"]
-    D --> E["Returns LangChain tool objects\n(distinct from manifest-only cache)"]
+    D --> E["Returns LangChain tool objects<br/>(distinct from manifest-only cache)"]
     E --> F["agent.attach_tools(live_tools)"]
-    F --> G["Filter to the agent's resolved set:\nagent.yaml declared − tool_prefs.json disabled"]
-    G --> H["Missing tools logged at WARNING\n(MCP off: one INFO agent_tools_mcp_disabled)"]
+    F --> G["Filter to the agent's resolved set:<br/>(agent.yaml declared ∪ enabled) − disabled"]
+    G --> H["Missing tools logged at WARNING<br/>(MCP off: one INFO agent_tools_mcp_disabled)"]
     H --> I["agent.tools populated, agent.tools_names populated"]
     I --> J["agent.astream() starts"]
     J --> K["optional_mcp_session() closes on exit"]
@@ -288,10 +288,10 @@ When the orchestrator calls `task(subagent_type=..., description=...)`, the norm
 
 ```mermaid
 flowchart TD
-    A["tool_name == 'task'"] --> B["Emit TASK_SUBAGENT CustomEvent\n{task_id, subagent_type, description}"]
+    A["tool_name == 'task'"] --> B["Emit TASK_SUBAGENT CustomEvent<br/>{task_id, subagent_type, description}"]
     B --> C["Mark tool_call_id as ignored"]
     C --> D["pending_tasks[task_id] = {description, subagent_type}"]
-    D --> E["Sub-agent starts — namespace bound to task_id\nvia PatchToolCallsMiddleware.before_agent message"]
+    D --> E["Sub-agent starts — namespace bound to task_id<br/>via PatchToolCallsMiddleware.before_agent message"]
     E --> F["All sub-agent SSE events wrapped in SUBAGENT_EVENT envelope"]
 ```
 
@@ -304,7 +304,7 @@ LangGraph's human-in-the-loop mechanism emits an `__interrupt__` key in the upda
 ```mermaid
 flowchart TD
     A["updates chunk received"] --> B{__interrupt__ key present?}
-    B -->|Yes| C["Emit HITL_INTERRUPT CustomEvent\n{thread_id, interrupt, metadata}"]
+    B -->|Yes| C["Emit HITL_INTERRUPT CustomEvent<br/>{thread_id, interrupt, metadata}"]
     C --> D["Return — no other events from this chunk"]
     B -->|No| E["Normal tool/message processing"]
 ```
@@ -375,7 +375,7 @@ This is the only point in the pipeline where blob storage is accessed for infere
 | MCP session per request | [magenticx/agents/utils/mcp_tools.py](../../magenticx/agents/utils/mcp_tools.py) | `optional_mcp_session()`, `_gateway_session()`, `load_mcp_tools()` |
 | Tool server ID overrides | [magenticx/agents/utils/mcp_tools.py](../../magenticx/agents/utils/mcp_tools.py) | `_TOOL_SERVER_OVERRIDES` |
 | Agent base (tool filtering) | [magenticx/agents/harness/abstractions/base_agent.py](../../magenticx/agents/harness/abstractions/base_agent.py) | `attach_tools()`; `config_tools`/`config_tool_names` now default empty (no longer seeded from the request config) |
-| Per-(user, agent) tool disables | [magenticx/dialogue_bridge/utils/agent_tool_prefs.py](../../magenticx/dialogue_bridge/utils/agent_tool_prefs.py) | `tool_prefs.json` load/save, `_apply_tool_disables()` (declared − disabled) |
+| Per-(user, agent) tool choices | [magenticx/dialogue_bridge/utils/agent_tool_prefs.py](../../magenticx/dialogue_bridge/utils/agent_tool_prefs.py) | `read_config` (the run's `tool_config`), `set_enabled`, `set_approval` |
 | LangGraph agent build & stream | [magenticx/agents/harness/abstractions/langgraph_agent.py](../../magenticx/agents/harness/abstractions/langgraph_agent.py) | `build()`, `astream()` |
 | Deep agent build lifecycle | [magenticx/agents/harness/abstractions/deep_agent.py](../../magenticx/agents/harness/abstractions/deep_agent.py) | `build()`, `register_agent()`, asset discovery |
 | Tool call lifecycle events | [magenticx/agents/harness/agui/emitter.py](../../magenticx/agents/harness/agui/emitter.py) | `tool_call_start()`, `tool_call_args()`, `tool_call_result()`, `tool_call_end()` |

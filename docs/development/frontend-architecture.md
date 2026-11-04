@@ -20,7 +20,7 @@ The organising rule — and the answer to "shared or dedicated?":
 src/
   main.tsx  App.tsx  error_boundary.tsx   # composition root (routing + providers)
   index.css                  # entry point only — an ordered @import list, no rules
-  App.css  vite-env.d.ts
+  vite-env.d.ts
   styles/                    # the actual CSS, split by domain
     theme/                                #   design tokens, one file per theme + themes.ts registry (see its README)
     base.css                              #   reset, body, shared transition utils
@@ -28,15 +28,24 @@ src/
     composer.css  orb.css                 #   the composer's light; the AI orb (shared/ui/orb.tsx) per state
     skeleton.css  toast.css  markdown.css scrollbars.css  misc.css
 
+  app/                       # the persistent workspace shell (App.tsx's layout route)
+    WorkspaceShell.tsx       #   sidebar, search, profile/dialog modals, the <Outlet/> slot
+    useChatWorkspace.tsx     #   builds the workspace bundle once per render
+    workspaceContext.ts      #   the route views' accessor for that bundle (a React context)
+    useIncognitoCard.ts
+
   pages/                     # one file per route — composes a feature, wires routing
-    ChatPage.tsx             #   the persistent workspace shell (ChatShell) + Outlet
     ChatView.tsx             #   "/" and "/c/:id"
     TasksView.tsx            #   "/tasks"
+    AgentsView.tsx           #   "/agents…" — layout over the chat; the agents pages render in its outlet
     Login.tsx  SharedConvPage.tsx
     TermsAndConditions.tsx  PrivacyPolicy.tsx
-    NotFound.tsx  ErrorPage.tsx  Test.tsx
+    NotFound.tsx  ErrorPage.tsx
 
   features/                  # one folder per feature; owns components/ hooks/ handlers/
+    agents/        # the Agents section: gallery, agent page (Overview/Tools/Approvals/
+                   #   Memory/History), the builder; pages/ (AgentsGallery, AgentPage,
+                   #   AgentBuilderPage), hooks (useAgentTools, useMemories, …), lib/
     chat/          # conversation rendering + chat handlers/hooks + sidebar
       components/  #   ChatBody, ChatMessage, ChatInputBar, ChatHeader, ChatSidebar,
                    #   AgentRunTimeline, HitlInputTakeover, message_parts/*
@@ -50,9 +59,8 @@ src/
                    #   shell), EditProfileDialog, ShortcutsPanel + HelpPanel (dedicated
                    #   modals, not settings tabs), profile_parts/* (General/Personalization
                    #   (+CustomInstructionsDialog)/Voice/Usage/Security/DataControls/Account
-                   #   real tabs + ComingSoon stubs + Skills/Mcp/Memories workspace tabs),
-                   #   useProfilePanel, useSkills, useMemories,
-                   #   useUsageSummary, preferences handler
+                   #   real tabs + ComingSoon stubs + Skills/Mcp workspace tabs),
+                   #   useProfilePanel, useSkills, useUsageSummary, preferences handler
     sharing/       # SharePanel + share handler
     reporting/     # ReportPanel + report handler
     search/        # SearchPanel + search handler
@@ -72,13 +80,15 @@ src/
 
 ## Layering rules
 
-1. **Dependency direction is one-way:** `pages → features → shared`. `shared/`
-   never imports from `features/`; features never import from `pages/`.
+1. **Dependency direction is one-way:** `app/pages → features → shared`.
+   `shared/` never imports from `features/`; features never import from `app/`
+   or `pages/`. `app/` and `pages/` are the composition layer: the shell renders
+   `ChatView`, and the route views read the shell's bundle through
+   `app/workspaceContext`.
 2. **`shared/` is feature-agnostic.** If you want to import a feature's type into
    `shared/`, either the type belongs in `shared/` or the dependency is inverted.
 3. **Pages are thin** — compose a feature and wire routing. No `fetch`, no business
-   logic. (The chat shell, `pages/ChatPage.tsx`, is the one exception still being
-   unwound — see below.)
+   logic. The shell's own wiring lives in `app/`, not in a page.
 4. **Colocation + promote-on-second-use.** One consumer = dedicated (lives in the
    feature); a second consumer = move it to `shared/`.
 5. **`@/` is the only alias**, mapped to `src/` (vite + tsconfig). Imports read
@@ -106,14 +116,13 @@ src/
   that feature. This is what makes "what does `/tasks` own?" answerable — it's
   `features/tasks/`, nothing else.
 
-## Known transitional state (intentional, tracked)
+## Known transitional state
 
-One follow-up remains; it is isolated and does not block the structure:
-
-1. **`pages/ChatPage.tsx` (the workspace shell / `ChatShell`) is still a large
-   component.** Thinning it into an `app/WorkspaceShell` that reads the Zustand
-   store + a services context is the next step. It is deliberately deferred
-   (highest coupling) and tracked separately.
+The former `pages/ChatPage.tsx` shell is gone: `App.tsx` mounts
+`app/WorkspaceShell` as a layout route around `/`, `/c/:id`, `/tasks` and
+`/agents…`, so the shell never unmounts while the URL picks the view in its
+`<Outlet/>`. The workspace bundle reaches the views through a React context
+(`app/workspaceContext.ts`), not a store slice — the file's header explains why.
 
 The former `src/handlers/index.ts` aggregator is **gone**. It re-exported the
 feature handler modules so the shell could keep a single `@/handlers` import;

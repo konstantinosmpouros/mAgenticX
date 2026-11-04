@@ -10,10 +10,10 @@ The platform has three distinct audio features that share infrastructure but ser
 
 ```mermaid
 flowchart LR
-    Browser["Browser\nWebRTC / MediaDevices"]
-    Bridge["dialogue_bridge\n(:8002)"]
-    Agents["agents service\n(:8001)"]
-    OpenAI["OpenAI\nWhisper / TTS / Realtime"]
+    Browser["Browser<br/>WebRTC / MediaDevices"]
+    Bridge["dialogue_bridge<br/>(:8002)"]
+    Agents["agents service<br/>(:8001)"]
+    OpenAI["OpenAI<br/>Whisper / TTS / Realtime"]
 
     Browser -->|"FormData audio blob"| Bridge
     Bridge -->|"POST /dictate/transcribe"| Agents
@@ -87,9 +87,9 @@ Dictation converts a short audio recording into text that is inserted into the m
 ```mermaid
 flowchart TD
     A["User holds record button"] --> B["Browser captures audio blob"]
-    B --> C["POST /api/v1/speech/dictation/{userId}\nFormData {audio: Blob}"]
-    C --> D["Bridge: proxy to agents\nPOST /dictate/transcribe"]
-    D --> E["Agents: OpenAI Whisper\naudio.transcriptions.create()"]
+    B --> C["POST /api/v1/speech/dictation/{userId}<br/>FormData {audio: Blob}"]
+    C --> D["Bridge: proxy to agents<br/>POST /dictate/transcribe"]
+    D --> E["Agents: OpenAI Whisper<br/>audio.transcriptions.create()"]
     E --> F["TranscriptionResponse {text}"]
     F --> G["DictationResponse {text}"]
     G --> H["Frontend: append transcript to currentMessage"]
@@ -112,10 +112,10 @@ Read-aloud converts an AI message's text content into streamed MP3 audio. A prev
 
 ```mermaid
 flowchart TD
-    A["User clicks play on AI message"] --> B["POST /api/v1/speech/read-aloud\n/{userId}/{conversationId}/{messageId}"]
-    B --> C["Bridge: validate user owns conversation\nvalidate message.sender == 'ai'"]
-    C --> D["Load user voice preference\nfrom UserPreferencesTable"]
-    D --> E["Agents: POST /speech/read-aloud\n{text, voice}"]
+    A["User clicks play on AI message"] --> B["POST /api/v1/speech/read-aloud<br/>/{userId}/{conversationId}/{messageId}"]
+    B --> C["Bridge: validate user owns conversation<br/>validate message.sender == 'ai'"]
+    C --> D["Load user voice preference<br/>from UserPreferencesTable"]
+    D --> E["Agents: POST /speech/read-aloud<br/>{text, voice}"]
     E --> F["OpenAI TTS audio.speech.create()"]
     F --> G["StreamingResponse audio/mpeg"]
     G --> H["Bridge streams to browser"]
@@ -146,10 +146,10 @@ flowchart TD
     D --> E["createDataChannel('oai-events')"]
     E --> F["pc.createOffer()"]
     F --> G["pc.setLocalDescription(offer)"]
-    G --> H["POST /v1/voice/realtime/{userId}/session\n{agentId, sdp, voice?, language?, conversationId?}"]
-    H --> I["Bridge: resolve voice + language preferences\nbuild_voice_instructions()"]
-    I --> J["Agents: POST /realtime/session\n{sdp, model, voice, instructions, metadata}"]
-    J --> K["OpenAI: POST /v1/realtime/calls\nmultipart: SDP offer + session config JSON"]
+    G --> H["POST /v1/voice/realtime/{userId}/session<br/>{agentId, sdp, voice?, language?, conversationId?}"]
+    H --> I["Bridge: resolve voice + language preferences<br/>build_voice_instructions()"]
+    I --> J["Agents: POST /realtime/session<br/>{sdp, model, voice, instructions, metadata}"]
+    J --> K["OpenAI: POST /v1/realtime/calls<br/>multipart: SDP offer + session config JSON"]
     K --> L["SDP answer"]
     L --> M["pc.setRemoteDescription(answer)"]
     M --> N["ICE negotiation — status='connecting'"]

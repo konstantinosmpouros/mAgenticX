@@ -2,7 +2,7 @@
 
 Two different systems prove two different things. **Identity** is proven by **Microsoft Entra ID** — the only way to sign in (Phase 1): the password, MFA and any conditional-access policy all happen at Microsoft, never on our platform. **Session tokens** are signed by an **HSM-protected RSA key in OCI KMS** — the private key never leaves the HSM, and the bridge sends only a SHA-256 digest to be signed (Phase 3). The dialogue bridge is a thin **token issuer**: once Entra has proven who the user is, it mints a short-lived access JWT and a longer-lived refresh JWT and hands them to the browser as HttpOnly cookies.
 
-Until plan 29 the platform also had username/password login through HashiCorp Vault, and Vault signed the session tokens through its Transit engine. Vault seals itself on every reboot, so after any restart nobody could log in until a human unsealed it. Both jobs are gone and so is Vault — see Phase 9.
+Until plan 29 the platform also had username/password login through HashiCorp Vault, and Vault signed the session tokens through its Transit engine. Vault sealed itself on every reboot, so after any restart nobody could log in until a human unsealed it. Both jobs are gone and so is Vault — see Phase 9.
 
 Sessions are **stateless**. There is no session row in the database; every request is authorised by verifying the JWT signature against a public key **loaded from a file at boot** — no per-request database or KMS call. This is what lets the bridge scale horizontally behind a gateway: any instance on any VM can validate any token on its own. The only shared state is small and Redis-backed: a **logout denylist** that makes sign-out (and a stolen-token replay) take effect instantly, and a per-user **revoke-all watermark** behind "log out of all devices". Both are empty in the normal case and both fail open on the request hot path.
 
@@ -15,11 +15,11 @@ Sessions are **stateless**. There is no session row in the database; every reque
 ```mermaid
 flowchart LR
     Browser["Browser"]
-    Bridge["dialogue_bridge\n(:8002)"]
-    Entra["Microsoft Entra ID\n(OIDC) — the only sign-in"]
-    KMS["OCI KMS\nHSM-held RSA key"]
-    Redis["Redis\n(OIDC flow state · logout denylist)"]
-    PG["Postgres\n(users, by oid)"]
+    Bridge["dialogue_bridge<br/>(:8002)"]
+    Entra["Microsoft Entra ID<br/>(OIDC) — the only sign-in"]
+    KMS["OCI KMS<br/>HSM-held RSA key"]
+    Redis["Redis<br/>(OIDC flow state · logout denylist)"]
+    PG["Postgres<br/>(users, by oid)"]
 
     Browser -->|"GET /v1/auth/oidc/login"| Bridge
     Bridge -->|"auth-code + PKCE"| Entra
@@ -181,13 +181,13 @@ Whatever the backend returns, the keyring verifies it against the **pinned publi
 
 ### Keys, `kid`s, and rotation
 
-The JWT header `kid` is a small integer. `SESSION_SIGNING_KEYS` maps each signing `kid` to a KMS key version (`100:ocid1.keyversion…`); `SESSION_SIGNING_ACTIVE_KID` names the one new tokens use. KMS kids start at **100**, so they are distinguishable at a glance from Vault Transit's `1, 2, …`.
+The JWT header `kid` is a small integer. `SESSION_SIGNING_KEYS` maps each signing `kid` to a KMS key version (`100:ocid1.keyversion…`); `SESSION_SIGNING_ACTIVE_KID` names the one new tokens use. KMS kids start at **100**, so they are distinguishable at a glance from the retired Vault Transit key's `1`.
 
 Every `kid` the bridge accepts — each listed KMS version, plus any **verify-only** kid in `SESSION_SIGNING_LEGACY_KIDS` — needs its public key at `<SESSION_SIGNING_PUBLIC_KEYS_DIR>/<kid>.pem`. They are plain files (a public key is not a secret), bind-mounted on Dennis from `/opt/magenticx/dialogue_bridge/signing_keys/`, and parsed at boot: a missing, malformed or sub-2048-bit key **refuses to start** the container, so Swarm keeps the healthy old task.
 
 **Rotation:** create a new KMS key version, export its public key as `101.pem`, add `101:<version ocid>` to `SESSION_SIGNING_KEYS`, set `SESSION_SIGNING_ACTIVE_KID=101`, deploy. Tokens with `kid 100` keep verifying; after **20 days** (`JWT_REFRESH_ABSOLUTE_TTL_SECONDS`) none can still be valid, and `100` is removed.
 
-**The move off Vault Transit was a rotation.** The Transit public key was exported once, while Vault was still unsealed, and loaded as verify-only `kid 1` (`SESSION_SIGNING_LEGACY_KIDS=1`). Sessions minted by Vault before the cutover kept verifying — and refreshing, into KMS-signed `kid 100` tokens — so **nobody was logged out**. `1.pem` and the legacy setting were removed on 2026-10-10: every refresh re-signs with the active kid, so a `kid 1` token had to go unrefreshed since the cutover, and the 12-day idle limit had expired the last one by 2026-10-09.
+**The move off Vault Transit was a rotation.** The Transit public key was exported once, while Vault was still unsealed, and loaded as verify-only `kid 1` (`SESSION_SIGNING_LEGACY_KIDS=1`). Sessions minted by Vault before the cutover kept verifying — and refreshing, into KMS-signed `kid 100` tokens — so **nobody was logged out**. `SESSION_SIGNING_LEGACY_KIDS` was removed on 2026-10-10, so `kid 1` is no longer accepted: every refresh re-signs with the active kid, so a `kid 1` token had to go unrefreshed since the cutover, and the 12-day idle limit had expired the last one by 2026-10-09.
 
 ### Token model
 
@@ -455,13 +455,13 @@ stateDiagram-v2
 
 ## Phase 9 — How Password Login and Vault Were Retired (plan 29)
 
-Until plan 29, username/password login ran alongside Entra: the bridge checked the password against HashiCorp Vault's userpass backend, and Vault's Transit engine signed every session token. Vault seals on every reboot, so a restart locked everyone out until someone unsealed it by hand. Both jobs were removed, and the Vault stack with them.
+Until plan 29, username/password login ran alongside Entra: the bridge checked the password against HashiCorp Vault's userpass backend, and Vault's Transit engine signed every session token. Vault sealed itself on every reboot, so a restart locked everyone out until someone unsealed it by hand. Both jobs were removed, and the Vault stack with them.
 
 **Accounts were linked before the password path was removed.** The release that still had both doors resolved a login by provider subject *or* by normalized email, so a Vault-era row picked up its `oidc_subject` the first time its owner signed in with Microsoft (`auth_providers` then reads `entra,vault`). Plan 29 Phase A0 checked every active row's email against Entra, and Phase A1 had every user sign in with Microsoft once, until no active row lacked an `oidc_subject`. Only then did the release that resolves by `oid` alone ship — which is why its lack of an email match strands no one.
 
 **Sessions survived the signer change.** The Vault Transit public key was exported while Vault was still unsealed and loaded verify-only as `kid 1` (Phase 3), so tokens Vault had signed kept verifying — and refreshing into KMS-signed `kid 100` tokens — until they aged out; `kid 1` was removed on 2026-10-10.
 
-What remains of the old model: the `users.vault_user_id` column (unread, kept for diagnosis — dropping it is a destructive migration for no gain) Nothing else — the legacy `kid 1` key was removed on 2026-10-10.
+What remains of the old model is one column: `users.vault_user_id`, unread and kept for diagnosis (dropping it is a destructive migration for no gain). The legacy `kid 1` stopped being accepted on 2026-10-10, and the Vault stack and its Swarm secrets are gone from Dennis.
 
 ---
 

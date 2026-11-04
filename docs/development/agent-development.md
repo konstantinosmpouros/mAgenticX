@@ -8,10 +8,10 @@ The platform supports two agent patterns: **LangGraph agents** (explicit graph-b
 
 ```mermaid
 flowchart LR
-    Registry["AGENT_REGISTRY\n(populated at startup)"]
+    Registry["AGENT_REGISTRY<br/>(populated at startup)"]
     Stream["POST /agents/{slug}/stream"]
     MCP["MCP Gateway (optional)"]
-    Agent["Agent instance\n(LangGraph or Deep)"]
+    Agent["Agent instance<br/>(LangGraph or Deep)"]
     Norm["AGUIStreamNormalizer"]
     Bridge["dialogue_bridge"]
 
@@ -338,7 +338,7 @@ Distinct from the static instructions above, each agent keeps **long-term memory
 
 Memory is **toggleable per run** via the user's `use_memory` preference (default on), which `BaseAgent.__init__` parses into `self.use_memory`. When off: `load_agent_md()` returns `[]`, `_build_composite_backend()` drops the `/memories/` mount, **and** the `remember` tool isn't attached — the agent runs with no persistent memory, no code change. The separate `search_past_conversations` recall tool (pgvector) is gated independently by `search_past_convs`. A `remember` made mid-conversation lands on disk immediately but is injected as context on the *next* conversation (the index is read at build time). See [user-preferences](../flows/user-preferences.md#agent-memory).
 
-The user inspects and corrects this memory in the **ProfilePanel → Memories tab**: drill into a deep agent, see its saved memories (name-sorted), click to preview content, and delete one. The agent owns *writes* (the `remember` tool); the user only reads + deletes. The read/delete operations live in `harness/memory/store.py` (`list_memories` / `read_memory` / `delete_memory` — delete drops both the `entries/<name>.yml` and its `AGENTS.md` row via the same `index_line_pattern` the write path uses), exposed by `router/memories.py` (`/agents/{slug}/users/{user_id}/memories[...]`, internal-caller gated) and proxied by the bridge's `/v1/memories` router (no cache). There is no create/update endpoint by design.
+The user inspects and corrects this memory in the **Memory** section of the agent's own page: see its saved memories (name-sorted), click to preview content, and delete one. The agent owns *writes* (the `remember` tool); the user only reads + deletes. The read/delete operations live in `harness/memory/store.py` (`list_memories` / `read_memory` / `delete_memory` — delete drops both the `entries/<name>.yml` and its `AGENTS.md` row via the same `index_line_pattern` the write path uses), exposed by `router/memories.py` (`/agents/{slug}/users/{user_id}/memories[...]`, internal-caller gated) and proxied by the bridge's `/v1/memories` router (no cache). There is no create/update endpoint by design.
 
 ##### Per-user personalization (personality + custom instructions)
 
@@ -626,9 +626,9 @@ tools:
 
 `YamlDeepAgent` seeds these into `self.config_tool_names` via `_build_tool_key_from_config()` (cache keys like `"tavily/tavily-search"`, `"arxiv/download_paper"`) — the base `BaseAgent` leaves them empty, since nothing tool-related rides on the request anymore.
 
-At stream time, the MCP gateway provides live LangChain tool objects. `attach_tools()` keeps only the ones whose cache key is in `(config_tool_names ∪ user-enabled) − user-disabled` (`_filter_live_tools`; the user's choices come from Settings → Agents on the run config).
+At stream time, the MCP gateway provides live LangChain tool objects. `attach_tools()` keeps only the ones whose cache key is in `(config_tool_names ∪ user-enabled) − user-disabled` (`_filter_live_tools`; the user's choices, made on the agent's page, arrive on the run config as `tool_config`).
 
-MCP is part of the core stack, but never required (`MCP_GATEWAY_URL` empty = off). With MCP off, or a gateway that can't be reached within `MCP_CONNECT_TIMEOUT_SECONDS`, the run gets no MCP tools and goes ahead with the agent's native and framework tools — so write instructions that still make sense without the MCP tools. Declared MCP refs stay in `agent.yaml`; the Agents tab lists them as unavailable ("MCP is not enabled on this deployment").
+MCP comes from an optional sibling project and is never required (`MCP_GATEWAY_URL` empty = off). With MCP off, or a gateway that can't be reached within `MCP_CONNECT_TIMEOUT_SECONDS`, the run gets no MCP tools and goes ahead with the agent's native and framework tools — so write instructions that still make sense without the MCP tools. Declared MCP refs stay in `agent.yaml`; the Agents tab lists them as unavailable ("MCP is not enabled on this deployment").
 
 ### Tool Cache Key Format
 
@@ -811,12 +811,12 @@ No manual registration is required. `_discover_agents()` runs at module load tim
 
 ```mermaid
 flowchart TD
-    A["agents service starts"] --> B["import langgraph_agents\nimport deep_agents"]
+    A["agents service starts"] --> B["import langgraph_agents<br/>import deep_agents"]
     B --> C["scan __all__ in each module"]
     C --> D["for each class in __all__"]
-    D --> E{subclass of\nLangGraphAgent or DeepAgent?}
+    D --> E{subclass of<br/>LangGraphAgent or DeepAgent?}
     E -->|No| F["skip"]
-    E -->|Yes| G{name in\ndisabled_agent_slugs?}
+    E -->|Yes| G{name in<br/>disabled_agent_slugs?}
     G -->|Yes| H["skip (log warning)"]
     G -->|No| I["call cls.manifest()"]
     I --> J["AGENT_REGISTRY[slug] = AgentDefinition(slug, cls, manifest)"]
@@ -840,10 +840,10 @@ Both `LangGraphAgent.build()` and `DeepAgent.build()` are called lazily on the f
 flowchart TD
     A["astream() called"] --> B{graph is None?}
     B -->|No| C["skip build — graph already compiled"]
-    B -->|Yes| D["checkpointer = get_checkpointer()\n(durable AsyncPostgresSaver;\nephemeral InMemorySaver if no thread_id)"]
+    B -->|Yes| D["checkpointer = get_checkpointer()<br/>(durable AsyncPostgresSaver;<br/>ephemeral InMemorySaver if no thread_id)"]
     D --> E["register_agents_and_nodes()"]
     E --> F{self.state and self.nodes defined?}
-    F -->|Yes| G["graph = StateGraph(self.state)\nregister_graph_nodes(graph)\nregister_graph_edges(graph)\ngraph.compile(checkpointer=checkpointer)"]
+    F -->|Yes| G["graph = StateGraph(self.state)<br/>register_graph_nodes(graph)<br/>register_graph_edges(graph)<br/>graph.compile(checkpointer=checkpointer)"]
     F -->|No| H["graph = self.agents (direct agent, no StateGraph)"]
     G & H --> C
 ```
@@ -937,7 +937,7 @@ Each lifecycle hook runs exactly once per instance. Exceptions in `register_agen
 | Filesystem workspace (mounts + permissions) | [magenticx/agents/harness/filesystem/workspace.py](../../magenticx/agents/harness/filesystem/workspace.py) | `build_workspace_backend()` (CompositeBackend route map, incl. the optional read-only `/reference/` definition mount), `workspace_write_deny()`, sandbox-execution guard (`SANDBOX_EXECUTION_ENABLED`, fail-closed) |
 | Conversation files | [magenticx/agents/harness/conversation_files/](../../magenticx/agents/harness/conversation_files/) | `ConversationFilesBackend` behind `/conversation/`, `/large_tool_results/`, `/conversation_history/`; `/conversation/input/` read from the bridge. Files live as long as their conversation — no TTL (plan 36) |
 | Memory store ops (list/read/delete + row format) | [magenticx/agents/harness/memory/store.py](../../magenticx/agents/harness/memory/store.py) | `index_line()` / `index_line_pattern()`, `list_memories()`, `read_memory()`, `delete_memory()` |
-| Memory inspector endpoints | [magenticx/agents/router/memories.py](../../magenticx/agents/router/memories.py) → bridge [magenticx/dialogue_bridge/router/memories.py](../../magenticx/dialogue_bridge/router/memories.py) (`/v1/memories`) → UI [MemoriesTab.tsx](../../magenticx/agentic_ui/src/features/settings/components/profile_parts/MemoriesTab.tsx) + [useMemories.ts](../../magenticx/agentic_ui/src/features/settings/hooks/useMemories.ts) | list / preview / delete a (user, agent)'s memories |
+| Memory inspector endpoints | [magenticx/agents/router/memories.py](../../magenticx/agents/router/memories.py) → bridge [magenticx/dialogue_bridge/router/memories.py](../../magenticx/dialogue_bridge/router/memories.py) (`/v1/memories`) → UI [AgentMemory.tsx](../../magenticx/agentic_ui/src/features/agents/components/detail/AgentMemory.tsx) + [useMemories.ts](../../magenticx/agentic_ui/src/features/agents/hooks/useMemories.ts) | list / preview / delete a (user, agent)'s memories |
 | Agent middleware | [magenticx/agents/harness/middlewares/](../../magenticx/agents/harness/middlewares/) | `tool_error.py` (`ToolErrorMiddleware`), `summarization.py` (`ConfigurableSummarizationMiddleware`, `build_summarization_middleware()`, `exclude_stock_summarization()`) |
 | Shared tools | [magenticx/agents/harness/tools/](../../magenticx/agents/harness/tools/) | Custom tool definitions attached via `attach_tools()`; `remember.py` (per-agent memory write), `memory_search.py` (`search_past_conversations`) |
 | Summarization settings | [magenticx/agents/core/settings.py](../../magenticx/agents/core/settings.py) | `SummarizationSettings` — `SUMMARIZATION_TRIGGER_FRACTION`, `_KEEP_FRACTION`, `_TRIGGER_TOKENS`, `_KEEP_MESSAGES`, `_MANUAL_MIN_FRACTION` |

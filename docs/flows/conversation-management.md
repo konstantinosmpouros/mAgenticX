@@ -35,9 +35,9 @@ There is no `lastConversationId` auto-resume any more — refreshing on `/c/:id`
 ```mermaid
 flowchart LR
     Browser["Browser"]
-    Bridge["dialogue_bridge\n(:8002)"]
+    Bridge["dialogue_bridge<br/>(:8002)"]
     PG["Postgres"]
-    Agents["agents service\n(:8001)\n(title generation only)"]
+    Agents["agents service<br/>(:8001)<br/>(title generation only)"]
 
     Browser -->|"REST + CSRF"| Bridge
     Bridge -->|"SQLAlchemy async"| PG
@@ -72,17 +72,17 @@ Normal chat starts are owned by the inference endpoint. For `mode: "new"`, the b
 
 ```mermaid
 flowchart TD
-    A["handleSendMessage()\nmessages.length === 0"] --> B["POST /api/v1/inference/runs/{userId}/start\nmode=new"]
+    A["handleSendMessage()<br/>messages.length === 0"] --> B["POST /api/v1/inference/runs/{userId}/start<br/>mode=new"]
     B --> C["Bridge: fetch agent by agentId"]
     C --> D{title in payload?}
-    D -->|No| E["generate_conversation_title()\nfrom agents service"]
+    D -->|No| E["generate_conversation_title()<br/>from agents service"]
     D -->|Yes| F["use provided title"]
     E --> G{Title generated?}
     G -->|No| H["fallback: message preview or agent name"]
     G -->|Yes| I["use generated title"]
     F & H & I --> J["init_conv() — INSERT conversation + first message"]
     J --> K["create AI placeholder (streaming_status='queued')"]
-    K --> L["Return InferenceStartResponse\n{detail, summary, run, message}"]
+    K --> L["Return InferenceStartResponse<br/>{detail, summary, run, message}"]
 ```
 
 **Request shape:**
@@ -218,13 +218,13 @@ Forking clones the branch ending at a selected AI message into a new standalone 
 
 ```mermaid
 flowchart TD
-    A["User selects 'Fork' on AI message"] --> B["POST /api/v1/conversations/{userId}/{convId}/fork\n{messageId}"]
-    B --> C["Bridge: build_message_lineage(messageId)\n— validate AI message, no cycles, not empty"]
-    C --> D["clone_branch_to_conversation()\n— deep copy: conv + messages + attachments + blobs"]
-    D --> E["New ConversationTable row\nforked_parent_id, forked_message_id set"]
-    E --> F["All messages get new IDs\nparent chain preserved"]
+    A["User selects 'Fork' on AI message"] --> B["POST /api/v1/conversations/{userId}/{convId}/fork<br/>{messageId}"]
+    B --> C["Bridge: build_message_lineage(messageId)<br/>— validate AI message, no cycles, not empty"]
+    C --> D["clone_branch_to_conversation()<br/>— deep copy: conv + messages + attachments + blobs"]
+    D --> E["New ConversationTable row<br/>forked_parent_id, forked_message_id set"]
+    E --> F["All messages get new IDs<br/>parent chain preserved"]
     F --> G["Return ConversationSummary of fork"]
-    G --> H["Frontend: fetch full detail\nOpen forked conversation"]
+    G --> H["Frontend: fetch full detail<br/>Open forked conversation"]
 ```
 
 `build_message_lineage()` walks the `parent_message_id` chain from the target message back to the root, collecting the branch. It validates that the target is an AI message and that the chain contains no cycles.
@@ -254,8 +254,8 @@ flowchart TD
     A["POST /share {messageId, mode, branchPath?}"] --> B["build_message_lineage(messageId)"]
     B --> C["select_scoped_messages(mode, branchPath)"]
     C --> D["build_share_snapshot(conv, messages)"]
-    D --> E["INSERT ConversationShareTable\ntoken=token_urlsafe(32), snapshot_json=..."]
-    E --> F["Return ConversationShareResponse\n{token, shareUrl=/share/{token}, ...}"]
+    D --> E["INSERT ConversationShareTable<br/>token=token_urlsafe(32), snapshot_json=..."]
+    E --> F["Return ConversationShareResponse<br/>{token, shareUrl=/share/{token}, ...}"]
 ```
 
 **Snapshot contents** — `build_share_snapshot()` produces a JSON object with:
@@ -296,13 +296,13 @@ The active list shows as two sections, **Pinned** above **Chats**, each with a h
 
 ```mermaid
 flowchart TD
-    A["Sidebar mounts"] --> B["getSidebarConversations(userId, size=10)\nGET /v1/conversations/{userId}/pinned + GET /v1/conversations/{userId}"]
-    B --> C["Filter: is_archived=false, is_private=false\nPinned: is_pinned=true, pinned_at DESC\nChats: is_pinned=false, updated_at DESC"]
+    A["Sidebar mounts"] --> B["getSidebarConversations(userId, size=10)<br/>GET /v1/conversations/{userId}/pinned + GET /v1/conversations/{userId}"]
+    B --> C["Filter: is_archived=false, is_private=false<br/>Pinned: is_pinned=true, pinned_at DESC<br/>Chats: is_pinned=false, updated_at DESC"]
     C --> D["Render list"]
     D --> E{Scroll threshold reached?}
     E -->|Yes| F["getConversations(page=convPage+1)"]
-    F --> G["Dedup by id, sort by updated_at DESC\nupdate convHasMore"]
-    E -->|No| H{height <= clientHeight + 4px\nand hasMore?}
+    F --> G["Dedup by id, sort by updated_at DESC<br/>update convHasMore"]
+    E -->|No| H{height <= clientHeight + 4px<br/>and hasMore?}
     H -->|Yes| F
 ```
 

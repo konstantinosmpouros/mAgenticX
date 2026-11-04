@@ -8,11 +8,11 @@ Attachments are binary files uploaded alongside chat messages. They are stored a
 
 ```mermaid
 flowchart LR
-    Browser["Browser"] -->|"base64 in message body"| nginx["nginx :8050\n(50MB max body)"]
+    Browser["Browser"] -->|"base64 in message body"| nginx["nginx :8050<br/>(50MB max body)"]
     nginx --> bridge["dialogue_bridge :8002"]
-    bridge -->|"INSERT blob + attachment"| pg[("chat_postgres\nattachments + blobs")]
+    bridge -->|"INSERT blob + attachment"| pg[("chat_postgres<br/>attachments + blobs")]
     bridge -->|"stream blob (download/preview)"| pg
-    bridge -->|"HMAC token"| viewer["Microsoft Office\nOnline Viewer\n(Word, Excel, PowerPoint)"]
+    bridge -->|"HMAC token"| viewer["Microsoft Office<br/>Online Viewer<br/>(Word, Excel, PowerPoint)"]
 ```
 
 ---
@@ -27,7 +27,7 @@ sequenceDiagram
 
     B->>B: FileReader.readAsDataURL(file)
     B->>B: validate size + count limits
-    B->>D: POST /v1/messages/{userId}/{convId}\n{ attachments: [{ name, mime, dataB64, size }] }
+    B->>D: POST /v1/messages/{userId}/{convId}<br/>{ attachments: [{ name, mime, dataB64, size }] }
     D->>D: base64.b64decode(dataB64)
     D->>PG: INSERT blobs (data=raw_bytes)
     D->>PG: INSERT attachments (message_id, file_name, mime_type, size_bytes, blob_id)

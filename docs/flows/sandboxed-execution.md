@@ -1,6 +1,6 @@
 # Sandboxed Execution
 
-Deep agents can run code with the `execute` tool: a shell command in a fresh, isolated box, approved by the user first. The **agents** service never runs anything itself. It sends the command, plus the conversation's files, to **sandbox_runner**, a separate service — the sibling project [`../sandbox`](../../../sandbox/CLAUDE.md), with its own repo, composes and CI — with its own Docker daemon (docker-in-docker, like the MCP gateway) and gVisor's `runsc` runtime. The runner starts one throwaway container per call, under gVisor, so code in it never talks to the host kernel; it has no network, a read-only root, non-root uid, and hard limits. The files the box writes come back in the response and the agents service saves them to the conversation. The mental model: **the box is assumed hostile; the agents service only asks, the runner only runs, and nothing survives a call except the files it returns.**
+Deep agents can run code with the `execute` tool: a shell command in a fresh, isolated box, approved by the user first. The **agents** service never runs anything itself. It sends the command, plus the conversation's files, to **sandbox_runner**, a separate service — the sibling project [sandbox](https://github.com/konstantinosmpouros/sandbox), with its own repo, composes and CI — with its own Docker daemon (docker-in-docker, like the MCP gateway) and gVisor's `runsc` runtime. The runner starts one throwaway container per call, under gVisor, so code in it never talks to the host kernel; it has no network, a read-only root, non-root uid, and hard limits. The files the box writes come back in the response and the agents service saves them to the conversation. The mental model: **the box is assumed hostile; the agents service only asks, the runner only runs, and nothing survives a call except the files it returns.**
 
 ---
 
@@ -49,8 +49,8 @@ sequenceDiagram
 
 | Key fact | Value / detail |
 | --- | --- |
-| Local stack | Off until the runner runs: start `../sandbox` (it joins this stack's `sandbox_net`) and set `SANDBOX_RUNNER_URL=http://sandbox_runner:8090` in `magenticx/.env`. Plaintext, like every local hop |
-| Dennis | Off until the phase 6 escape-test gate passes on the deploy image |
+| Local stack | The flag defaults to `true`, the URL to empty, so `execute` is off until the runner runs: start the sandbox project (it joins this stack's `sandbox_net`) and set `SANDBOX_RUNNER_URL=http://sandbox_runner:8090` in `magenticx/.env`. Plaintext, like every local hop |
+| Dennis | **On**: `docker-compose-denis.yaml` sets `SANDBOX_EXECUTION_ENABLED=true` and `SANDBOX_RUNNER_URL=https://sandbox_runner:8090`. The runner is its own plain-Compose project on the internal `sandbox` overlay, reached with mTLS (the same internal CA) and the proxy secret. Kill switch: set the flag `false` and release — `execute` disappears on the next agents start |
 | Runner down | The call returns an error result; it never falls back to an unsandboxed backend |
 
 ---
@@ -85,15 +85,15 @@ Kill reasons come back in plain words: `timeout`, `memory`, `output_limit`, `dis
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| Runner project (layout, tests, Dennis runbook) | [../sandbox/CLAUDE.md](../../../sandbox/CLAUDE.md) | the sibling project that owns everything under `runner/`, `box/`, `spike/` |
-| Runner API | [../sandbox/runner/router/exec.py](../../../sandbox/runner/router/exec.py) | `POST /v1/exec`, `GET /health` |
-| Box flags | [../sandbox/runner/utils/docker_args.py](../../../sandbox/runner/utils/docker_args.py) | every `--` control, the mounts |
-| Call lifecycle | [../sandbox/runner/utils/exec_service.py](../../../sandbox/runner/utils/exec_service.py), [utils/workspace.py](../../../sandbox/runner/utils/workspace.py) | call dir, files in/out, kill reasons, cleanup |
-| Runner limits | [../sandbox/runner/core/settings.py](../../../sandbox/runner/core/settings.py) | `SANDBOX_*` |
-| Image | [../sandbox/runner/Dockerfile](../../../sandbox/runner/Dockerfile), [box/](../../../sandbox/box/) | gVisor pin + checksum, the box |
+| Runner project (layout, tests, Dennis runbook) | [sandbox](https://github.com/konstantinosmpouros/sandbox) | the sibling project that owns everything under `runner/`, `box/`, `spike/` |
+| Runner API | [sandbox/runner/router/exec.py](https://github.com/konstantinosmpouros/sandbox/blob/main/runner/router/exec.py) | `POST /v1/exec`, `GET /health` |
+| Box flags | [sandbox/runner/utils/docker_args.py](https://github.com/konstantinosmpouros/sandbox/blob/main/runner/utils/docker_args.py) | every `--` control, the mounts |
+| Call lifecycle | [sandbox/runner/utils/exec_service.py](https://github.com/konstantinosmpouros/sandbox/blob/main/runner/utils/exec_service.py), [utils/workspace.py](https://github.com/konstantinosmpouros/sandbox/blob/main/runner/utils/workspace.py) | call dir, files in/out, kill reasons, cleanup |
+| Runner limits | [sandbox/runner/core/settings.py](https://github.com/konstantinosmpouros/sandbox/blob/main/runner/core/settings.py) | `SANDBOX_*` |
+| Image | [sandbox/runner/Dockerfile](https://github.com/konstantinosmpouros/sandbox/blob/main/runner/Dockerfile), [box/](https://github.com/konstantinosmpouros/sandbox/tree/main/box) | gVisor pin + checksum, the box |
 | Agents backend | [magenticx/agents/harness/filesystem/sandbox_backend.py](../../magenticx/agents/harness/filesystem/sandbox_backend.py) | `RemoteSandboxBackend.aexecute`, file staging, result text |
 | Wiring + guard | [magenticx/agents/harness/filesystem/workspace.py](../../magenticx/agents/harness/filesystem/workspace.py) | sandbox default when active, fail-closed otherwise |
 | Forced approval | [magenticx/agents/harness/tools/gates.py](../../magenticx/agents/harness/tools/gates.py) | `resolve_interrupt_on` |
 | Prompt guidance | [magenticx/agents/harness/prompt_engineering/prompts/capabilities_prompt.py](../../magenticx/agents/harness/prompt_engineering/prompts/capabilities_prompt.py) | `_SANDBOX` |
 | UI | [magenticx/agentic_ui/src/features/chat/components/message_parts/ToolCallViews.tsx](../../magenticx/agentic_ui/src/features/chat/components/message_parts/ToolCallViews.tsx), [lib/approvalPresentation.ts](../../magenticx/agentic_ui/src/features/chat/lib/approvalPresentation.ts) | terminal view, the execute approval |
-| Proof | [../sandbox/spike/run_spike.sh](../../../sandbox/spike/run_spike.sh), [../sandbox/.github/workflows/ci.yml](../../../sandbox/.github/workflows/ci.yml) | ARM64 / x86 containment + timing |
+| Proof | [sandbox/spike/run_spike.sh](https://github.com/konstantinosmpouros/sandbox/blob/main/spike/run_spike.sh), [sandbox/.github/workflows/pipeline.yml](https://github.com/konstantinosmpouros/sandbox/blob/main/.github/workflows/pipeline.yml) | ARM64 / x86 containment + timing |

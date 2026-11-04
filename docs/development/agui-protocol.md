@@ -8,14 +8,14 @@ The AG-UI protocol is the event contract that flows between the agents service a
 
 ```mermaid
 flowchart LR
-    Agent["agents service\nLangGraph / DeepAgent"]
-    Norm["AGUIStreamNormalizer\n(in agents service)"]
-    Bridge["dialogue_bridge\nInferenceRunRuntime (log keeper)"]
-    Client["Browser\nuseInferenceRuns + lib/timeline.ts"]
+    Agent["agents service<br/>LangGraph / DeepAgent"]
+    Norm["AGUIStreamNormalizer<br/>(in agents service)"]
+    Bridge["dialogue_bridge<br/>InferenceRunRuntime (log keeper)"]
+    Client["Browser<br/>useInferenceRuns + lib/timeline.ts"]
 
-    Agent -->|"raw LangGraph chunks\n(messages + updates modes)"| Norm
-    Norm -->|"AG-UI SSE frames\n(text/event-stream)"| Bridge
-    Bridge -->|"WS frames via Redis Stream\n(snapshot → events deltas → terminal)"| Client
+    Agent -->|"raw LangGraph chunks<br/>(messages + updates modes)"| Norm
+    Norm -->|"AG-UI SSE frames<br/>(text/event-stream)"| Bridge
+    Bridge -->|"WS frames via Redis Stream<br/>(snapshot → events deltas → terminal)"| Client
 ```
 
 The normalizer and emitter live inside the agents service process. The bridge interprets each AG-UI frame just enough to keep the log and its flat aggregates (`apply_event()`): it seq-stamps every event, appends it to `raw_events` with delta coalescing, tracks `pending_interrupts`, and maintains `content`/`thoughts`/`plan`/`subagents` for previews, search, voice and export. **Timeline semantics live exclusively in the client reducer** — the bridge never ships a rendered shape, so renderer changes never require a bridge deploy.
@@ -263,7 +263,7 @@ Used for streaming token-by-token output. The payload is a single message object
 
 ```mermaid
 flowchart TD
-    A["messages chunk"] --> Z{"metadata.lc_source\n== summarization?"}
+    A["messages chunk"] --> Z{"metadata.lc_source<br/>== summarization?"}
     Z -->|Yes| Y["return [] (suppress)"]
     Z -->|No| B["_msg_kind(payload)"]
     B -->|"tool"| C["_emit_tool_message_result()"]
@@ -271,7 +271,7 @@ flowchart TD
     D -->|empty| E["return []"]
     D -->|non-empty| F["_end_thinking_if_needed()"]
     F --> G{response_started?}
-    G -->|No| H["emit TEXT_MESSAGE_START\nset response_started=True"]
+    G -->|No| H["emit TEXT_MESSAGE_START<br/>set response_started=True"]
     G -->|Yes| I["skip"]
     H & I --> J["emit TEXT_MESSAGE_CHUNK(delta)"]
     J --> K["set saw_messages_chunk=True"]
@@ -287,19 +287,19 @@ Used for structured node snapshot output. The payload is a dict keyed by node na
 ```mermaid
 flowchart TD
     A["updates chunk"] --> B{__interrupt__ key?}
-    B -->|Yes| C["emit HITL_INTERRUPT\nreturn immediately"]
+    B -->|Yes| C["emit HITL_INTERRUPT<br/>return immediately"]
     B -->|No| D["walk node updates"]
-    D --> E{PatchToolCallsMiddleware\n.before_agent node?}
-    E -->|Yes| F["extract delegated_message\nemit BEFORE_AGENT_EVENT"]
+    D --> E{PatchToolCallsMiddleware<br/>.before_agent node?}
+    E -->|Yes| F["extract delegated_message<br/>emit BEFORE_AGENT_EVENT"]
     D --> G{"todos" key in update?}
-    G -->|Yes| H["fingerprint check\nif changed → emit PLAN_SNAPSHOT"]
+    G -->|Yes| H["fingerprint check<br/>if changed → emit PLAN_SNAPSHOT"]
     D --> I["process messages list"]
     I --> J["ToolMessage → _emit_tool_message_result()"]
     I --> K["AIMessage → check tool_calls"]
     K --> L["write_todos → PLAN_SNAPSHOT + ignore"]
     K --> M["task → TASK_SUBAGENT + ignore"]
     K --> N["other → TOOL_CALL_START + TOOL_CALL_ARGS"]
-    I --> O["AIMessage text → TEXT_MESSAGE_CONTENT\n(if not saw_messages_chunk)"]
+    I --> O["AIMessage text → TEXT_MESSAGE_CONTENT<br/>(if not saw_messages_chunk)"]
 ```
 
 **`saw_messages_chunk` flag** — set to `True` by the messages handler when any streaming token has been seen. The updates handler checks this before emitting `TEXT_MESSAGE_CONTENT`: if streaming tokens already covered the content, the updates-mode full-text synthesis is skipped to avoid duplicate output.
@@ -379,16 +379,16 @@ LangGraph assigns a freshly-generated `namespace` tuple (e.g. `("tools:<uuid>",)
 
 ```mermaid
 flowchart TD
-    A["sub-agent chunk arrives\n(non-None namespace tuple)"] --> B["_resolve_namespace_label(namespace)"]
-    B --> C{Already in\n_namespace_task_labels?}
+    A["sub-agent chunk arrives<br/>(non-None namespace tuple)"] --> B["_resolve_namespace_label(namespace)"]
+    B --> C{Already in<br/>_namespace_task_labels?}
     C -->|Yes| D["Return cached task_id"]
     C -->|No| E["_bind_namespace_to_next_task(namespace)"]
-    E --> F{Any unbound\n_pending_tasks?}
-    F -->|No| G["Fall back to deterministic\nnamespace-derived id\n(_namespace_task_id)"]
-    F -->|Yes| H["Bind namespace → OLDEST\nunbound task tool_call_id\n(FIFO = task-call order)"]
-    H --> I["Cache in _namespace_task_labels\n+ write-through to\n_THREAD_NAMESPACE_BINDINGS[thread_id]\nRemove from _pending_tasks"]
+    E --> F{Any unbound<br/>_pending_tasks?}
+    F -->|No| G["Fall back to deterministic<br/>namespace-derived id<br/>(_namespace_task_id)"]
+    F -->|Yes| H["Bind namespace → OLDEST<br/>unbound task tool_call_id<br/>(FIFO = task-call order)"]
+    H --> I["Cache in _namespace_task_labels<br/>+ write-through to<br/>_THREAD_NAMESPACE_BINDINGS[thread_id]<br/>Remove from _pending_tasks"]
     D & I & G --> K["_wrap_subagent_events_if_needed()"]
-    K --> L["For each SSE frame:\n_sse_to_payload() → SubAgentEvent envelope\nstamped with the bound task_id"]
+    K --> L["For each SSE frame:<br/>_sse_to_payload() → SubAgentEvent envelope<br/>stamped with the bound task_id"]
 ```
 
 **Order-based binding.** Because the namespace uuid carries no link to the task call, binding is by **order**: the first time a sub-agent namespace is seen, it is bound to the *oldest still-unbound* `task` tool_call_id in `_pending_tasks` (insertion-ordered = task-call order). The bind is anchored by the `PatchToolCallsMiddleware.before_agent` marker, which 0.6.10 emits **stamped with the sub-agent's namespace** the moment the gated `task` is approved (its body is empty, so there is nothing to content-match — the namespace + arrival order is the signal). `_resolve_namespace_label()` also binds lazily on the first metadata-bearing chunk if the marker was missed. `task` is HITL-gated, so sub-agents start sequentially and FIFO is exact; two parallel sub-agents of the *same* type are the residual ambiguity (each still binds to a distinct task — no drop or collision).
@@ -413,20 +413,20 @@ Alongside the log, `apply_event()` maintains a few flat aggregates used for prev
 
 ```mermaid
 flowchart TD
-    A["apply_event(event)"] --> S["seq-stamp event\n(+ truncate TOOL_CALL_RESULT)"]
+    A["apply_event(event)"] --> S["seq-stamp event<br/>(+ truncate TOOL_CALL_RESULT)"]
     S --> B{event.type}
     B -->|"CUSTOM"| C{event.name}
-    C -->|"SUBAGENT_EVENT"| F["if inner is HITL_INTERRUPT:\nregister_interrupt(inner.value)\nelif inner is TOKEN_USAGE:\n_accumulate_usage(inner.value, main_agent=False)\nelif inner is TOOL_USAGE:\n_accumulate_tool_usage(inner.value, main_agent=False)"]
-    C -->|"HITL_INTERRUPT"| H["register_interrupt(value)\n(also settles first_token_ms as None\nif no text was seen yet)"]
-    C -->|"TOKEN_USAGE"| N["_accumulate_usage(value, main_agent=True)\n(only the main agent moves the context snapshot;\n_call_metrics: cost, truncation, ttft / gen)"]
-    C -->|"TOOL_USAGE"| TU["_accumulate_tool_usage(value, main_agent=True)\n(dedupe by tool_call_id → tool_groups)"]
-    C -->|"CHECKPOINT_COMMITTED"| CC["capture checkpoint_id\n(persisted by _finish_run)"]
-    B -->|"THINKING_START"| I["thinking_start = perf_counter()\nthinking_end = 0.0"]
+    C -->|"SUBAGENT_EVENT"| F["if inner is HITL_INTERRUPT:<br/>register_interrupt(inner.value)<br/>elif inner is TOKEN_USAGE:<br/>_accumulate_usage(inner.value, main_agent=False)<br/>elif inner is TOOL_USAGE:<br/>_accumulate_tool_usage(inner.value, main_agent=False)"]
+    C -->|"HITL_INTERRUPT"| H["register_interrupt(value)<br/>(also settles first_token_ms as None<br/>if no text was seen yet)"]
+    C -->|"TOKEN_USAGE"| N["_accumulate_usage(value, main_agent=True)<br/>(only the main agent moves the context snapshot;<br/>_call_metrics: cost, truncation, ttft / gen)"]
+    C -->|"TOOL_USAGE"| TU["_accumulate_tool_usage(value, main_agent=True)<br/>(dedupe by tool_call_id → tool_groups)"]
+    C -->|"CHECKPOINT_COMMITTED"| CC["capture checkpoint_id<br/>(persisted by _finish_run)"]
+    B -->|"THINKING_START"| I["thinking_start = perf_counter()<br/>thinking_end = 0.0"]
     B -->|"THINKING_TEXT_MESSAGE_CONTENT"| J["thoughts.append(delta)"]
     B -->|"TOOL_CALL_START"| K["thoughts.append('[tool] {name}')"]
     B -->|"THINKING_END"| L["thinking_end = perf_counter()"]
-    B -->|"TEXT_MESSAGE_CHUNK\nor TEXT_MESSAGE_CONTENT"| M["content += delta\n_note_first_text(delta) → first_token_ms (once)\nif not closed_thinking:\n  closed_thinking=True\n  thinking_end = perf_counter()"]
-    B & C --> Z["_append_raw(event)\n(coalesced log append)"]
+    B -->|"TEXT_MESSAGE_CHUNK<br/>or TEXT_MESSAGE_CONTENT"| M["content += delta<br/>_note_first_text(delta) → first_token_ms (once)<br/>if not closed_thinking:<br/>  closed_thinking=True<br/>  thinking_end = perf_counter()"]
+    B & C --> Z["_append_raw(event)<br/>(coalesced log append)"]
 ```
 
 **Usage accumulation** (plan 33 / 41): `TOKEN_USAGE` and `TOOL_USAGE` are folded once each — by `message_id` and `tool_call_id` — into run totals and `(scope, agent, model)` / `(scope, agent, tool)` groups; a call first seen bare and then wrapped in `SUBAGENT_EVENT` moves to its sub-agent (`_book_once`). `_finish_run` books them (see [usage-analytics](../flows/usage-analytics.md)).
@@ -552,17 +552,17 @@ flowchart TD
     A["WS frame arrives"] --> A2{"frame.type"}
     A2 -->|"event / snapshot / terminal"| A3["Map to InferenceRunEvent"]
     A3 --> B{"event.type"}
-    B -->|"snapshot"| C["Full state — foldTimeline(run.rawEvents)\n(live snapshot or terminal/DB path)"]
-    B -->|"events"| D["Incremental — reduceTimelineEvents(\nrun.timeline, frame.events) + merge slim meta"]
+    B -->|"snapshot"| C["Full state — foldTimeline(run.rawEvents)<br/>(live snapshot or terminal/DB path)"]
+    B -->|"events"| D["Incremental — reduceTimelineEvents(<br/>run.timeline, frame.events) + merge slim meta"]
     B -->|"update (client-local REST merge)"| D2["Meta-only merge, timeline preserved"]
     B -->|"terminal"| E["Final state — run + message + summary"]
     C & D & D2 & E --> F["Determine active: run.status in active set?"]
     F -->|"active"| G["runsByConversation[conv_id] = run (with timeline)"]
     F -->|"not active"| H["delete runsByConversation[conv_id]"]
-    G & H --> I["Update conversation list flags\n(activeRunId, isStreaming)"]
-    I --> J["Patch message into conversation detail\n(snapshot/terminal frames only)"]
-    J --> K["If run for current conversation:\nupdate ThinkingState"]
-    K --> L["If not active:\nabort controller → close WS"]
+    G & H --> I["Update conversation list flags<br/>(activeRunId, isStreaming)"]
+    I --> J["Patch message into conversation detail<br/>(snapshot/terminal frames only)"]
+    J --> K["If run for current conversation:<br/>update ThinkingState"]
+    K --> L["If not active:<br/>abort controller → close WS"]
 ```
 
 Per-event `seq` numbers (stamped by the bridge, distinct from the Redis entry-id `seq` on the WS envelope) make the fold idempotent: events already folded — e.g. the overlap between the live snapshot and the first deltas — are skipped via `timeline.lastSeq`. The `ThinkingState` update derives its flat thought strings from the folded timeline (`timelineThoughtStrings`), falling back to `message.thinking` on terminal frames.

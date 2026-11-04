@@ -106,7 +106,7 @@ Once added, a skill **never changes underneath the user**: their pool row pins t
 - **A failed source keeps its last good catalogue.** A truncated tree, an unreachable host, or a file read that still fails after one retry aborts *that source's* pass and records `last_error` on `remote_skill_sources`; its rows are untouched. A bytes-do-not-match-the-tree failure is treated the same way, never as a per-skill refusal.
 - **Withdrawn, not deleted.** A skill that disappears upstream is marked `withdrawn_at`. Users who hold it keep their copy; nobody new can add it.
 - **One name per pool.** The pool's key is `(user_id, skill_name)` and the agent sees `/skills/<name>/`, so two sources publishing the same folder name cannot both be held — the second Add is a 409.
-- **Scripts are stored, never run.** Skills ship scripts (hundreds per large source). They are inert while sandboxed execution is off, and must stay sandbox-only when plan 11 turns it on.
+- **Scripts are stored, never run.** Skills ship scripts (hundreds per large source). Nothing runs them on their own. With sandboxed execution on (plan 11 — on for Dennis), an agent can run one only through `execute`, inside the gVisor box and after the user approves it; skill scripts must never get any other path to run.
 - **Legacy `global` pool entries.** A pointer into the bundled catalogue an older image seeded onto the volume. Still read from `global/skills/<category>/<name>/` so nothing a user holds breaks silently; no code path creates one.
 - **Licence strings are self-declared by publishers.** The gate filters on them; it does not certify them.
 

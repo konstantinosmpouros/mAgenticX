@@ -8,13 +8,13 @@ This document answers one question per service: **what does it absolutely need i
 
 ```mermaid
 flowchart LR
-    NGINX["agentic_ui\n(nginx)"] -->|"upstream, per-request"| BFF["dialogue_bridge"]
-    BFF -->|"alembic upgrade head\nBOOT (fail-fast)"| PG_CHAT[("chat_postgres\nchat_db")]
+    NGINX["agentic_ui<br/>(nginx)"] -->|"upstream, per-request"| BFF["dialogue_bridge"]
+    BFF -->|"alembic upgrade head<br/>BOOT (fail-fast)"| PG_CHAT[("chat_postgres<br/>chat_db")]
     BFF -->|"sign-in (OIDC)"| ENTRA[("Microsoft Entra")]
-    BFF -->|"sign session JWTs\n(login / refresh)"| KMS[("OCI KMS")]
+    BFF -->|"sign session JWTs<br/>(login / refresh)"| KMS[("OCI KMS")]
     BFF -->|"streams, lazy"| REDIS[("redis")]
     BFF -->|"per-inference"| AGENTS["agents"]
-    AGENTS -->|"checkpointer pool\nBOOT (fail-fast)"| PG_RT[("chat_postgres\nagent_runtime")]
+    AGENTS -->|"checkpointer pool<br/>BOOT (fail-fast)"| PG_RT[("chat_postgres<br/>agent_runtime")]
     AGENTS -->|"per-run, lazy"| RAG["rag_service"]
     AGENTS -.->|"per-run, lazy, optional"| MCP["mcp_gateway"]
     RAG -->|"per-retrieval, lazy"| CHROMA[("vectordb")]
@@ -74,7 +74,8 @@ The LangGraph + DeepAgents runtime. Smaller config surface, but it has a **hard 
 | TLS cert/key (+ CA for mTLS) | 🔒 | `REQUIRE_TLS`/`REQUIRE_MTLS` default `true`; the entrypoint refuses to start without readable certs. The checkpointer URL also auto-appends `sslmode=verify-full` when `INTERNAL_CA_CERT_PATH` is set. | [Deploy-time safety toggles](configuration.md#deploy-time-safety-toggles-cross-service) |
 | `OPENAI_API_KEY` | 🟢* | **Not** a startup raise — the field tolerates empty. But every agent run, title, suggestion, and voice call needs it, so it is *functionally* required. Treat as mandatory in any real deployment. | [App, API keys, RAG, MCP](configuration.md#app-api-keys-rag-mcp) |
 | **rag_service** reachable | 🟢 | Only the HR/Orthodox/Retail workflow agents call it, per-run. | [App, API keys, RAG, MCP](configuration.md#app-api-keys-rag-mcp) |
-| **mcp_gateway** reachable | 🟢 | Part of the stack, but never a start gate — and not needed at all if `MCP_GATEWAY_URL` is set empty (MCP off). When set, each run connects to load live MCP tools; a gateway that is down or misses `MCP_CONNECT_TIMEOUT_SECONDS` costs the run its MCP tools, never the run (`mcp_session_unavailable`). The tool catalog (`GET /tools`) is served from the manifest cache once warm, and 502s on a cold cache with the gateway down. | [App, API keys, RAG, MCP](configuration.md#app-api-keys-rag-mcp) |
+| **mcp_gateway** reachable | 🟢 | An optional sibling project, never a start gate — and not needed at all if `MCP_GATEWAY_URL` is set empty (MCP off). When set, each run connects to load live MCP tools; a gateway that is down or misses `MCP_CONNECT_TIMEOUT_SECONDS` costs the run its MCP tools, never the run (`mcp_session_unavailable`). The tool catalog (`GET /tools`) is served from the manifest cache once warm, and 502s on a cold cache with the gateway down. | [App, API keys, RAG, MCP](configuration.md#app-api-keys-rag-mcp) |
+| **sandbox_runner** reachable | 🟢 | An optional sibling project, never a start gate. It only decides whether `execute` works: with `SANDBOX_RUNNER_URL` empty the tool does not exist; with it set but the runner down, each `execute` call returns an error result and the run continues — there is no unsandboxed fallback. | [sandboxed-execution.md](../flows/sandboxed-execution.md) |
 
 **Minimum to boot (prod):** `TRUSTED_PROXY_SECRET`, a reachable `agent_runtime` DB (+ its password secret), and valid TLS material. `OPENAI_API_KEY` isn't boot-enforced but nothing useful runs without it.
 

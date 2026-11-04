@@ -15,8 +15,8 @@ This document describes the full mAgenticX platform: every service, its port, it
 | vectordb | `vectordb` | **8000** | ChromaDB 0.6.3 — vector store |
 | chat_postgres | `chat_postgres` | **5432** | PostgreSQL 16 + **pgvector** (`pgvector/pgvector:pg16`) — relational store (`chat_db` + `agent_runtime` DBs); pgvector backs per-message conversation embeddings |
 | redis | `redis` | **6379** | Redis 7.4 — per-run Redis Streams as the inference event log |
-| mcp_gateway | `mcp_gateway` | **8005** | Docker MCP Gateway — optional sibling project [`../mcp_gateway`](../../../mcp_gateway/CLAUDE.md), not in this repo's composes |
-| sandbox_runner | `sandbox_runner` | **8090** | Runs `execute` in gVisor boxes — optional sibling project [`../sandbox`](../../../sandbox/CLAUDE.md), not in this repo's composes |
+| mcp_gateway | `mcp_gateway` | **8005** | Docker MCP Gateway — optional sibling project [mcp_gateway](https://github.com/konstantinosmpouros/mcp_gateway), not in this repo's composes |
+| sandbox_runner | `sandbox_runner` | **8090** | Runs `execute` in gVisor boxes — optional sibling project [sandbox](https://github.com/konstantinosmpouros/sandbox), not in this repo's composes |
 
 The frontend Vite dev server (no nginx) uses **port 8080**.
 
@@ -26,21 +26,23 @@ The frontend Vite dev server (no nginx) uses **port 8080**.
 
 ```mermaid
 flowchart TB
-    Browser["Browser\n(React SPA)"]
+    Browser["Browser<br/>(React SPA)"]
 
     subgraph frontend_net["frontend network"]
-        nginx["nginx\nagentic_ui :8050"]
+        nginx["nginx<br/>agentic_ui :8050"]
     end
 
     subgraph backend_net["backend network"]
-        bridge["dialogue_bridge\n:8002"]
-        agents["agents\n:8003"]
-        rag["rag_service\n:8001"]
-        chroma["vectordb (Chroma)\n:8000"]
-        pg["chat_postgres (PG)\n:5432"]
-        redis["redis\n:6379"]
-        mcp["mcp_gateway\n:8005 (optional)"]
+        bridge["dialogue_bridge<br/>:8002"]
+        agents["agents<br/>:8003"]
+        rag["rag_service<br/>:8001"]
+        chroma["vectordb (Chroma)<br/>:8000"]
+        pg["chat_postgres (PG)<br/>:5432"]
+        redis["redis<br/>:6379"]
     end
+
+    mcp["mcp_gateway<br/>:8005 (optional sibling)"]
+    sandbox["sandbox_runner<br/>:8090 (optional sibling)"]
 
     Browser -->|"HTTPS + WebSocket"| nginx
     nginx -->|"rewrite /api/ → /v1/"| bridge
@@ -51,6 +53,7 @@ flowchart TB
     agents -->|"agent_runtime (AsyncPostgresSaver)"| pg
     agents -->|"REST"| rag
     agents -.->|"SSE"| mcp
+    agents -.->|"POST /v1/exec (mTLS on Dennis)"| sandbox
     agents -->|"REST"| OpenAI["OpenAI API"]
     agents -->|"REST"| Anthropic["Anthropic API (optional)"]
 
@@ -165,7 +168,8 @@ In production this application-layer credential is backed by **transport-layer m
 - Discovers and registers all agent classes at startup
 - Runs inference for a given agent slug and conversation history
 - Persists durable LangGraph checkpoints in its own `agent_runtime` Postgres database (a single process-wide `AsyncPostgresSaver` over a long-lived connection pool, opened in the FastAPI lifespan) so a branch's run state survives across turns and process restarts
-- Integrates MCP tools from `mcp_gateway`
+- Integrates MCP tools from `mcp_gateway` (optional sibling)
+- Runs the `execute` tool through `sandbox_runner` (optional sibling) — see [sandboxed-execution.md](../flows/sandboxed-execution.md)
 - Calls `rag_service` for retrieval and structured data queries
 - Streams AG-UI protocol events over SSE
 
@@ -186,7 +190,7 @@ Each discovered agent class is registered by its `agent_id` slug. The `DISABLED_
 
 ### MCP Tool Loading
 
-MCP is part of the core stack: both compose files set `MCP_GATEWAY_URL`. The code default is empty, which means MCP is off — the escape hatch for running without it. When it is set, at the start of each inference request (and HITL resume) the agents service opens an SSE session to the gateway (e.g. `mcp_gateway:8005/sse`), loads the live tools with `load_mcp_tools(session)`, and closes the session after the request completes. The `optional_mcp_session()` async context manager handles the lifecycle: connect + handshake must finish within `MCP_CONNECT_TIMEOUT_SECONDS` (default 10), and when MCP is off, the gateway is unreachable, or the deadline is missed it yields `None` — the run proceeds with the agent's own tools, never fails for lack of MCP. Runs do not use `_MCP_TOOL_MANIFEST_CACHE`; that cache serves only the tool catalog (`GET /tools`), which returns `[]` when MCP is off and 502 when it is on but the gateway is down.
+MCP comes from an optional sibling project. `docker-compose-denis.yaml` sets `MCP_GATEWAY_URL`; the local compose passes `${MCP_GATEWAY_URL:-}`, empty unless `magenticx/.env` sets it. Empty (also the code default) means MCP is off. When it is set, at the start of each inference request (and HITL resume) the agents service opens an SSE session to the gateway (e.g. `mcp_gateway:8005/sse`), loads the live tools with `load_mcp_tools(session)`, and closes the session after the request completes. The `optional_mcp_session()` async context manager handles the lifecycle: connect + handshake must finish within `MCP_CONNECT_TIMEOUT_SECONDS` (default 10), and when MCP is off, the gateway is unreachable, or the deadline is missed it yields `None` — the run proceeds with the agent's own tools, never fails for lack of MCP. Runs do not use `_MCP_TOOL_MANIFEST_CACHE`; that cache serves only the tool catalog (`GET /tools`), which returns `[]` when MCP is off and 502 when it is on but the gateway is down.
 
 ---
 
@@ -245,9 +249,13 @@ Redis 7.4 (alpine) backs the durable per-run AG-UI event log used by the WebSock
 
 ### mcp_gateway (Optional)
 
-The MCP gateway is Docker's MCP Gateway (`docker/mcp-gateway`, dind variant) that wraps external MCP servers (Tavily, arxiv-mcp-server, etc.) into a single SSE endpoint. The agents service treats it as a single MCP origin. It is a sibling project, [`../mcp_gateway`](../../../mcp_gateway/CLAUDE.md), with its own composes: locally it joins this stack's `mcp_net` (no host port); on Dennis it is a plain-Compose project on the `mcp_gateway` overlay, because Swarm ignores `privileged` and dind's inner daemon would never start. With `MCP_GATEWAY_URL` empty (the local default) the platform still runs — no MCP tools, an empty tool catalog.
+The MCP gateway is Docker's MCP Gateway (`docker/mcp-gateway`, dind variant) that wraps external MCP servers (Tavily, arxiv-mcp-server, etc.) into a single SSE endpoint. The agents service treats it as a single MCP origin. It is a sibling project, [mcp_gateway](https://github.com/konstantinosmpouros/mcp_gateway), with its own composes: locally it joins this stack's `mcp_net` (no host port); on Dennis it is a plain-Compose project on the `mcp_gateway` overlay, because Swarm ignores `privileged` and dind's inner daemon would never start. With `MCP_GATEWAY_URL` empty (the local default) the platform still runs — no MCP tools, an empty tool catalog.
 
-Catalog, per-server config and the secret file live in that project — see [its CLAUDE.md](../../../mcp_gateway/CLAUDE.md).
+Catalog, per-server config and the secret file live in that project — see [its repository](https://github.com/konstantinosmpouros/mcp_gateway).
+
+### sandbox_runner (Optional)
+
+The sandbox runner executes the deep agents' `execute` tool: each call runs in a fresh gVisor box inside the runner's own dind daemon, and the user approves every call first. It is a sibling project, [sandbox](https://github.com/konstantinosmpouros/sandbox): locally it joins this stack's internal `sandbox_net`; on Dennis it is a plain-Compose project on the internal `sandbox` overlay, reached at `https://sandbox_runner:8090` with mTLS and the proxy secret. `execute` exists only when `SANDBOX_EXECUTION_ENABLED` is true and `SANDBOX_RUNNER_URL` is set — both are set on Dennis. Full flow: [sandboxed-execution.md](../flows/sandboxed-execution.md).
 
 ---
 
@@ -325,24 +333,37 @@ Locally one compose file runs the whole platform; the MCP gateway and sandbox ru
 
 ```text
 magenticx/docker-compose.yaml              ← ui, bridge, agents, rag, chroma, postgres, redis; owns mcp_net + sandbox_net
-../mcp_gateway/docker-compose.yaml         ← mcp_gateway (optional), joins mcp_net
-../sandbox/docker-compose.yaml             ← sandbox_runner (optional), joins sandbox_net
+mcp_gateway repo: docker-compose.yaml     ← mcp_gateway (optional), joins mcp_net
+sandbox repo: docker-compose.yaml         ← sandbox_runner (optional), joins sandbox_net
 ```
 
 ```bash
 docker-compose -p magenticx -f magenticx/docker-compose.yaml up -d --build
 ```
 
-`MCP_GATEWAY_URL` and `SANDBOX_RUNNER_URL` default to empty locally (no MCP tools, no `execute`); set them in `magenticx/.env` when the siblings run. On Dennis both siblings are plain-Compose projects outside the Swarm stack — Swarm can't run privileged dind images.
+`MCP_GATEWAY_URL` and `SANDBOX_RUNNER_URL` default to empty locally (no MCP tools, no `execute`); set them in `magenticx/.env` when the siblings run. On Dennis the core platform is the Swarm stack `magenticx` (Portainer, from `docker-compose-denis.yaml` — see [deployment.md](deployment.md)). Both siblings are plain-Compose projects outside it, because Swarm ignores `privileged` and dind needs it; each is deployed by its own repository's pipeline. The monitoring stack is a separate Swarm stack, `monitoring`, and joins no app network.
 
 ### Docker Networks
 
+Local (`docker-compose.yaml`):
+
 | Network | Members |
 | --- | --- |
-| `backend` | dialogue_bridge, agents, rag_service, vectordb, chat_postgres, redis |
-| `frontend` | agentic_ui, dialogue_bridge |
+| `backend` | internal — every service |
+| `frontend` | agentic_ui, dialogue_bridge, agents, rag_service, chat_postgres |
 | `mcp_net` | agents, mcp_gateway — created by `docker-compose.yaml`; the optional gateway joins it |
 | `sandbox_net` | agents, sandbox_runner — internal (no route out), created by `docker-compose.yaml`; the optional runner joins it |
+
+Dennis (`docker-compose-denis.yaml`):
+
+| Network | Members |
+| --- | --- |
+| `backend` | internal — every service |
+| `frontend` | agentic_ui, agents, rag_service |
+| `bridge_egress` | dialogue_bridge — its only route out, to Microsoft Entra and OCI KMS |
+| `proxy` | external — agentic_ui, reached by Nginx Proxy Manager |
+| `mcp_gateway` | external overlay, made by hand — agents and the MCP gateway's compose project |
+| `sandbox` | external overlay, internal, made by hand — agents and the sandbox runner's compose project |
 
 Only `agentic_ui` (port 8050) is bound to the host. All other services are internal.
 
@@ -361,7 +382,7 @@ Only `agentic_ui` (port 8050) is bound to the host. All other services are inter
 | `DATABASE_POOL_SIZE` | dialogue_bridge | SQLAlchemy pool size |
 | `SESSION_TOKEN_SECRET` | dialogue_bridge | General-purpose HMAC key (e.g. DOCX-preview tokens); not used for auth sessions |
 | `JWT_ACCESS_TTL_SECONDS` | dialogue_bridge | Access JWT lifetime (default 28800 / 8 h) |
-| `JWT_REFRESH_TTL_SECONDS` | dialogue_bridge | Refresh JWT absolute lifetime (default 864000 / 10 d) |
+| `JWT_REFRESH_IDLE_TTL_SECONDS` / `JWT_REFRESH_ABSOLUTE_TTL_SECONDS` | dialogue_bridge | Refresh JWT idle and absolute lifetimes (defaults 1036800 / 12 d and 1728000 / 20 d) |
 | `TRUSTED_PROXY_SECRET` | all services | Internal service authentication |
 | `LOG_REDACTION_SECRET_FILE` / `LOG_REDACTION_SECRET` | dialogue_bridge, agents, rag_service | Shared HMAC key (Swarm `magenticx_log_redaction_secret`) for hashing `user_id`/`session_id`/`client_ip` in logs. Same key across services so hashes correlate; falls back to a random per-process key if unset (correlation disabled). See [observability](../development/observability.md). |
 | `LOG_LEVEL` / `LOG_FORMAT` | all Python services | Log verbosity (default `INFO`) and output mode (`json` in prod, `console` in dev) |
@@ -389,8 +410,10 @@ Only `agentic_ui` (port 8050) is bound to the host. All other services are inter
 | `GENERATION_SUGGESTION_MAX_LEN` / `GENERATION_SUGGESTION_MIN_CANDIDATES` / `GENERATION_SUGGESTION_COUNT` | dialogue_bridge | Suggestion length cap, minimum candidates, and returned count (defaults 160 / 6 / 10) |
 | `GENERATION_SUGGESTION_RECENT_CONTEXT_COUNT` | dialogue_bridge | Recent conversations sampled for suggestion context (default 8) |
 | `HTTP_<PROFILE>_{CONNECT,READ,WRITE,POOL}_SECONDS` | dialogue_bridge | Upstream httpx timeouts per profile (`AGENTS`, `GENERATION`, `SKILLS`, `VOICE`, `INFERENCE`) |
-| `MCP_GATEWAY_URL` | agents | MCP gateway SSE endpoint; set by both composes; empty = MCP off |
+| `MCP_GATEWAY_URL` | agents | MCP gateway SSE endpoint; set on Dennis, empty locally unless `.env` sets it; empty = MCP off |
 | `MCP_CONNECT_TIMEOUT_SECONDS` | agents | Connect + handshake deadline for the gateway (default 10); past it a run continues without MCP tools |
+| `SANDBOX_EXECUTION_ENABLED` / `SANDBOX_RUNNER_URL` | agents | `execute` exists only when the flag is true **and** the URL is set. Dennis: `true` + `https://sandbox_runner:8090`; locally the flag defaults to `true` and the URL to empty |
+| `SANDBOX_RUNNER_TIMEOUT_SECONDS` | agents | Read timeout for one `execute` call (default 330, above the runner's 300 s wall clock) |
 | `RAG_BASE_URL` | agents | RAG service base URL |
 | `AGENT_RUNTIME_DATABASE_URL` | agents | psycopg conninfo for the `agent_runtime` checkpoint DB (password-less in prod — TLS + password auto-injected by settings) |
 | `AGENT_RUNTIME_DATABASE_PASSWORD_FILE` | agents | File-mounted Postgres password (Swarm `postgres_password` secret) injected into `AGENT_RUNTIME_DATABASE_URL` at settings load; unset in local dev |
@@ -429,7 +452,7 @@ Only `agentic_ui` (port 8050) is bound to the host. All other services are inter
 
 - **Entra is the only sign-in; OCI KMS is the JWT signer.** Every session JWT is signed inside an OCI KMS HSM (private key never leaves it, only a digest is sent). Per-request verification is signature-only against public keys loaded at boot, so a KMS outage does not affect already-issued tokens — only new logins/refreshes fail, closed. There is no fallback signer and no fallback login. Nothing in the stack needs unsealing after a reboot.
 
-- **Postgres is the only stateful service in the core compose.** ChromaDB state lives in a Docker volume (`./vectorstores/chroma_db_openai/`). PostgreSQL state lives in a named volume (`chat_postgres_data`). Both must be backed up for full disaster recovery.
+- **Postgres is the only stateful service in the core compose.** ChromaDB state lives in a Docker volume (`./vectorstores/chroma_db_openai/`). PostgreSQL state lives in a named volume (`chat_convs`). Both must be backed up for full disaster recovery.
 
 - **The agents service holds no in-process conversation state, but it is no longer stateless across turns.** No per-conversation Python state lives in the agents process between requests, but graph state is now persisted durably in the `agent_runtime` Postgres checkpoint DB keyed by a per-branch `thread_id`. As a result the bridge no longer re-sends the full message history every turn for a branch with a committed checkpoint — on a continue it sends only the new user message plus the branch's `checkpoint_thread_id` and the agent resumes from its durable checkpoint (full history is sent only as the cold-seed path when a branch has no committed checkpoint yet). See [inference-streaming.md](../flows/inference-streaming.md).
 
@@ -442,8 +465,8 @@ Only `agentic_ui` (port 8050) is bound to the host. All other services are inter
 | Concept | File | What to look for |
 | --- | --- | --- |
 | Core compose (services, networks, volumes) | [magenticx/docker-compose.yaml](../../magenticx/docker-compose.yaml) | port bindings, environment variable names, volume mounts |
-| MCP gateway | [../mcp_gateway/](../../../mcp_gateway/CLAUDE.md) | sibling project: composes, catalog, secret, Dennis runbook |
-| Sandbox runner | [../sandbox/](../../../sandbox/CLAUDE.md) | sibling project: runner service, box image, Dennis runbook |
+| MCP gateway | [mcp_gateway](https://github.com/konstantinosmpouros/mcp_gateway) | sibling project: composes, catalog, secret, Dennis runbook |
+| Sandbox runner | [sandbox](https://github.com/konstantinosmpouros/sandbox) | sibling project: runner service, box image, Dennis runbook |
 | nginx config template | [magenticx/agentic_ui/nginx.conf.template](../../magenticx/agentic_ui/nginx.conf.template) | proxy_pass rules, header injection, buffer settings |
 | Vite dev config | [magenticx/agentic_ui/vite.config.ts](../../magenticx/agentic_ui/vite.config.ts) | dev server port, API proxy target |
 | dialogue_bridge FastAPI app | [magenticx/dialogue_bridge/main.py](../../magenticx/dialogue_bridge/main.py) | router registrations, middleware, startup events |
@@ -454,6 +477,6 @@ Only `agentic_ui` (port 8050) is bound to the host. All other services are inter
 | RAG service app | [magenticx/rag_service/main.py](../../magenticx/rag_service/main.py) | endpoint definitions, DuckDB table loading |
 | RAG settings | [magenticx/rag_service/core/settings.py](../../magenticx/rag_service/core/settings.py) | Chroma host/port, proxy secret |
 | Internal proxy trust | [magenticx/dialogue_bridge/core/security/internal_trust.py](../../magenticx/dialogue_bridge/core/security/internal_trust.py) | `require_internal_caller` dependency |
-| MCP tool catalog | [../mcp_gateway/mcp_catalog.yaml](../../../mcp_gateway/mcp_catalog.yaml) | list of registered MCP servers |
+| MCP tool catalog | [mcp_gateway/mcp_catalog.yaml](https://github.com/konstantinosmpouros/mcp_gateway/blob/main/mcp_catalog.yaml) | list of registered MCP servers |
 | Frontend API client | [magenticx/agentic_ui/src/shared/lib/api/](../../magenticx/agentic_ui/src/shared/lib/api/) | all REST call definitions, base URL construction |
 | Frontend constants | [magenticx/agentic_ui/src/shared/lib/consts/](../../magenticx/agentic_ui/src/shared/lib/consts/) | `API_BASE`, feature flags |

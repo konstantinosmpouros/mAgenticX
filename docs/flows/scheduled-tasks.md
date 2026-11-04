@@ -144,4 +144,4 @@ Tasks are fetched fresh (not cached in the IndexedDB UI snapshot), so no snapsho
 - **In-app poll only.** No web push / email — that is the separate Notification system TODO. The badge reflects *running* tasks via poll.
 - **Single replica.** The scheduler and `InferenceRunManager` both assume one bridge replica.
 - **Schedule edits.** The update endpoint changes label/prompt and pause/resume; changing the cadence is delete-and-recreate for now.
-- **Tools are the agent's, not the task's.** A task carries no tool list. Every fire runs with the agent's declared tools minus the owner's per-(user, agent) disables (Settings → Agents) — the same resolution an interactive run uses. To change a scheduled agent's tools, change them in the Agents tab; there is no per-task tool picker.
+- **Tools are the agent's, not the task's.** A task carries no tool list. Every fire runs with the agent's declared tools plus or minus the owner's per-(user, agent) choices (the agent's page → Tools) — the same resolution an interactive run uses. To change a scheduled agent's tools, change them there; there is no per-task tool picker.

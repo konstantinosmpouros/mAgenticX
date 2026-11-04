@@ -190,8 +190,8 @@ The identity record for every person who has signed in. Created on a person's fi
 | `username` | `String` | No | — | UNIQUE, INDEXED — the Entra `preferred_username` at first sign-in (pre-plan-29 rows: the Vault username). A first sign-in that would collide is refused (`?sso=conflict`). |
 | `vault_user_id` | `String` | Yes | `NULL` | UNIQUE, INDEXED — **historical, unread.** The Vault `entity_id` from before plan 29 removed username/password login. Kept deliberately as the record of which row belonged to which Vault account; dropping it would be a destructive migration for no gain. |
 | `oidc_subject` | `String` | Yes | `NULL` | UNIQUE, INDEXED — Microsoft Entra `oid`: **the only key a sign-in is resolved by.** Pre-plan-29 rows were linked to theirs before password login was removed. |
-| `auth_providers` | `String` | Yes | `NULL` | Comma-separated set of login methods the account has used (`vault`, `entra`) — observability only. A linked pre-plan-29 row reads `entra,vault`. |
-| `email` | `String` | Yes | `NULL` | UNIQUE, INDEXED — the cross-provider **account-link key** (`upsert_user_from_identity`). May be `NULL` when no email is known. |
+| `auth_providers` | `String` | Yes | `NULL` | Comma-separated set of login methods the account has used — observability only. New rows read `entra`; a linked pre-plan-29 row reads `entra,vault`. |
+| `email` | `String` | Yes | `NULL` | UNIQUE, INDEXED — **not a lookup key** (`upsert_user_from_identity` resolves by `oidc_subject` only). A first sign-in whose email already belongs to another row is refused; a missing email is backfilled when free. Until plan 29 it linked Vault-era rows to their Entra logins. May be `NULL` when no email is known. |
 | `display_name` | `String` | Yes | `NULL` | From the Entra `name` claim, refreshed on each sign-in |
 | `preferred_name` | `String(64)` | Yes | `NULL` | The name the user chose in Edit profile (migration `0036`); a sign-in never touches it. Shown instead of `display_name` when set (`UserTable.shown_name`); `NULL` = Microsoft's name. Included in the data export. |
 | `avatar_updated_at` | `DateTime` | Yes | `NULL` | When the user last set a photo (`user_avatars`, migration `0037`); `NULL` = none. The UI versions the avatar URL with it. |
@@ -251,7 +251,7 @@ service. An agent therefore lives in two places on purpose.
 
 ### `user_preferences`
 
-One row per user, created on first access. Tool enablement is **not** stored here — the old global `tools` JSON column was dropped in migration `0016_retire_enabled_tools`; per-(user, agent) tool disabling now lives on the agents service (`tool_prefs.json`, managed via Settings → Agents).
+One row per user, created on first access. Tool enablement is **not** stored here — the old global `tools` JSON column was dropped in migration `0016_retire_enabled_tools`; per-(user, agent) tool choices now live in [`user_agent_tool_prefs`](#user_agent_tool_prefs), switched on each agent's page.
 
 | Column | Type | Null | Default | Notes |
 | --- | --- | --- | --- | --- |

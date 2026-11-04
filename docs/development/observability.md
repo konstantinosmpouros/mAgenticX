@@ -8,11 +8,11 @@ Every mAgenticX service emits **structured, event-oriented logs** through an in-
 
 ```mermaid
 flowchart LR
-    UI["agentic_ui (nginx + React)\nconsole + error_boundary"]
-    Bridge["dialogue_bridge\ncore/logging/ (queue logger)"]
-    Agents["agents\ncore/logging/ (queue logger)"]
-    Rag["rag_service\ncore/logging/ (stream logger)"]
-    Docker["Docker json-file driver\n(20–50MB × 3–5, in production)"]
+    UI["agentic_ui (nginx + React)<br/>console + error_boundary"]
+    Bridge["dialogue_bridge<br/>core/logging/ (queue logger)"]
+    Agents["agents<br/>core/logging/ (queue logger)"]
+    Rag["rag_service<br/>core/logging/ (stream logger)"]
+    Docker["Docker json-file driver<br/>(20–50MB × 3–5, in production)"]
 
     UI -->|"X-Request-ID (partial today)"| Bridge
     Bridge -->|"X-Request-ID via internal_service_headers()"| Agents
@@ -32,10 +32,10 @@ A log call (`logger.info("event_name", **fields)`) flows through the same stages
 
 ```mermaid
 flowchart TD
-    Call["EventLogger.info('event', **fields)"] --> Record["LogRecord\nextra={event, event_data}"]
-    Record --> Filter["RequestContextFilter\nbinds ContextVar fields\n+ hashes client_ip only"]
-    Filter --> Fmt["Formatter\nJSON or console"]
-    Fmt --> San["sanitize_for_logging(event_data)\ndrop / redact / hash / truncate"]
+    Call["EventLogger.info('event', **fields)"] --> Record["LogRecord<br/>extra={event, event_data}"]
+    Record --> Filter["RequestContextFilter<br/>binds ContextVar fields<br/>+ hashes client_ip only"]
+    Filter --> Fmt["Formatter<br/>JSON or console"]
+    Fmt --> San["sanitize_for_logging(event_data)<br/>drop / redact / hash / truncate"]
     San --> Out["stdout → Docker json-file"]
 ```
 
@@ -273,17 +273,17 @@ The end state pushes OpenTelemetry traces + metrics + logs from each service to 
 ```mermaid
 flowchart TD
     subgraph App["app stack (backend internal + observability overlay)"]
-      B["dialogue_bridge\nOTel SDK"]
-      A["agents\nOTel SDK"]
-      R["rag_service\nOTel SDK"]
+      B["dialogue_bridge<br/>OTel SDK"]
+      A["agents<br/>OTel SDK"]
+      R["rag_service<br/>OTel SDK"]
     end
     subgraph Mon["monitoring stack (net + observability overlay + proxy)"]
-      C["otel-collector\nredact · tail-sample · batch"]
+      C["otel-collector<br/>redact · tail-sample · batch"]
       T["Tempo (traces 30d)"]
       L["Loki (logs 30d)"]
       P["Prometheus (metrics 90d)"]
       Alloy["Alloy (log shipper)"]
-      G["Grafana (NPM-only)\ntrace ⇄ log ⇄ metric"]
+      G["Grafana (NPM-only)<br/>trace ⇄ log ⇄ metric"]
     end
     B & A & R -->|"OTLP push (one-way TLS + bearer token)"| C
     B & A & R -.->|stdout JSON| Alloy
@@ -310,7 +310,7 @@ flowchart TD
 
 ## The monitoring stack — a sibling project
 
-The monitoring stack (Grafana, Prometheus, Loki, Alloy, cAdvisor, Alertmanager) is its own workspace project, [`../monitoring`](../../../monitoring/CLAUDE.md): configs, dashboards, composes, CI and every runbook (local run, Dennis release, Grafana TLS) live there. mAgenticX does not depend on it and boots without it.
+The monitoring stack (Grafana, Prometheus, Loki, Alloy, cAdvisor, Alertmanager) is its own workspace project, [monitoring](https://github.com/konstantinosmpouros/monitoring): configs, dashboards, composes, CI and every runbook (local run, Dennis release, Grafana TLS) live there. mAgenticX does not depend on it and boots without it.
 
 It watches **both** app stacks that share Denis: mAgenticX (Swarm stack `magenticx`) and **OrthodoxAI** (Swarm stack `orthodoxai`), the Greek parish kiosk forked from mAgenticX and kept in its own repo (`orthodox-ai`). Each project gets its own Grafana folder, **magenticX** and **OrthodoxAI**, and every query selects one project by its `stack` label (Loki) or its `<stack>_` service-name prefix (cAdvisor). The two sets never mix.
 
@@ -367,8 +367,8 @@ Every panel counts an event the OrthodoxAI services actually emit (verified agai
 
 | Where | How |
 | --- | --- |
-| Locally | `docker compose up -d` from `../monitoring` (project `monitoring`, Grafana on `http://localhost:3000`) — see [../monitoring/CLAUDE.md § Run locally](../../../monitoring/CLAUDE.md). The log panels need `LOG_FORMAT=json` in `magenticx/.env` and the app services recreated (`docker-compose -p magenticx -f magenticx/docker-compose.yaml up -d --no-deps dialogue_bridge agents rag_service`) |
-| Denis | Portainer Swarm stack `monitoring`, deployed from the monitoring repo; configs bind-mounted from `/opt/magenticx/monitoring/` — see [../monitoring/CLAUDE.md § Dennis](../../../monitoring/CLAUDE.md) |
+| Locally | `docker compose up -d` from the monitoring project's folder (project `monitoring`, Grafana on `http://localhost:3000`) — see [monitoring](https://github.com/konstantinosmpouros/monitoring). The log panels need `LOG_FORMAT=json` in `magenticx/.env` and the app services recreated (`docker-compose -p magenticx -f magenticx/docker-compose.yaml up -d --no-deps dialogue_bridge agents rag_service`) |
+| Denis | Portainer Swarm stack `monitoring`, released by the monitoring repo's own CD (GHCR + Portainer webhook). Every config is baked into its private `monitoring_*` GHCR images; only Grafana's TLS pair stays on the host, in `/opt/monitoring/tls/` — see [monitoring](https://github.com/konstantinosmpouros/monitoring) |
 
 ---
 
@@ -382,8 +382,8 @@ Every panel counts an event the OrthodoxAI services actually emit (verified agai
 - **rag_service uses a direct StreamHandler, not the queue.** Its log volume is low and it has no long-lived event loop pressure like the streaming services, so it skips the `QueueHandler` indirection that bridge/agents use.
 - **`/health` is never logged** in any service — healthchecks would otherwise dominate the log at 30s intervals.
 - **Locally, cAdvisor can't see individual containers when Docker Desktop stores images with containerd.** With `docker info` → *Storage Driver: overlayfs* (the containerd snapshotter), every cAdvisor release up to v0.52.1 fails with "failed to identify the read-write layer ID" and reports only the whole machine, so the per-service CPU/memory panels are empty; logs and all Loki panels still work. Unticking Docker Desktop → Settings → General → *Use containerd for pulling and storing images* switches to overlay2 and fixes it (images must then be rebuilt or re-pulled). Denis uses overlay2 and is unaffected.
-- **Docker `json-file` is the only sink today.** Logs rotate at 20–50MB × 3–5 files in production and are lost on volume loss; there is no aggregation until Phase 5 (Loki).
-- **OrthodoxAI's event names are a cross-repo contract.** Its dashboards and two alert rules match literal event strings emitted in the `orthodox-ai` repo (`kiosk_access_denied`, `inference_run_started`, `realtime_voice_*`, …). Renaming one there silently empties a panel here, and nothing fails. Grep `../monitoring/` before renaming an OrthodoxAI or mAgenticX log event.
+- **Docker `json-file` is the only sink the services write to.** Logs rotate at 20–50MB × 3–5 files in production; Alloy in the monitoring stack tails them from the Docker socket into Loki. Without the monitoring stack (e.g. locally), they live only in that rotating file.
+- **OrthodoxAI's event names are a cross-repo contract.** Its dashboards and two alert rules match literal event strings emitted in the `orthodox-ai` repo (`kiosk_access_denied`, `inference_run_started`, `realtime_voice_*`, …). Renaming one there silently empties a panel here, and nothing fails. Grep the [monitoring](https://github.com/konstantinosmpouros/monitoring) repo before renaming an OrthodoxAI or mAgenticX log event.
 - **OrthodoxAI panels that cannot exist yet.** It logs no run duration and no token counts, so there are no answer-latency or cost panels (its Phase 8 telemetry). Its knowledge pipeline (plan 04) emits nothing yet, so there is no scrape dashboard and no "scrape did not run" alert (R-43). Add both when those events exist; a dashboard for events nobody emits would only show an empty screen.
 - **Dashboard provider paths must not overlap.** A Grafana file provider scans its path recursively, so a provider pointed at `/etc/grafana/dashboards` would load both projects' dashboards a second time.
 - **`agents` suppresses uvloop cancellation noise.** The event-loop exception handler swallows `CancelledError`/`BrokenPipeError`/`ConnectionResetError` (normal on client disconnect mid-stream) and only logs genuine `event_loop_exception`s.
@@ -410,8 +410,8 @@ Every panel counts an event the OrthodoxAI services actually emit (verified agai
 | rag retrieval/SQL logging | [magenticx/rag_service/main.py](../../magenticx/rag_service/main.py) | `retrieval_*`, `sql_query_*`, `duration_ms` |
 | Redaction secret (all) | [magenticx/dialogue_bridge/core/settings.py](../../magenticx/dialogue_bridge/core/settings.py) | `LoggingSettings.redaction_secret` |
 | Deploy + secret wiring | [magenticx/docker-compose-denis.yaml](../../magenticx/docker-compose-denis.yaml) | `deploy.update_config`, `log_redaction_secret` |
-| Monitoring project | [../monitoring/CLAUDE.md](../../../monitoring/CLAUDE.md) | layout, local run, Dennis release flow, adding an app |
-| Monitoring stack (Denis) | [../monitoring/docker-compose-denis.yml](../../../monitoring/docker-compose-denis.yml) | Grafana, Prometheus, Loki, Alloy, cAdvisor, node-exporter, Alertmanager |
-| mAgenticX dashboards | [../monitoring/grafana/dashboards/magenticx/](../../../monitoring/grafana/dashboards/magenticx/) | the **magenticX** folder |
-| OrthodoxAI dashboards | [../monitoring/grafana/dashboards/orthodoxai/](../../../monitoring/grafana/dashboards/orthodoxai/) | the **OrthodoxAI** folder; queries select `stack="orthodoxai"` / `orthodoxai_.*` |
-| Local discovery configs | [../monitoring/local/](../../../monitoring/local/) | Compose → Swarm label mapping, silent `alertmanager.yml` |
+| Monitoring project | [monitoring](https://github.com/konstantinosmpouros/monitoring) | layout, local run, Dennis release flow, adding an app |
+| Monitoring stack (Denis) | [monitoring/docker-compose-denis.yml](https://github.com/konstantinosmpouros/monitoring/blob/main/docker-compose-denis.yml) | Grafana, Prometheus, Loki, Alloy, cAdvisor, node-exporter, Alertmanager |
+| mAgenticX dashboards | [monitoring/grafana/dashboards/magenticx/](https://github.com/konstantinosmpouros/monitoring/tree/main/grafana/dashboards/magenticx) | the **magenticX** folder |
+| OrthodoxAI dashboards | [monitoring/grafana/dashboards/orthodoxai/](https://github.com/konstantinosmpouros/monitoring/tree/main/grafana/dashboards/orthodoxai) | the **OrthodoxAI** folder; queries select `stack="orthodoxai"` / `orthodoxai_.*` |
+| Local discovery configs | [monitoring/local/](https://github.com/konstantinosmpouros/monitoring/tree/main/local) | Compose → Swarm label mapping, silent `alertmanager.yml` |

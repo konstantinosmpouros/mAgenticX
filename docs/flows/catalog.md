@@ -8,13 +8,13 @@ The catalog is the discovery layer that tells the frontend which agents and tool
 
 ```mermaid
 flowchart LR
-    Browser["Browser"] -->|"GET /catalog/agents\nGET /catalog/tools"| nginx["nginx :8050"]
+    Browser["Browser"] -->|"GET /catalog/agents<br/>GET /catalog/tools"| nginx["nginx :8050"]
     nginx --> bridge["dialogue_bridge :8002"]
     bridge -->|"GET /agents (cached)"| agents["agents service :8003"]
     bridge -->|"GET /tools (per-request)"| agents
-    agents -.->|"SSE tool manifest\n(only when MCP is on)"| mcp["mcp_gateway :8005\n(core stack)"]
-    mcp --> servers["MCP Servers\n(tavily, arxiv, ...)"]
-    bridge --- pg[("chat_postgres\nagents table")]
+    agents -.->|"SSE tool manifest<br/>(only when MCP is on)"| mcp["mcp_gateway :8005<br/>(optional sibling)"]
+    mcp --> servers["MCP Servers<br/>(tavily, arxiv, ...)"]
+    bridge --- pg[("chat_postgres<br/>agents table")]
 ```
 
 ---
@@ -201,7 +201,7 @@ type ToolMetadata = {
 
 ### MCP gateway tool registration
 
-Tools are registered in the sibling project [`../mcp_gateway`](../../../mcp_gateway/CLAUDE.md) (optional; with `MCP_GATEWAY_URL` empty the tool catalog is empty):
+Tools are registered in the sibling project [mcp_gateway](https://github.com/konstantinosmpouros/mcp_gateway) (optional; with `MCP_GATEWAY_URL` empty the tool catalog is empty):
 
 - **`mcp_catalog.yaml`** — the registry of available MCP server metadata (names, descriptions, tool lists, icons). Large file (~506 KB); used for discovery.
 - **`mcp_config.yaml`** — runtime parameters for each server (e.g., `storage_path` for the arxiv server).
@@ -247,7 +247,7 @@ The catalog is loaded as part of `useAuthRehydrateEffect`, which runs once after
 flowchart TD
     A[session restored] --> B[loadUISnapshot from IndexedDB]
     B --> C{snapshot exists?}
-    C -->|yes| D[hydrate state\nagents, tools, preferences]
+    C -->|yes| D[hydrate state<br/>agents, tools, preferences]
     C -->|no| E[state = empty]
     D --> F[fetch fresh in parallel]
     E --> F
@@ -274,8 +274,8 @@ Only the selected agent flows into an inference request — the tool list does n
 
 ```mermaid
 flowchart LR
-    A["User selects agent\nid = UUID"] --> B["Frontend stores\nselectedAgent = UUID"]
-    B --> C["POST /v1/conversations\n{ agentId: UUID }"]
+    A["User selects agent<br/>id = UUID"] --> B["Frontend stores<br/>selectedAgent = UUID"]
+    B --> C["POST /v1/conversations<br/>{ agentId: UUID }"]
     C --> D["DB lookup: agents WHERE id = UUID"]
     D --> E["agent.slug from DB"]
     E --> F["POST /agents/{slug}/stream"]
@@ -289,12 +289,12 @@ The catalog's tool list is **display-only**. It populates the read-only MCP Serv
 
 ```mermaid
 flowchart TD
-    A["agent.yaml tools:\n(declared native + MCP)"] --> C
-    B["tool_prefs.json\n(per-(user, agent) disabled set)"] --> C
-    C["agents service: effective tools\n= declared − disabled\n(_apply_tool_disables)"]
+    A["agent.yaml tools:<br/>(declared native + MCP)"] --> C
+    B["tool_config on the run config<br/>(per-(user, agent) enabled / disabled,<br/>from chat_db.user_agent_tool_prefs)"] --> C
+    C["agents service: effective MCP tools<br/>= (declared ∪ enabled) − disabled<br/>(_filter_live_tools)"]
 ```
 
-Tool resolution happens entirely on the agents service when a `YamlDeepAgent` is built: it reads the tools declared in the agent's `agent.yaml` and subtracts the owner's disabled set from `tool_prefs.json`. An empty request tool list is meaningless now — the agent never depended on the client to tell it which tools to attach. LangGraph agents (`hr_policies` / `orthodox` / `retail`) reach RAG through a graph node over HTTP, so they carry no tool set at all.
+Tool resolution happens entirely on the agents service when a `YamlDeepAgent` is built: it reads the tools declared in the agent's `agent.yaml`, adds the MCP tools the owner enabled and subtracts the ones they disabled — choices the bridge reads from `chat_db.user_agent_tool_prefs` and sends on the run config. An empty request tool list is meaningless now — the agent never depended on the client to tell it which tools to attach. LangGraph agents (`hr_policies` / `orthodox` / `retail`) reach RAG through a graph node over HTTP, so they carry no tool set at all.
 
 ### Full inference request shapes
 
@@ -375,8 +375,8 @@ Edit, retry, and shared conversation continuation use the same `/start` endpoint
 | Agent DB table | [magenticx/dialogue_bridge/core/database/models.py](../../magenticx/dialogue_bridge/core/database/models.py) | `AgentTable`, `is_active` column |
 | Pydantic schemas | [magenticx/dialogue_bridge/schema/catalog.py](../../magenticx/dialogue_bridge/schema/catalog.py) | `AgentPublic`, `ToolManifest`, `ModelChoice`, `BuiltinToolInfo` |
 | Suggestion generation | [magenticx/dialogue_bridge/utils/conversations.py](../../magenticx/dialogue_bridge/utils/conversations.py) | `generate_conversation_suggestions()` |
-| MCP catalog registry | [../mcp_gateway/mcp_catalog.yaml](../../../mcp_gateway/mcp_catalog.yaml) | registered MCP servers and tool lists |
-| MCP server config | [../mcp_gateway/mcp_config.yaml](../../../mcp_gateway/mcp_config.yaml) | runtime parameters per server |
+| MCP catalog registry | [mcp_gateway/mcp_catalog.yaml](https://github.com/konstantinosmpouros/mcp_gateway/blob/main/mcp_catalog.yaml) | registered MCP servers and tool lists |
+| MCP server config | [mcp_gateway/mcp_config.yaml](https://github.com/konstantinosmpouros/mcp_gateway/blob/main/mcp_config.yaml) | runtime parameters per server |
 | Frontend API calls | [magenticx/agentic_ui/src/shared/lib/api/](../../magenticx/agentic_ui/src/shared/lib/api/) | `getAgents()`, `getTools()`, `getSuggestions()` |
 | Frontend types | [magenticx/agentic_ui/src/shared/lib/types/](../../magenticx/agentic_ui/src/shared/lib/types/) | `Agent`, `ToolMetadata` (the `ToolPreference` type was deleted) |
 | Icon mapping | [magenticx/agentic_ui/src/shared/lib/consts/](../../magenticx/agentic_ui/src/shared/lib/consts/) | `mapIcon()`, icon name → LucideIcon lookup |
