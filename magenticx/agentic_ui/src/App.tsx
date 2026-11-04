@@ -8,7 +8,8 @@ import { THEME_ATTRIBUTE_VALUES, THEME_IDS, migrateStoredTheme } from "@/styles/
 import { ThemeModeSync } from "@/shared/ui/theme-mode-sync";
 import { WorkspaceShell } from "./app/WorkspaceShell";
 import ChatView from "./pages/ChatView";
-import TasksView from "./pages/TasksView";
+import AutomationsView from "./pages/AutomationsView";
+import LegacyTasksRedirect from "./pages/LegacyTasksRedirect";
 import AgentsView from "./pages/AgentsView";
 import AgentsGallery from "./features/agents/pages/AgentsGallery";
 import AgentPage from "./features/agents/pages/AgentPage";
@@ -20,6 +21,7 @@ import TermsAndConditions from "./pages/TermsAndConditions";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import { CookieConsentBanner } from "@/shared/ui/cookie-consent-banner";
 import { hasCookieConsent } from "@/shared/lib/cookieConsentStorage";
+import { AUTOMATIONS_PATH, LEGACY_TASKS_PATH } from "@/features/automations/lib/routes";
 
 const queryClient = new QueryClient();
 
@@ -58,7 +60,9 @@ const App = () => {
               <Route element={<WorkspaceShell />}>
                 <Route path="/" element={<ChatView />} />
                 <Route path="/c/:conversationId" element={<ChatView />} />
-                <Route path="/tasks" element={<TasksView />} />
+                <Route path={AUTOMATIONS_PATH} element={<AutomationsView />} />
+                {/* The old Schedules URL, for one release: query kept. */}
+                <Route path={LEGACY_TASKS_PATH} element={<LegacyTasksRedirect />} />
                 {/* The Agents section: AgentsView is its own layout (the page
                     over the chat); the four pages render in its outlet. */}
                 <Route path="/agents" element={<AgentsView />}>

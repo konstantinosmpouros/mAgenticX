@@ -1,5 +1,5 @@
 /**
- * The Agents pages' buttons, in the style of Schedules beside them: a pill for
+ * The Agents pages' buttons, in the style of Automations beside them: a pill for
  * the page's main action and an outlined pill for the rest.
  */
 

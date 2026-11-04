@@ -81,6 +81,6 @@ one per mode.
   (`src/shared/ui/brand-mark.tsx`, styled by `src/styles/brand-mark.css`) draws
   it at the size the caller gives, floating over a glow in the theme's
   `--primary`, still under reduced motion. It stands for the product where
-  the orb would wrongly stand for the AI (the Schedules page); the orb stays
+  the orb would wrongly stand for the AI (the Automations page); the orb stays
   the AI's. Export only the mark — the large PNG, card and lockup files stay
   in the brand source.

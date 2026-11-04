@@ -15,7 +15,7 @@
  * `data-state` / `data-collapsible="icon"` / `peer` / `group` attribute
  * contract, `--sidebar-width*` CSS vars, and the `data-size`/`data-active`
  * menu-button attributes) is preserved verbatim so the consumers
- * (ChatSidebar, ChatHeader, ScheduledTasksPage, ChatShell) keep working. Only
+ * (ChatSidebar, ChatHeader, AutomationsPage, ChatShell) keep working. Only
  * the implementation underneath is ours.
  */
 import * as React from "react";

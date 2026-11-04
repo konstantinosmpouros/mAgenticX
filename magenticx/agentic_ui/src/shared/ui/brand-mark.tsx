@@ -8,7 +8,7 @@ import { markFor } from "@/styles/theme/themes";
 /**
  * The "soft node" brand mark — a rounded glass knot — in the active theme's
  * colours (`mark` in styles/theme/themes.ts). Used where the page speaks for
- * the product rather than for the AI (the orb stays the AI's): the Schedules
+ * the product rather than for the AI (the orb stays the AI's): the Automations
  * page today.
  *
  * Decorative by default; pass `label` when it stands alone. It floats over the

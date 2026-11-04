@@ -2,7 +2,8 @@ import { useCallback, useEffect } from "react";
 import { motion, type Variants } from "framer-motion";
 import { useSearchParams } from "react-router-dom";
 
-import ScheduledTasksPage from "@/features/tasks/components/ScheduledTasksPage";
+import AutomationsPage from "@/features/automations/components/AutomationsPage";
+import { AGENT_PARAM, TEMPLATE_PARAM } from "@/features/automations/lib/routes";
 
 import { useChatWorkspaceContext } from "@/app/workspaceContext";
 import { useWorkspaceStore } from "@/shared/stores/workspaceStore";
@@ -17,6 +18,9 @@ const PAGE: Variants = {
   shown: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.42, ease: EASE } },
   exit: { opacity: 0, y: 12, scale: 0.99, transition: { duration: 0.26, ease: "easeIn" } },
 };
+/** The query parameters that open the create form (see the component's doc). */
+const DEEP_LINK_PARAMS = [AGENT_PARAM, TEMPLATE_PARAM] as const;
+
 const PAGE_FADE: Variants = {
   hidden: { opacity: 0 },
   shown: { opacity: 1, transition: { duration: 0.15 } },
@@ -24,26 +28,32 @@ const PAGE_FADE: Variants = {
 };
 
 /**
- * The scheduled-tasks page for the "/tasks" route. Fills the shell's content
+ * The Automations page for the "/automations" route. Fills the shell's content
  * area (the sidebar stays) and slides in over the chat, and out again (PAGE).
  * All data/actions come from the workspace context built by ChatShell;
  * navigation drives open/close.
+ *
+ * Deep links, each dropped from the URL once used (so a refresh or Back does
+ * not open the form again):
+ *   - `?agent=<id>`    — an agent's "Schedule it": the form opens on that agent;
+ *   - `?template=<id>` — the form opens filled in from that template.
  */
-export default function TasksView() {
-  const { reduceMotion, navigate, scheduledTasks } = useChatWorkspaceContext();
+export default function AutomationsView() {
+  const { reduceMotion, navigate, automations } = useChatWorkspaceContext();
   // Store-backed: selecting it here keeps this view out of the bundle's
   // per-render churn (see ChatView for the same move).
   const agents = useWorkspaceStore((s) => s.agents);
-  // "/tasks?agent=<id>": an agent's "Schedule it" — the new-task form opens
-  // with that agent chosen, and the parameter is dropped once it has.
   const [searchParams, setSearchParams] = useSearchParams();
-  const createForAgentId = searchParams.get("agent");
-  const clearAgentParam = useCallback(
+  const createForAgentId = searchParams.get(AGENT_PARAM);
+  const createFromTemplateId = searchParams.get(TEMPLATE_PARAM);
+  // Both links are dropped together: two separate updates in one commit would
+  // each start from the same params, and the second would restore the first.
+  const clearDeepLinks = useCallback(
     () =>
       setSearchParams(
         (prev) => {
           const next = new URLSearchParams(prev);
-          next.delete("agent");
+          for (const name of DEEP_LINK_PARAMS) next.delete(name);
           return next;
         },
         { replace: true },
@@ -55,7 +65,7 @@ export default function TasksView() {
   // title comes back on the way out.
   useEffect(() => {
     const previous = document.title;
-    document.title = "Schedules · mAgenticX";
+    document.title = "Automations · mAgenticX";
     return () => {
       document.title = previous;
     };
@@ -75,19 +85,21 @@ export default function TasksView() {
       animate="shown"
       exit="exit"
     >
-      <ScheduledTasksPage
+      <AutomationsPage
         onClose={() => navigate("/")}
-        tasks={scheduledTasks.tasks}
-        loading={scheduledTasks.loading}
-        error={scheduledTasks.error}
+        items={automations.items}
+        loading={automations.loading}
+        error={automations.error}
         agents={agents}
-        onCreate={scheduledTasks.create}
-        onUpdate={scheduledTasks.update}
-        onDelete={scheduledTasks.remove}
+        onCreate={automations.create}
+        onUpdate={automations.update}
+        onDelete={automations.remove}
         onOpenResult={(conversationId) => navigate("/c/" + conversationId)}
-        onRetry={() => void scheduledTasks.refresh()}
+        onRetry={() => void automations.refresh()}
         createForAgentId={createForAgentId}
-        onCreateForAgentHandled={clearAgentParam}
+        onCreateForAgentHandled={clearDeepLinks}
+        createFromTemplateId={createFromTemplateId}
+        onCreateFromTemplateHandled={clearDeepLinks}
       />
     </motion.div>
   );

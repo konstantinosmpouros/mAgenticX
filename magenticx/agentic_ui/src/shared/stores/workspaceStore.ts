@@ -18,7 +18,7 @@ import type {
  * Workspace store — the shared, cross-view client state for the chat workspace.
  *
  * Holds the data the persistent shell (sidebar/header) AND the route views
- * (ChatView/TasksView) both read: auth/user, catalogs (agents/tools/skills),
+ * (ChatView/AutomationsView) both read: auth/user, catalogs (agents/tools/skills),
  * preferences, the conversation lists + the open conversation, and a few
  * shell-level UI flags. View-local state (composer draft, attachments, editing,
  * dictation, voice transition, etc.) deliberately stays in the views.

@@ -23,6 +23,7 @@ import ShortcutsPanel from "@/features/settings/components/ShortcutsPanel";
 import ShareConversationDialog from "@/features/sharing/components/SharePanel";
 
 import { AGENTS_PATH, isAgentsPath } from "@/features/agents/lib/routes";
+import { AUTOMATIONS_PATH, isAutomationsPath } from "@/features/automations/lib/routes";
 
 import ChatView from "@/pages/ChatView";
 import { ImageLightbox } from "@/shared/ui/ImageLightbox";
@@ -37,7 +38,7 @@ import { TooltipProvider } from "@/shared/ui/tooltip";
 type WorkspaceShellProps = ChatWorkspaceOptions & { children?: ReactNode };
 
 /** How long the leaving view stays for the swap: the chat holds under the
- *  Schedules or Agents page until it has fully faded in (their PAGE). */
+ *  Automations or Agents page until it has fully faded in (their PAGE). */
 const ROUTE_SWAP_HOLD_S = 0.42;
 
 /**
@@ -45,14 +46,14 @@ const ROUTE_SWAP_HOLD_S = 0.42;
  * the chrome around the routed views. Builds the workspace once via
  * useChatWorkspace and provides it; renders `children` (the direct
  * shared-conversation path) or `<Outlet/>` (the layout-route children
- * ChatView/TasksView/AgentsView) in the content slot.
+ * ChatView/AutomationsView/AgentsView) in the content slot.
  */
 export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {}) {
   const ws = useChatWorkspace(props);
   // The bundle reaches the route views through ChatWorkspaceProvider at the
   // content slot below. It used to be published into the Zustand store here,
   // during render — zustand notifies synchronously, so that force-updated
-  // ChatView/TasksView from inside this component's render pass (React's
+  // ChatView/AutomationsView from inside this component's render pass (React's
   // "Cannot update a component while rendering a different component"), and the
   // deferred re-render cost a second commit on every keystroke.
   const {
@@ -82,7 +83,7 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
     handleLoadMoreConversations,
     handleTitleClick,
     navigate,
-    scheduledTasks,
+    automations,
     userProfile,
     settingsPanels,
     attachmentPreview,
@@ -166,12 +167,12 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
   const isPrivateMode = useWorkspaceStore((s) => s.isPrivateMode);
   const { pathname } = useLocation();
   const outlet = useOutlet();
-  const isTasksPage = pathname.startsWith("/tasks");
+  const isAutomationsPage = isAutomationsPath(pathname);
   const isAgentsPage = isAgentsPath(pathname);
-  const incognitoClass = useIncognitoCard(isPrivateMode && !isTasksPage && !isAgentsPage);
+  const incognitoClass = useIncognitoCard(isPrivateMode && !isAutomationsPage && !isAgentsPage);
   // The route view's surface: the chat, or one of the pages over it. Moving
   // within a surface (chat to chat, agent to agent) never remounts it.
-  const surfaceKey = isTasksPage ? "tasks" : isAgentsPage ? "agents" : "chat";
+  const surfaceKey = isAutomationsPage ? "automations" : isAgentsPage ? "agents" : "chat";
   // Main Chat Interface
   if (!authResolved) {
     return (
@@ -253,10 +254,10 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
           onNewChat={guarded(handleNewChat)}
           onOpenSearch={handleOpenSearch}
           onVoiceMode={guarded(triggerVoiceMode)}
-          onOpenScheduledTasks={guarded(() => navigate("/tasks"))}
-          scheduledTasksRunningCount={scheduledTasks.runningCount}
+          onOpenAutomations={guarded(() => navigate(AUTOMATIONS_PATH))}
+          automationsRunningCount={automations.runningCount}
           onOpenAgents={guarded(() => navigate(AGENTS_PATH))}
-          activePage={isAgentsPage ? "agents" : isTasksPage ? "schedules" : null}
+          activePage={isAgentsPage ? "agents" : isAutomationsPage ? "automations" : null}
           onOpenSettings={(tab) => openProfilePanel(tab)}
           onEditProfile={settingsPanels.openEditProfile}
           onOpenShortcuts={openShortcutsPanel}
@@ -295,12 +296,12 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
                 id={OVERLAY_HOST_ID}
                 className="animate-fade-in relative flex h-svh flex-col overflow-hidden transition-slow md:h-full"
               >
-                {/* The routed view: ChatView ("/", "/c/:id"), TasksView ("/tasks")
+                {/* The routed view: ChatView ("/", "/c/:id"), AutomationsView ("/automations")
                   or AgentsView ("/agents…"), or `children` when ChatShell is used
                   directly (shared conversation). */}
                 <ChatWorkspaceProvider value={ws}>
                   {children ?? (
-                    // Chat <-> Schedules <-> Agents: the view that leaves stays
+                    // Chat <-> Automations <-> Agents: the view that leaves stays
                     // mounted for its exit (the page's own; the chat simply holds
                     // under a page sliding in), keyed by surface so moving between
                     // chats, or between Agents pages, never remounts. `contents`:

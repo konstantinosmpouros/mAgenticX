@@ -21,7 +21,7 @@ export type AgentsPageContext = {
   refreshCatalog: () => Promise<void>;
   /** Start a new chat with this agent selected. */
   onChatWith: (agentId: string) => void;
-  /** Open Schedules with a new task for this agent. */
+  /** Open Automations with a new automation for this agent. */
   onSchedule: (agentId: string) => void;
   /** Leave the Agents section for the chat. */
   onClose: () => void;

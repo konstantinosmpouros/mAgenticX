@@ -22,9 +22,9 @@ import {
   Settings,
   ShieldCheck,
   UserRound,
+  Workflow,
 } from "lucide-react";
 import { PiWaveformBold } from "react-icons/pi";
-import { MdOutlineSchedule } from "react-icons/md";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Loader } from "@/shared/ui/shadcn-io/loader";
@@ -75,12 +75,14 @@ type ChatSidebarProps = {
   onNewChat: () => void;
   onOpenSearch: () => void;
   onVoiceMode?: () => void;
-  onOpenScheduledTasks?: () => void;
-  scheduledTasksRunningCount?: number;
+  /** Open the Automations page ("/automations"). */
+  onOpenAutomations?: () => void;
+  /** Automations with a live run: the badge on the Automations entry. */
+  automationsRunningCount?: number;
   /** Open the Agents section ("/agents"). */
   onOpenAgents?: () => void;
   /** The page open over the chat, if any — its menu entry is highlighted. */
-  activePage?: "schedules" | "agents" | null;
+  activePage?: "automations" | "agents" | null;
   /** Open the settings panel, optionally on a specific section. */
   onOpenSettings: (tab?: string) => void;
   /** Open the small "Edit profile" dialog. */
@@ -157,7 +159,7 @@ const RAIL_REVEAL = "motion-safe:animate-sidebar-reveal";
 // Labels also never wrap: mid-animation the rail is narrower than "New chat".
 const RAIL_LABEL = `whitespace-nowrap ${RAIL_REVEAL} group-data-[collapsible=icon]:hidden`;
 const ROW_SPRING = { type: "spring", stiffness: 520, damping: 42, mass: 0.8 } as const;
-// A page entry (Schedules, Agents) while its page is open: the highlight is the
+// A page entry (Automations, Agents) while its page is open: the highlight is the
 // motion span inside it, so the button's own active fill stays off, and the
 // label reads as selected like the open conversation's title.
 const PAGE_ENTRY_ACTIVE =
@@ -237,8 +239,8 @@ export default function ChatSidebar({
   onNewChat,
   onOpenSearch,
   onVoiceMode,
-  onOpenScheduledTasks,
-  scheduledTasksRunningCount = 0,
+  onOpenAutomations,
+  automationsRunningCount = 0,
   onOpenAgents,
   activePage = null,
   onOpenSettings,
@@ -342,12 +344,12 @@ export default function ChatSidebar({
     }
   }, [onVoiceMode, isMobile, setOpenMobile]);
 
-  const handleScheduledTasksClick = React.useCallback(() => {
-    onOpenScheduledTasks?.();
+  const handleAutomationsClick = React.useCallback(() => {
+    onOpenAutomations?.();
     if (isMobile) {
       setOpenMobile(false);
     }
-  }, [onOpenScheduledTasks, isMobile, setOpenMobile]);
+  }, [onOpenAutomations, isMobile, setOpenMobile]);
 
   const handleAgentsClick = React.useCallback(() => {
     onOpenAgents?.();
@@ -357,10 +359,10 @@ export default function ChatSidebar({
   }, [onOpenAgents, isMobile, setOpenMobile]);
 
   // The open page's entry wears the selected conversation row's highlight (the
-  // hover surface and the brand bar), gliding between Schedules and Agents. Its
+  // hover surface and the brand bar), gliding between Automations and Agents. Its
   // own layoutId: a page and a chat are never open at once, but the two lists
   // animate independently.
-  const pageHighlight = (page: "schedules" | "agents") =>
+  const pageHighlight = (page: "automations" | "agents") =>
     activePage === page ? (
       // A soft pill in the theme's colour (no side bar): it reads at a glance in
       // the open rail and in the collapsed one, and glides between the pages.
@@ -983,33 +985,33 @@ export default function ChatSidebar({
           <SidebarMenuItem>
             <SidebarMenuButton
               size="lg"
-              onClick={handleScheduledTasksClick}
-              isActive={activePage === "schedules"}
-              aria-current={activePage === "schedules" ? "page" : undefined}
+              onClick={handleAutomationsClick}
+              isActive={activePage === "automations"}
+              aria-current={activePage === "automations" ? "page" : undefined}
               className={cn(
                 `group/nav relative !flex !h-9 gap-1 items-center !overflow-visible rounded-xl bg-transparent px-1.5 py-0 text-sm text-foreground/90 transition-colors supports-[hover:hover]:${INTERACTIVE_SURFACE}`,
                 PAGE_ENTRY_ACTIVE,
               )}
-              tooltip="Schedules"
+              tooltip="Automations"
             >
-              {pageHighlight("schedules")}
+              {pageHighlight("automations")}
               <div
                 className={cn(
                   "relative z-[1] grid size-9 flex-shrink-0 place-items-center",
                   PAGE_ICON_ACTIVE,
                 )}
               >
-                <MdOutlineSchedule className={`!h-[18px] !w-[18px] ${NAV_ICON_MOTION}`} />
-                {scheduledTasksRunningCount > 0 ? (
+                <Workflow className={`!h-[18px] !w-[18px] ${NAV_ICON_MOTION}`} />
+                {automationsRunningCount > 0 ? (
                   <span
                     className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground"
-                    aria-label={`${scheduledTasksRunningCount} running`}
+                    aria-label={`${automationsRunningCount} running`}
                   >
-                    {scheduledTasksRunningCount}
+                    {automationsRunningCount}
                   </span>
                 ) : null}
               </div>
-              <span className={cn("relative z-[1]", RAIL_LABEL)}>Schedules</span>
+              <span className={cn("relative z-[1]", RAIL_LABEL)}>Automations</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>

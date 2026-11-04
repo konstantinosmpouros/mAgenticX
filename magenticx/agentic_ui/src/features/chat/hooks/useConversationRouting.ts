@@ -22,9 +22,9 @@ type SetStateArg<T> = T | ((prev: T) => T);
 
 type UseConversationRoutingOptions = {
   // ── route ──
-  /** `:conversationId`; undefined on "/" and on the pages ("/tasks", "/agents…"). */
+  /** `:conversationId`; undefined on "/" and on the pages ("/automations", "/agents…"). */
   conversationId: string | undefined;
-  /** A full page over the chat — Schedules ("/tasks") or Agents ("/agents…"). */
+  /** A full page over the chat — Automations ("/automations") or Agents ("/agents…"). */
   isPageRoute: boolean;
   navigate: NavigateFunction;
 
@@ -153,7 +153,7 @@ export function useConversationRouting({
     closeVoiceSession();
 
     if (!conversationId) {
-      // "/" or a page ("/tasks", "/agents…") → erase conversation-scoped state
+      // "/" or a page ("/automations", "/agents…") → erase conversation-scoped state
       // synchronously.
       setThinkingState(null);
       setExpandedThinking({});
@@ -212,7 +212,7 @@ export function useConversationRouting({
     }
   }, [currentConversation?.id, conversationId, isPageRoute, navigate]);
 
-  // Entering a page (Schedules, Agents) tears down any live voice session. The
+  // Entering a page (Automations, Agents) tears down any live voice session. The
   // load effect only fires on :conversationId changes, and "/" ↔ a page keeps it
   // null, so voice is closed here for that transition.
   useEffect(() => {

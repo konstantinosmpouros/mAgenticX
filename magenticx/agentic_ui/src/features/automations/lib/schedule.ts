@@ -1,5 +1,5 @@
 /**
- * Schedule wording and timing for the scheduled-tasks page: a task's schedule
+ * Schedule wording and timing for the Automations page: a task's schedule
  * in plain words ("Every weekday at 09:00"), relative times ("in 2 h 15 min"),
  * the card's status, and the form's preview of the next runs.
  *
@@ -9,6 +9,8 @@
  */
 import type { ScheduledTask } from "@/shared/lib/types";
 
+// A scheduled run is "live" while its latest fire message is still streaming.
+// The one copy: the poll hook, the filters and the cards all go through here.
 const RUNNING_STATUSES = new Set(["queued", "running", "cancelling"]);
 
 /** schedule_spec stores run_at as naive-UTC ISO (no offset); parse it as UTC. */

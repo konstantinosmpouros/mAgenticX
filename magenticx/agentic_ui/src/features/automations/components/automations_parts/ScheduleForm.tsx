@@ -16,6 +16,7 @@ import {
 
 import type {
   Agent,
+  ScheduleFormInitial,
   ScheduledTaskCreatePayload,
   ScheduleKind,
   TaskTargetMode,
@@ -31,25 +32,13 @@ import {
   isValidTimeZone,
   nextCronRuns,
   parseCron,
-} from "@/features/tasks/lib/schedule";
+} from "@/features/automations/lib/schedule";
 
-// Pre-fill values shared by editing a task and importing a template.
-export type ScheduledTaskFormInitial = {
-  agentId?: string | null;
-  title?: string | null;
-  prompt?: string;
-  targetMode?: TaskTargetMode | string;
-  scheduleKind?: ScheduleKind | string;
-  scheduleSpec?: Record<string, unknown>;
-  timezone?: string | null;
-  isPrivate?: boolean;
-};
-
-type ScheduledTaskFormProps = {
+type ScheduleFormProps = {
   agents: Agent[];
   // Pre-fill the form (editing a task or importing a template). Tools are
   // agent-declared, not carried per task.
-  initial?: ScheduledTaskFormInitial;
+  initial?: ScheduleFormInitial;
   submitLabel?: string;
   submitting: boolean;
   /** The server's answer to the last submit, shown above the actions. */
@@ -316,7 +305,12 @@ type Errors = Partial<
   Record<"agent" | "prompt" | "interval" | "cron" | "timezone" | "runAt", string>
 >;
 
-export default function ScheduledTaskForm({
+/**
+ * The schedule automation's form: agent, instruction, cadence (once, interval,
+ * calendar) and where results land. Shared by create, edit and a template's
+ * pre-filled create.
+ */
+export default function ScheduleForm({
   agents,
   initial,
   submitLabel,
@@ -324,7 +318,7 @@ export default function ScheduledTaskForm({
   submitError,
   onSubmit,
   onCancel,
-}: ScheduledTaskFormProps) {
+}: ScheduleFormProps) {
   const init = initial;
   const initInterval =
     init?.scheduleKind === "interval"

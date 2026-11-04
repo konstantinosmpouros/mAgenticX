@@ -9,7 +9,7 @@ import { PRIMARY_BUTTON } from "@/features/agents/lib/styles";
 /**
  * The chrome every Agents page shares — header, badge, the not-found state —
  * so the gallery, an agent's page and the builder read as one section, in the
- * same style as Schedules beside them.
+ * same style as Automations beside them.
  */
 
 export function PageHeader({
@@ -45,7 +45,7 @@ export function PageHeader({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             {/* On mobile the sidebar is an overlay sheet and this page covers
-                ChatHeader's own trigger — the same md:hidden toggle Schedules
+                ChatHeader's own trigger — the same md:hidden toggle Automations
                 carries, so there is always a way back to the sidebar. */}
             <SidebarTrigger
               aria-label="Toggle sidebar"

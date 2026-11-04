@@ -8,7 +8,7 @@ import type { ChatWorkspace } from "@/app/useChatWorkspace";
  * This is a React context, not a store slice, and that is deliberate. The
  * bundle is a per-render snapshot, so publishing it into the store meant
  * writing to an external store *during render* — zustand notifies listeners
- * synchronously, so ChatView/TasksView were force-updated from inside
+ * synchronously, so ChatView/AutomationsView were force-updated from inside
  * WorkspaceShell's render pass. React answered that with a "Cannot update a
  * component while rendering a different component" warning and, because the
  * render-phase branch defers the forced update, every keystroke in the composer

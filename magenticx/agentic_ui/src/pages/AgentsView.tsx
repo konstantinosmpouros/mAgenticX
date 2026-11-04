@@ -3,13 +3,14 @@ import { AnimatePresence, motion, type Variants } from "framer-motion";
 import { useLocation, useOutlet } from "react-router-dom";
 
 import type { AgentsPageContext } from "@/features/agents/context";
+import { automationsForAgentPath } from "@/features/automations/lib/routes";
 
 import { useChatWorkspaceContext } from "@/app/workspaceContext";
 import { useWorkspaceStore } from "@/shared/stores/workspaceStore";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
-// The same entrance and exit as Schedules (TasksView): over the chat, which
+// The same entrance and exit as Automations (AutomationsView): over the chat, which
 // holds still underneath, it rises and settles in, and sinks and fades out.
 const PAGE: Variants = {
   hidden: { opacity: 0, y: 18, scale: 0.985 },
@@ -31,7 +32,7 @@ const INNER: Variants = {
 
 /**
  * The route container for the Agents section ("/agents", "/agents/new",
- * "/agents/:agentId", "/agents/:agentId/edit"): the TasksView pattern — fills
+ * "/agents/:agentId", "/agents/:agentId/edit"): the AutomationsView pattern — fills
  * the shell's content area (the sidebar stays) and slides in over the chat.
  *
  * It is the section's layout route. It reads the workspace once and hands the
@@ -59,8 +60,8 @@ export default function AgentsView() {
           handleAgentChange(agentId);
           navigate("/");
         },
-        // Schedules opens its new-task form with this agent chosen.
-        onSchedule: (agentId) => navigate(`/tasks?agent=${encodeURIComponent(agentId)}`),
+        // Automations opens its create form with this agent chosen.
+        onSchedule: (agentId) => navigate(automationsForAgentPath(agentId)),
         onClose: () => navigate("/"),
       }),
       [userId, agents, mySkills, userAgents, refreshAgentCatalog, handleAgentChange, navigate],
@@ -83,7 +84,7 @@ export default function AgentsView() {
 
   return (
     <motion.div
-      // z-30, not z-50 — see TasksView: the mobile sidebar is a fixed sibling at
+      // z-30, not z-50 — see AutomationsView: the mobile sidebar is a fixed sibling at
       // z-40/z-50 and must paint over this page. Dialogs and menus portal out.
       className="absolute inset-0 z-30 origin-top bg-background"
       variants={reduceMotion ? PAGE_FADE : PAGE}

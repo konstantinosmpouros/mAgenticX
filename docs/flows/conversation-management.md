@@ -12,7 +12,7 @@ The browser URL decides which view is shown. `App.tsx` is a **layout route**: a 
 | --- | --- |
 | `/` | [`ChatView`](../../magenticx/agentic_ui/src/pages/ChatView.tsx) — empty **new-chat** state |
 | `/c/:conversationId` | `ChatView` — that conversation |
-| `/tasks` | [`TasksView`](../../magenticx/agentic_ui/src/pages/TasksView.tsx) — the scheduled-tasks page (see [scheduled-tasks.md](scheduled-tasks.md)) |
+| `/automations` | [`AutomationsView`](../../magenticx/agentic_ui/src/pages/AutomationsView.tsx) — the Automations page (scheduled tasks; see [scheduled-tasks.md](scheduled-tasks.md)). The old `/tasks` redirects here, query kept |
 | `/login`, `/share/:token`, … | their own pages |
 
 The shell's workspace logic lives in the `useChatWorkspace` hook; shared state is in the Zustand `workspaceStore` and the per-render bundle is read by the views via `useChatWorkspaceContext()` (see [architecture/overview.md](../architecture/overview.md#state-architecture--routing)). `SharedConvPage` renders `<ChatShell><ChatView/></ChatShell>` directly for full shared conversations.
@@ -20,7 +20,7 @@ The shell's workspace logic lives in the `useChatWorkspace` hook; shared state i
 **One generation-guarded effect in `useChatWorkspace` keyed on `useParams().conversationId` owns all conversation loading.** It is intentionally never blocked:
 
 - Every navigation bumps a `loadGenRef` counter; a slower, superseded `getConversationDetail` fetch drops its own result (`gen !== loadGenRef.current`). Rapid `A→B→C` switching always converges to the last route — there is **no `if (loadingConversation) return` guard** (that guard, plus the old click-handler `setTimeout` choreography, was the bug that made mid-animation switches silently stall).
-- No `:conversationId` (`/` or `/tasks`) → conversation-scoped state is erased synchronously (no timers). Leaving a conversation fully clears it; **Back re-fetches** from the route.
+- No `:conversationId` (`/` or `/automations`) → conversation-scoped state is erased synchronously (no timers). Leaving a conversation fully clears it; **Back re-fetches** from the route.
 - Selecting a sidebar row, New chat, fork, and open-task-result are all just `navigate(...)` calls; the effect reacts. Browser **back/forward work for free**.
 - A conversation created from `/` (first message sent) is promoted into the URL by a small effect (`navigate('/c/:id', { replace:true })`); the load effect short-circuits (id already current) instead of refetching.
 - **Voice mode is URL-less** — in-component state on whatever conversation is current; it is force-closed on every navigation (see [voice-mode.md](voice-mode.md)).

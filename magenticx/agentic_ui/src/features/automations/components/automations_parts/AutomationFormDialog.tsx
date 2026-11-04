@@ -1,19 +1,24 @@
+import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { CalendarPlus, Pencil, X } from "lucide-react";
 
-import type { Agent, ScheduledTaskCreatePayload } from "@/shared/lib/types";
-import ScheduledTaskForm, {
-  type ScheduledTaskFormInitial,
-} from "@/features/tasks/components/scheduled_tasks_parts/ScheduledTaskForm";
+import type { Agent, ScheduleFormInitial, ScheduledTaskCreatePayload } from "@/shared/lib/types";
+import ScheduleForm from "@/features/automations/components/automations_parts/ScheduleForm";
 import { RADIX_MOTION } from "@/shared/lib/motion/panels";
 
-type TaskFormDialogProps = {
+type AutomationFormDialogProps = {
   open: boolean;
   mode: "create" | "edit";
   /** Changes whenever a new form should start (another task, a template). */
   formKey: string;
   agents: Agent[];
-  initial?: ScheduledTaskFormInitial;
+  initial?: ScheduleFormInitial;
+  /**
+   * The template the form was filled from, if any: a dismissible "From
+   * template: …" banner above the form. The dialog is the template's preview,
+   * so there is no separate detail view.
+   */
+  templateLabel?: string | null;
   submitting: boolean;
   submitError?: string | null;
   onSubmit: (payload: ScheduledTaskCreatePayload) => void;
@@ -21,22 +26,26 @@ type TaskFormDialogProps = {
 };
 
 /**
- * The create/edit task dialog: a centred card on desktop, a full-height bottom
- * sheet on phones. Header and footer stay put while the sections scroll.
+ * The create/edit automation dialog: a centred card on desktop, a full-height
+ * bottom sheet on phones. Header and footer stay put while the sections scroll.
  * Radix owns focus trapping and Esc.
  */
-export function TaskFormDialog({
+export function AutomationFormDialog({
   open,
   mode,
   formKey,
   agents,
   initial,
+  templateLabel,
   submitting,
   submitError,
   onSubmit,
   onClose,
-}: TaskFormDialogProps) {
+}: AutomationFormDialogProps) {
   const editing = mode === "edit";
+  // The banner is dismissed per form: a new form (another template) shows it again.
+  const [dismissedFor, setDismissedFor] = React.useState<string | null>(null);
+  const showBanner = Boolean(templateLabel) && dismissedFor !== formKey;
   return (
     <DialogPrimitive.Root
       open={open}
@@ -89,7 +98,7 @@ export function TaskFormDialog({
             </span>
             <div className="relative min-w-0 flex-1">
               <DialogPrimitive.Title className="text-base font-semibold leading-tight text-foreground">
-                {editing ? "Edit scheduled task" : "New scheduled task"}
+                {editing ? "Edit automation" : "New automation"}
               </DialogPrimitive.Title>
               <p className="text-xs text-muted-foreground">
                 {editing
@@ -105,11 +114,30 @@ export function TaskFormDialog({
               <X className="h-4 w-4" aria-hidden />
             </DialogPrimitive.Close>
           </div>
-          <ScheduledTaskForm
+          {showBanner ? (
+            <div
+              className="flex flex-shrink-0 items-center gap-2 border-b border-border/60 bg-primary/[0.06] px-5 py-2 text-xs text-foreground sm:px-6"
+              role="status"
+            >
+              <span className="min-w-0 flex-1 truncate">
+                <span className="text-muted-foreground">From template: </span>
+                <span className="font-medium">{templateLabel}</span>
+              </span>
+              <button
+                type="button"
+                aria-label="Dismiss template banner"
+                onClick={() => setDismissedFor(formKey)}
+                className="grid h-8 w-8 flex-shrink-0 place-items-center rounded-full text-muted-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] supports-[hover:hover]:hover:text-foreground"
+              >
+                <X className="h-3.5 w-3.5" aria-hidden />
+              </button>
+            </div>
+          ) : null}
+          <ScheduleForm
             key={formKey}
             agents={agents}
             initial={initial}
-            submitLabel={editing ? "Save changes" : "Create task"}
+            submitLabel={editing ? "Save changes" : "Create automation"}
             submitting={submitting}
             submitError={submitError}
             onSubmit={onSubmit}

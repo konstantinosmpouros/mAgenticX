@@ -3,7 +3,7 @@ import { render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { exportMyAgent, getAgents, getMyAgents } from "@/shared/lib/api";
-import ScheduledTasksPage from "@/features/tasks/components/ScheduledTasksPage";
+import AutomationsPage from "@/features/automations/components/AutomationsPage";
 import { SidebarProvider } from "@/shared/ui/sidebar";
 import type { Agent } from "@/shared/lib/types";
 
@@ -14,8 +14,8 @@ import type { Agent } from "@/shared/lib/types";
  * filename (the slug fallback only without a Content-Disposition), and a
  * failure throws the bridge's detail; the custom list asks for its summary
  * only when told to, and reads the counts as null when the bridge sends none;
- * the catalog's `kind` reaches the app's Agent; and Schedules opens its
- * new-task form with an agent preset from "Schedule it".
+ * the catalog's `kind` reaches the app's Agent; and Automations opens its
+ * create form with an agent preset from "Schedule it".
  */
 
 const fetchMock = vi.fn();
@@ -87,7 +87,17 @@ describe("agent lists", () => {
   it("asks for the summary only when told to, and reads absent counts as null", async () => {
     fetchMock.mockResolvedValueOnce(
       json([
-        { id: "c1", name: "Mine", description: "", icon: "Bot", isActive: true, model: "openai:gpt-5", toolCount: 3, skillCount: 0, subagentCount: 2 },
+        {
+          id: "c1",
+          name: "Mine",
+          description: "",
+          icon: "Bot",
+          isActive: true,
+          model: "openai:gpt-5",
+          toolCount: 3,
+          skillCount: 0,
+          subagentCount: 2,
+        },
       ]),
     );
     const [withSummary] = await getMyAgents("u1", { summary: true });
@@ -137,12 +147,12 @@ describe("schedule it", () => {
     { id: "a2", name: "My Researcher", icon: Bot, isActive: true },
   ] as unknown as Agent[];
 
-  it("opens the new-task form with the agent chosen, once", async () => {
+  it("opens the create form with the agent chosen, once", async () => {
     const handled = vi.fn();
     render(
       <SidebarProvider>
-        <ScheduledTasksPage
-          tasks={[]}
+        <AutomationsPage
+          items={[]}
           loading={false}
           error={null}
           agents={agents}

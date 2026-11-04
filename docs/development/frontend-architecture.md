@@ -36,7 +36,8 @@ src/
 
   pages/                     # one file per route — composes a feature, wires routing
     ChatView.tsx             #   "/" and "/c/:id"
-    TasksView.tsx            #   "/tasks"
+    AutomationsView.tsx      #   "/automations" (?agent= / ?template= open the create form)
+    LegacyTasksRedirect.tsx  #   "/tasks" → "/automations", query kept (one release)
     AgentsView.tsx           #   "/agents…" — layout over the chat; the agents pages render in its outlet
     Login.tsx  SharedConvPage.tsx
     TermsAndConditions.tsx  PrivacyPolicy.tsx
@@ -54,7 +55,10 @@ src/
       handlers/    #   conversations, messages, shortcuts, ui
     inference/     # the AG-UI run engine: agui, timeline, inference, hitl(+context),
                    #   useInferenceRuns, useRunTimeline, inferenceErrors, index (barrel)
-    tasks/         # ScheduledTasksPage, scheduled_tasks_parts/*, useScheduledTasks
+    automations/   # the Automations page (plan 38): AutomationsPage, automations_parts/*
+                   #   (AutomationCard, ScheduleForm, AutomationFormDialog, AutomationToolbar,
+                   #   TemplateSection, TemplateCard, EmptyState, ErrorState), hooks/useAutomations,
+                   #   lib/ (kinds registry, filters, templates, schedule, routes, styles)
     settings/      # ProfilePanel (ChatGPT-taxonomy settings modal on the premium dark
                    #   shell), EditProfileDialog, ShortcutsPanel + HelpPanel (dedicated
                    #   modals, not settings tabs), profile_parts/* (General/Personalization
@@ -113,13 +117,13 @@ src/
   renderer (`features/chat/components/message_parts/Content`), consumed by
   `features/sharing` (SharePanel) and the public-share page.
 - **Dedicated**: everything under a `features/<feature>/` folder is used by exactly
-  that feature. This is what makes "what does `/tasks` own?" answerable — it's
-  `features/tasks/`, nothing else.
+  that feature. This is what makes "what does `/automations` own?" answerable — it's
+  `features/automations/`, nothing else.
 
 ## Known transitional state
 
 The former `pages/ChatPage.tsx` shell is gone: `App.tsx` mounts
-`app/WorkspaceShell` as a layout route around `/`, `/c/:id`, `/tasks` and
+`app/WorkspaceShell` as a layout route around `/`, `/c/:id`, `/automations` and
 `/agents…`, so the shell never unmounts while the URL picks the view in its
 `<Outlet/>`. The workspace bundle reaches the views through a React context
 (`app/workspaceContext.ts`), not a store slice — the file's header explains why.

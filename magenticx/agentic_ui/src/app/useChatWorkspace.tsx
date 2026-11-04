@@ -89,7 +89,8 @@ import { getAgents, getSuggestions } from "@/shared/lib/api";
 // The two conversation-body surfaces this hook renders via renderConversationBody.
 import ChatBody from "@/features/chat/components/ChatBody";
 import VoiceModeBody from "@/features/voice/components/VoiceModeBody";
-import { useScheduledTasks } from "@/features/tasks/hooks/useScheduledTasks";
+import { useAutomations } from "@/features/automations/hooks/useAutomations";
+import { isAutomationsPath } from "@/features/automations/lib/routes";
 import { useAccountDeletionReauthReturn } from "@/features/settings/hooks/useAccountDeletionReauthReturn";
 import { clearUISnapshot } from "@/shared/lib/uiStateStorage";
 import { CONV_PAGE_SIZE } from "@/shared/lib/consts";
@@ -129,7 +130,7 @@ export type ChatWorkspaceOptions = {
 };
 
 // The entire chat-workspace body, extracted into a hook so the persistent
-// shell (WorkspaceShell) and the route views (ChatView/TasksView) can share one
+// shell (WorkspaceShell) and the route views (ChatView/AutomationsView) can share one
 // instance of all state/effects/handlers. It calls all hooks unconditionally
 // and returns the full bundle; the shell does the auth gate + chrome render.
 export function useChatWorkspace({
@@ -306,15 +307,15 @@ export function useChatWorkspace({
   // The URL is the single source of truth for which view is shown:
   //   "/"               → empty new-chat state
   //   "/c/:id"          → that conversation
-  //   "/tasks"          → the scheduled-tasks page
+  //   "/automations"    → the Automations page ("/tasks" redirects there)
   //   "/agents…"        → the Agents pages (gallery, an agent, the builder)
-  // conversationId is undefined on "/", "/tasks" and "/agents…".
+  // conversationId is undefined on "/", "/automations" and "/agents…".
   const { conversationId } = useParams();
   const location = useLocation();
-  const isTasksRoute = location.pathname === "/tasks";
+  const isAutomationsRoute = isAutomationsPath(location.pathname);
   const isAgentsRoute = isAgentsPath(location.pathname);
-  // A full page over the chat (Schedules or Agents): no conversation surface.
-  const isPageRoute = isTasksRoute || isAgentsRoute;
+  // A full page over the chat (Automations or Agents): no conversation surface.
+  const isPageRoute = isAutomationsRoute || isAgentsRoute;
   // Create toast wrapper for handlers
   const toastWrapper = useCallback(
     (opts: { title: string; description?: string; variant?: string; duration?: number }) => {
@@ -479,7 +480,7 @@ export function useChatWorkspace({
     onOpen: dismissSidebarFloatingUi,
   });
 
-  const scheduledTasks = useScheduledTasks({ userId: workspaceUserId, active: isTasksRoute });
+  const automations = useAutomations({ userId: workspaceUserId, active: isAutomationsRoute });
 
   useEffect(() => {
     const title = resolveConversationTitle(currentConversation);
@@ -628,7 +629,7 @@ export function useChatWorkspace({
     voiceModeLanguage: resolvedPreferences.voiceModeLanguage,
   });
   // Voice mode is in-component state (no URL) and runs on whatever conversation
-  // is current. From a page (Schedules, Agents) there is no conversation
+  // is current. From a page (Automations, Agents) there is no conversation
   // surface, so leave it for "/" first; "/" ↔ a page doesn't change
   // :conversationId, so the load effect won't re-close voice and race this start.
   const triggerVoiceMode = useCallback(() => {
@@ -1405,7 +1406,7 @@ export function useChatWorkspace({
     navigate,
     reduceMotion,
     voiceSession,
-    scheduledTasks,
+    automations,
     resumeInferenceRunHandler,
     isDecisionInFlight,
     resolvedPreferences,
@@ -1442,7 +1443,7 @@ export function useChatWorkspace({
     handleRemoveSkillFromPool,
     refreshMySkills,
     // the Agents pages: the user's own agents and their CRUD — one key, like
-    // scheduledTasks
+    // automations
     userAgents,
     refreshAgentCatalog,
     // multi-account switcher — one key; the shell reads what it needs off it

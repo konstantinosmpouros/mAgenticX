@@ -1,4 +1,3 @@
-import type { LucideIcon } from "lucide-react";
 import {
   Activity,
   BookOpen,
@@ -10,31 +9,18 @@ import {
   TrendingUp,
 } from "lucide-react";
 
-import type { ScheduleKind, TaskTargetMode } from "@/shared/lib/types";
+import type { AutomationTemplate } from "@/shared/lib/types";
 
 /**
- * A starter scheduled-task definition the user can import from the Templates tab.
- * `instructions` becomes the task prompt; the schedule fields pre-fill the create
- * form. The agent + tools are chosen by the user at import time (templates are
- * platform-agnostic, so they don't pin an agent/model). Times are clock-local —
- * the import applies the user's timezone to the cron expression.
+ * The starter automations shown under "Start from a template" (and as the
+ * empty state's main content). Choosing one opens the create dialog filled in
+ * with these fields — the dialog is the preview, so there is no separate detail
+ * view. Order matters: the compact section shows the first few, in this order.
  */
-export type ScheduledTaskTemplate = {
-  id: string;
-  icon: LucideIcon;
-  label: string;
-  description: string; // one-liner for the card
-  instructions: string; // full prompt, shown in detail + used as the task prompt
-  scheduleKind: ScheduleKind;
-  scheduleSpec: Record<string, unknown>;
-  scheduleLabel: string; // human cadence, e.g. "Daily at 8:00 AM"
-  targetMode: TaskTargetMode;
-  category: string;
-};
-
-export const TASK_TEMPLATES: ScheduledTaskTemplate[] = [
+export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
   {
     id: "daily-briefing",
+    kind: "schedule",
     icon: Sunrise,
     label: "Daily briefing",
     description: "A concise morning briefing to start the day.",
@@ -53,6 +39,7 @@ export const TASK_TEMPLATES: ScheduledTaskTemplate[] = [
   },
   {
     id: "weekday-standup",
+    kind: "schedule",
     icon: ClipboardList,
     label: "Weekday standup",
     description: "Summarize yesterday and tee up today, every weekday.",
@@ -70,6 +57,7 @@ export const TASK_TEMPLATES: ScheduledTaskTemplate[] = [
   },
   {
     id: "end-of-day-recap",
+    kind: "schedule",
     icon: Moon,
     label: "End-of-day recap",
     description: "Wrap up what happened and what's still open.",
@@ -87,6 +75,7 @@ export const TASK_TEMPLATES: ScheduledTaskTemplate[] = [
   },
   {
     id: "research-watch",
+    kind: "schedule",
     icon: Telescope,
     label: "Research watch",
     description: "Track the latest developments on a topic you care about.",
@@ -104,6 +93,7 @@ export const TASK_TEMPLATES: ScheduledTaskTemplate[] = [
   },
   {
     id: "news-digest",
+    kind: "schedule",
     icon: Newspaper,
     label: "News digest",
     description: "A curated digest on the subjects you follow.",
@@ -120,6 +110,7 @@ export const TASK_TEMPLATES: ScheduledTaskTemplate[] = [
   },
   {
     id: "weekly-report",
+    kind: "schedule",
     icon: TrendingUp,
     label: "Weekly report",
     description: "A status report compiled at the start of the week.",
@@ -137,6 +128,7 @@ export const TASK_TEMPLATES: ScheduledTaskTemplate[] = [
   },
   {
     id: "knowledge-refresh",
+    kind: "schedule",
     icon: BookOpen,
     label: "Knowledge refresh",
     description: "Periodically review and summarize a knowledge area.",
@@ -153,6 +145,7 @@ export const TASK_TEMPLATES: ScheduledTaskTemplate[] = [
   },
   {
     id: "periodic-monitor",
+    kind: "schedule",
     icon: Activity,
     label: "Periodic monitor",
     description: "Check on something regularly and flag changes.",
@@ -168,3 +161,7 @@ export const TASK_TEMPLATES: ScheduledTaskTemplate[] = [
     category: "System",
   },
 ];
+
+/** A template by id (the `?template=` deep link), or null when there is none. */
+export const findTemplate = (id: string): AutomationTemplate | null =>
+  AUTOMATION_TEMPLATES.find((template) => template.id === id) ?? null;

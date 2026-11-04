@@ -74,7 +74,7 @@ flowchart TD
 The app defines a small set of browser routes:
 
 - `/` and `/c/:conversationId` render `ChatView` inside the persistent `ChatShell` (a layout route whose shell never unmounts across chat navigations).
-- `/tasks` renders `TasksView` in that same shell.
+- `/automations` renders `AutomationsView` (the Automations page) in that same shell; the old `/tasks` redirects there with its query string kept.
 - `/login` renders the credential-based login flow.
 - `/share/:token` renders a public shared conversation snapshot with optional authenticated continuation.
 - `/terms` and `/privacy` render legal pages.

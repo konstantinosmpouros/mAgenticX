@@ -31,15 +31,16 @@ import AgentPage from "@/features/agents/pages/AgentPage";
 import AgentBuilderPage from "@/features/agents/pages/AgentBuilderPage";
 import type { AgentsPageContext } from "@/features/agents/context";
 import type { UserAgentsHandlers } from "@/features/agents/hooks/useUserAgents";
-import {
-  buildAgentCards,
-  cardFacts,
-  filterAgentCards,
-} from "@/features/agents/lib/gallery";
+import { buildAgentCards, cardFacts, filterAgentCards } from "@/features/agents/lib/gallery";
 import { isAgentsPath, parseSection, DETAIL_SECTIONS } from "@/features/agents/lib/routes";
 import { duplicateDefinition } from "@/features/agents/lib/agentSpec";
 import { resolveSettingsTab } from "@/features/settings/lib/settingsTabs";
-import { PICKER_LIMIT, pickerDefaults, rememberAgentPick, searchPickerAgents } from "@/features/chat/lib/agentPicker";
+import {
+  PICKER_LIMIT,
+  pickerDefaults,
+  rememberAgentPick,
+  searchPickerAgents,
+} from "@/features/chat/lib/agentPicker";
 import { AgentSearchDialog } from "@/features/chat/components/AgentSearchDialog";
 import ChatHeader from "@/features/chat/components/ChatHeader";
 import { SidebarProvider } from "@/shared/ui/sidebar";
@@ -176,7 +177,7 @@ describe("agents routes", () => {
     expect(isAgentsPath("/agents")).toBe(true);
     expect(isAgentsPath("/agents/c1/edit")).toBe(true);
     expect(isAgentsPath("/agentsfoo")).toBe(false);
-    expect(isAgentsPath("/tasks")).toBe(false);
+    expect(isAgentsPath("/automations")).toBe(false);
   });
 });
 
@@ -200,9 +201,9 @@ describe("agents gallery", () => {
     expect(cardFacts(summary, models)).toEqual(["GPT-5", "3 tools", "2 skills", "1 sub-agent"]);
     // Without the server's list, the id reads without its provider prefix.
     expect(cardFacts(summary)[0]).toBe("gpt-5");
-    expect(
-      cardFacts({ model: null, toolCount: 0, skillCount: null, subagentCount: 0 }),
-    ).toEqual(["0 tools"]);
+    expect(cardFacts({ model: null, toolCount: 0, skillCount: null, subagentCount: 0 })).toEqual([
+      "0 tools",
+    ]);
     expect(cardFacts(null)).toEqual([]);
   });
 
@@ -293,7 +294,11 @@ describe("chat picker", () => {
     const research = agent({ id: "r", name: "Research", kind: "custom" });
     const deep = agent({ id: "d", name: "Deep research team", kind: "platform" });
     const desc = agent({ id: "x", name: "Omni", description: "Does research.", kind: "platform" });
-    expect(searchPickerAgents([desc, deep, research], "res").rows.map((a) => a.id)).toEqual(["r", "d", "x"]);
+    expect(searchPickerAgents([desc, deep, research], "res").rows.map((a) => a.id)).toEqual([
+      "r",
+      "d",
+      "x",
+    ]);
     const { rows, total } = searchPickerAgents(many, "agent");
     expect(rows).toHaveLength(5);
     expect(total).toBe(9);
@@ -323,7 +328,10 @@ describe("chat picker", () => {
       </SidebarProvider>,
     );
     const list = await screen.findByRole("listbox", { name: "Agents" });
-    const names = () => within(list).getAllByRole("option").map((o) => o.textContent ?? "");
+    const names = () =>
+      within(list)
+        .getAllByRole("option")
+        .map((o) => o.textContent ?? "");
     // The selected first, then the recent pick: five agents and Browse all.
     expect(names()).toHaveLength(PICKER_LIMIT + 1);
     expect(names()[0]).toContain("Platform Analyst");
@@ -348,7 +356,12 @@ describe("chat picker", () => {
 
 describe("agent search panel", () => {
   const many = Array.from({ length: 14 }, (_, i) =>
-    agent({ id: `s${i}`, name: `Scout ${i}`, description: `Finds things ${i}.`, kind: i < 5 ? "custom" : "platform" }),
+    agent({
+      id: `s${i}`,
+      name: `Scout ${i}`,
+      description: `Finds things ${i}.`,
+      kind: i < 5 ? "custom" : "platform",
+    }),
   );
 
   it("pages the results six at a time, filters by kind, and picks with Enter", async () => {
@@ -382,7 +395,14 @@ describe("agent search panel", () => {
 
   it("says when nothing matches", () => {
     render(
-      <AgentSearchDialog open onOpenChange={() => {}} agents={many} selectedId="s0" initialQuery="zzz" onPick={() => {}} />,
+      <AgentSearchDialog
+        open
+        onOpenChange={() => {}}
+        agents={many}
+        selectedId="s0"
+        initialQuery="zzz"
+        onPick={() => {}}
+      />,
     );
     expect(screen.getByText(/No agent matches/)).toBeInTheDocument();
     expect(screen.getByText("0 results")).toBeInTheDocument();
