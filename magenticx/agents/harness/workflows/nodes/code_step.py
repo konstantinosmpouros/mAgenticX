@@ -196,7 +196,7 @@ class CodeNode(WorkflowNode):
 
     kind = "code"
     label = "Code"
-    group = "tools"
+    group = "developer"
     description = "Run a Python script in the sandbox (no network); read inputs, return JSON."
     Config = CodeConfig
     #: ``context`` is a setting, never templated.

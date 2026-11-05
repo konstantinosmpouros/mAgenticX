@@ -178,6 +178,7 @@ export function WorkflowViewPage({
       execution={selectedRow.execution}
       label={selectedRow.label}
       kindLabel={selectedRow.kindLabel}
+      passes={selectedRow.passes}
       onResume={resume}
     />
   ) : (
@@ -332,8 +333,10 @@ export function WorkflowViewPage({
           >
             <SheetTitle className="sr-only">
               {selectedRow
-                ? `${selectedRow.label} · ${selectedRow.execution.executionId}`
-                : "Execution details"}
+                ? selectedRow.passes > 1
+                  ? `${selectedRow.label} · pass ${selectedRow.execution.iteration}`
+                  : selectedRow.label
+                : "Step details"}
             </SheetTitle>
             <SectionBoundary label="details">{details}</SectionBoundary>
           </SheetContent>

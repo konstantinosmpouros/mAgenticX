@@ -54,6 +54,9 @@ export function buildTimelineRows(
     return capped;
   };
 
+  const passes = new Map<string, number>();
+  for (const execution of ordered) passes.set(execution.nodeId, (passes.get(execution.nodeId) ?? 0) + 1);
+
   return ordered.map((execution) => {
     const depth = depthOf(execution);
     const node = nodes.get(execution.nodeId);
@@ -65,6 +68,7 @@ export function buildTimelineRows(
       rails: Array.from({ length: depth + 1 }, (_, level) => level),
       label: nodeLabel(node, execution.nodeId),
       kindLabel: node ? kindView(catalog, node.kind).label : "",
+      passes: passes.get(execution.nodeId) ?? 1,
     };
   });
 }

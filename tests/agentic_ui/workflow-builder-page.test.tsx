@@ -542,7 +542,7 @@ describe("workflow builder page", () => {
       expect(tile.dataset.kindCategory).toBe(meta.category);
       expect(tile.style.getPropertyValue("--wf-accent")).toBe(meta.accent);
       // Grouped under headings, in the palette's order.
-      expect(within(palette).getByRole("region", { name: "Triggers" })).toBeInTheDocument();
+      expect(within(palette).getByRole("region", { name: "Start" })).toBeInTheDocument();
       // A new workflow is an empty canvas that says to start with a trigger;
       // the trigger is a step like any other (no lock), added from the palette.
       expect(screen.getByTestId("workflow-canvas-empty")).toHaveTextContent("Start with a trigger");
@@ -574,7 +574,7 @@ describe("workflow builder page", () => {
     fireEvent.click(screen.getByTestId("workflow-palette-open"));
     const palette = await screen.findByTestId("workflow-palette");
     // Straight to the full list, grouped and searchable.
-    expect(within(palette).getByRole("region", { name: "Triggers" })).toBeInTheDocument();
+    expect(within(palette).getByRole("region", { name: "Start" })).toBeInTheDocument();
     expect(within(palette).getByRole("searchbox", { name: "Search steps" })).toBeInTheDocument();
     expect(screen.queryByTestId("workflow-palette-open")).toBeNull();
     expect(window.localStorage.getItem(PALETTE_OPEN_STORAGE_KEY)).toBe("true");

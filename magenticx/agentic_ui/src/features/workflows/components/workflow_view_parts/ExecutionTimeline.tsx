@@ -174,9 +174,11 @@ export function ExecutionTimeline({
                     <span className="min-w-0 truncate text-[13px] font-semibold text-foreground">
                       {row.label}
                     </span>
-                    <code className="flex-shrink-0 rounded bg-muted/70 px-1 py-px font-mono text-[10.5px] text-muted-foreground">
-                      {execution.executionId}
-                    </code>
+                    {row.passes > 1 ? (
+                      <span className="flex-shrink-0 rounded bg-muted/70 px-1.5 py-px text-[10.5px] tabular-nums text-muted-foreground">
+                        pass {execution.iteration}
+                      </span>
+                    ) : null}
                   </span>
                   <span className="flex min-w-0 items-center gap-2 text-[11px] tabular-nums text-muted-foreground">
                     {row.kindLabel ? (

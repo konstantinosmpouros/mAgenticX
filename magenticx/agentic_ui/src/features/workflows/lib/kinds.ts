@@ -130,7 +130,7 @@ const KIND_BLURBS: Record<string, string> = {
   approval: "Wait for a human decision",
   end: "Finish and return a result",
   llm: "Ask a model, get text or JSON",
-  set: "Write values into state",
+  set: "Save values into variables",
   wait: "Pause for a while",
   code: "Run Python in the sandbox",
 };

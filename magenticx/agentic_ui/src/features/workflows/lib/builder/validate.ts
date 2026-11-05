@@ -102,7 +102,7 @@ export function checkSpec(
   if (spec.nodes.length > MAX_NODES) add(null, "nodes", `A workflow has at most ${MAX_NODES} steps.`);
   if (spec.edges.length > MAX_EDGES) add(null, "edges", `A workflow has at most ${MAX_EDGES} connections.`);
   if (spec.inputs.length > MAX_FIELDS) add(null, "inputs", `At most ${MAX_FIELDS} inputs.`);
-  if (spec.state.length > MAX_FIELDS) add(null, "state", `At most ${MAX_FIELDS} state fields.`);
+  if (spec.state.length > MAX_FIELDS) add(null, "state", `At most ${MAX_FIELDS} variables.`);
 
   const inputNames = new Set<string>();
   spec.inputs.forEach((input, index) => {
@@ -123,10 +123,10 @@ export function checkSpec(
   spec.state.forEach((field, index) => {
     const name = field.name.trim();
     const at = `state[${index}]`;
-    if (!name) add(null, `${at}.name`, "A state field needs a name.");
+    if (!name) add(null, `${at}.name`, "A variable needs a name.");
     else if (!FIELD_NAME_PATTERN.test(name)) add(null, `${at}.name`, `'${name}': letters, digits and _ only, not starting with a digit.`);
     else if (RESERVED_NAMES.has(name)) add(null, `${at}.name`, `'${name}' is reserved.`);
-    else if (stateNames.has(name)) add(null, `${at}.name`, `State field '${name}' is declared twice.`);
+    else if (stateNames.has(name)) add(null, `${at}.name`, `Variable '${name}' is declared twice.`);
     stateNames.add(name);
     if (field.reducer === "append" && field.type !== "array") add(null, `${at}.reducer`, "Append needs an array field.");
     if (field.reducer === "merge" && field.type !== "object") add(null, `${at}.reducer`, "Merge needs an object field.");
@@ -174,7 +174,7 @@ export function checkSpec(
         const writes = node.config[key];
         if (!writes || typeof writes !== "object" || Array.isArray(writes)) continue;
         for (const name of Object.keys(writes)) {
-          if (!stateNames.has(name)) add(node.id, `config.${key}`, `'${name}' is not a declared state field.`);
+          if (!stateNames.has(name)) add(node.id, `config.${key}`, `'${name}' is not a variable. Add it in Settings › Variables.`);
         }
       }
       // The llm step's JSON mode needs the shape it asks the model for.
@@ -232,7 +232,7 @@ export function checkSpec(
       if (root === "input" && name && !inputNames.has(name)) {
         add(node.id, field, `'${path}' reads an undeclared input '${name}'.`);
       } else if (root === "state" && name && !stateNames.has(name)) {
-        add(node.id, field, `'${path}' reads an undeclared state field '${name}'.`);
+        add(node.id, field, `'${path}' reads a variable that doesn't exist: '${name}'.`);
       } else if (root === "nodes" && name && !spec.nodes.some((other) => other.id === name)) {
         add(node.id, field, `'${path}' reads an unknown step '${name}'.`);
       }

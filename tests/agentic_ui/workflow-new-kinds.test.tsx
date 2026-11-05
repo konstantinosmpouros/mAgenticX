@@ -86,7 +86,7 @@ describe("kind look", () => {
     // `agent` is still an agent; `llm` no longer is.
     expect(kindCategory("agent")).toBe("agent");
     expect(kindBlurb("llm")).toBe("Ask a model, get text or JSON");
-    expect(kindBlurb("set")).toBe("Write values into state");
+    expect(kindBlurb("set")).toBe("Save values into variables");
     expect(kindBlurb("wait")).toBe("Pause for a while");
     expect(kindBlurb("code")).toBe("Run Python in the sandbox");
   });
@@ -123,10 +123,10 @@ describe("palette", () => {
   it("lists the new kinds under their groups and adds them on click", () => {
     const onAdd = renderPalette(catalog);
     expect(within(screen.getByRole("region", { name: "AI" })).getByRole("button", { name: "Add LLM" })).toBeInTheDocument();
-    expect(within(screen.getByRole("region", { name: "Tools" })).getByRole("button", { name: "Add Code" })).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "For developers" })).getByRole("button", { name: "Add Code" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Add Code" }));
     expect(onAdd).toHaveBeenCalledWith("code");
-    expect(screen.getByRole("button", { name: "Add Set state" })).toHaveTextContent("Write values into state");
+    expect(screen.getByRole("button", { name: "Add Set state" })).toHaveTextContent("Save values into variables");
   });
 
   it("shows an unavailable kind disabled: not draggable, a click adds nothing", () => {
@@ -168,7 +168,7 @@ describe("client checks", () => {
     const put = (values: Record<string, unknown>) =>
       issuesOn(checkSpec(spec([node("put", "set", { values })], state), catalog), "put");
     expect(put({ count: "{{state.count}}" })).toEqual([]);
-    expect(put({ count: "1", total: "2" })).toEqual([["config.values", "'total' is not a declared state field."]]);
+    expect(put({ count: "1", total: "2" })).toEqual([["config.values", "'total' is not a variable. Add it in Settings › Variables."]]);
     expect(put({})).toEqual([["config.values", "Add at least 1 entry."]]);
   });
 
@@ -178,7 +178,7 @@ describe("client checks", () => {
       catalog,
     );
     expect(issuesOn(issues, "calc")).toEqual([
-      ["config.inputs", "'state.missing' reads an undeclared state field 'missing'."],
+      ["config.inputs", "'state.missing' reads a variable that doesn't exist: 'missing'."],
     ]);
   });
 

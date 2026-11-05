@@ -242,6 +242,8 @@ export type WorkflowTimelineRow = {
   rails: number[];
   label: string;
   kindLabel: string;
+  /** How many times this execution's node ran in the run; "pass N" shows only above 1. */
+  passes: number;
 };
 
 /** The Run dialog's form values: text for every field but a boolean's switch. */

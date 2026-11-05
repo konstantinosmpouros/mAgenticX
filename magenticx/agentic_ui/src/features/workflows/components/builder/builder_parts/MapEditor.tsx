@@ -81,7 +81,7 @@ export function MapEditor({
                   onChange={(key) => update(index, { key })}
                   small
                   ariaLabel={`Entry ${index + 1} name`}
-                  placeholder="State field"
+                  placeholder="Variable"
                 />
               ) : (
                 <input

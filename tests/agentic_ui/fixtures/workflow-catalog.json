@@ -810,7 +810,7 @@
   {
     "kind": "code",
     "label": "Code",
-    "group": "tools",
+    "group": "developer",
     "description": "Run a Python snippet in a throwaway sandbox; `inputs` are templated, the code is not.",
     "branches": [],
     "dynamicBranches": false,

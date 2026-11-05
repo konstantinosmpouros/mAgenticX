@@ -737,7 +737,7 @@ export function WorkflowBuilderWorkspace({
             className={cn(BAR_SECONDARY, settingsOpen && "border-primary/40 bg-primary/[0.08] text-primary")}
             aria-label="Workflow settings"
             aria-pressed={settingsOpen}
-            title="The workflow's name, description, inputs and state"
+            title="The workflow's name, description, inputs and variables"
           >
             <Settings2 className="h-3.5 w-3.5" aria-hidden />
             <span className="hidden md:inline" aria-hidden>

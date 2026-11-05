@@ -692,7 +692,8 @@ describe("timeline", () => {
       "approve#1",
     ]);
     expect(rows.map((row) => row.depth)).toEqual([0, 0, 1, 1, 1, 0, 0]);
-    expect(rows[2]).toMatchObject({ label: "Poll API", kindLabel: "HTTP fetch", rails: [0, 1] });
+    expect(rows[2]).toMatchObject({ label: "Poll API", kindLabel: "HTTP fetch", rails: [0, 1], passes: 3 });
+    expect(rows[0].passes).toBe(1);
     expect(newestExecution(view)?.executionId).toBe("approve#1");
   });
 
@@ -725,6 +726,10 @@ describe("timeline", () => {
     ]);
     expect(options[3]).toHaveAttribute("aria-selected", "true");
     expect(within(options[5]).getByText("true")).toBeInTheDocument(); // the branch check took
+    // No internal ids; "pass N" only on a step that ran more than once.
+    expect(screen.queryByText(/#\d/)).toBeNull();
+    expect(within(options[3]).getByText("pass 2")).toBeInTheDocument();
+    expect(within(options[0]).queryByText(/pass/)).toBeNull();
     fireEvent.click(options[4]);
     expect(onSelect).toHaveBeenCalledWith("poll#3");
     fireEvent.keyDown(options[3], { key: "ArrowDown" });
@@ -1171,8 +1176,8 @@ describe("workflow view page", () => {
     expect(await screen.findByTestId("workflow-node-count-poll")).toHaveTextContent("×3");
 
     // A pick stops following; the details show the picked execution.
-    fireEvent.click(screen.getByRole("option", { name: /poll#2/ }));
-    expect(screen.getByRole("region", { name: "Execution poll#2" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("option", { name: /pass 2/ }));
+    expect(screen.getByRole("region", { name: "Poll API details" })).toHaveTextContent("pass 2");
 
     fireEvent.click(screen.getByRole("button", { name: /Cancel/ }));
     await waitFor(() => expect(state.cancel).toHaveBeenCalled());

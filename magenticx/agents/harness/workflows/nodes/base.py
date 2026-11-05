@@ -290,6 +290,16 @@ class WorkflowNode(ABC):
         """
         return output
 
+    def input_view(self, rendered: dict[str, Any]) -> dict[str, Any]:
+        """The resolved config as ``workflow.node_input`` carries it.
+
+        That event is stored with the run and shown in the run view, so a kind
+        whose rendered config can hold credentials (``fetch``'s headers and
+        query) masks them here. Identity by default; :meth:`run` still gets the
+        real values.
+        """
+        return rendered
+
     @classmethod
     def context_value(cls, output: Any) -> Any:
         """What a later step's context sees of an output (``context.py``).
@@ -343,7 +353,7 @@ class WorkflowNode(ABC):
             template = self.config_template()
             rendered = render(template, scope, roots=BASE_ROOTS) if self.templated else template
             rendered = {**rendered, **self.config_literals()}
-            emitter.node_input(config=rendered, iteration=iteration, writer=writer)
+            emitter.node_input(config=self.input_view(rendered), iteration=iteration, writer=writer)
             input_sent = True
             typed = self.Config.model_validate({**rendered, "assign": self.config.assign})
             ctx = NodeContext(

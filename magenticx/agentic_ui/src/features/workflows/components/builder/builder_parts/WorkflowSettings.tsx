@@ -97,8 +97,7 @@ export function WorkflowSettings({
         issueCount={issues.filter((issue) => issueIsOn(issue, "state") && issue.severity === "error").length}
       >
         <p className="text-xs leading-relaxed text-muted-foreground">
-          Read as <span className="font-mono">{"{{state.name}}"}</span>; set with a step&apos;s &ldquo;Save to a variable&rdquo;
-          (under Advanced).
+          Set them with a step&apos;s &ldquo;Save to a variable&rdquo; (under Advanced).
         </p>
         <StateFieldsEditor
           state={spec.state}

@@ -24,6 +24,8 @@ type ExecutionDetailsProps = {
   execution: WorkflowExecution;
   label: string;
   kindLabel: string;
+  /** How many times this step ran in the run; "pass N" shows only above 1. */
+  passes?: number;
   onResume: (decision: WorkflowApprovalDecision, comment?: string) => Promise<void>;
   /** Hide the title row (the mobile sheet shows its own). */
   hideTitle?: boolean;
@@ -73,7 +75,8 @@ function StateTab({ execution }: { execution: WorkflowExecution }) {
 }
 
 /**
- * One execution's details: its header (node, id, status, timing, branch), its
+ * One execution's details: its header (step, pass when it ran more than once,
+ * status, timing, branch), its
  * error, the approval it waits on, and tabs — Input (the resolved config it
  * ran with), Output (streamed text and the output), State (what it saved:
  * its result, an llm turn, declared fields), Tool calls (the chat's tool
@@ -85,6 +88,7 @@ export function ExecutionDetails({
   execution,
   label,
   kindLabel,
+  passes = 1,
   onResume,
   hideTitle = false,
 }: ExecutionDetailsProps) {
@@ -108,16 +112,18 @@ export function ExecutionDetails({
   };
 
   return (
-    <section aria-label={`Execution ${execution.executionId}`} className="min-w-0 space-y-4">
+    <section aria-label={`${label} details`} className="min-w-0 space-y-4">
       {!hideTitle ? (
         <header className="min-w-0">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <h3 className="min-w-0 truncate text-base font-semibold tracking-tight text-foreground">
               {label}
             </h3>
-            <code className="rounded bg-muted/70 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
-              {execution.executionId}
-            </code>
+            {passes > 1 ? (
+              <span className="rounded bg-muted/70 px-1.5 py-0.5 text-[11px] tabular-nums text-muted-foreground">
+                pass {execution.iteration}
+              </span>
+            ) : null}
             <StatusChip meta={meta} />
           </div>
           <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs tabular-nums text-muted-foreground">

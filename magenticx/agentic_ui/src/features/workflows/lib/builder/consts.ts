@@ -59,12 +59,13 @@ export const PALETTE_ROW_HEIGHT = 52;
 
 /** The palette's groups, in order, with their headings (a group the catalogue grows later goes last). */
 export const PALETTE_GROUPS: ReadonlyArray<{ id: string; label: string }> = [
-  { id: "trigger", label: "Triggers" },
+  { id: "trigger", label: "Start" },
   { id: "ai", label: "AI" },
   { id: "data", label: "Data" },
   { id: "tools", label: "Tools" },
   { id: "flow", label: "Flow" },
-  { id: "output", label: "Output" },
+  { id: "output", label: "Finish" },
+  { id: "developer", label: "For developers" },
 ];
 
 /** Where the palette's open / shut choice is remembered on this device. */

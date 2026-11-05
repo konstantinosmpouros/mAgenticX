@@ -237,7 +237,7 @@ describe("client validation", () => {
     expect(on("poll", "config.timeout_seconds")[0]?.message).toBe("Timeout seconds is at most 30.");
     expect(on("poll", "config.url")[0]?.message).toMatch(/undeclared input 'missing'/);
     expect(on("retry", "config.max_iterations")[0]?.message).toBe("Max iterations is at most 20.");
-    expect(on("retry", "config.assign")[0]?.message).toBe("'nope' is not a declared state field.");
+    expect(on("retry", "config.assign")[0]?.message).toBe("'nope' is not a variable. Add it in Settings › Variables.");
     expect(on(null, "state[1].reducer")[0]?.message).toBe("Append needs an array field.");
   });
 

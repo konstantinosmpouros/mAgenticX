@@ -395,6 +395,7 @@ The agents service sits on the internal network next to Postgres, Redis, the bri
 | Blocked | RFC 1918, ULA, loopback, link-local (incl. `169.254.169.254`), CGNAT `100.64.0.0/10`, multicast, reserved, unspecified, documentation/benchmark ranges, and IPv6 forms embedding a blocked IPv4 (mapped, NAT64, 6to4, Teredo) |
 | Size / time | ≤ 30 s for the whole exchange; body read as a stream and refused past 1 MiB (a declared larger `Content-Length` is refused up front) — never truncated |
 | Logging | Nothing about the request or response; only the outcome code |
+| Stored copy | The run stores and shows each execution's resolved config (`workflow.node_input`) and output. `FetchNode.input_view` masks credentials in that copy: header and query values whose name contains `authorization`, `cookie`, `token`, `secret`, `key`, `password`, `auth`, `session`, `credential` or `signature`, and the URL's userinfo, become `••••••`. The output's `url` masks secret query values the same way. The request itself is sent with the real values. Other kinds keep `input_view` as identity (`WorkflowNode.input_view`) |
 
 ---
 

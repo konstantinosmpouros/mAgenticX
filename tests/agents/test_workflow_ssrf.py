@@ -192,6 +192,47 @@ async def test_credentials_are_dropped_on_a_cross_origin_redirect(wf, monkeypatc
     assert result.output["body"] == "ok" and result.output["url"] == "https://b.example/next"
 
 
+def _fetch_node(wf, config):
+    spec = wf.spec.WorkflowSpec.model_validate(
+        {"version": 1, "name": "t", "nodes": [{"id": "start", "kind": "trigger.manual"}]}
+    )
+    return wf.fetch.FetchNode(wf.spec.NodeSpec(id="f", kind="fetch", config=config), spec)
+
+
+def test_the_stored_input_masks_credentials(wf):
+    mask = wf.fetch.MASK
+    rendered = {
+        "method": "GET",
+        "url": "https://u:pw@api.example/v1?q=shoes&api_key=abc&access_token=t#top",
+        "headers": {"Authorization": "Bearer t", "X-Api-Key": "k", "Cookie": "s=1", "Accept": "application/json"},
+        "query": {"page": 2, "client_secret": "s"},
+    }
+    view = _fetch_node(wf, {"url": "https://api.example/"}).input_view(rendered)
+    assert view["headers"] == {"Authorization": mask, "X-Api-Key": mask, "Cookie": mask, "Accept": "application/json"}
+    assert view["query"] == {"page": 2, "client_secret": mask}
+    assert view["url"] == f"https://{mask}@api.example/v1?q=shoes&api_key={mask}&access_token={mask}#top"
+    # The node still runs with the real values.
+    assert rendered["headers"]["Authorization"] == "Bearer t"
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["https://api.example/v1", "https://api.example/v1?q=a%20b&page=2", "{{input.url}}", "not a url?x"],
+)
+def test_mask_url_keeps_urls_without_credentials_as_written(wf, url):
+    assert wf.fetch.mask_url(url) == url
+
+
+@pytest.mark.asyncio
+async def test_the_output_url_masks_secret_query_values(wf, monkeypatch):
+    client = _Client(lambda r: httpx.Response(200, text="ok"))
+    monkeypatch.setattr(wf.fetch, "make_client", client.factory)
+    monkeypatch.setattr(wf.ssrf, "resolve_host", _resolver({}))
+    result = await _run_fetch(wf, {"url": "https://api.example/v1", "query": {"token": "t", "q": "x"}})
+    assert client.requests[0].url.params["token"] == "t"  # sent for real
+    assert result.output["url"] == f"https://api.example/v1?token={wf.fetch.MASK}&q=x"
+
+
 @pytest.mark.asyncio
 async def test_303_turns_a_post_into_a_get(wf, monkeypatch):
     def handler(request):

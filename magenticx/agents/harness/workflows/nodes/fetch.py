@@ -8,7 +8,13 @@ as a stream (a larger body is refused, not truncated). A non-2xx status is not
 a failure — it is data, for a ``condition`` to test.
 
 Output: ``{"status", "ok", "url", "contentType", "body"}`` where ``body`` is
-parsed JSON or text per ``response_type``.
+parsed JSON or text per ``response_type`` and ``url`` (the final one) has its
+credential-looking query values masked.
+
+The run stores and shows every execution's resolved config
+(``workflow.node_input``); :meth:`FetchNode.input_view` masks the credentials
+in it — header and query values whose name looks secret (``Authorization``,
+``Cookie``, ``X-Api-Key``, ``access_token`` …) and the URL's userinfo.
 
 Nothing about the request or response is logged: URLs carry tokens in query
 strings often enough that only the outcome code is.
@@ -20,7 +26,7 @@ import json
 import re
 from collections.abc import Mapping
 from typing import Any, Literal
-from urllib.parse import urljoin
+from urllib.parse import unquote_plus, urljoin
 
 import httpx
 from pydantic import Field, field_validator
@@ -39,6 +45,36 @@ FORBIDDEN_HEADERS = frozenset({"host", "content-length", "transfer-encoding", "c
 #: Dropped when a redirect leaves the original origin.
 CREDENTIAL_HEADERS = frozenset({"authorization", "cookie", "proxy-authorization"})
 _HEADER_NAME = re.compile(r"^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,64}$")
+#: A header or query parameter whose name contains one of these carries a
+#: credential: its value is masked in what the run stores and shows.
+SECRET_NAME_PARTS = ("authorization", "cookie", "token", "secret", "key", "password", "passwd", "auth", "session", "credential", "signature")
+MASK = "••••••"
+#: ``scheme://user:pass@`` — the userinfo of a URL, up to its ``@``.
+_USERINFO = re.compile(r"^([A-Za-z][A-Za-z0-9+.-]*://)[^/?#@]*@")
+
+
+def is_secret_name(name: str) -> bool:
+    """Whether a header / query parameter name looks like it carries a credential."""
+    lowered = name.lower()
+    return any(part in lowered for part in SECRET_NAME_PARTS)
+
+
+def mask_url(url: str) -> str:
+    """The URL with credential-looking query values and any userinfo masked.
+
+    Works on the text, not a parsed URL, so it never fails and the mask is not
+    percent-encoded; every other byte of the URL is kept as written.
+    """
+    masked = _USERINFO.sub(r"\1" + MASK + "@", url, count=1)
+    head, sep, rest = masked.partition("?")
+    if not sep:
+        return masked
+    query, hash_sep, fragment = rest.partition("#")
+    pairs = []
+    for pair in query.split("&"):
+        name, eq, _value = pair.partition("=")
+        pairs.append(f"{name}={MASK}" if eq and is_secret_name(unquote_plus(name)) else pair)
+    return f"{head}?{'&'.join(pairs)}{hash_sep}{fragment}"
 
 
 class FetchConfig(NodeConfig):
@@ -130,6 +166,19 @@ class FetchNode(WorkflowNode):
     description = "GET or POST a public http(s) URL (SSRF-guarded, ≤3 redirects, ≤30 s, ≤1 MiB)."
     Config = FetchConfig
 
+    def input_view(self, rendered: dict[str, Any]) -> dict[str, Any]:
+        """Credentials masked: header and query values with a secret-looking
+        name, and the URL's userinfo and secret query values. The run's events
+        are stored and shown; the request itself is sent with the real values."""
+        view = dict(rendered)
+        if isinstance(view.get("headers"), Mapping):
+            view["headers"] = {k: MASK if is_secret_name(str(k)) else v for k, v in view["headers"].items()}
+        if isinstance(view.get("query"), Mapping):
+            view["query"] = {k: MASK if is_secret_name(str(k)) else v for k, v in view["query"].items()}
+        if isinstance(view.get("url"), str):
+            view["url"] = mask_url(view["url"])
+        return view
+
     async def run(self, state: Mapping[str, Any], ctx: NodeContext) -> NodeResult:
         cfg: FetchConfig = ctx.config
         if cfg.method == "GET" and cfg.body is not None:
@@ -188,7 +237,9 @@ class FetchNode(WorkflowNode):
                         output={
                             "status": response.status_code,
                             "ok": 200 <= response.status_code < 300,
-                            "url": str(url),
+                            # Masked: the output is stored and shown, and a
+                            # later step has no use for the credential.
+                            "url": mask_url(str(url)),
                             "contentType": content_type,
                             "body": _parse_body(raw, content_type, response.encoding, cfg.response_type),
                         }
