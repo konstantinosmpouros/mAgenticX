@@ -26,6 +26,7 @@ from harness.agent_registry.store import AgentDefinitionStore
 from harness.conversation_files import ConversationFileStore
 from harness.skill_registry.store import SkillStore
 from harness.memory.store import AgentMemoryStore
+from harness.workflows.store import WorkflowStore
 
 logger = get_logger(__name__)
 
@@ -137,6 +138,9 @@ async def init_durable_checkpointer(app: FastAPI) -> None:
         # nearly every tool call, so they are local SQL on this pool, not a
         # hop to the bridge.
         await ConversationFileStore(pool).setup()
+        # Workflow definitions, versions and persisted state: compiled and run
+        # here, so — the same rule again — stored here.
+        await WorkflowStore(pool).setup()
 
     serde = None
     aes_key = cfg.aes_key.get_secret_value()

@@ -8,7 +8,7 @@
  * user-identifying is stored — only the literal "0" / "1".
  */
 
-export type SidebarSection = "pinned" | "chats";
+export type SidebarSection = "workflows" | "pinned" | "chats";
 
 const sectionKey = (section: SidebarSection) => `mx_sidebar_${section}_open`;
 

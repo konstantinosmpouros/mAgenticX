@@ -7,6 +7,9 @@ The stream is capped at a configurable MAXLEN (default 20000) and gets an
 EXPIRE applied once the run reaches a terminal state, so reconnecting
 clients within the TTL window can still replay missed events from any
 ``since`` cursor.
+
+Workflow runs (plan 38) use a second instance of the same log under their own
+key prefix (``workflow:run:{run_id}:events``) for their live fan-out.
 """
 
 from __future__ import annotations
@@ -26,8 +29,11 @@ from core.logging import get_logger
 logger = get_logger(__name__)
 
 
-def _stream_key(run_id: str) -> str:
-    return f"inference:run:{run_id}:events"
+_INFERENCE_KEY_PREFIX = "inference:run"
+
+
+def _stream_key(run_id: str, prefix: str = _INFERENCE_KEY_PREFIX) -> str:
+    return f"{prefix}:{run_id}:events"
 
 
 class RedisEventLog:
@@ -42,7 +48,8 @@ class RedisEventLog:
     timeout every idle read died after 5 s and dropped the WebSocket.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, key_prefix: str = _INFERENCE_KEY_PREFIX) -> None:
+        self._key_prefix = key_prefix
         self._client: aioredis.Redis | None = None
         self._reader: aioredis.Redis | None = None
         self._lock = asyncio.Lock()
@@ -72,7 +79,7 @@ class RedisEventLog:
         client = await self._get_client()
         payload = json.dumps(event, ensure_ascii=False)
         entry_id = await client.xadd(
-            _stream_key(run_id),
+            _stream_key(run_id, self._key_prefix),
             {"payload": payload},
             maxlen=settings.redis.stream_maxlen,
             approximate=True,
@@ -100,7 +107,7 @@ class RedisEventLog:
           the subscribe, trimmed stream). Without it the loop blocks forever.
         """
         client = await self._get_reader()
-        key = _stream_key(run_id)
+        key = _stream_key(run_id, self._key_prefix)
         cursor = since if since else "0"
         while True:
             if cancel_event is not None and cancel_event.is_set():
@@ -153,7 +160,7 @@ class RedisEventLog:
         synthesized snapshot frame is built, so no event can fall in a gap.
         """
         client = await self._get_client()
-        entries = await client.xrevrange(_stream_key(run_id), count=1)
+        entries = await client.xrevrange(_stream_key(run_id, self._key_prefix), count=1)
         return entries[0][0] if entries else None
 
     async def mark_terminal(self, run_id: str) -> None:
@@ -162,7 +169,18 @@ class RedisEventLog:
         the durable record is the assistant message row in PostgreSQL.
         """
         client = await self._get_client()
-        await client.expire(_stream_key(run_id), settings.redis.terminal_ttl_seconds)
+        await client.expire(_stream_key(run_id, self._key_prefix), settings.redis.terminal_ttl_seconds)
+
+    async def discard(self, run_id: str) -> None:
+        """Drop the run's stream outright.
+
+        A workflow run that pauses on an approval gets its stream EXPIREd like a
+        terminal run; resuming it starts a fresh stream rather than appending to
+        one that is about to expire (XADD does not clear a TTL). Live viewers of
+        the paused leg have already been told it paused, so nobody is reading it.
+        """
+        client = await self._get_client()
+        await client.delete(_stream_key(run_id, self._key_prefix))
 
     async def close(self) -> None:
         clients, self._client, self._reader = (self._client, self._reader), None, None

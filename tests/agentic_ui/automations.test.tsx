@@ -1,31 +1,48 @@
 // @vitest-environment happy-dom
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 import AutomationsPage from "@/features/automations/components/AutomationsPage";
 import {
   filterAutomations,
+  filterWorkflowItems,
+  sortAutomations,
+  sortWorkflowItems,
   matchesStatusFilter,
   statusFilterCounts,
 } from "@/features/automations/lib/filters";
-import { AUTOMATION_KINDS, automationKind } from "@/features/automations/lib/kinds";
-import { automationsForAgentPath, isAutomationsPath } from "@/features/automations/lib/routes";
 import {
-  describeSchedule,
-  formatRelative,
-  humanizeCron,
-  isRunningTask,
-  nextCronRuns,
-  taskStatusKind,
-} from "@/features/automations/lib/schedule";
+  AUTOMATION_AREAS,
+  AUTOMATION_KINDS,
+  areaKind,
+  automationItemId,
+  automationKind,
+} from "@/features/automations/lib/kinds";
+import {
+  automationsAreaFromParam,
+  automationsAreaPath,
+  automationsForAgentPath,
+  isAutomationsPath,
+} from "@/features/automations/lib/routes";
+import { describeSchedule, formatRelative, humanizeCron, nextCronRuns } from "@/shared/lib/schedule";
+import { isRunningTask, taskStatusKind } from "@/features/automations/lib/schedule";
 import { AUTOMATION_TEMPLATES, findTemplate } from "@/features/automations/lib/templates";
+import { workflowLastRun, workflowScheduleLine } from "@/shared/lib/workflowSchedule";
+import { needsRunInputs } from "@/features/workflows/lib/inputs";
 import LegacyTasksRedirect from "@/pages/LegacyTasksRedirect";
-import type { Agent, AutomationItem, ScheduledTask } from "@/shared/lib/types";
+import type {
+  Agent,
+  ScheduleAutomationItem,
+  ScheduledTask,
+  Workflow,
+  WorkflowAutomationItem,
+} from "@/shared/lib/types";
 import { SidebarProvider } from "@/shared/ui/sidebar";
 
 /**
- * The Automations page (plan 38, Phase 1; it replaced Schedules).
+ * The Automations page (plan 38, Phase 1; it replaced Schedules) — the home of
+ * both schedules and workflows, one area each behind a header switch.
  *
  * Pinned: schedules read in plain words (cron humanised where it can be, the
  * expression itself otherwise); the cron preview finds the right next runs in
@@ -37,6 +54,13 @@ import { SidebarProvider } from "@/shared/ui/sidebar";
  * too-short interval or a missing instruction inline, and a valid form sends
  * the same payload as before; pause/resume and delete (behind a confirm) call
  * the page's handlers; "/tasks" redirects to "/automations" with its query.
+ *
+ * The Workflows area (`?view=workflows`): the switch and the header's create
+ * action follow the area; workflows are cards in the schedule cards' chrome
+ * with the registry's "Workflow" badge, a version, and their schedule (set by
+ * the start node) when they have one; Open / Edit / Run now / Delete (behind a
+ * confirm) call the page's handlers; empty, its hero opens the builder; the
+ * search box appears at 8 workflows.
  */
 
 // Any component stands in for the agent's lucide icon.
@@ -65,9 +89,25 @@ const task = (over: Partial<ScheduledTask> = {}): ScheduledTask => ({
   ...over,
 });
 
-const item = (over: Partial<ScheduledTask> = {}): AutomationItem => ({
+const item = (over: Partial<ScheduledTask> = {}): ScheduleAutomationItem => ({
   kind: "schedule",
   task: task(over),
+});
+
+const workflow = (over: Partial<Workflow> = {}): Workflow => ({
+  id: "wf-1",
+  name: "Deploy",
+  description: "Ships the build",
+  spec: null,
+  latestVersionNo: 3,
+  createdAt: null,
+  updatedAt: null,
+  ...over,
+});
+
+const workflowItem = (over: Partial<Workflow> = {}): WorkflowAutomationItem => ({
+  kind: "workflow",
+  workflow: workflow(over),
 });
 
 function renderPage(props: Partial<React.ComponentProps<typeof AutomationsPage>> = {}) {
@@ -143,15 +183,82 @@ describe("schedule wording", () => {
 });
 
 describe("automation kinds and filters", () => {
-  it("registers only the kinds that work today", () => {
-    expect(Object.keys(AUTOMATION_KINDS)).toEqual(["schedule"]);
-    expect(automationKind("schedule")).toMatchObject({ id: "schedule", label: "Schedule" });
+  it("registers only the kinds that work today, one area each", () => {
+    expect(Object.keys(AUTOMATION_KINDS)).toEqual(["schedule", "workflow"]);
+    expect(automationKind("schedule")).toMatchObject({
+      id: "schedule",
+      label: "Schedule",
+      createLabel: "New schedule",
+    });
+    expect(automationKind("workflow")).toMatchObject({
+      id: "workflow",
+      label: "Workflow",
+      createLabel: "New workflow",
+    });
+    expect(AUTOMATION_AREAS.map((area) => area.id)).toEqual(["schedules", "workflows"]);
+    expect(areaKind("workflows")).toBe("workflow");
+    expect(automationItemId(item())).toBe("schedule:t1");
+    expect(automationItemId(workflowItem())).toBe("workflow:wf-1");
+  });
+
+  it("searches workflows by name and description", () => {
+    const items = [
+      workflowItem(),
+      workflowItem({ id: "wf-2", name: "Nightly", description: "Report on invoices" }),
+    ];
+    expect(filterWorkflowItems(items, "invoice").map((i) => i.workflow.id)).toEqual(["wf-2"]);
+    expect(filterWorkflowItems(items, "  ")).toHaveLength(2);
+  });
+
+  it("words a workflow's schedule, and asks for inputs only when one is required", () => {
+    const now = new Date("2026-11-04T10:00:00Z");
+    const schedule = {
+      status: "active" as const,
+      kind: "cron",
+      spec: { cron_expr: "0 9 * * 1-5" },
+      timezone: "UTC",
+      nextRunAt: "2026-11-04T10:30:00Z",
+      lastRunAt: "2026-11-04T09:00:00Z",
+      lastRunStatus: "failed",
+    };
+    expect(workflowScheduleLine(workflow({ schedule }), now)).toMatch(/^Next in 30 min · /);
+    expect(
+      workflowScheduleLine(workflow({ schedule: { ...schedule, status: "paused" } }), now),
+    ).toBe("Paused — no upcoming runs");
+    expect(workflowScheduleLine(workflow(), now)).toBe("Start it here or from its page");
+    expect(workflowLastRun(workflow({ schedule }), now)).toEqual({
+      label: "Last scheduled run 1 h ago · failed",
+      failed: true,
+    });
+    expect(workflowLastRun(workflow(), now)).toBeNull();
+    expect(needsRunInputs([{ name: "a", type: "string" }])).toBe(false);
+    expect(needsRunInputs([{ name: "a", type: "string", required: true }])).toBe(true);
   });
 
   it("keeps one copy of the running statuses", () => {
     expect(isRunningTask({ liveStatus: "queued" })).toBe(true);
     expect(isRunningTask({ liveStatus: "cancelling" })).toBe(true);
     expect(isRunningTask({ liveStatus: "completed" })).toBe(false);
+  });
+
+  it("sorts by next run (nothing coming last), newest and name", () => {
+    const at = (iso: string | null) => (iso ? new Date(iso) : null);
+    const items = [
+      item({ id: "a", title: "beta", nextRunAt: at("2030-01-02T00:00:00Z"), createdAt: new Date("2026-01-01") }),
+      item({ id: "b", title: "Alpha", nextRunAt: null, createdAt: new Date("2026-03-01") }),
+      item({ id: "c", title: "gamma", nextRunAt: at("2030-01-01T00:00:00Z"), createdAt: new Date("2026-02-01") }),
+    ];
+    const ids = (list: typeof items) => list.map((i) => i.task.id);
+    expect(ids(sortAutomations(items, "next_run"))).toEqual(["c", "a", "b"]);
+    expect(ids(sortAutomations(items, "newest"))).toEqual(["b", "c", "a"]);
+    expect(ids(sortAutomations(items, "name"))).toEqual(["b", "a", "c"]);
+    // The list it was given is left as it was.
+    expect(ids(items)).toEqual(["a", "b", "c"]);
+    const flows = [workflow({ id: "w1", name: "Zed" }), workflow({ id: "w2", name: "abc" })].map((w) => ({
+      kind: "workflow" as const,
+      workflow: w,
+    }));
+    expect(sortWorkflowItems(flows, "name").map((f) => f.workflow.id)).toEqual(["w2", "w1"]);
   });
 
   it("filters and counts by status, and searches what a card shows", () => {
@@ -194,6 +301,14 @@ describe("automations routes", () => {
     expect(automationsForAgentPath("a 1")).toBe("/automations?agent=a%201");
   });
 
+  it("reads and writes the area in ?view=", () => {
+    expect(automationsAreaFromParam(null)).toBe("schedules");
+    expect(automationsAreaFromParam("workflows")).toBe("workflows");
+    expect(automationsAreaFromParam("bogus")).toBe("schedules");
+    expect(automationsAreaPath("schedules")).toBe("/automations");
+    expect(automationsAreaPath("workflows")).toBe("/automations?view=workflows");
+  });
+
   it("redirects /tasks to /automations and keeps the query", async () => {
     const Where = () => {
       const { pathname, search } = useLocation();
@@ -216,7 +331,7 @@ describe("AutomationsPage", () => {
     renderPage();
     expect(screen.getByRole("heading", { name: "Automations" })).toBeInTheDocument();
     expect(screen.queryByRole("tab")).not.toBeInTheDocument();
-    expect(screen.getByText("No automations yet")).toBeInTheDocument();
+    expect(screen.getByText("No schedules yet")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Create from scratch/ })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Start from a template" })).toBeInTheDocument();
     expect(screen.getAllByTestId("template-card")).toHaveLength(AUTOMATION_TEMPLATES.length);
@@ -262,14 +377,35 @@ describe("AutomationsPage", () => {
     expect(handled).toHaveBeenCalledTimes(1);
   });
 
-  it("filters the list with the status chips", async () => {
-    renderPage({ items: [item(), item({ id: "t2", title: "Invoices", status: "paused" })] });
-    expect(screen.getAllByTestId("automation-card")).toHaveLength(2);
-    fireEvent.click(screen.getByRole("button", { name: /^Paused/ }));
-    // The hidden card plays its exit before it leaves the DOM.
+  it("filters the list from the toolbar's status menu, and sorts it", async () => {
+    renderPage({
+      items: [
+        item({ id: "t1", title: "Zeta" }),
+        item({ id: "t2", title: "Invoices", status: "paused" }),
+        item({ id: "t3", title: "Alpha" }),
+      ],
+    });
+    expect(screen.getAllByTestId("automation-card")).toHaveLength(3);
+    // No chips: a filter icon opens the statuses, with their counts.
+    expect(screen.queryByRole("group", { name: "Filter automations by status" })).toBeNull();
+    fireEvent.keyDown(screen.getByRole("button", { name: "Filter by status" }), { key: "Enter" });
+    fireEvent.click(await screen.findByRole("menuitemradio", { name: /Paused/ }));
+    // The hidden cards play their exit before they leave the DOM.
     await waitFor(() => expect(screen.getAllByTestId("automation-card")).toHaveLength(1));
-    const cards = screen.getAllByTestId("automation-card");
-    expect(within(cards[0]!).getByText("Invoices")).toBeInTheDocument();
+    expect(within(screen.getAllByTestId("automation-card")[0]!).getByText("Invoices")).toBeInTheDocument();
+    // The icon says a filter is on.
+    expect(screen.getByRole("button", { name: "Filter: Paused" })).toBeInTheDocument();
+
+    fireEvent.keyDown(screen.getByRole("button", { name: "Filter: Paused" }), { key: "Enter" });
+    fireEvent.click(await screen.findByRole("menuitemradio", { name: /All/ }));
+    await waitFor(() => expect(screen.getAllByTestId("automation-card")).toHaveLength(3));
+    fireEvent.keyDown(screen.getByRole("button", { name: /^Sort:/ }), { key: "Enter" });
+    fireEvent.click(await screen.findByRole("menuitemradio", { name: /Name/ }));
+    await waitFor(() =>
+      expect(
+        screen.getAllByTestId("automation-card").map((card) => within(card).getByText(/Alpha|Invoices|Zeta/).textContent),
+      ).toEqual(["Alpha", "Invoices", "Zeta"]),
+    );
   });
 
   it("renders a card per automation with its kind, schedule, status and last result", () => {
@@ -313,7 +449,7 @@ describe("AutomationsPage", () => {
 
   it("validates the form inline and creates an automation with the same payload as before", async () => {
     const h = renderPage();
-    fireEvent.click(screen.getByRole("button", { name: /New automation/ }));
+    fireEvent.click(screen.getByRole("button", { name: /New schedule/ }));
     const dialog = await screen.findByRole("dialog");
 
     fireEvent.change(within(dialog).getByLabelText("Interval amount"), { target: { value: "2" } });
@@ -345,11 +481,113 @@ describe("AutomationsPage", () => {
     renderPage({
       onCreate: vi.fn(async () => Promise.reject(new Error("Invalid cron expression."))),
     });
-    fireEvent.click(screen.getByRole("button", { name: /New automation/ }));
+    fireEvent.click(screen.getByRole("button", { name: /New schedule/ }));
     const dialog = await screen.findByRole("dialog");
     fireEvent.change(within(dialog).getByLabelText("Instruction"), { target: { value: "Go" } });
     fireEvent.click(within(dialog).getByRole("button", { name: /Create automation/ }));
     expect(await within(dialog).findByText("Invalid cron expression.")).toBeInTheDocument();
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+});
+
+describe("AutomationsPage — areas", () => {
+  it("defaults to Schedules and switches areas through the handler", () => {
+    const onAreaChange = vi.fn();
+    renderPage({ items: [item()], onAreaChange });
+    const switcher = screen.getByRole("radiogroup", { name: "Automation type" });
+    expect(within(switcher).getByRole("radio", { name: /Schedules/ })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: /New schedule/ })).toBeInTheDocument();
+    fireEvent.click(within(switcher).getByRole("radio", { name: /Workflows/ }));
+    expect(onAreaChange).toHaveBeenCalledWith("workflows");
+  });
+
+  it("shows the Workflows area's hero with nothing yet, opening the builder", () => {
+    const onNewWorkflow = vi.fn();
+    renderPage({ area: "workflows", workflows: [], onNewWorkflow, items: [item()] });
+    // The schedules stay in their own area.
+    expect(screen.queryByText("Morning briefing")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Start from a template" })).toBeNull();
+    expect(screen.getByText("No workflows yet")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Create your first workflow/ }));
+    fireEvent.click(screen.getByRole("button", { name: /New workflow/ }));
+    expect(onNewWorkflow).toHaveBeenCalledTimes(2);
+  });
+
+  it("renders a card per workflow with its badge, version and schedule", () => {
+    renderPage({
+      area: "workflows",
+      workflows: [
+        workflow(),
+        workflow({
+          id: "wf-2",
+          name: "Nightly",
+          description: null,
+          schedule: {
+            status: "paused",
+            kind: "cron",
+            spec: { cron_expr: "0 8 * * *" },
+            timezone: "UTC",
+            nextRunAt: null,
+            lastRunAt: null,
+            lastRunStatus: null,
+          },
+        }),
+      ],
+    });
+    const cards = screen.getAllByTestId("automation-card");
+    expect(cards).toHaveLength(2);
+    expect(cards[0]).toHaveAttribute("data-automation-kind", "workflow");
+    expect(within(cards[0]!).getByText("Deploy")).toBeInTheDocument();
+    expect(within(cards[0]!).getByText("Ships the build")).toBeInTheDocument();
+    expect(within(cards[0]!).getByText("Workflow")).toBeInTheDocument();
+    expect(within(cards[0]!).getByText("v3")).toBeInTheDocument();
+    expect(within(cards[0]!).getByText("Runs when you start it")).toBeInTheDocument();
+    expect(within(cards[1]!).getByText("Every day at 08:00")).toBeInTheDocument();
+    expect(within(cards[1]!).getByText("Paused — no upcoming runs")).toBeInTheDocument();
+  });
+
+  it("opens, edits, runs and deletes a workflow behind a confirm", async () => {
+    const onOpenWorkflow = vi.fn();
+    const onEditWorkflow = vi.fn();
+    const onRunWorkflow = vi.fn(async () => {});
+    const onDeleteWorkflow = vi.fn(async () => {});
+    renderPage({
+      area: "workflows",
+      workflows: [workflow()],
+      onOpenWorkflow,
+      onEditWorkflow,
+      onRunWorkflow,
+      onDeleteWorkflow,
+    });
+    const card = screen.getByTestId("automation-card");
+    fireEvent.click(within(card).getByRole("button", { name: /^Open/ }));
+    expect(onOpenWorkflow).toHaveBeenCalledWith("wf-1");
+    fireEvent.click(within(card).getByRole("button", { name: "Edit" }));
+    expect(onEditWorkflow).toHaveBeenCalledWith("wf-1");
+    fireEvent.click(within(card).getByRole("button", { name: "Run now" }));
+    await waitFor(() => expect(onRunWorkflow).toHaveBeenCalledWith("wf-1"));
+
+    fireEvent.click(within(card).getByRole("button", { name: "Delete" }));
+    expect(onDeleteWorkflow).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("button", { name: "Delete workflow" }));
+    await waitFor(() => expect(onDeleteWorkflow).toHaveBeenCalledWith("wf-1"));
+  });
+
+  it("searches from the toolbar's search icon, which opens into a field", async () => {
+    const many = Array.from({ length: 3 }, (_, i) => workflow({ id: `wf-${i}`, name: `Flow ${i}` }));
+    renderPage({ area: "workflows", workflows: many });
+    expect(screen.queryByRole("searchbox", { name: "Search workflows" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Search workflows" }));
+    fireEvent.change(await screen.findByRole("searchbox", { name: "Search workflows" }), {
+      target: { value: "Flow 2" },
+    });
+    await waitFor(() => expect(screen.getAllByTestId("automation-card")).toHaveLength(1));
+    // No status filter for workflows; × closes the search and clears it.
+    expect(screen.queryByRole("button", { name: "Filter by status" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Close the search" }));
+    await waitFor(() => expect(screen.getAllByTestId("automation-card")).toHaveLength(3));
   });
 });

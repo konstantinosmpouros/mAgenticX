@@ -1,0 +1,124 @@
+{
+  "kind": "trigger.schedule",
+  "label": "Schedule",
+  "group": "trigger",
+  "description": "Starts the workflow on a schedule (once, every N seconds, or on a cron expression) with fixed inputs; it can still be run by hand. Output: {trigger, firedAt, inputs}.",
+  "branches": [],
+  "dynamicBranches": false,
+  "isTrigger": true,
+  "configSchema": {
+    "$defs": {
+      "ScheduleSpec": {
+        "additionalProperties": false,
+        "description": "The kind's parameters — exactly the bridge's ``scheduled_tasks.schedule_spec``.",
+        "properties": {
+          "run_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "one_off: when to run (ISO 8601; without an offset it is UTC).",
+            "title": "Run At"
+          },
+          "interval_seconds": {
+            "anyOf": [
+              {
+                "maximum": 31622400,
+                "minimum": 300,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "interval: seconds between runs (at least 300).",
+            "title": "Interval Seconds"
+          },
+          "cron_expr": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "cron: a standard 5-field cron expression, read in `timezone`.",
+            "title": "Cron Expr"
+          }
+        },
+        "title": "ScheduleSpec",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "description": "When the workflow runs on its own, and with which inputs.",
+    "properties": {
+      "assign": {
+        "additionalProperties": true,
+        "description": "State fields to write after the node runs: {field: value}. Values are templates and may read {{output.<path>}}.",
+        "maxProperties": 32,
+        "title": "Assign",
+        "type": "object"
+      },
+      "schedule_kind": {
+        "description": "one_off, interval or cron.",
+        "enum": [
+          "one_off",
+          "interval",
+          "cron"
+        ],
+        "title": "Schedule Kind",
+        "type": "string"
+      },
+      "schedule_spec": {
+        "$ref": "#/$defs/ScheduleSpec",
+        "description": "The kind's one parameter (see each field)."
+      },
+      "timezone": {
+        "anyOf": [
+          {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "IANA timezone a cron expression is read in (default UTC). Ignored by the other kinds.",
+        "title": "Timezone"
+      },
+      "inputs": {
+        "additionalProperties": true,
+        "description": "Run inputs of a scheduled run: {input name: literal value}. Not templated.",
+        "maxProperties": 32,
+        "title": "Inputs",
+        "type": "object"
+      },
+      "enabled": {
+        "default": true,
+        "description": "Off: the workflow keeps its schedule but never fires on it.",
+        "title": "Enabled",
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "schedule_kind",
+      "schedule_spec"
+    ],
+    "title": "ScheduleTriggerConfig",
+    "type": "object"
+  }
+}

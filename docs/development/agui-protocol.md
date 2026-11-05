@@ -79,6 +79,8 @@ All events are SSE frames with a `data:` prefix containing a JSON object. Every 
 | `TOOL_CALL_RESULT` | `tool_call_id`, `message_id`, `content`, `error?: bool` | Tool returned a result; `error: true` when the tool raised (see tool-error handling below) |
 | `TOOL_CALL_END` | `tool_call_id` | Tool call complete |
 | `RUN_ERROR` | `message: str` | Fatal error — stream will not continue |
+| `STEP_STARTED` / `STEP_FINISHED` | `step_name` | **Workflow runs only**: bracket one node execution (`step_name` = node id). See [Workflow Runs](#workflow-runs) |
+| `STATE_DELTA` | `delta` (JSON Patch, RFC 6902) | **Workflow runs only**: a node's writes to the declared-state document, emitted before its `STEP_FINISHED` |
 
 `TEXT_MESSAGE_CHUNK` is emitted when the agent's `stream_mode` includes `"messages"` (streaming tokens). `TEXT_MESSAGE_CONTENT` is emitted from the `"updates"` mode when the full AI message is available in a node snapshot but no individual tokens were streamed. Both contribute to the same `content` accumulation in `InferenceRunRuntime`.
 
@@ -110,6 +112,11 @@ All custom events share a wrapper shape:
 | `CONTEXT_COMPACTION` | `ContextCompactionEvent` | The main agent compacted its context mid-answer (plan 34). `{phase: "started", trigger: "auto"}` with the summary call's first tokens (orchestrator only); `{phase: "done", tokens_after, freed, tokens_before, window, summarized_messages, kept_messages}` with the reply of the model call it ran in front of — `tokens_after` is that reply's provider-reported prompt, `freed` the summarizer's estimate (stamped by `ConfigurableSummarizationMiddleware` on `response_metadata["mx_compaction"]`), `tokens_before` their sum. Emitted before that reply's `TOKEN_USAGE`. Lands in `raw_events`; the UI's timeline folds it into a `compaction` block drawn as a divider. A manual compaction never streams — see [context-compaction](../flows/context-compaction.md). |
 | `RENDER_CHART` | `RenderChartEvent` | A chart the agent drew via the `render_chart` tool. Synthesized by the normalizer on the same terms as `PRESENT_ARTIFACT` (**top-level orchestrator only**), carrying `{chart_id, type, title, subtitle, x_key, series, data, stacked, horizontal, show_values}` where `type` is one of `bar`, `line`, `area`, `pie`, `radar`, `radial`, `scatter`, `composed`. `x_key` names a category label for every type except `scatter`, which reads it as a number; on a `composed` chart each series additionally carries its own `type` and `axis`. Modifiers arrive already reconciled against the chart type, so an inapplicable flag is false. Unlike an artifact the event **is** the chart — there are no bytes behind it, so the bridge needs no capture step and passes it straight through. The payload is normalized agents-side before emission (bounded to 6 series / 200 rows, numbers coerced, rows projected to `x_key` + series keys) so nothing else a model put in a row reaches the wire. Lands in `raw_events`, so the UI's timeline reducer rebuilds the chart block at its log position on reload and reconnection. Colors are absent by design — the UI assigns them from the viewer's theme. |
 | `BRIDGE_HITL_RESOLVED` | `{interrupt_id, decision, reason, decisions, answers?}` | **Bridge-synthesized** (never emitted by the agents service): appended to the event log when `/resume` is accepted, so resolution state survives reloads. The client reducer flips the matching approval's status on it. `answers` (the resume's `value.answers`) is present when an `ask_user` panel was answered, so the answered panel survives a reload. |
+| `workflow.run` | `{workflowId, versionNo, resumed}` | **Workflow runs only**, right after `RUN_STARTED` of every leg: which workflow and pinned version is running, and whether this leg is a resume |
+| `workflow.node_input` | `{config, iteration}` | **Workflow runs only**, after a node's `STEP_STARTED`: its config with templates resolved (`null` when resolving failed) and the execution count |
+| `workflow.node_output` | `{output, branch, durationMs, error}` | **Workflow runs only**, closes a node's own events: its output and taken branch, or `error: {code, message}` with `output: null` when it failed |
+| `bridge.approval_decision` | `{decision, comment?}` | **Bridge-synthesized** into a workflow run's event log when a `waiting` run is resumed; carries the paused node's `workflow` block so the timeline places it on that node |
+| `bridge.events_truncated` | `{maxEvents}` | **Bridge-synthesized**, once, when a workflow run hits `WORKFLOW_RUN_MAX_EVENTS`; afterwards only `RUN_*` and `HITL_INTERRUPT` are stored |
 
 #### `PlanSnapshot`
 
@@ -237,6 +244,35 @@ frame: bytes = emitter.thought(delta)
 **Namespace attachment** — `_attach_namespace()` decodes the SSE frame, parses the `data:` JSON, injects `payload["namespace"] = namespace`, and re-encodes. This is used when wrapping sub-agent events — the `namespace` field carries the LangGraph subgraph path so consumers can distinguish orchestrator from sub-agent frames without parsing the `SUBAGENT_EVENT` outer envelope.
 
 **Writer vs return** — every emitter method accepts an optional `writer` callable. When provided, `writer(sse_bytes)` is called and `None` is returned. When absent, the encoded bytes are returned directly. The normalizer always passes a `writer`; direct agent implementations may use either style.
+
+**Extra fields hook** — `_extra_fields()` returns fields stamped onto every frame the emitter encodes, beside `namespace` (same re-encode path). The base returns `{}`; `WorkflowEmitter` overrides it to stamp the workflow run envelope, so a node's own tool-call and text frames carry it without any call site adding it.
+
+---
+
+## Workflow Runs
+
+A workflow run ([workflows](../flows/workflows.md)) streams ordinary AG-UI frames from `POST /workflows/runs/stream` — not through the normalizer: the engine's `WorkflowNode` wrapper emits them directly with one `WorkflowEmitter` per node execution. Every frame carries a **run envelope**:
+
+```json
+"workflow": {"runId": "<run id>", "nodeId": "poll", "executionId": "poll#2", "parentExecutionId": "retry#1", "iteration": 2}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `executionId` | `<nodeId>#<n>`, `n` = 1-based count of that node's executions in the run |
+| `iteration` | That same `n` |
+| `parentExecutionId` | The innermost active `loop` execution; `null` outside loops |
+| Run-level frames | `RUN_STARTED`, `workflow.run`, `CHECKPOINT_COMMITTED`, `RUN_FINISHED`, `RUN_ERROR`: `nodeId` and the rest `null` |
+
+| Stream part | Frames |
+| --- | --- |
+| Leg start | `RUN_STARTED` → `CUSTOM workflow.run` |
+| Each node | `STEP_STARTED` → `workflow.node_input` → own events (`TOOL_CALL_*`) → `workflow.node_output` → `STATE_DELTA` → `STEP_FINISHED`. A failure closes the bracket with `node_output.error` and no `STATE_DELTA` |
+| Completed | `CHECKPOINT_COMMITTED` → `RUN_FINISHED {result: {status: "completed", output}}` |
+| Paused | `CUSTOM HITL_INTERRUPT` (`metadata.source = "workflow.approval"`, `nodeId`, `executionId`; `interrupt.value.type = "workflow.approval"`) → `CHECKPOINT_COMMITTED`; no `RUN_FINISHED`, the step stays open |
+| Failed | `RUN_ERROR {message, code}` — `node_failed`, `step_limit`, `run_failed` |
+
+The bridge does **not** coalesce workflow events: each is stored as-is in `workflow_run_events` with a bridge-assigned `seq` and the envelope ids lifted into columns (past `WORKFLOW_RUN_MAX_EVENT_BYTES` the payload becomes a truncation marker). The two `bridge.*` events in the custom table are the only ones it writes itself.
 
 ---
 
@@ -670,7 +706,9 @@ Sub-agent rendering folds entirely from the `TASK_SUBAGENT` / `SUBAGENT_EVENT` e
 | `RENDER_CHART` payload normalizer (agents) | [magenticx/agents/harness/tools/charts/tool.py](../../magenticx/agents/harness/tools/charts/tool.py) | `normalize_chart_payload()` — bounds, coerces, and projects rows before the event is emitted |
 | `RENDER_CHART` fold + render (UI) | [magenticx/agentic_ui/src/features/inference/timeline.ts](../../magenticx/agentic_ui/src/features/inference/timeline.ts) | `pushChartBlock()` → `ChartBlock` → `ChartCard` via `BLOCK_REGISTRY` |
 | AG-UI event emission | [magenticx/agents/harness/agui/emitter.py](../../magenticx/agents/harness/agui/emitter.py) | `AGUIEmitter` — all public methods |
-| Namespace attachment | [magenticx/agents/harness/agui/emitter.py](../../magenticx/agents/harness/agui/emitter.py) | `_attach_namespace()` |
+| Namespace attachment | [magenticx/agents/harness/agui/emitter.py](../../magenticx/agents/harness/agui/emitter.py) | `_attach_namespace()`, `_extra_fields()` |
+| Workflow envelope + events | [magenticx/agents/harness/workflows/events.py](../../magenticx/agents/harness/workflows/events.py), [nodes/base.py](../../magenticx/agents/harness/workflows/nodes/base.py) | `WorkflowEmitter`, `WorkflowEnvelope`, `WorkflowNode.__call__` |
+| Workflow event persistence (bridge) | [magenticx/dialogue_bridge/utils/workflow_runs.py](../../magenticx/dialogue_bridge/utils/workflow_runs.py) | `WorkflowRunManager._buffer()`, `_event_row()`, `_bounded_payload()` |
 | LangGraph → AG-UI translation | [magenticx/agents/harness/agui/normalizer.py](../../magenticx/agents/harness/agui/normalizer.py) | `AGUIStreamNormalizer.handle_chunk()` |
 | Envelope unwrapping | [magenticx/agents/harness/agui/normalizer.py](../../magenticx/agents/harness/agui/normalizer.py) | `_unwrap_envelope()` |
 | Messages mode handling | [magenticx/agents/harness/agui/normalizer.py](../../magenticx/agents/harness/agui/normalizer.py) | `_handle_messages_payload()` |

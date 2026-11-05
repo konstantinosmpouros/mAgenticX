@@ -20,6 +20,7 @@ from utils.account_deletion import run_account_purger
 from utils.agent_trials import run_trial_sweeper
 from utils.embeddings import run_embedding_sweeper
 from utils.runtime_reaps import drain_runtime_reaps
+from utils.workflow_runs import cleanup_orphaned_workflow_runs, run_workflow_watchdog
 from core.logging import (
     RequestLoggingMiddleware,
     configure_logging,
@@ -50,6 +51,8 @@ from router import (
     memories_router,
     scheduled_tasks_router,
     usage_router,
+    workflows_router,
+    workflow_runs_router,
     internal_conversations_router,
     internal_memory_router,
 )
@@ -135,6 +138,9 @@ async def lifespan(app: FastAPI):
             "RUN_MIGRATIONS_ON_STARTUP=false — skipping alembic upgrade head",
         )
     await cleanup_orphaned_inference_runs()
+    # Workflow legs that were streaming when the process died (plan 38); runs
+    # paused on an approval survive a restart and are left alone.
+    await cleanup_orphaned_workflow_runs()
     logger.info("database_schema_ready", "Database schema is ready")
     # Start the scheduled-tasks loop only after the schema is ready and orphaned
     # runs are reaped (a restart-interrupted scheduled run is now 'failed', so the
@@ -155,12 +161,16 @@ async def lifespan(app: FastAPI):
     # "Try it" sweeper (plan 40): deletes builder trial chats nobody Reset.
     trial_stop_event = asyncio.Event()
     trial_task = asyncio.create_task(run_trial_sweeper(trial_stop_event))
+    # Workflow watchdog (plan 38): fails stalled legs, expires unanswered approvals.
+    workflow_stop_event = asyncio.Event()
+    workflow_task = asyncio.create_task(run_workflow_watchdog(workflow_stop_event))
     yield
     embedding_stop_event.set()
     purger_stop_event.set()
     trial_stop_event.set()
+    workflow_stop_event.set()
     await scheduler.stop()
-    for task in (embedding_task, purger_task, reap_task, trial_task):
+    for task in (embedding_task, purger_task, reap_task, trial_task, workflow_task):
         try:
             await asyncio.wait_for(task, timeout=10)
         except asyncio.TimeoutError:
@@ -313,6 +323,16 @@ app.include_router(
     usage_router,
     prefix="/v1/usage",
     tags=["Usage"],
+)
+app.include_router(
+    workflows_router,
+    prefix="/v1/workflows",
+    tags=["Workflows"],
+)
+app.include_router(
+    workflow_runs_router,
+    prefix="/v1/workflow-runs",
+    tags=["Workflow Runs"],
 )
 # Service-to-service only. Guarded by require_internal_caller AND denied at the
 # nginx edge (/api/v1/internal/) — reachable only by the agents service on the

@@ -1,0 +1,402 @@
+/* The workflow canvas — the run view's graph
+   (features/workflows/components/workflow_view_parts/WorkflowGraph.tsx) and the
+   builder's, both drawn with the shared node card and edge
+   (features/workflows/components/workflow_parts/WorkflowNodeCard.tsx,
+   WorkflowEdge.tsx).
+
+   Loaded in the canvas's lazy chunk after React Flow's stylesheet and the agent
+   map's (agent-map-flow.css), whose canvas, dot grid, controls and attribution
+   it shares through the `agent-map-flow` class — the same ground the agent
+   builder's canvas stands on. These rules add the cards' look (the builder's
+   card language: hover lift, a primary ring when selected) and the run overlay:
+   a light travelling round a running card (the chat's sub-agent light,
+   --subagent-angle from subagent.css) with a sweep across it, an amber pulse on
+   a waiting one, green / red / muted borders once it ended; calm thin edges with
+   one small arrowhead, the taken path lit, a flowing dash into a running node,
+   untaken branches muted. Every animation stops under reduced motion. */
+
+.workflow-flow.react-flow {
+  --xy-edge-stroke: hsl(var(--muted-foreground) / 0.42);
+  --xy-edge-stroke-width: 1.5;
+}
+
+/* ---- Cards ------------------------------------------------------------- */
+
+.workflow-flow .react-flow__node {
+  cursor: pointer;
+  border-radius: 1.1rem;
+}
+
+.workflow-flow .react-flow__node:focus-visible {
+  outline: none;
+}
+
+.workflow-flow .react-flow__node:focus-visible .workflow-node-card {
+  outline: 2px solid hsl(var(--primary) / 0.75);
+  outline-offset: 3px;
+}
+
+.workflow-node {
+  isolation: isolate;
+  border-radius: 1.1rem;
+  transition: opacity 0.3s ease, filter 0.3s ease;
+}
+
+.workflow-node-card {
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background-color 0.2s ease,
+    transform 0.2s ease;
+  animation: workflow-node-in 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes workflow-node-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+}
+
+/* The kind's accent (a theme token, set per card as --wf-accent). */
+.workflow-node-tile {
+  background: hsl(var(--wf-accent, var(--primary)) / 0.13);
+  color: hsl(var(--wf-accent, var(--primary)));
+  box-shadow: inset 0 0 0 1px hsl(var(--wf-accent, var(--primary)) / 0.12);
+}
+
+.workflow-node-kind {
+  color: hsl(var(--wf-accent, var(--primary)) / 0.9);
+}
+
+.workflow-node:hover .workflow-node-card {
+  border-color: hsl(var(--primary) / 0.4);
+  box-shadow:
+    0 1px 2px hsl(var(--foreground) / 0.05),
+    0 14px 30px -18px hsl(var(--foreground) / 0.4);
+}
+
+.workflow-node[data-mode="edit"]:hover .workflow-node-card {
+  transform: translateY(-1px);
+}
+
+.workflow-node[data-selected="true"] .workflow-node-card {
+  border-color: hsl(var(--primary) / 0.7);
+  box-shadow:
+    0 0 0 3px hsl(var(--primary) / 0.16),
+    0 12px 28px -16px hsl(var(--primary) / 0.55);
+}
+
+.workflow-node[data-errors="true"] .workflow-node-card {
+  border-color: hsl(var(--destructive) / 0.5);
+}
+
+/* Not reached by a run that is under way or over: a step back. */
+.workflow-node[data-dimmed="true"] {
+  opacity: 0.55;
+  filter: saturate(0.6);
+}
+
+.workflow-node[data-dimmed="true"]:hover,
+.workflow-node[data-dimmed="true"][data-selected="true"] {
+  opacity: 0.9;
+  filter: none;
+}
+
+/* Branch names beside their handles. */
+.workflow-node-branch {
+  background: hsl(var(--muted) / 0.9);
+  color: hsl(var(--muted-foreground));
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.workflow-node-branch.is-taken {
+  background: hsl(var(--primary) / 0.14);
+  color: hsl(var(--primary));
+  font-weight: 600;
+}
+
+.workflow-node-count {
+  box-shadow: 0 4px 12px -6px hsl(var(--foreground) / 0.4);
+  animation: workflow-count-in 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes workflow-count-in {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
+
+/* Edit mode: the per-node action comes up on hover, focus or selection. */
+.workflow-node-reveal {
+  opacity: 0;
+  transform: translateY(2px);
+  transition: opacity 0.16s ease, transform 0.16s ease;
+  pointer-events: none;
+}
+
+.workflow-node:hover .workflow-node-reveal,
+.workflow-node:focus-within .workflow-node-reveal,
+.react-flow__node:focus-visible .workflow-node-reveal,
+.workflow-node[data-selected="true"] .workflow-node-reveal {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+/* ---- Handles ----------------------------------------------------------- */
+
+.workflow-flow .workflow-node-handle {
+  width: 9px;
+  height: 9px;
+  min-width: 0;
+  min-height: 0;
+  border: 1.5px solid hsl(var(--muted-foreground) / 0.55);
+  background: hsl(var(--card));
+  transition: transform 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.workflow-flow .workflow-node-handle.is-taken {
+  border-color: hsl(var(--primary));
+  background: hsl(var(--primary));
+}
+
+/* Read-only: the target end is the arrowhead's, so its dot stays out of sight. */
+.workflow-flow .workflow-node-handle.is-readonly {
+  pointer-events: none;
+}
+
+.workflow-flow .workflow-node-handle.is-readonly.is-target {
+  opacity: 0;
+}
+
+.workflow-flow .workflow-node-handle:not(.is-readonly):hover,
+.workflow-flow .workflow-node-handle.connectingto,
+.workflow-flow .workflow-node-handle.valid {
+  transform: translate(var(--wf-handle-shift, 0), -50%) scale(1.35);
+  border-color: hsl(var(--primary));
+  background: hsl(var(--primary));
+}
+
+.workflow-flow .workflow-node-handle.react-flow__handle-left {
+  --wf-handle-shift: -50%;
+}
+
+.workflow-flow .workflow-node-handle.react-flow__handle-right {
+  --wf-handle-shift: 50%;
+}
+
+/* ---- Run states -------------------------------------------------------- */
+
+.workflow-node--succeeded .workflow-node-card {
+  border-color: hsl(var(--success) / 0.55);
+}
+
+.workflow-node--failed .workflow-node-card {
+  border-color: hsl(var(--destructive) / 0.7);
+  background-image: linear-gradient(180deg, hsl(var(--destructive) / 0.06), transparent 70%);
+  box-shadow:
+    0 0 0 3px hsl(var(--destructive) / 0.1),
+    0 10px 24px -16px hsl(var(--destructive) / 0.5);
+}
+
+.workflow-node--cancelled .workflow-node-card {
+  border-style: dashed;
+  border-color: hsl(var(--muted-foreground) / 0.45);
+}
+
+.workflow-node--waiting .workflow-node-card {
+  border-color: hsl(var(--warning) / 0.8);
+  animation: workflow-node-wait 2.4s ease-in-out infinite;
+}
+
+@keyframes workflow-node-wait {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 2px hsl(var(--warning) / 0.14),
+      0 8px 20px -14px hsl(var(--warning) / 0.5);
+  }
+  50% {
+    box-shadow:
+      0 0 0 6px hsl(var(--warning) / 0.06),
+      0 10px 26px -14px hsl(var(--warning) / 0.65);
+  }
+}
+
+/* Running: the sub-agent card's light travels round the border (a conic
+   gradient masked to a ring), a blurred copy glows under it, and a soft band
+   sweeps across the card. */
+.workflow-node--running .workflow-node-card {
+  border-color: transparent;
+}
+
+.workflow-node--running::before,
+.workflow-node--running::after {
+  content: "";
+  position: absolute;
+  inset: -1.5px;
+  border-radius: calc(1.1rem + 1.5px);
+  pointer-events: none;
+  background: conic-gradient(
+    from var(--subagent-angle),
+    transparent 0deg,
+    hsl(var(--subagent-active) / 0.15) 40deg,
+    hsl(var(--subagent-active)) 90deg,
+    hsl(var(--subagent-active-glow, var(--subagent-active))) 120deg,
+    transparent 170deg,
+    transparent 190deg,
+    hsl(var(--subagent-active) / 0.15) 220deg,
+    hsl(var(--subagent-active)) 270deg,
+    hsl(var(--subagent-active-glow, var(--subagent-active))) 300deg,
+    transparent 350deg
+  );
+  animation: subagent-border-spin 2.6s linear infinite;
+}
+
+.workflow-node--running::before {
+  z-index: 1;
+  padding: 1.5px;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+.workflow-node--running::after {
+  z-index: -1;
+  filter: blur(12px);
+  opacity: 0.5;
+}
+
+.workflow-node-sweep {
+  background: linear-gradient(
+    100deg,
+    transparent 30%,
+    hsl(var(--subagent-active) / 0.09) 50%,
+    transparent 70%
+  );
+  background-size: 250% 100%;
+  animation: workflow-node-sweep 2.2s ease-in-out infinite;
+}
+
+@keyframes workflow-node-sweep {
+  from {
+    background-position: 120% 0;
+  }
+  to {
+    background-position: -120% 0;
+  }
+}
+
+/* ---- Edges ------------------------------------------------------------- */
+
+.workflow-flow .workflow-edge .react-flow__edge-path {
+  stroke: hsl(var(--muted-foreground) / 0.42);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  transition: stroke 0.3s ease, stroke-width 0.2s ease, opacity 0.3s ease;
+}
+
+.workflow-flow .workflow-edge-arrow {
+  fill: hsl(var(--muted-foreground) / 0.6);
+  transition: fill 0.3s ease, opacity 0.3s ease;
+}
+
+.workflow-flow .workflow-edge.is-taken .react-flow__edge-path {
+  stroke: hsl(var(--primary) / 0.75);
+  stroke-width: 2;
+}
+
+.workflow-flow .workflow-edge.is-taken .workflow-edge-arrow {
+  fill: hsl(var(--primary));
+}
+
+.workflow-flow .workflow-edge.is-running .react-flow__edge-path {
+  stroke: hsl(var(--subagent-active));
+  stroke-width: 2;
+}
+
+.workflow-flow .workflow-edge.is-running .workflow-edge-arrow {
+  fill: hsl(var(--subagent-active));
+}
+
+.workflow-flow .workflow-edge-glow {
+  stroke: hsl(var(--subagent-active-glow, var(--subagent-active)) / 0.35);
+  stroke-width: 7;
+  stroke-linecap: round;
+  filter: blur(3px);
+  pointer-events: none;
+}
+
+.workflow-flow .workflow-edge.is-failed .react-flow__edge-path {
+  stroke: hsl(var(--destructive) / 0.65);
+}
+
+.workflow-flow .workflow-edge.is-failed .workflow-edge-arrow {
+  fill: hsl(var(--destructive) / 0.8);
+}
+
+.workflow-flow .workflow-edge.is-untaken {
+  opacity: 0.38;
+}
+
+.workflow-flow .workflow-edge.is-untaken .react-flow__edge-path {
+  stroke-dasharray: 3 4;
+}
+
+.workflow-flow .workflow-edge.is-selected .react-flow__edge-path,
+.workflow-flow .react-flow__edge:hover .workflow-edge .react-flow__edge-path {
+  stroke: hsl(var(--primary) / 0.85);
+}
+
+.workflow-flow .workflow-edge.is-selected .workflow-edge-arrow,
+.workflow-flow .react-flow__edge:hover .workflow-edge .workflow-edge-arrow {
+  fill: hsl(var(--primary));
+}
+
+/* The flowing dash into a running node (React Flow's `animated`). */
+.workflow-flow .react-flow__edge.animated .workflow-edge .react-flow__edge-path {
+  stroke-dasharray: 6 5;
+  animation: workflow-edge-flow 0.9s linear infinite;
+}
+
+@keyframes workflow-edge-flow {
+  to {
+    stroke-dashoffset: -22;
+  }
+}
+
+.workflow-edge-delete {
+  pointer-events: all;
+}
+
+/* ---- Reduced motion ---------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .workflow-node,
+  .workflow-node-card,
+  .workflow-node-count,
+  .workflow-node-reveal,
+  .workflow-node-branch,
+  .workflow-flow .workflow-node-handle,
+  .workflow-flow .workflow-edge .react-flow__edge-path {
+    transition: none;
+    animation: none;
+  }
+  .workflow-node--running::before,
+  .workflow-node--running::after,
+  .workflow-node-sweep {
+    animation: none;
+  }
+  .workflow-node--waiting .workflow-node-card {
+    animation: none;
+    box-shadow: 0 0 0 3px hsl(var(--warning) / 0.14);
+  }
+  .workflow-flow .react-flow__edge.animated .workflow-edge .react-flow__edge-path {
+    stroke-dasharray: none;
+    animation: none;
+  }
+}

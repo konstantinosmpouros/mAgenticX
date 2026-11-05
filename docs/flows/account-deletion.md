@@ -1,6 +1,6 @@
 # Delete Account
 
-A user can permanently delete their account — every conversation, message, attachment, embedding, share, scheduled task, preference, custom agent, skill, memory and checkpoint, across `chat_db` and the agents service's `agent_runtime` database — from Settings → Data controls. The mental model is **request, grace, purge**. A request needs a fresh Microsoft sign-in and the account's email typed back; it signs every device out at once and freezes the account for 14 days, during which signing in can cancel it. When the grace period ends, a background job in the **dialogue_bridge** removes everything in small, resumable, rate-limited steps, asking the **agents** service to remove its part, and leaves only a non-identifying record that it happened. Nothing is deleted at request time; nothing about the user survives the purge. `ACCOUNT_DELETION_ENABLED` (on by default) is the kill switch.
+A user can permanently delete their account — every conversation, message, attachment, embedding, share, scheduled task, workflow and workflow run, preference, custom agent, skill, memory and checkpoint, across `chat_db` and the agents service's `agent_runtime` database — from Settings → Data controls. The mental model is **request, grace, purge**. A request needs a fresh Microsoft sign-in and the account's email typed back; it signs every device out at once and freezes the account for 14 days, during which signing in can cancel it. When the grace period ends, a background job in the **dialogue_bridge** removes everything in small, resumable, rate-limited steps, asking the **agents** service to remove its part, and leaves only a non-identifying record that it happened. Nothing is deleted at request time; nothing about the user survives the purge. `ACCOUNT_DELETION_ENABLED` (on by default) is the kill switch.
 
 ---
 
@@ -87,16 +87,17 @@ Nothing is deleted; everything is **gated**, so a cancel restores the account ex
 | Step | What | Bound |
 | --- | --- | --- |
 | `sessions` | set the watermark again — the purge does not rely on the request having done it | — |
-| `agent_threads` | per page of conversations, the distinct `checkpoint_thread_id`s → agents `POST /users/{id}/purge/threads` | 200 ids / call |
-| `agent_runtime` | agents `DELETE /users/{id}`: memories, skill pool + files + assignments, custom agent definitions + files + version history (`agent_definition_versions`), every conversation file and its blobs (by `user_id`, plan 36), and the per-user agent cache | one transaction per store |
+| `agent_threads` | per page of conversations, the distinct `checkpoint_thread_id`s, then every workflow run's `thread_id` (`workflow_runs`, plan 38) → agents `POST /users/{id}/purge/threads` | 200 ids / call |
+| `agent_runtime` | agents `DELETE /users/{id}`: memories, skill pool + files + assignments, custom agent definitions + files + version history (`agent_definition_versions`), every conversation file and its blobs (by `user_id`, plan 36), workflow definitions + versions + persisted state (plan 38, counted as `workflows` / `workflow_versions`), and the per-user agent cache | one transaction per store |
+| `workflow_runs` | per 25 runs: each run's `workflow_run_events` in batches, then the runs (plan 38; counted as `workflow_run_events` / `workflow_runs`). A deletion recorded before this step existed resumes by step name and runs it too | 1000 events per transaction |
 | `conversations` | per 25 conversations: attachment blobs, remaining attachments, messages + embeddings + their `message_usage` rows, reports, shares, then the conversations | ≤ 20 blobs **and** ≤ 64 MiB per transaction, ≤ 32 MiB/s; 1000 messages per transaction |
-| `user` | **stop** if another user's conversation uses one of this user's custom agents; else preferences, tool prefs, tasks, reports, shares, the usage rollups (`usage_daily`, `usage_daily_groups` — they outlive deleted conversations by design, so only this step removes them), custom agents and the user row — with the step recorded in the same transaction | one transaction |
+| `user` | **stop** if another user's conversation uses one of this user's custom agents; else preferences, tool prefs, tasks, workflow schedules (`workflow_schedules`, plan 38 §3.9), reports, shares, the usage rollups (`usage_daily`, `usage_daily_groups` — they outlive deleted conversations by design, so only this step removes them), custom agents and the user row — with the step recorded in the same transaction | one transaction |
 
 Then the record is closed: `completed_at`, `counts` (rows and bytes removed per store), and an `account_purged` log line with the hashed id.
 
 - **Resumable and idempotent.** Each step deletes "whatever is still there" and is recorded when it finishes, so a crash, redeploy or failed call resumes after the last finished step. Running totals are saved after every batch.
 - **Children before parents.** Deleting explicitly, rather than relying on `ON DELETE CASCADE`, is what keeps each transaction small — and makes the purge independent of the database enforcing foreign keys at all.
-- **The agents service before chat_db.** A failure there never leaves chat_db already emptied with orphans elsewhere.
+- **The agents service before chat_db.** A failure there never leaves chat_db already emptied with orphans elsewhere. Threads go first because the messages and workflow runs are what name them.
 - **Failures** back off (60 s doubling, capped by `ACCOUNT_PURGE_RETRY_MAX_SECONDS`) and log `account_purge_step_failed` with the exception class only.
 
 ### Why the purge is rate-limited
@@ -138,5 +139,6 @@ The `account_deletions` row, with `user_id` set to `NULL` by the delete itself a
 | Re-authentication | [magenticx/dialogue_bridge/core/auth/oidc.py](../../magenticx/dialogue_bridge/core/auth/oidc.py), [router/auth.py](../../magenticx/dialogue_bridge/router/auth.py) | `reauth_user_id`, `consume_reauth_intent` |
 | Table + migration | [magenticx/dialogue_bridge/core/database/migrations/versions/0029_account_deletions.py](../../magenticx/dialogue_bridge/core/database/migrations/versions/0029_account_deletions.py) | `account_deletions` |
 | Settings | [magenticx/dialogue_bridge/core/settings.py](../../magenticx/dialogue_bridge/core/settings.py) | `AccountDeletionSettings` |
-| Agents service part | [magenticx/agents/utils/account_purge.py](../../magenticx/agents/utils/account_purge.py), [router/account.py](../../magenticx/agents/router/account.py) | `purge_threads`, `purge_user`, each store's `purge_user` |
+| Agents service part | [magenticx/agents/utils/account_purge.py](../../magenticx/agents/utils/account_purge.py), [router/account.py](../../magenticx/agents/router/account.py) | `purge_threads`, `purge_user`, each store's `purge_user` (incl. `WorkflowStore.purge_user`) |
+| Workflow runs step | [magenticx/dialogue_bridge/utils/account_deletion.py](../../magenticx/dialogue_bridge/utils/account_deletion.py) | `_workflow_thread_id_pages`, `_step_workflow_runs` |
 | UI | [DeleteAccountCard.tsx](../../magenticx/agentic_ui/src/features/settings/components/profile_parts/DeleteAccountCard.tsx), [DeleteAccountDialog.tsx](../../magenticx/agentic_ui/src/features/settings/components/profile_parts/DeleteAccountDialog.tsx), [PendingDeletionScreen.tsx](../../magenticx/agentic_ui/src/features/settings/components/PendingDeletionScreen.tsx) | the two gates; the pending screen |

@@ -115,6 +115,7 @@ class AGUIEmitter:
                     payload_str = line[len("data:"):].lstrip()
                     payload = json.loads(payload_str)
                     payload["namespace"] = namespace
+                    payload.update(self._extra_fields())
                     new_lines.append(f"data: {json.dumps(payload, ensure_ascii=False)}")
                     applied = True
                 else:
@@ -132,6 +133,16 @@ class AGUIEmitter:
             return rebuilt.encode("utf-8")
         except Exception:
             return sse
+
+    def _extra_fields(self) -> Dict[str, Any]:
+        """Fields stamped onto every event this emitter encodes, beside ``namespace``.
+
+        None here. A subclass that needs every frame of a stream to carry the
+        same context overrides it — the workflow engine stamps its run envelope
+        (``harness/workflows/events.py``) this way, so a node's tool calls and
+        text carry it without each call site having to remember to add it.
+        """
+        return {}
 
 
     # ---------- Run lifecycle ----------

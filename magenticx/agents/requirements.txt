@@ -24,3 +24,5 @@ PyYAML==6.0.3  # directly used by the `remember` tool to (de)serialize memory en
 langchain-text-splitters>=1.1.2 # not directly required, pinned by Snyk to avoid a vulnerability
 starlette==0.49.3 # pinned to a newer compatible release for FastAPI 0.135.x
 Pillow==13.0.0  # thumbnails for image tool results (harness/agui/previews.py); the model still gets the full image
+croniter==2.0.5  # cron validation of the workflow trigger.schedule node (matches the bridge pin)
+tzdata==2025.2  # IANA zones for trigger.schedule timezones on hosts without a system tz database

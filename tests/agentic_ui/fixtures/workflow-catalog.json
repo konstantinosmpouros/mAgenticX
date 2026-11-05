@@ -1,0 +1,558 @@
+[
+ {
+  "kind": "trigger.manual",
+  "label": "Manual trigger",
+  "group": "trigger",
+  "description": "Starts the workflow when it is run by hand. Output: the run's inputs.",
+  "branches": [],
+  "dynamicBranches": false,
+  "isTrigger": true,
+  "configSchema": {
+   "additionalProperties": false,
+   "description": "Fields every node kind's config has.\n\n``assign`` is how any node writes declared state: ``{field: template}``,\nrendered after the node ran, so its values may read the node's own result\nas ``{{output.<path>}}`` besides ``input`` / ``state`` / ``nodes``.",
+   "properties": {
+    "assign": {
+     "additionalProperties": true,
+     "description": "State fields to write after the node runs: {field: value}. Values are templates and may read {{output.<path>}}.",
+     "maxProperties": 32,
+     "title": "Assign",
+     "type": "object"
+    }
+   },
+   "title": "NodeConfig",
+   "type": "object"
+  }
+ },
+ {
+  "kind": "tool",
+  "label": "Tool",
+  "group": "tools",
+  "description": "Calls one MCP gateway tool or allowed native tool with the given arguments.",
+  "branches": [],
+  "dynamicBranches": false,
+  "isTrigger": false,
+  "configSchema": {
+   "$defs": {
+    "ToolRef": {
+     "additionalProperties": false,
+     "description": "Which tool.",
+     "properties": {
+      "source": {
+       "enum": [
+        "native",
+        "mcp"
+       ],
+       "title": "Source",
+       "type": "string"
+      },
+      "name": {
+       "pattern": "^[A-Za-z0-9_.:/-]{1,128}$",
+       "title": "Name",
+       "type": "string"
+      }
+     },
+     "required": [
+      "source",
+      "name"
+     ],
+     "title": "ToolRef",
+     "type": "object"
+    }
+   },
+   "additionalProperties": false,
+   "description": "The tool and its arguments.",
+   "properties": {
+    "assign": {
+     "additionalProperties": true,
+     "description": "State fields to write after the node runs: {field: value}. Values are templates and may read {{output.<path>}}.",
+     "maxProperties": 32,
+     "title": "Assign",
+     "type": "object"
+    },
+    "tool": {
+     "$ref": "#/$defs/ToolRef"
+    },
+    "args": {
+     "additionalProperties": true,
+     "description": "Tool arguments; templates allowed",
+     "title": "Args",
+     "type": "object"
+    },
+    "timeout_seconds": {
+     "default": 60.0,
+     "exclusiveMinimum": 0,
+     "maximum": 300.0,
+     "title": "Timeout Seconds",
+     "type": "number"
+    }
+   },
+   "required": [
+    "tool"
+   ],
+   "title": "ToolConfig",
+   "type": "object"
+  }
+ },
+ {
+  "kind": "fetch",
+  "label": "HTTP request",
+  "group": "data",
+  "description": "GET or POST a public http(s) URL (SSRF-guarded, \u22643 redirects, \u226430 s, \u22641 MiB).",
+  "branches": [],
+  "dynamicBranches": false,
+  "isTrigger": false,
+  "configSchema": {
+   "additionalProperties": false,
+   "description": "One request.",
+   "properties": {
+    "assign": {
+     "additionalProperties": true,
+     "description": "State fields to write after the node runs: {field: value}. Values are templates and may read {{output.<path>}}.",
+     "maxProperties": 32,
+     "title": "Assign",
+     "type": "object"
+    },
+    "method": {
+     "default": "GET",
+     "enum": [
+      "GET",
+      "POST"
+     ],
+     "title": "Method",
+     "type": "string"
+    },
+    "url": {
+     "description": "http(s) URL; templates allowed",
+     "maxLength": 2048,
+     "minLength": 1,
+     "title": "Url",
+     "type": "string"
+    },
+    "headers": {
+     "additionalProperties": {
+      "type": "string"
+     },
+     "maxProperties": 32,
+     "title": "Headers",
+     "type": "object"
+    },
+    "query": {
+     "additionalProperties": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "integer"
+       },
+       {
+        "type": "number"
+       },
+       {
+        "type": "boolean"
+       }
+      ]
+     },
+     "maxProperties": 32,
+     "title": "Query",
+     "type": "object"
+    },
+    "body": {
+     "default": null,
+     "description": "JSON body (POST only)",
+     "title": "Body"
+    },
+    "timeout_seconds": {
+     "default": 15.0,
+     "exclusiveMinimum": 0,
+     "maximum": 30.0,
+     "title": "Timeout Seconds",
+     "type": "number"
+    },
+    "response_type": {
+     "default": "auto",
+     "enum": [
+      "auto",
+      "json",
+      "text"
+     ],
+     "title": "Response Type",
+     "type": "string"
+    }
+   },
+   "required": [
+    "url"
+   ],
+   "title": "FetchConfig",
+   "type": "object"
+  }
+ },
+ {
+  "kind": "condition",
+  "label": "Condition",
+  "group": "flow",
+  "description": "Takes the 'true' or 'false' branch depending on rules over the run's data.",
+  "branches": [
+   "true",
+   "false"
+  ],
+  "dynamicBranches": false,
+  "isTrigger": false,
+  "configSchema": {
+   "$defs": {
+    "Rule": {
+     "additionalProperties": false,
+     "description": "One comparison.",
+     "properties": {
+      "path": {
+       "description": "Path to test, e.g. nodes.fetch.output.status",
+       "pattern": "^[A-Za-z0-9_.-]{1,512}$",
+       "title": "Path",
+       "type": "string"
+      },
+      "op": {
+       "enum": [
+        "eq",
+        "ne",
+        "gt",
+        "gte",
+        "lt",
+        "lte",
+        "contains",
+        "exists",
+        "empty"
+       ],
+       "title": "Op",
+       "type": "string"
+      },
+      "value": {
+       "default": null,
+       "description": "Literal to compare with (ignored by exists / empty)",
+       "title": "Value"
+      }
+     },
+     "required": [
+      "path",
+      "op"
+     ],
+     "title": "Rule",
+     "type": "object"
+    }
+   },
+   "additionalProperties": false,
+   "description": "The rules and how they combine.",
+   "properties": {
+    "assign": {
+     "additionalProperties": true,
+     "description": "State fields to write after the node runs: {field: value}. Values are templates and may read {{output.<path>}}.",
+     "maxProperties": 32,
+     "title": "Assign",
+     "type": "object"
+    },
+    "mode": {
+     "default": "all",
+     "description": "all = every rule must hold; any = at least one",
+     "enum": [
+      "all",
+      "any"
+     ],
+     "title": "Mode",
+     "type": "string"
+    },
+    "rules": {
+     "items": {
+      "$ref": "#/$defs/Rule"
+     },
+     "maxItems": 20,
+     "minItems": 1,
+     "title": "Rules",
+     "type": "array"
+    }
+   },
+   "required": [
+    "rules"
+   ],
+   "title": "ConditionConfig",
+   "type": "object"
+  }
+ },
+ {
+  "kind": "router",
+  "label": "Router",
+  "group": "flow",
+  "description": "Takes the branch of the first case whose rules hold, else 'default'.",
+  "branches": [
+   "default"
+  ],
+  "dynamicBranches": true,
+  "isTrigger": false,
+  "configSchema": {
+   "$defs": {
+    "RouterCase": {
+     "additionalProperties": false,
+     "description": "One named case.",
+     "properties": {
+      "name": {
+       "description": "Branch name taken when this case matches",
+       "pattern": "^[a-z][a-z0-9_]{0,31}$",
+       "title": "Name",
+       "type": "string"
+      },
+      "mode": {
+       "default": "all",
+       "enum": [
+        "all",
+        "any"
+       ],
+       "title": "Mode",
+       "type": "string"
+      },
+      "rules": {
+       "items": {
+        "$ref": "#/$defs/Rule"
+       },
+       "maxItems": 20,
+       "minItems": 1,
+       "title": "Rules",
+       "type": "array"
+      }
+     },
+     "required": [
+      "name",
+      "rules"
+     ],
+     "title": "RouterCase",
+     "type": "object"
+    },
+    "Rule": {
+     "additionalProperties": false,
+     "description": "One comparison.",
+     "properties": {
+      "path": {
+       "description": "Path to test, e.g. nodes.fetch.output.status",
+       "pattern": "^[A-Za-z0-9_.-]{1,512}$",
+       "title": "Path",
+       "type": "string"
+      },
+      "op": {
+       "enum": [
+        "eq",
+        "ne",
+        "gt",
+        "gte",
+        "lt",
+        "lte",
+        "contains",
+        "exists",
+        "empty"
+       ],
+       "title": "Op",
+       "type": "string"
+      },
+      "value": {
+       "default": null,
+       "description": "Literal to compare with (ignored by exists / empty)",
+       "title": "Value"
+      }
+     },
+     "required": [
+      "path",
+      "op"
+     ],
+     "title": "Rule",
+     "type": "object"
+    }
+   },
+   "additionalProperties": false,
+   "description": "Ordered cases; the first match wins.",
+   "properties": {
+    "assign": {
+     "additionalProperties": true,
+     "description": "State fields to write after the node runs: {field: value}. Values are templates and may read {{output.<path>}}.",
+     "maxProperties": 32,
+     "title": "Assign",
+     "type": "object"
+    },
+    "cases": {
+     "items": {
+      "$ref": "#/$defs/RouterCase"
+     },
+     "maxItems": 16,
+     "minItems": 1,
+     "title": "Cases",
+     "type": "array"
+    }
+   },
+   "required": [
+    "cases"
+   ],
+   "title": "RouterConfig",
+   "type": "object"
+  }
+ },
+ {
+  "kind": "loop",
+  "label": "Loop",
+  "group": "flow",
+  "description": "Repeats its 'continue' branch up to max_iterations times while its rules hold, then takes 'done'.",
+  "branches": [
+   "continue",
+   "done"
+  ],
+  "dynamicBranches": false,
+  "isTrigger": false,
+  "configSchema": {
+   "$defs": {
+    "Rule": {
+     "additionalProperties": false,
+     "description": "One comparison.",
+     "properties": {
+      "path": {
+       "description": "Path to test, e.g. nodes.fetch.output.status",
+       "pattern": "^[A-Za-z0-9_.-]{1,512}$",
+       "title": "Path",
+       "type": "string"
+      },
+      "op": {
+       "enum": [
+        "eq",
+        "ne",
+        "gt",
+        "gte",
+        "lt",
+        "lte",
+        "contains",
+        "exists",
+        "empty"
+       ],
+       "title": "Op",
+       "type": "string"
+      },
+      "value": {
+       "default": null,
+       "description": "Literal to compare with (ignored by exists / empty)",
+       "title": "Value"
+      }
+     },
+     "required": [
+      "path",
+      "op"
+     ],
+     "title": "Rule",
+     "type": "object"
+    }
+   },
+   "additionalProperties": false,
+   "description": "The iteration cap and the keep-going condition.",
+   "properties": {
+    "assign": {
+     "additionalProperties": true,
+     "description": "State fields to write after the node runs: {field: value}. Values are templates and may read {{output.<path>}}.",
+     "maxProperties": 32,
+     "title": "Assign",
+     "type": "object"
+    },
+    "max_iterations": {
+     "default": 5,
+     "maximum": 20,
+     "minimum": 1,
+     "title": "Max Iterations",
+     "type": "integer"
+    },
+    "mode": {
+     "default": "all",
+     "enum": [
+      "all",
+      "any"
+     ],
+     "title": "Mode",
+     "type": "string"
+    },
+    "while": {
+     "description": "Keep looping while these rules hold (empty = until max_iterations)",
+     "items": {
+      "$ref": "#/$defs/Rule"
+     },
+     "maxItems": 20,
+     "title": "While",
+     "type": "array"
+    }
+   },
+   "title": "LoopConfig",
+   "type": "object"
+  }
+ },
+ {
+  "kind": "approval",
+  "label": "Approval",
+  "group": "flow",
+  "description": "Pauses until someone approves or rejects; branches 'approved' / 'rejected'.",
+  "branches": [
+   "approved",
+   "rejected"
+  ],
+  "dynamicBranches": false,
+  "isTrigger": false,
+  "configSchema": {
+   "additionalProperties": false,
+   "description": "What the person is asked, and what they see alongside it.",
+   "properties": {
+    "assign": {
+     "additionalProperties": true,
+     "description": "State fields to write after the node runs: {field: value}. Values are templates and may read {{output.<path>}}.",
+     "maxProperties": 32,
+     "title": "Assign",
+     "type": "object"
+    },
+    "message": {
+     "description": "The question shown to the approver",
+     "maxLength": 2000,
+     "minLength": 1,
+     "title": "Message",
+     "type": "string"
+    },
+    "payload": {
+     "default": null,
+     "description": "Data shown with the question (templates allowed)",
+     "title": "Payload"
+    }
+   },
+   "required": [
+    "message"
+   ],
+   "title": "ApprovalConfig",
+   "type": "object"
+  }
+ },
+ {
+  "kind": "end",
+  "label": "End",
+  "group": "output",
+  "description": "Ends the run and picks what it returns.",
+  "branches": [],
+  "dynamicBranches": false,
+  "isTrigger": false,
+  "configSchema": {
+   "additionalProperties": false,
+   "description": "Which values the run returns.",
+   "properties": {
+    "assign": {
+     "additionalProperties": true,
+     "description": "State fields to write after the node runs: {field: value}. Values are templates and may read {{output.<path>}}.",
+     "maxProperties": 32,
+     "title": "Assign",
+     "type": "object"
+    },
+    "outputs": {
+     "additionalProperties": true,
+     "description": "Result name -> value (templates allowed). Empty = the whole declared state.",
+     "maxProperties": 32,
+     "title": "Outputs",
+     "type": "object"
+    }
+   },
+   "title": "EndConfig",
+   "type": "object"
+  }
+ }
+]

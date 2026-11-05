@@ -12,7 +12,10 @@ disk — and the cost of an export does not grow with the size of the account.
 * **Attachment bytes** come in ``EXPORT_CHUNK_BYTES`` slices (``substring``),
   the same way attachment downloads already work.
 * **Custom agents and skills** live in the agents service; it streams its part
-  as framed lines that are copied straight into the archive.
+  as framed lines that are copied straight into the archive (workflow
+  definitions too, under ``workflows/definitions/``, once it sends them).
+* **Workflow runs** (plan 38) are the user's own history — each run and every
+  event the engine emitted for it — so they are exported, run by run.
 * **The archive** is built by :class:`utils.zip_stream.ZipStream`, which never
   holds more than the bytes just written, and is sent as it is built.
   ``manifest.json`` is written last, and the zip's directory after it — a
@@ -29,7 +32,7 @@ What protects the service, given that rate limiting fails open:
   cookies.
 
 Never exported: session or refresh tokens, CSRF secrets, share-link tokens and
-their snapshots, raw agent event logs, message embeddings, agent memories (the
+their snapshots, raw chat-agent event logs, message embeddings, agent memories (the
 user's choice), and the shared copies of remote skills (third-party content,
 exported as references instead).
 """
@@ -69,6 +72,9 @@ from core.database import (
     UserAvatarTable,
     UserPreferencesTable,
     UserTable,
+    WorkflowRunEventTable,
+    WorkflowRunTable,
+    WorkflowScheduleTable,
 )
 from core.logging import get_context, get_logger
 from core.security.internal_trust import internal_service_headers
@@ -84,7 +90,7 @@ _TOKEN_PURPOSE = "export"
 #: page of small rows is one write rather than fifty.
 _FLUSH_BYTES = 256 * 1024
 #: Upstream archive paths the agents service may write — nothing else.
-_UPSTREAM_PREFIXES = ("agents/", "skills/")
+_UPSTREAM_PREFIXES = ("agents/", "skills/", "workflows/definitions/")
 FORMAT_VERSION = 1
 
 
@@ -184,6 +190,32 @@ _TASKS = (
     ScheduledTaskTable.last_run_at, ScheduledTaskTable.last_run_status,
     ScheduledTaskTable.run_count, ScheduledTaskTable.max_runs, ScheduledTaskTable.expires_at,
     ScheduledTaskTable.created_at,
+)
+
+# Workflow runs (plan 38). The thread id is the engine's internal handle, not
+# the user's data.
+_WORKFLOW_RUNS = (
+    WorkflowRunTable.id, WorkflowRunTable.workflow_id, WorkflowRunTable.workflow_name,
+    WorkflowRunTable.version_no, WorkflowRunTable.trigger_kind, WorkflowRunTable.status,
+    WorkflowRunTable.inputs, WorkflowRunTable.error, WorkflowRunTable.event_count,
+    WorkflowRunTable.started_at, WorkflowRunTable.finished_at, WorkflowRunTable.created_at,
+)
+# Workflow schedules (plan 38 §3.9): the bridge's copy of each workflow's
+# trigger.schedule node, with its run state.
+_WORKFLOW_SCHEDULES = (
+    WorkflowScheduleTable.workflow_id, WorkflowScheduleTable.node_id,
+    WorkflowScheduleTable.schedule_kind, WorkflowScheduleTable.schedule_spec,
+    WorkflowScheduleTable.timezone, WorkflowScheduleTable.inputs, WorkflowScheduleTable.status,
+    WorkflowScheduleTable.next_run_at, WorkflowScheduleTable.last_run_at,
+    WorkflowScheduleTable.last_run_id, WorkflowScheduleTable.last_run_status,
+    WorkflowScheduleTable.run_count, WorkflowScheduleTable.created_at,
+    WorkflowScheduleTable.updated_at,
+)
+_WORKFLOW_RUN_EVENTS = (
+    WorkflowRunEventTable.run_id, WorkflowRunEventTable.seq, WorkflowRunEventTable.type,
+    WorkflowRunEventTable.node_id, WorkflowRunEventTable.execution_id,
+    WorkflowRunEventTable.parent_execution_id, WorkflowRunEventTable.payload,
+    WorkflowRunEventTable.created_at,
 )
 
 
@@ -556,6 +588,24 @@ async def _all_tool_usage(user_id: str) -> AsyncIterator[dict]:
             yield row
 
 
+def _workflow_schedule_rows(user_id: str) -> AsyncIterator[dict]:
+    base = select(*_WORKFLOW_SCHEDULES).where(WorkflowScheduleTable.user_id == user_id)
+    return _pages(_by_id(base, WorkflowScheduleTable.workflow_id), lambda r: (r["workflow_id"],))
+
+
+def _workflow_run_rows(user_id: str) -> AsyncIterator[dict]:
+    base = select(*_WORKFLOW_RUNS).where(WorkflowRunTable.user_id == user_id)
+    return _pages(_by_id(base, WorkflowRunTable.id), lambda r: (r["id"],))
+
+
+async def _all_workflow_run_events(user_id: str) -> AsyncIterator[dict]:
+    # Per run, as an ordered range on the (run_id, seq) primary key.
+    async for run in _workflow_run_rows(user_id):
+        base = select(*_WORKFLOW_RUN_EVENTS).where(WorkflowRunEventTable.run_id == run["id"])
+        async for row in _pages(_by_id(base, WorkflowRunEventTable.seq), lambda r: (r["seq"],)):
+            yield row
+
+
 async def _all_attachments(user_id: str, include_files: bool) -> AsyncIterator[dict]:
     async for conversation_id in _conversation_ids(user_id):
         async for row in _attachment_rows(conversation_id):
@@ -605,9 +655,13 @@ moment it was created. All times are UTC.
 | `conversations/reports.ndjson` | Conversations you reported |
 | `conversations/shares.ndjson` | Conversations you shared (the links themselves are not included) |
 | `scheduled_tasks.ndjson` | Your scheduled tasks |
+| `workflows/schedules.ndjson` | Your workflows' schedules, one per scheduled workflow |
+| `workflows/runs.ndjson` | Your workflow runs, one per line |
+| `workflows/run_events.ndjson` | Every step each workflow run took, one event per line, with its `run_id` and `seq` |
 | `attachments/<id>/<name>` | Your attachment files |
 | `agents/` | Your custom agents: `agents.ndjson` plus each agent's files |
 | `skills/` | Your skills: `skills.ndjson`, custom skills' files, and `assignments.ndjson` |
+| `workflows/definitions/` | Your workflows, when the workflow service includes them |
 | `manifest.json` | What this archive contains, written last |
 
 `.ndjson` files hold one JSON object per line. Skills you added from the
@@ -786,6 +840,9 @@ async def stream_export(user_id: str, *, include_attachments: bool, claim: Expor
             _ndjson(zs, em, "scheduled_tasks.ndjson",
                     _pages(_by_id(select(*_TASKS).where(ScheduledTaskTable.user_id == user_id),
                                   ScheduledTaskTable.id), lambda r: (r["id"],))),
+            _ndjson(zs, em, "workflows/schedules.ndjson", _workflow_schedule_rows(user_id)),
+            _ndjson(zs, em, "workflows/runs.ndjson", _workflow_run_rows(user_id)),
+            _ndjson(zs, em, "workflows/run_events.ndjson", _all_workflow_run_events(user_id)),
         ]
         if include_attachments:
             parts.append(_attachment_files(zs, em, user_id))

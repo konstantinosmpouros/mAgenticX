@@ -26,6 +26,7 @@ from harness.conversation_files import ConversationFileStore
 from harness.filesystem import layout
 from harness.memory import AgentMemoryStore, get_memory_pool
 from harness.skill_registry.store import SkillStore
+from harness.workflows.store import WorkflowStore
 from utils.agents import forget_user_agents
 
 logger = get_logger(__name__)
@@ -78,6 +79,7 @@ async def purge_user(user_id: str) -> dict[str, int]:
         counts.update(await SkillStore(pool).purge_user(user_id))
         counts.update(await AgentDefinitionStore(pool).purge_user(user_id))
         counts.update(await ConversationFileStore(pool).purge_user(user_id))
+        counts.update(await WorkflowStore(pool).purge_user(user_id))
     except psycopg.Error as exc:
         logger.warning(
             "account_purge_rows_failed",

@@ -23,6 +23,7 @@ export * from "./http-init";
 export * from "./voice";
 export * from "./personalization";
 export * from "./ui";
+export * from "./schedule";
 
 export { transformAgent } from "./transforms/agent";
 export { transformMessage } from "./transforms/message";

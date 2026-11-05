@@ -9,6 +9,8 @@ import { ThemeModeSync } from "@/shared/ui/theme-mode-sync";
 import { WorkspaceShell } from "./app/WorkspaceShell";
 import ChatView from "./pages/ChatView";
 import AutomationsView from "./pages/AutomationsView";
+import WorkflowView from "./pages/WorkflowView";
+import WorkflowBuilderView from "./pages/WorkflowBuilderView";
 import LegacyTasksRedirect from "./pages/LegacyTasksRedirect";
 import AgentsView from "./pages/AgentsView";
 import AgentsGallery from "./features/agents/pages/AgentsGallery";
@@ -22,6 +24,7 @@ import PrivacyPolicy from "./pages/PrivacyPolicy";
 import { CookieConsentBanner } from "@/shared/ui/cookie-consent-banner";
 import { hasCookieConsent } from "@/shared/lib/cookieConsentStorage";
 import { AUTOMATIONS_PATH, LEGACY_TASKS_PATH } from "@/features/automations/lib/routes";
+import { WORKFLOWS_PATH } from "@/features/workflows/lib/routes";
 
 const queryClient = new QueryClient();
 
@@ -63,6 +66,15 @@ const App = () => {
                 <Route path={AUTOMATIONS_PATH} element={<AutomationsView />} />
                 {/* The old Schedules URL, for one release: query kept. */}
                 <Route path={LEGACY_TASKS_PATH} element={<LegacyTasksRedirect />} />
+                {/* The workflow builder (plan 38, step 3): a new workflow, or one being edited. */}
+                <Route path={`${WORKFLOWS_PATH}/new`} element={<WorkflowBuilderView />} />
+                <Route path={`${WORKFLOWS_PATH}/:workflowId/edit`} element={<WorkflowBuilderView />} />
+                {/* A workflow (its latest run), or one of its runs (plan 38). */}
+                <Route path={`${WORKFLOWS_PATH}/:workflowId`} element={<WorkflowView />} />
+                <Route
+                  path={`${WORKFLOWS_PATH}/:workflowId/runs/:runId`}
+                  element={<WorkflowView />}
+                />
                 {/* The Agents section: AgentsView is its own layout (the page
                     over the chat); the four pages render in its outlet. */}
                 <Route path="/agents" element={<AgentsView />}>

@@ -1089,3 +1089,211 @@ export const SlashCommandListSchema = z
       .flatMap((parsed) => (parsed.success && parsed.data ? [parsed.data] : [])),
   )
   .catch([]);
+
+// ---------------------------------------------------------------------------
+// Workflows (plan 38): definitions, the node catalogue, runs and their events.
+//
+// The bridge already camelCases every field; these mappers default each one so
+// a field-level mismatch degrades instead of rejecting the response, and they
+// keep the hand-written view types in `types/workflows.ts` honest — the API
+// module annotates its return types with those, so a mapper that drifts from
+// them fails the typecheck. `.transform` (not per-field `.catch`) on purpose:
+// it keeps every output key required.
+// ---------------------------------------------------------------------------
+const WORKFLOW_RUN_STATUSES = ["queued", "running", "waiting", "succeeded", "failed", "cancelled"] as const;
+const WORKFLOW_FIELD_TYPES = ["string", "number", "boolean", "object", "array"] as const;
+const WORKFLOW_REDUCERS = ["overwrite", "append", "merge"] as const;
+
+const wfRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+const wfRecords = (value: unknown): Record<string, unknown>[] =>
+  Array.isArray(value) ? value.filter((row) => row && typeof row === "object" && !Array.isArray(row)).map(wfRecord) : [];
+const wfString = (value: unknown, fallback = ""): string => (typeof value === "string" ? value : fallback);
+const wfNullableString = (value: unknown): string | null =>
+  typeof value === "string" && value ? value : null;
+const wfNullableInt = (value: unknown): number | null =>
+  typeof value === "number" && Number.isInteger(value) ? value : null;
+const wfOneOf = <T extends string>(options: readonly T[], value: unknown, fallback: T): T =>
+  options.includes(value as T) ? (value as T) : fallback;
+const wfFieldType = (value: unknown) => wfOneOf(WORKFLOW_FIELD_TYPES, value, "string");
+
+const toWorkflowSpec = (raw: unknown) => {
+  const spec = wfRecord(raw);
+  return {
+    version: 1 as const,
+    name: wfString(spec.name),
+    ...(typeof spec.description === "string" ? { description: spec.description } : {}),
+    inputs: wfRecords(spec.inputs).map((input) => ({
+      name: wfString(input.name),
+      type: wfFieldType(input.type),
+      ...(typeof input.required === "boolean" ? { required: input.required } : {}),
+      ...("default" in input ? { default: input.default } : {}),
+      ...(typeof input.description === "string" ? { description: input.description } : {}),
+    })),
+    state: wfRecords(spec.state).map((field) => ({
+      name: wfString(field.name),
+      type: wfFieldType(field.type),
+      reducer: wfOneOf(WORKFLOW_REDUCERS, field.reducer, "overwrite"),
+      ...("default" in field ? { default: field.default } : {}),
+      ...(typeof field.persist === "boolean" ? { persist: field.persist } : {}),
+    })),
+    nodes: wfRecords(spec.nodes).map((node) => {
+      const position = wfRecord(node.position);
+      return {
+        id: wfString(node.id),
+        kind: wfString(node.kind),
+        label: wfNullableString(node.label),
+        config: wfRecord(node.config),
+        position: {
+          x: typeof position.x === "number" ? position.x : 0,
+          y: typeof position.y === "number" ? position.y : 0,
+        },
+      };
+    }),
+    edges: wfRecords(spec.edges).map((edge) => ({
+      id: wfString(edge.id),
+      source: wfString(edge.source),
+      target: wfString(edge.target),
+      branch: wfNullableString(edge.branch),
+    })),
+  };
+};
+
+const WORKFLOW_SCHEDULE_STATUSES = ["active", "paused", "finished"] as const;
+
+// A workflow's schedule, from its `trigger.schedule` start node — absent (or
+// null) for a workflow that is only started by hand. Read leniently: an older
+// bridge sends no `schedule` at all.
+const readWorkflowSchedule = (schedule: Record<string, unknown>) => ({
+  status: wfOneOf(WORKFLOW_SCHEDULE_STATUSES, schedule.status, "active"),
+  kind: wfString(schedule.kind),
+  spec: wfRecord(schedule.spec),
+  timezone: wfNullableString(schedule.timezone),
+  nextRunAt: wfNullableString(schedule.nextRunAt),
+  lastRunAt: wfNullableString(schedule.lastRunAt),
+  lastRunStatus: wfNullableString(schedule.lastRunStatus),
+});
+const toWorkflowSchedule = (raw: unknown) =>
+  raw && typeof raw === "object" && !Array.isArray(raw) ? readWorkflowSchedule(wfRecord(raw)) : null;
+/** `POST …/schedule/pause|resume`: the schedule as it now stands (`WorkflowScheduleOut`). */
+export const WorkflowScheduleSchema = z.record(z.unknown()).transform(readWorkflowSchedule);
+
+const toWorkflow = (raw: Record<string, unknown>) => ({
+  id: wfString(raw.id),
+  name: wfString(raw.name, "Untitled workflow"),
+  description: wfNullableString(raw.description),
+  spec: raw.spec && typeof raw.spec === "object" ? toWorkflowSpec(raw.spec) : null,
+  latestVersionNo: wfNullableInt(raw.latestVersionNo),
+  createdAt: wfNullableString(raw.createdAt),
+  updatedAt: wfNullableString(raw.updatedAt),
+  // Only when the bridge sends one, so a summary without it reads as before.
+  ...("schedule" in raw ? { schedule: toWorkflowSchedule(raw.schedule) } : {}),
+});
+export const WorkflowSchema = z.record(z.unknown()).transform(toWorkflow);
+export const WorkflowListSchema = z
+  .array(z.unknown())
+  .catch([])
+  .transform((rows) => wfRecords(rows).map(toWorkflow).filter((workflow) => workflow.id));
+
+const toWorkflowNodeKind = (raw: Record<string, unknown>) => ({
+  kind: wfString(raw.kind),
+  label: wfString(raw.label, wfString(raw.kind)),
+  group: wfString(raw.group, "other"),
+  description: wfString(raw.description),
+  branches: Array.isArray(raw.branches) ? raw.branches.filter((b): b is string => typeof b === "string") : [],
+  dynamicBranches: raw.dynamicBranches === true,
+  isTrigger: raw.isTrigger === true,
+  configSchema: wfRecord(raw.configSchema),
+});
+// The catalogue is passed through from the engine: a bare list of kinds, or an
+// object holding it under `kinds` / `nodes` — either is accepted.
+export const WorkflowCatalogSchema = z
+  .unknown()
+  .transform((raw) => {
+    const rows = Array.isArray(raw) ? raw : wfRecord(raw).kinds ?? wfRecord(raw).nodes;
+    return wfRecords(rows).map(toWorkflowNodeKind).filter((kind) => kind.kind);
+  });
+
+const toWorkflowRun = (raw: Record<string, unknown>) => ({
+  id: wfString(raw.id),
+  workflowId: wfString(raw.workflowId),
+  workflowName: wfString(raw.workflowName),
+  versionNo: wfNullableInt(raw.versionNo),
+  triggerKind: wfString(raw.triggerKind, "manual"),
+  status: wfOneOf(WORKFLOW_RUN_STATUSES, raw.status, "failed"),
+  error: wfNullableString(raw.error),
+  eventCount: typeof raw.eventCount === "number" ? raw.eventCount : 0,
+  startedAt: wfString(raw.startedAt),
+  finishedAt: wfNullableString(raw.finishedAt),
+  createdAt: wfString(raw.createdAt),
+  updatedAt: wfString(raw.updatedAt),
+});
+export const WorkflowRunSchema = z.record(z.unknown()).transform(toWorkflowRun);
+
+export const WorkflowRunPageSchema = z.record(z.unknown()).transform((raw) => ({
+  items: wfRecords(raw.items).map(toWorkflowRun).filter((run) => run.id),
+  nextCursor: wfNullableString(raw.nextCursor),
+}));
+
+/** One persisted run event; null when it has no usable `seq` (dropped by callers). */
+export const toWorkflowRunEvent = (raw: unknown) => {
+  const event = wfRecord(raw);
+  if (typeof event.seq !== "number" || !Number.isInteger(event.seq)) return null;
+  return {
+    seq: event.seq,
+    type: wfString(event.type),
+    nodeId: wfNullableString(event.nodeId),
+    executionId: wfNullableString(event.executionId),
+    parentExecutionId: wfNullableString(event.parentExecutionId),
+    payload: wfRecord(event.payload),
+    createdAt: wfString(event.createdAt),
+  };
+};
+const toWorkflowRunEvents = (value: unknown) =>
+  (Array.isArray(value) ? value : []).flatMap((row) => {
+    const event = toWorkflowRunEvent(row);
+    return event ? [event] : [];
+  });
+
+export const WorkflowRunDetailSchema = z.record(z.unknown()).transform((raw) => ({
+  run: toWorkflowRun(wfRecord(raw.run)),
+  inputs: wfRecord(raw.inputs),
+  events: toWorkflowRunEvents(raw.events),
+  hasMoreEvents: raw.hasMoreEvents === true,
+}));
+
+export const WorkflowRunStartedSchema = z.record(z.unknown()).transform((raw) => ({
+  runId: wfString(raw.runId),
+}));
+
+/**
+ * A spec's issues, from `POST /v1/workflows/validate` or the `detail.errors`
+ * of a 422 on create/update. Rows without a message are dropped.
+ */
+export const toWorkflowValidationIssues = (value: unknown) =>
+  wfRecords(value)
+    .map((issue) => ({
+      nodeId: wfNullableString(issue.nodeId ?? issue.node_id),
+      path: wfString(issue.path),
+      message: wfString(issue.message),
+    }))
+    .filter((issue) => issue.message);
+
+export const WorkflowValidationSchema = z.record(z.unknown()).transform((raw) => {
+  const errors = toWorkflowValidationIssues(raw.errors);
+  return { ok: raw.ok === true && errors.length === 0, errors };
+});
+
+/** One `data:` frame of the run event stream; null for anything unrecognised. */
+export const toWorkflowRunStreamFrame = (raw: unknown) => {
+  const frame = wfRecord(raw);
+  if (frame.type === "status") {
+    const run = toWorkflowRun(wfRecord(frame.run));
+    return run.id ? { type: "status" as const, run } : null;
+  }
+  if (frame.type === "event") {
+    const event = toWorkflowRunEvent(frame.event);
+    return event ? { type: "event" as const, event } : null;
+  }
+  return null;
+};

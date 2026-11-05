@@ -144,3 +144,21 @@ export {
   beginReauthentication,
 } from "./account";
 export { getAgentCommands } from "./commands";
+
+export {
+  listWorkflows,
+  getWorkflow,
+  getWorkflowCatalog,
+  createWorkflow,
+  updateWorkflow,
+  deleteWorkflow,
+  pauseWorkflowSchedule,
+  resumeWorkflowSchedule,
+  validateWorkflow,
+  listWorkflowRuns,
+  getWorkflowRunDetail,
+  startWorkflowRun,
+  resumeWorkflowRun,
+  cancelWorkflowRun,
+  streamWorkflowRunEvents,
+} from "./workflows";

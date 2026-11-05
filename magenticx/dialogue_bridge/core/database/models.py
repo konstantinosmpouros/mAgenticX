@@ -28,6 +28,7 @@ from sqlalchemy import (
     text,
     UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from pgvector.sqlalchemy import Vector
 
@@ -753,6 +754,158 @@ class ScheduledTaskTable(Base):
     max_runs = Column(Integer, nullable=True)
     expires_at = Column(DateTime, nullable=True)
 
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+#: A workflow run that still holds a slot: one per (user, workflow) at a time.
+#: ``waiting`` counts — a run paused on an approval is resumed, not replaced.
+WORKFLOW_RUN_LIVE_STATUSES_SQL = "status IN ('queued', 'running', 'waiting')"
+
+
+class WorkflowRunTable(Base):
+    """One execution of a user's workflow — its own entity, not a conversation.
+
+    The workflow *definition* lives in the agents service (``agent_runtime``);
+    the bridge keeps only the run history the UI shows: one row per run, plus
+    every AG-UI event the engine emitted (``workflow_run_events``), in order.
+    ``workflow_name`` is denormalised so the history still reads after the
+    workflow is renamed. ``version_no`` is the published version the engine ran.
+
+    Lifecycle (``status``): ``queued`` → ``running`` → ``waiting`` (paused on an
+    approval node; the agents stream has ended) → ``running`` again on resume →
+    ``succeeded`` | ``failed`` | ``cancelled``. ``updated_at`` moves on every
+    status change and every persisted batch of events: it is the watchdog's
+    activity clock (a stalled ``running`` leg, an approval left ``waiting`` past
+    its TTL).
+    """
+    __tablename__ = "workflow_runs"
+    __table_args__ = (
+        # The run list: one workflow's runs, newest first, keyset-paged.
+        Index("ix_workflow_runs_user_workflow_created", "user_id", "workflow_id", text("created_at DESC")),
+        # One live run per workflow per user — enforced by the database, so two
+        # racing "Run" clicks cannot both start one (the loser gets a 409).
+        Index(
+            "uq_workflow_runs_one_live",
+            "user_id",
+            "workflow_id",
+            unique=True,
+            postgresql_where=text(WORKFLOW_RUN_LIVE_STATUSES_SQL),
+            sqlite_where=text(WORKFLOW_RUN_LIVE_STATUSES_SQL),
+        ),
+        # The watchdog's scan: only the few live rows are indexed.
+        Index(
+            "ix_workflow_runs_live_status",
+            "status",
+            postgresql_where=text(WORKFLOW_RUN_LIVE_STATUSES_SQL),
+            sqlite_where=text(WORKFLOW_RUN_LIVE_STATUSES_SQL),
+        ),
+    )
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    # The agents service's workflow id. Not a foreign key: the definition lives
+    # in another database. Deleting the workflow deletes its runs explicitly.
+    workflow_id = Column(String, nullable=False)
+    workflow_name = Column(String, nullable=False)
+    version_no = Column(Integer, nullable=True)
+    # 'manual' ("Run now") or 'schedule' (a workflow_schedules fire); event
+    # triggers come later (plan 38).
+    trigger_kind = Column(String, nullable=False, server_default="manual")
+    status = Column(String, nullable=False, server_default="queued")
+    inputs = Column(JSON, nullable=False, default=dict)
+    # A short, user-facing reason for failed/cancelled runs — never a traceback.
+    error = Column(Text, nullable=True)
+    # The engine's checkpoint thread: a resume streams again on the same one.
+    thread_id = Column(String, nullable=False)
+    # Events persisted so far; the next event's seq is event_count + 1.
+    event_count = Column(Integer, nullable=False, server_default="0")
+    started_at = Column(DateTime, server_default=func.now(), nullable=False)
+    finished_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), nullable=False)
+
+
+class WorkflowRunEventTable(Base):
+    """Every AG-UI event of a workflow run, in emission order.
+
+    ``seq`` is assigned by the bridge (1, 2, 3, … per run) and is the cursor of
+    the run's event stream (``?after_seq=``). ``node_id`` / ``execution_id`` /
+    ``parent_execution_id`` are lifted out of the event's ``workflow`` block so
+    the UI's per-execution view is an indexed read; ``payload`` is the event
+    itself (truncated with a marker past ``WORKFLOW_RUN_MAX_EVENT_BYTES``).
+    """
+    __tablename__ = "workflow_run_events"
+    __table_args__ = (
+        PrimaryKeyConstraint("run_id", "seq", name="pk_workflow_run_events"),
+        Index("ix_workflow_run_events_run_execution", "run_id", "execution_id"),
+    )
+
+    run_id = Column(String, ForeignKey("workflow_runs.id", ondelete="CASCADE"), nullable=False)
+    seq = Column(Integer, nullable=False)
+    type = Column(String, nullable=False)
+    node_id = Column(String, nullable=True)
+    execution_id = Column(String, nullable=True)
+    parent_execution_id = Column(String, nullable=True)
+    # JSONB on Postgres (compact, indexable later); plain JSON on the test sqlite.
+    payload = Column(JSON().with_variant(JSONB(), "postgresql"), nullable=False)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+
+
+#: The scheduler's hot poll: only firable rows are indexed.
+WORKFLOW_SCHEDULE_DUE_SQL = "status = 'active'"
+
+
+class WorkflowScheduleTable(Base):
+    """The clock of one workflow, materialised from its ``trigger.schedule`` node.
+
+    The schedule's source of truth is the start node in the workflow's spec
+    (the agents service's ``agent_runtime``); this row is what the bridge's
+    scheduler polls. It is written by the definitions proxy after every
+    accepted create/update (upserted while the trigger is ``trigger.schedule``
+    and enabled, deleted otherwise) and deleted with the workflow. Its own
+    table, not a ``scheduled_tasks`` row, so the Automations → Schedules list
+    (agent + prompt schedules) never mixes the two.
+
+    ``schedule_kind`` / ``schedule_spec`` / ``timezone`` have exactly the
+    ``scheduled_tasks`` shapes, so both share ``compute_next_run_at``.
+    ``status``: ``active`` | ``paused`` (by the user; survives re-saves) |
+    ``finished`` (a spent one-off). A fire is a ``workflow_runs`` row with
+    ``trigger_kind = 'schedule'``; ``last_run_id`` points at the newest one.
+    """
+    __tablename__ = "workflow_schedules"
+    __table_args__ = (
+        Index(
+            "ix_workflow_schedules_due",
+            "next_run_at",
+            postgresql_where=text(WORKFLOW_SCHEDULE_DUE_SQL),
+            sqlite_where=text(WORKFLOW_SCHEDULE_DUE_SQL),
+        ),
+    )
+
+    # The agents service's workflow id (a UUID): one schedule per workflow.
+    # Not a foreign key — the definition lives in another database.
+    workflow_id = Column(String, primary_key=True)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    # The spec node it was read from (the workflow's trigger).
+    node_id = Column(String, nullable=False)
+    # 'one_off' | 'interval' | 'cron'; spec + timezone as on scheduled_tasks.
+    schedule_kind = Column(String, nullable=False)
+    schedule_spec = Column(JSON, nullable=False, default=dict)
+    timezone = Column(String, nullable=True)
+    # The literal run inputs of a scheduled fire (the node's ``inputs``).
+    inputs = Column(JSON, nullable=False, default=dict)
+    status = Column(String, nullable=False, server_default="active")
+    # Naive UTC; NULL once the schedule is spent.
+    next_run_at = Column(DateTime, nullable=True)
+    last_run_at = Column(DateTime, nullable=True)
+    # The run the newest fire created. Plain String, not an FK: run history is
+    # pruned independently, and the run's live status is read by joining it.
+    last_run_id = Column(String, nullable=True)
+    # Outcome of the newest fire when it produced no run (skipped | failed),
+    # else 'started' — the run itself then carries the real status.
+    last_run_status = Column(String, nullable=True)
+    run_count = Column(Integer, nullable=False, server_default="0")
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 

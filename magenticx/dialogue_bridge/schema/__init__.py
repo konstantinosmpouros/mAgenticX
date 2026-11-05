@@ -2,7 +2,7 @@
 
 One module per concept/router — auth, catalog, conversations, messages,
 attachments, sharing, inference, voice, skills, memories, preferences,
-usage, search, scheduled_tasks, agent_tools, user_agents, internal_memory,
+usage, search, scheduled_tasks, agent_tools, user_agents, workflows, internal_memory,
 internal_conversations —
 on the shared building blocks in ``base``. Re-exported so callers keep the
 stable ``from schema import ...`` import surface regardless of which module
@@ -164,7 +164,29 @@ from schema.voice import (
     RealtimeVoiceSessionOut,
 )
 
+from schema.workflows import (
+    SCHEDULE_TRIGGER_KIND,
+    WorkflowOut,
+    WorkflowRunDetail,
+    WorkflowRunEventOut,
+    WorkflowRunOut,
+    WorkflowRunPage,
+    WorkflowRunResume,
+    WorkflowRunStart,
+    WorkflowRunStarted,
+    WorkflowRunStatus,
+    WorkflowScheduleOut,
+    WorkflowScheduleSpec,
+    WorkflowScheduleStatus,
+    WorkflowScheduleTrigger,
+    WorkflowTriggerKind,
+    WorkflowValidation,
+    WorkflowValidationIssue,
+    WorkflowWrite,
+)
+
 __all__ = [
+    "SCHEDULE_TRIGGER_KIND",
     "CommandInvocation",
     "CommandListResponse",
     "CommandOut",
@@ -282,4 +304,21 @@ __all__ = [
     "WorkspaceSearchResult",
     "InputFileOut",
     "InputFilesOut",
+    "WorkflowOut",
+    "WorkflowRunDetail",
+    "WorkflowRunEventOut",
+    "WorkflowRunOut",
+    "WorkflowRunPage",
+    "WorkflowRunResume",
+    "WorkflowRunStart",
+    "WorkflowRunStarted",
+    "WorkflowRunStatus",
+    "WorkflowScheduleOut",
+    "WorkflowScheduleSpec",
+    "WorkflowScheduleStatus",
+    "WorkflowScheduleTrigger",
+    "WorkflowTriggerKind",
+    "WorkflowValidation",
+    "WorkflowValidationIssue",
+    "WorkflowWrite",
 ]

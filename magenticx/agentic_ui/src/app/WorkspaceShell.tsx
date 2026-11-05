@@ -24,6 +24,11 @@ import ShareConversationDialog from "@/features/sharing/components/SharePanel";
 
 import { AGENTS_PATH, isAgentsPath } from "@/features/agents/lib/routes";
 import { AUTOMATIONS_PATH, isAutomationsPath } from "@/features/automations/lib/routes";
+import {
+  isWorkflowsPath,
+  workflowIdFromPath,
+  workflowPath,
+} from "@/features/workflows/lib/routes";
 
 import ChatView from "@/pages/ChatView";
 import { ImageLightbox } from "@/shared/ui/ImageLightbox";
@@ -84,6 +89,7 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
     handleTitleClick,
     navigate,
     automations,
+    workflows,
     userProfile,
     settingsPanels,
     attachmentPreview,
@@ -169,10 +175,20 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
   const outlet = useOutlet();
   const isAutomationsPage = isAutomationsPath(pathname);
   const isAgentsPage = isAgentsPath(pathname);
-  const incognitoClass = useIncognitoCard(isPrivateMode && !isAutomationsPage && !isAgentsPage);
+  const isWorkflowsPage = isWorkflowsPath(pathname);
+  const activeWorkflowId = isWorkflowsPage ? workflowIdFromPath(pathname) : null;
+  const incognitoClass = useIncognitoCard(
+    isPrivateMode && !isAutomationsPage && !isAgentsPage && !isWorkflowsPage,
+  );
   // The route view's surface: the chat, or one of the pages over it. Moving
   // within a surface (chat to chat, agent to agent) never remounts it.
-  const surfaceKey = isAutomationsPage ? "automations" : isAgentsPage ? "agents" : "chat";
+  const surfaceKey = isAutomationsPage
+    ? "automations"
+    : isAgentsPage
+      ? "agents"
+      : isWorkflowsPage
+        ? "workflows"
+        : "chat";
   // Main Chat Interface
   if (!authResolved) {
     return (
@@ -258,6 +274,9 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
           automationsRunningCount={automations.runningCount}
           onOpenAgents={guarded(() => navigate(AGENTS_PATH))}
           activePage={isAgentsPage ? "agents" : isAutomationsPage ? "automations" : null}
+          workflows={workflows.workflows}
+          activeWorkflowId={activeWorkflowId}
+          onOpenWorkflow={guarded((workflowId: string) => navigate(workflowPath(workflowId)))}
           onOpenSettings={(tab) => openProfilePanel(tab)}
           onEditProfile={settingsPanels.openEditProfile}
           onOpenShortcuts={openShortcutsPanel}

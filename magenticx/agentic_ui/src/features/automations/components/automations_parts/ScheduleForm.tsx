@@ -1,8 +1,6 @@
 import * as React from "react";
-import { motion, useReducedMotion } from "framer-motion";
 import {
   Building2,
-  CalendarClock,
   CalendarDays,
   CircleAlert,
   EyeOff,
@@ -16,23 +14,31 @@ import {
 
 import type {
   Agent,
+  CronBuilder,
+  CronPreset,
   ScheduleFormInitial,
   ScheduledTaskCreatePayload,
+  ScheduleIntervalUnit,
   ScheduleKind,
   TaskTargetMode,
 } from "@/shared/lib/types";
-import { cn } from "@/shared/lib/utils";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
+import { INTERVAL_UNITS, MIN_SCHEDULE_INTERVAL_SECONDS } from "@/shared/lib/consts";
 import {
-  clock,
-  formatRelative,
-  formatRunTime,
-  humanizeCron,
-  humanizeSeconds,
+  browserTimezone,
+  builderFromCron,
+  cronFromBuilder,
+  defaultLocalDateTime,
+  intervalFromSeconds,
+  intervalSecondsOf,
   isValidTimeZone,
-  nextCronRuns,
-  parseCron,
-} from "@/features/automations/lib/schedule";
+  localFromUtcIso,
+  schedulePreview,
+  toLocalInput,
+} from "@/shared/lib/schedule";
+import { cn } from "@/shared/lib/utils";
+import { SchedulePreview } from "@/shared/ui/schedule-preview";
+import { Segmented } from "@/shared/ui/segmented";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 
 type ScheduleFormProps = {
   agents: Agent[];
@@ -47,14 +53,7 @@ type ScheduleFormProps = {
   onCancel: () => void;
 };
 
-const INTERVAL_UNITS = [
-  { id: "minutes", label: "Minutes", seconds: 60 },
-  { id: "hours", label: "Hours", seconds: 3600 },
-  { id: "days", label: "Days", seconds: 86400 },
-] as const;
-type IntervalUnit = (typeof INTERVAL_UNITS)[number]["id"];
-
-const INTERVAL_PRESETS: { label: string; value: number; unit: IntervalUnit }[] = [
+const INTERVAL_PRESETS: { label: string; value: number; unit: ScheduleIntervalUnit }[] = [
   { label: "15 min", value: 15, unit: "minutes" },
   { label: "1 hour", value: 1, unit: "hours" },
   { label: "6 hours", value: 6, unit: "hours" },
@@ -88,7 +87,6 @@ const SCHEDULE_KINDS: { id: ScheduleKind; label: string; icon: React.ReactNode }
 ];
 
 // The cron builder's cadences; "custom" leaves the expression as typed.
-type CronPreset = "daily" | "weekdays" | "weekly" | "monthly" | "custom";
 const CRON_PRESETS: { id: CronPreset; label: string }[] = [
   { id: "daily", label: "Daily" },
   { id: "weekdays", label: "Weekdays" },
@@ -107,138 +105,8 @@ const WEEK = [
   { value: 0, short: "S", label: "Sunday" },
 ];
 
-type CronBuilder = { preset: CronPreset; time: string; weekdays: number[]; monthDay: number };
-
-/** Read a stored expression back into the builder, or "custom" when it doesn't fit one. */
-function builderFromCron(expr: string): CronBuilder {
-  const fallback: CronBuilder = { preset: "custom", time: "08:00", weekdays: [1], monthDay: 1 };
-  const parts = expr.trim().split(/\s+/);
-  const f = parseCron(expr);
-  if (
-    !f ||
-    parts.length !== 5 ||
-    f.minutes.length !== 1 ||
-    f.hours.length !== 1 ||
-    f.months.length !== 12
-  ) {
-    return fallback;
-  }
-  const time = clock(f.hours[0]!, f.minutes[0]!);
-  const base = { ...fallback, time };
-  if (f.dayStar && f.weekdayStar) return { ...base, preset: "daily" };
-  if (f.dayStar && f.weekdays.join(",") === "1,2,3,4,5" && parts[4] === "1-5")
-    return { ...base, preset: "weekdays" };
-  if (f.dayStar) return { ...base, preset: "weekly", weekdays: f.weekdays };
-  if (f.weekdayStar && f.days.length === 1)
-    return { ...base, preset: "monthly", monthDay: f.days[0]! };
-  return { ...fallback, time };
-}
-
-function cronFromBuilder(b: CronBuilder): string | null {
-  if (b.preset === "custom") return null;
-  const [hh, mm] = b.time.split(":").map((n) => Number(n));
-  const h = Number.isFinite(hh) ? hh : 8;
-  const m = Number.isFinite(mm) ? mm : 0;
-  if (b.preset === "daily") return `${m} ${h} * * *`;
-  if (b.preset === "weekdays") return `${m} ${h} * * 1-5`;
-  if (b.preset === "weekly") {
-    const days = [...b.weekdays].sort((a, z) => a - z);
-    return `${m} ${h} * * ${days.length ? days.join(",") : "1"}`;
-  }
-  return `${m} ${h} ${Math.min(Math.max(b.monthDay, 1), 31)} * *`;
-}
-
-const browserTimezone = (): string => {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-  } catch {
-    return "UTC";
-  }
-};
-
-const pad = (n: number) => String(n).padStart(2, "0");
-const toLocalInput = (d: Date) =>
-  `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-
-// datetime-local wants a LOCAL "YYYY-MM-DDTHH:mm" string; default to +1h.
-const defaultLocalDateTime = (): string => toLocalInput(new Date(Date.now() + 60 * 60 * 1000));
-
-// Derive the form's interval value+unit from a stored seconds count.
-const intervalFromSeconds = (seconds: number): { value: number; unit: IntervalUnit } => {
-  if (seconds > 0 && seconds % 86400 === 0) return { value: seconds / 86400, unit: "days" };
-  if (seconds > 0 && seconds % 3600 === 0) return { value: seconds / 3600, unit: "hours" };
-  return { value: Math.max(1, Math.round(seconds / 60)), unit: "minutes" };
-};
-
-// Convert a stored naive-UTC ISO (schedule_spec.run_at) to a local datetime-local value.
-const localFromUtcIso = (iso: string): string =>
-  toLocalInput(new Date(/[Z+]/.test(iso) ? iso : `${iso}Z`));
-
 const fieldClass =
   "w-full rounded-xl border border-border/80 bg-background px-3 py-2 text-sm text-foreground outline-none transition-[border-color,box-shadow] placeholder:text-muted-foreground/80 focus-visible:border-primary/60 focus-visible:ring-4 focus-visible:ring-primary/15 aria-[invalid=true]:border-destructive/70 aria-[invalid=true]:focus-visible:ring-destructive/15";
-
-/** A segmented control whose selection pill glides between options. */
-function Segmented<T extends string>({
-  value,
-  options,
-  onChange,
-  ariaLabel,
-  size = "md",
-}: {
-  value: T;
-  options: { id: T; label: string; icon?: React.ReactNode }[];
-  onChange: (id: T) => void;
-  ariaLabel: string;
-  size?: "sm" | "md";
-}) {
-  const id = React.useId();
-  const reduceMotion = useReducedMotion();
-  return (
-    <div
-      role="radiogroup"
-      aria-label={ariaLabel}
-      className="flex w-full gap-1 rounded-xl bg-muted/70 p-1 ring-1 ring-inset ring-border/50"
-    >
-      {options.map((opt) => {
-        const active = value === opt.id;
-        return (
-          <button
-            key={opt.id}
-            type="button"
-            role="radio"
-            aria-checked={active}
-            onClick={() => onChange(opt.id)}
-            className={cn(
-              "relative flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
-              size === "sm" ? "px-2 py-1 text-xs" : "px-2.5 py-1.5 text-[13px]",
-              active
-                ? "text-foreground"
-                : "text-muted-foreground supports-[hover:hover]:hover:text-foreground",
-            )}
-          >
-            {active ? (
-              <motion.span
-                layoutId={`seg-${id}`}
-                transition={
-                  reduceMotion
-                    ? { duration: 0 }
-                    : { type: "spring", stiffness: 520, damping: 42, mass: 0.8 }
-                }
-                className="absolute inset-0 rounded-lg bg-card shadow-[0_1px_3px_hsl(var(--foreground)/0.12)] ring-1 ring-border/60"
-              />
-            ) : null}
-            {opt.icon ? (
-              <span className={cn("relative max-[420px]:hidden", active && "text-primary")}>
-                {opt.icon}
-              </span>
-            ) : null}
-            <span className="relative truncate">{opt.label}</span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 function Section({
   step,
@@ -339,7 +207,7 @@ export default function ScheduleForm({
     (init?.scheduleKind as ScheduleKind) ?? "interval",
   );
   const [intervalValue, setIntervalValue] = React.useState(initInterval?.value ?? 6);
-  const [intervalUnit, setIntervalUnit] = React.useState<IntervalUnit>(
+  const [intervalUnit, setIntervalUnit] = React.useState<ScheduleIntervalUnit>(
     initInterval?.unit ?? "hours",
   );
   const initialCron =
@@ -371,18 +239,14 @@ export default function ScheduleForm({
     });
   };
 
-  const intervalSeconds = Math.round(
-    intervalValue *
-      (INTERVAL_UNITS.find((u) => u.id === intervalUnit) ?? INTERVAL_UNITS[1]).seconds,
-  );
+  const intervalSeconds = intervalSecondsOf(intervalValue, intervalUnit);
   const runAtDate = runAtLocal ? new Date(runAtLocal) : null;
-  const cronReadable = parseCron(cronExpr) !== null;
   const tzValid = isValidTimeZone(timezone.trim() || "UTC");
 
   const errors: Errors = {};
   if (!agentId) errors.agent = "Pick an agent.";
   if (!prompt.trim()) errors.prompt = "Enter the instruction to run.";
-  if (scheduleKind === "interval" && intervalSeconds < 300)
+  if (scheduleKind === "interval" && intervalSeconds < MIN_SCHEDULE_INTERVAL_SECONDS)
     errors.interval = "The minimum interval is 5 minutes.";
   if (scheduleKind === "cron") {
     if (!cronExpr.trim()) errors.cron = "Enter a cron expression.";
@@ -396,49 +260,21 @@ export default function ScheduleForm({
   const shown = attempted ? errors : {};
 
   // The live preview: the schedule in words and its next runs.
-  const preview = React.useMemo((): { summary: string; runs: Date[]; note?: string } => {
-    if (scheduleKind === "interval") {
-      if (intervalSeconds < 300) return { summary: "Every …", runs: [] };
-      return {
-        summary: `Every ${humanizeSeconds(intervalSeconds)}`,
-        runs: [1, 2, 3].map((i) => new Date(now.getTime() + i * intervalSeconds * 1000)),
-        note: "Counted from when you save.",
-      };
-    }
-    if (scheduleKind === "cron") {
-      const tz = timezone.trim() || "UTC";
-      const words = humanizeCron(cronExpr);
-      const runs = tzValid ? nextCronRuns(cronExpr, tz, 3, now) : [];
-      const local = browserTimezone();
-      return {
-        summary: words
-          ? `${words}${tz !== local ? ` (${tz})` : ""}`
-          : cronReadable
-            ? `Cron ${cronExpr.trim()}`
-            : "Custom cron",
-        runs,
-        note: cronReadable
-          ? undefined
-          : "Can't preview this expression here — it's checked when you save.",
-      };
-    }
-    if (runAtDate && !Number.isNaN(runAtDate.getTime())) {
-      return {
-        summary: `Once on ${formatRunTime(runAtDate, now)}`,
-        runs: runAtDate > now ? [runAtDate] : [],
-      };
-    }
-    return { summary: "Once", runs: [] };
-  }, [
-    scheduleKind,
-    intervalSeconds,
-    cronExpr,
-    timezone,
-    tzValid,
-    cronReadable,
-    runAtDate?.getTime(),
-    now,
-  ]); // eslint-disable-line react-hooks/exhaustive-deps
+  const runAtTime = runAtDate?.getTime() ?? null;
+  const preview = React.useMemo(
+    () =>
+      schedulePreview(
+        {
+          kind: scheduleKind,
+          intervalSeconds,
+          cronExpr,
+          timezone,
+          runAt: runAtTime === null ? null : new Date(runAtTime),
+        },
+        now,
+      ),
+    [scheduleKind, intervalSeconds, cronExpr, timezone, runAtTime, now],
+  );
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
@@ -732,42 +568,7 @@ export default function ScheduleForm({
           )}
 
           {/* Live preview. */}
-          <div
-            className="relative overflow-hidden rounded-2xl border border-primary/20 bg-primary/[0.05] p-3.5"
-            aria-live="polite"
-            data-testid="schedule-preview"
-          >
-            <div className="flex items-start gap-2.5">
-              <span className="grid h-8 w-8 flex-shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
-                <CalendarClock className="h-4 w-4" aria-hidden />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-foreground">{preview.summary}</p>
-                {preview.runs.length ? (
-                  <ol className="mt-2 space-y-1">
-                    {preview.runs.map((run, i) => (
-                      <li key={run.getTime()} className="flex items-center gap-2 text-xs">
-                        <span
-                          className={cn(
-                            "h-1.5 w-1.5 flex-shrink-0 rounded-full",
-                            i === 0 ? "bg-primary" : "bg-primary/35",
-                          )}
-                          aria-hidden
-                        />
-                        <span className="tabular-nums text-foreground/90">
-                          {formatRunTime(run, now)}
-                        </span>
-                        <span className="text-muted-foreground">{formatRelative(run, now)}</span>
-                      </li>
-                    ))}
-                  </ol>
-                ) : null}
-                {preview.note ? (
-                  <p className="mt-1.5 text-[11px] text-muted-foreground">{preview.note}</p>
-                ) : null}
-              </div>
-            </div>
-          </div>
+          <SchedulePreview preview={preview} now={now} />
         </Section>
 
         <Section step={3} title="Where it runs" description="Where each run's answer lands.">

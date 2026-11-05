@@ -1,7 +1,7 @@
 """Request/response schemas for the agents service.
 
 One module per concept/router — inference, embeddings, generation, voice,
-catalog, commands, skills, user_agents, memories, agent_tools, conversation_files. Re-exported so callers
+catalog, commands, skills, user_agents, memories, agent_tools, conversation_files, workflows. Re-exported so callers
 keep the stable ``from schema import ...`` import surface regardless of which
 module a DTO lives in.
 """
@@ -63,6 +63,16 @@ from schema.voice import (
     RealtimeSessionResponse,
     TranscriptionResponse,
 )
+from schema.workflows import (
+    WorkflowCatalog,
+    WorkflowDetail,
+    WorkflowIssue,
+    WorkflowResume,
+    WorkflowRunRequest,
+    WorkflowSummary,
+    WorkflowValidation,
+    WorkflowWrite,
+)
 
 __all__ = [
     "CommandListResponse",
@@ -121,4 +131,12 @@ __all__ = [
     "UserAgentDetail",
     "UserAgentSummary",
     "UserSkillDetail",
+    "WorkflowCatalog",
+    "WorkflowDetail",
+    "WorkflowIssue",
+    "WorkflowResume",
+    "WorkflowRunRequest",
+    "WorkflowSummary",
+    "WorkflowValidation",
+    "WorkflowWrite",
 ]

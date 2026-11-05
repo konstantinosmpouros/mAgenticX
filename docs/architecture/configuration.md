@@ -145,6 +145,10 @@ Who signs session JWTs and which public keys verify them. Production signs with 
 | `SKILL_REMOTE_ADD_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Remote-skill Adds per user — each can make the agents service download a skill, so the Add route cannot be used as a fetch amplifier. |
 | `AGENT_IMPORT_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Agent-builder imports per user (`POST /v1/agents/{user_id}/custom/import`): each unpacks an upload in memory and has the agents service parse it. |
 | `AGENT_TRIAL_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `30` / `60` | Agent-builder "Try it" messages per user (`POST /v1/agents/{user_id}/custom/try`, plan 40): each starts a run and carries the whole draft. Its own bucket, so trying a draft never uses up chat starts. |
+| `WORKFLOW_READ_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `60` / `60` | Workflows (plan 38), per user: reading definitions, run lists, run detail and opening a run's event stream. |
+| `WORKFLOW_MUTATE_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `20` / `60` | Workflows, per user: create, save, delete a definition; cancel a run. |
+| `WORKFLOW_BUILDER_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `120` / `60` | Workflows: the node catalog and live validation, called while editing. No `{user_id}` in their path, so keyed on the verified session. |
+| `WORKFLOW_RUN_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `6` / `60` | Workflows, per user: starting or resuming a run — each spends work on the user's behalf, so the tightest bucket. |
 | `MESSAGE_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `30` / `60` | Message creation (attachment/blob growth) per user. |
 | `SUGGESTIONS_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Starter-suggestion generation (LLM-backed) per user. |
 | `COMPACTION_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `600` | Compacting a conversation from the context ring, or undoing it (plan 34), per user, after auth — each compaction is a summary call over most of the conversation. |
@@ -257,6 +261,27 @@ See [account-deletion](../flows/account-deletion.md). The batch and rate bounds 
 | `AGENT_TRIAL_CONVERSATION_TTL_HOURS` | `24` | A trial conversation nobody Reset is deleted this long after it started (with its agents-service threads and files). |
 | `AGENT_TRIAL_SWEEP_INTERVAL_SECONDS` | `3600` | How often the trial sweeper looks for expired trials. |
 | `AGENT_TRIAL_SWEEP_BATCH_SIZE` | `50` | Trials deleted per sweep transaction; a full batch looks again at once. |
+
+### Workflow runs (`WorkflowSettings`)
+
+Plan 38, Step 1: the bridge's side of running a workflow (the agents service owns the engine; its caps are code constants). See [workflows](../flows/workflows.md).
+
+| Env var | Default | What it does |
+| --- | --- | --- |
+| `WORKFLOW_APPROVAL_TTL_HOURS` | `24` (1–720) | A run paused on an approval longer than this is failed as expired, freeing the workflow's live slot. |
+| `WORKFLOW_RUN_STREAM_IDLE_TIMEOUT_SECONDS` | `900` (60–86400) | A leg that has persisted nothing for this long is failed by the watchdog; also the read timeout on the agents stream. |
+| `WORKFLOW_RUN_STREAM_MAX_SECONDS` | `3600` (60–86400) | Wall-clock ceiling on one leg (the start, or one resume). |
+| `WORKFLOW_RUN_WATCHDOG_INTERVAL_SECONDS` | `60` (5–3600) | How often the watchdog looks for stalled legs and expired approvals. |
+| `WORKFLOW_MAX_RUNS_PER_WORKFLOW` | `200` | Runs kept per workflow; the oldest finished ones are pruned on each start (a live run never is). |
+| `WORKFLOW_MAX_ACTIVE_RUNS_PER_USER` | `5` (1–100) | Runs a user may have `queued` or `running` at once (429 past it); `waiting` runs hold no connection and are not counted. |
+| `WORKFLOW_RUN_MAX_EVENTS` | `20000` | Events stored per run; past it one truncation marker, then only `RUN_*` and the approval interrupt. |
+| `WORKFLOW_RUN_MAX_EVENT_BYTES` | `65536` | One event's serialised size; larger is stored as a marker with a preview of half this. |
+| `WORKFLOW_RUN_MAX_INPUT_BYTES` | `65536` | A run's `inputs`, serialised (422 past it). |
+| `WORKFLOW_MAX_SPEC_BYTES` | `524288` | A spec forwarded to the agents service (create / update / validate); the engine's own cap is 256 KiB. |
+| `WORKFLOW_RUN_PERSIST_BATCH` | `50` | Events written per transaction. |
+| `WORKFLOW_RUN_PERSIST_INTERVAL_MS` | `250` | Longest an event waits in the buffer before it is persisted and published live. |
+| `WORKFLOW_RUNS_PAGE_SIZE` | `20` | Runs per page of the run list. |
+| `WORKFLOW_RUN_STREAM_HEARTBEAT_SECONDS` | `15` | Keep-alive comment on an idle live event stream. |
 
 ### Voice (`VoiceSettings`)
 

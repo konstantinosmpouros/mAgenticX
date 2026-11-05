@@ -26,7 +26,7 @@ import type { AgentCatalogs } from "@/features/agents/hooks/useAgentCatalogs";
 import { depthOf, ensureUids, locate, useAgentDraft } from "@/features/agents/hooks/useAgentDraft";
 import { useDraftAutosave } from "@/features/agents/hooks/useDraftAutosave";
 import { useInspectorPanel } from "@/features/agents/hooks/useInspectorPanel";
-import { useLeaveGuard } from "@/features/agents/hooks/useLeaveGuard";
+import { useLeaveGuard } from "@/shared/hooks/useLeaveGuard";
 import { useServerValidation } from "@/features/agents/hooks/useServerValidation";
 import { useAgentTrial } from "@/features/agents/hooks/useAgentTrial";
 import {

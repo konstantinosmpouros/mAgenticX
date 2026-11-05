@@ -18,6 +18,8 @@ from router.skills import router as skills_router
 from router.memories import router as memories_router
 from router.scheduled_tasks import router as scheduled_tasks_router
 from router.usage import router as usage_router
+from router.workflows import router as workflows_router
+from router.workflows import runs_router as workflow_runs_router
 from router.internal_conversations import router as internal_conversations_router
 from router.internal_memory import router as internal_memory_router
 
@@ -44,4 +46,6 @@ __all__ = [
     "usage_router",
     "user_agents_router",
     "voice_router",
+    "workflow_runs_router",
+    "workflows_router",
 ]

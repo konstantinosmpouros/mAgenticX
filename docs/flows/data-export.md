@@ -1,6 +1,6 @@
 # Export My Data
 
-A user can download everything mAgenticX holds about them — profile, settings, conversations, messages, attachments, scheduled tasks, custom agents and skills — as one `.zip`, from Settings → Data controls. The **dialogue_bridge** builds the archive; the **agents** service streams its part (custom agents and skills, which live in `agent_runtime`). The mental model is a **pipe, not a pile**: the archive is never assembled anywhere. A page of rows or a slice of a file is read, written into the zip, sent to the browser and dropped, so neither memory nor disk ever holds more than about a megabyte of it — which matters on Dennis, where 24 GB is shared by every stack on the box. Exports are on by default; `DATA_EXPORT_ENABLED=false` is the kill switch.
+A user can download everything mAgenticX holds about them — profile, settings, conversations, messages, attachments, scheduled tasks, workflow runs, custom agents, skills and workflows — as one `.zip`, from Settings → Data controls. The **dialogue_bridge** builds the archive; the **agents** service streams its part (custom agents, skills and workflow definitions, which live in `agent_runtime`). The mental model is a **pipe, not a pile**: the archive is never assembled anywhere. A page of rows or a slice of a file is read, written into the zip, sent to the browser and dropped, so neither memory nor disk ever holds more than about a megabyte of it — which matters on Dennis, where 24 GB is shared by every stack on the box. Exports are on by default; `DATA_EXPORT_ENABLED=false` is the kill switch.
 
 ---
 
@@ -78,7 +78,7 @@ Measured locally: a 40 MB attachment streamed in 0.59 s with a 4.2 MB memory pea
 
 ## Phase 3 — The agents service's part
 
-`GET /users/{user_id}/export` (internal only) streams framed NDJSON: `{"op":"open","path":…,"encoding":"utf-8"|"base64"}`, `{"op":"data","text":…}` (≤ 1 MiB of text, a multiple of 4 so base64 slices decode on their own), `{"op":"close"}`, and a final `{"op":"end","counts":…}`. Custom agents' version history goes out as `agents/versions.ndjson`, one record per kept version — `slug`, `version`, `kind`, `changes`, `restored_from` (legacy `restored` rows), `based_on`, `created_at`, `spec`, and `files` as `{path: {content, encoding}}` — paged by `(agent_slug, version_no)`; whole rows are fine because one version is bounded by the definition limits (1 MiB of files), and paging keeps many versions from piling up in memory ([agent-version-history](agent-version-history.md)). The bridge copies each frame into the zip. It accepts paths only under `agents/` and `skills/`, and every archive path is checked for `..`, absolute paths and control characters before an entry is created.
+`GET /users/{user_id}/export` (internal only) streams framed NDJSON: `{"op":"open","path":…,"encoding":"utf-8"|"base64"}`, `{"op":"data","text":…}` (≤ 1 MiB of text, a multiple of 4 so base64 slices decode on their own), `{"op":"close"}`, and a final `{"op":"end","counts":…}`. Custom agents' version history goes out as `agents/versions.ndjson`, one record per kept version — `slug`, `version`, `kind`, `changes`, `restored_from` (legacy `restored` rows), `based_on`, `created_at`, `spec`, and `files` as `{path: {content, encoding}}` — paged by `(agent_slug, version_no)`; whole rows are fine because one version is bounded by the definition limits (1 MiB of files), and paging keeps many versions from piling up in memory ([agent-version-history](agent-version-history.md)). Workflow definitions (plan 38) follow as `workflows/definitions/workflows.ndjson` (each workflow with its `draft`: `id`, `name`, `description`, `latest_version_no`, timestamps) and `workflows/definitions/versions.ndjson` (every saved version's `spec`, keyed `workflow_id` + `version`), paged by `id` and `(workflow_id, version_no)`; persisted state is not exported. The bridge copies each frame into the zip. It accepts paths only under `agents/`, `skills/` and `workflows/definitions/`, and every archive path is checked for `..`, absolute paths and control characters before an entry is created.
 
 If the agents service cannot be reached **before** anything was written, the export continues without this part and `manifest.json` says so (`complete: false`, `missing: [...]`). After a frame has been written the zip cannot be rolled back, so a later failure aborts the whole export.
 
@@ -99,10 +99,14 @@ conversations/attachments.ndjson     archive_path = where its file is (null in t
 conversations/reports.ndjson
 conversations/shares.ndjson          which conversations were shared — never the link token
 scheduled_tasks.ndjson
+workflows/schedules.ndjson           one per scheduled workflow: cadence, static inputs, status, next/last run
+workflows/runs.ndjson                one workflow run per line (status, inputs, error, version; never the engine's thread id)
+workflows/run_events.ndjson          every AG-UI event of every run, with run_id + seq + execution ids
 attachments/<id>/<safe name>         full export only
 agents/agents.ndjson + agents/<slug>/<files>
 agents/versions.ndjson               every kept version of each custom agent, whole: spec + files inline
 skills/skills.ndjson + skills/<name>/<files> + skills/assignments.ndjson
+workflows/definitions/workflows.ndjson + versions.ndjson   from the agents service
 manifest.json                        counts, sizes, missing parts — written last
 ```
 
@@ -114,6 +118,7 @@ manifest.json                        counts, sizes, missing parts — written la
 
 - **Allowlists, not `SELECT *`.** Every exported column is named in `utils/data_export.py`. A column added to any of these tables later is not exported until someone adds it there — so a future secret can never ship by accident.
 - **The agent's working files are not exported as such.** Since plan 36 they live in `agent_runtime.conversation_files`; the export carries the attachments — uploads and the files the agent *presented* (snapshotted on the answer), plus generated files captured before plan 36 — i.e. what the user was shown. Offloaded tool results, summarised history and unpresented scratch files are agent internals, like checkpoints.
+- **Workflow runs are exported run by run** (plan 38): the bridge's own `workflow_runs` rows by keyset on `id`, then each run's `workflow_run_events` by `seq`. An event stored truncated is exported as its truncation marker. The run's `thread_id` is the engine's internal handle, not user data, and is left out.
 - **Never exported:** session or refresh tokens, CSRF secrets, share-link tokens and snapshots, raw agent event logs (`messages.raw_events`), message embeddings, agent memories (the user's choice), and the shared copies of remote skills (exported as references with source, commit and licence).
 - **A cut download is not a valid zip.** `manifest.json` and the zip directory are written last, so a stream that stops early fails to open rather than passing for a partial archive.
 - **A client that stops reading is cut off.** Under backpressure a write simply waits — forever, if the client neither reads nor disconnects — and the generator, suspended at its `yield`, cannot notice. `StallGuardedStreamingResponse` bounds every write by `EXPORT_STALL_SECONDS` (5 min); past it the download is abandoned and the generator closed, which frees the slot and hands the cooldown back.
@@ -133,5 +138,6 @@ manifest.json                        counts, sizes, missing parts — written la
 | Routes | [magenticx/dialogue_bridge/router/export.py](../../magenticx/dialogue_bridge/router/export.py) | status, token, download |
 | Settings | [magenticx/dialogue_bridge/core/settings.py](../../magenticx/dialogue_bridge/core/settings.py) | `ExportSettings` |
 | Cooldown column + index | [magenticx/dialogue_bridge/core/database/migrations/versions/0028_export_cooldown_index.py](../../magenticx/dialogue_bridge/core/database/migrations/versions/0028_export_cooldown_index.py) | `users.last_export_at`, `ix_messages_conversation_id_id` |
-| Agents-service stream | [magenticx/agents/utils/data_export.py](../../magenticx/agents/utils/data_export.py), [router/export.py](../../magenticx/agents/router/export.py) | frames, paging, slicing |
+| Agents-service stream | [magenticx/agents/utils/data_export.py](../../magenticx/agents/utils/data_export.py), [router/export.py](../../magenticx/agents/router/export.py) | frames, paging, slicing; workflows via `WorkflowStore.page_workflows` / `page_versions` |
+| Workflow runs + schedules | [magenticx/dialogue_bridge/utils/data_export.py](../../magenticx/dialogue_bridge/utils/data_export.py) | `_WORKFLOW_RUNS`, `_WORKFLOW_RUN_EVENTS`, `_WORKFLOW_SCHEDULES`, `_workflow_run_rows`, `_workflow_schedule_rows`, `_UPSTREAM_PREFIXES` |
 | UI | [magenticx/agentic_ui/src/features/settings/hooks/useDataExport.ts](../../magenticx/agentic_ui/src/features/settings/hooks/useDataExport.ts), [DataControlsTab.tsx](../../magenticx/agentic_ui/src/features/settings/components/profile_parts/DataControlsTab.tsx) | token → browser download |

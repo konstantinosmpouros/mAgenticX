@@ -38,3 +38,5 @@ class PurgeUserResponse(BaseModel):
     agent_definition_versions: int = 0
     conversation_files: int
     conversation_file_blobs: int
+    workflows: int = 0
+    workflow_versions: int = 0

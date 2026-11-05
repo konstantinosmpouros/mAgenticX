@@ -1,16 +1,20 @@
 import * as React from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { CircleAlert, Plus } from "lucide-react";
+import { CircleAlert } from "lucide-react";
 
 import type {
   Agent,
-  AutomationItem,
+  AutomationSort,
   AutomationStatusFilter,
   AutomationTemplate,
+  AutomationsArea,
+  ScheduleAutomationItem,
   ScheduleFormInitial,
   ScheduledTask,
   ScheduledTaskCreatePayload,
   ScheduledTaskUpdatePayload,
+  Workflow,
+  WorkflowAutomationItem,
 } from "@/shared/lib/types";
 import { useToast } from "@/shared/hooks/use-toast";
 import { toastError } from "@/shared/lib/toast";
@@ -18,26 +22,31 @@ import { ConfirmDialog } from "@/shared/ui/confirm-dialog";
 import { TooltipProvider } from "@/shared/ui/tooltip";
 import { SidebarTrigger } from "@/shared/ui/sidebar";
 import { AutomationFormDialog } from "@/features/automations/components/automations_parts/AutomationFormDialog";
-import {
-  AutomationCard,
-  AutomationCardSkeleton,
-} from "@/features/automations/components/automations_parts/AutomationCard";
+import { AutomationCard } from "@/features/automations/components/automations_parts/AutomationCard";
+import { AutomationCardSkeleton } from "@/features/automations/components/automations_parts/AutomationCardChrome";
+import { AutomationsAreaSwitch } from "@/features/automations/components/automations_parts/AutomationsAreaSwitch";
 import { AutomationToolbar } from "@/features/automations/components/automations_parts/AutomationToolbar";
 import { EmptyState } from "@/features/automations/components/automations_parts/EmptyState";
 import { ErrorState } from "@/features/automations/components/automations_parts/ErrorState";
 import { TemplateSection } from "@/features/automations/components/automations_parts/TemplateSection";
+import { WorkflowsArea } from "@/features/automations/components/automations_parts/WorkflowsArea";
 import {
-  SEARCH_MIN_ITEMS,
+  DEFAULT_SORT,
   filterAutomations,
+  sortAutomations,
   statusFilterCounts,
 } from "@/features/automations/lib/filters";
-import { automationItemId } from "@/features/automations/lib/kinds";
-import { PRIMARY_BUTTON } from "@/features/automations/lib/styles";
+import { areaKind, automationItemId, automationKind } from "@/features/automations/lib/kinds";
 import { findTemplate } from "@/features/automations/lib/templates";
 
 type AutomationsPageProps = {
   onClose: () => void;
-  items: AutomationItem[];
+  /** The area shown (`?view=`): Schedules (the default) or Workflows. */
+  area?: AutomationsArea;
+  /** Switch areas; the route keeps the choice in the URL. */
+  onAreaChange?: (area: AutomationsArea) => void;
+  /** The Schedules area's cards. */
+  items: ScheduleAutomationItem[];
   loading: boolean;
   error?: string | null;
   agents: Agent[];
@@ -57,6 +66,29 @@ type AutomationsPageProps = {
   /** The same, for a template (`?template=`): the form opens filled in from it. */
   createFromTemplateId?: string | null;
   onCreateFromTemplateHandled?: () => void;
+  // ---- the Workflows area ----
+  workflows?: Workflow[];
+  workflowsLoading?: boolean;
+  workflowsError?: string | null;
+  onRetryWorkflows?: () => void;
+  /** Open the builder on a new workflow (`/workflows/new`). */
+  onNewWorkflow?: () => void;
+  /** Open a workflow's view (`/workflows/:id`). */
+  onOpenWorkflow?: (workflowId: string) => void;
+  /** Open the builder on a workflow (`/workflows/:id/edit`). */
+  onEditWorkflow?: (workflowId: string) => void;
+  /**
+   * "Run now": starts a run when the workflow needs no inputs, else opens its
+   * view. Rejects with a message to show.
+   */
+  onRunWorkflow?: (workflowId: string) => Promise<void>;
+  /** Delete a workflow (after the in-page confirm). Rejects with a message to show. */
+  onDeleteWorkflow?: (workflowId: string) => Promise<void>;
+  /**
+   * Pause (true) or resume (false) a workflow's schedule, shown at once and
+   * rolled back on failure. Rejects with a message to show.
+   */
+  onSetWorkflowSchedulePaused?: (workflowId: string, paused: boolean) => Promise<void>;
 };
 
 type FormState =
@@ -98,12 +130,23 @@ function useNow(intervalMs: number): Date {
   return now;
 }
 
+const noop = () => {};
+/** Stable, so the workflow cards are not re-derived on every render. */
+const NO_WORKFLOWS: Workflow[] = [];
+
 /**
- * The Automations page: one scroll, no tabs. Header → status chips → your
- * automations → "Start from a template". With nothing yet, the empty state's
- * hero sits above the full template gallery. A template opens the create
- * dialog filled in (the dialog is its preview); after a create, the new card
- * scrolls into view and pulses once.
+ * The Automations page, the home of both kinds of automation: a header with
+ * the area switch (Schedules | Workflows, kept in the URL as `?view=`) and the
+ * area's create action, then the area itself.
+ *
+ * Schedules: status chips → your schedules → "Start from a template". With
+ * nothing yet, the empty state's hero sits above the full template gallery. A
+ * template opens the create dialog filled in (the dialog is its preview);
+ * after a create, the new card scrolls into view and pulses once.
+ *
+ * Workflows: the user's workflows as cards in the same chrome (Open, Run now,
+ * Edit, Delete behind a confirm); "New workflow" opens the builder. A workflow
+ * is scheduled through its own start node, never from the Schedules area.
  */
 export default function AutomationsPage({
   onClose,
@@ -120,28 +163,48 @@ export default function AutomationsPage({
   onCreateForAgentHandled,
   createFromTemplateId = null,
   onCreateFromTemplateHandled,
+  area = "schedules",
+  onAreaChange = noop,
+  workflows = NO_WORKFLOWS,
+  workflowsLoading = false,
+  workflowsError = null,
+  onRetryWorkflows,
+  onNewWorkflow = noop,
+  onOpenWorkflow = noop,
+  onEditWorkflow = noop,
+  onRunWorkflow,
+  onDeleteWorkflow,
+  onSetWorkflowSchedulePaused,
 }: AutomationsPageProps) {
   const reduceMotion = useReducedMotion() ?? false;
   const { toast } = useToast();
   const now = useNow(30000);
   const [filter, setFilter] = React.useState<AutomationStatusFilter>("all");
   const [query, setQuery] = React.useState("");
+  const [sort, setSort] = React.useState<AutomationSort>(DEFAULT_SORT);
+  // Another area is another list: its search starts empty.
+  const [queryArea, setQueryArea] = React.useState(area);
+  if (queryArea !== area) {
+    setQueryArea(area);
+    setQuery("");
+  }
   const [form, setForm] = React.useState<FormState>({ open: false });
   const [submitting, setSubmitting] = React.useState(false);
   const [submitError, setSubmitError] = React.useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = React.useState<ScheduledTask | null>(null);
   const [highlightId, setHighlightId] = React.useState<string | null>(null);
+  const [workflowDeleteTarget, setWorkflowDeleteTarget] = React.useState<Workflow | null>(null);
 
   // Escape closes the page. The dialogs own Esc while they are open.
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || form.open || deleteTarget) return;
+      if (event.key !== "Escape" || form.open || deleteTarget || workflowDeleteTarget) return;
       event.preventDefault();
       onClose();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [form.open, deleteTarget, onClose]);
+  }, [form.open, deleteTarget, workflowDeleteTarget, onClose]);
 
   // The just-created highlight is a moment, not a state.
   React.useEffect(() => {
@@ -250,15 +313,79 @@ export default function AutomationsPage({
     }
   };
 
+  const workflowItems = React.useMemo<WorkflowAutomationItem[]>(
+    () => workflows.map((workflow) => ({ kind: "workflow", workflow })),
+    [workflows],
+  );
+
+  const runWorkflow = async (workflowId: string) => {
+    if (!onRunWorkflow) {
+      onOpenWorkflow(workflowId);
+      return;
+    }
+    try {
+      await onRunWorkflow(workflowId);
+    } catch (err) {
+      toastError(toast, "Could not start the workflow", err);
+    }
+  };
+
+  const setWorkflowSchedulePaused = async (workflowId: string, paused: boolean) => {
+    if (!onSetWorkflowSchedulePaused) return;
+    try {
+      await onSetWorkflowSchedulePaused(workflowId, paused);
+    } catch (err) {
+      toastError(
+        toast,
+        paused ? "Could not pause the schedule" : "Could not resume the schedule",
+        err,
+      );
+    }
+  };
+
+  const confirmWorkflowDelete = async () => {
+    if (!workflowDeleteTarget || !onDeleteWorkflow) return;
+    try {
+      await onDeleteWorkflow(workflowDeleteTarget.id);
+    } catch (err) {
+      toastError(toast, "Could not delete the workflow", err);
+    }
+  };
+
+  const createMeta = automationKind(areaKind(area));
+  const onCreateInArea = area === "workflows" ? onNewWorkflow : openCreate;
+
   const counts = React.useMemo(() => statusFilterCounts(items), [items]);
   const visible = React.useMemo(
-    () => filterAutomations(items, filter, query),
-    [items, filter, query],
+    () => sortAutomations(filterAutomations(items, filter, query), sort),
+    [items, filter, query, sort],
   );
   const hasItems = items.length > 0;
 
   let body: React.ReactNode;
-  if (loading && !hasItems) {
+  if (area === "workflows") {
+    body = (
+      <WorkflowsArea
+        items={workflowItems}
+        loading={workflowsLoading}
+        error={workflowsError}
+        onRetry={onRetryWorkflows}
+        now={now}
+        reduceMotion={reduceMotion}
+        onCreate={onNewWorkflow}
+        onOpen={onOpenWorkflow}
+        onEdit={onEditWorkflow}
+        onRunNow={runWorkflow}
+        onSetSchedulePaused={onSetWorkflowSchedulePaused ? setWorkflowSchedulePaused : undefined}
+        onDelete={(workflowId) =>
+          setWorkflowDeleteTarget(workflows.find((workflow) => workflow.id === workflowId) ?? null)
+        }
+        query={query}
+        onQueryChange={setQuery}
+        sort={sort}
+      />
+    );
+  } else if (loading && !hasItems) {
     body = (
       <div className="grid gap-3 md:grid-cols-2" aria-label="Loading automations" aria-busy="true">
         {Array.from({ length: 4 }).map((_, i) => (
@@ -271,21 +398,13 @@ export default function AutomationsPage({
   } else if (!hasItems) {
     body = (
       <>
-        <EmptyState onCreate={openCreate} />
+        <EmptyState onCreate={openCreate} title="No schedules yet" />
         <TemplateSection compact={false} onUse={openTemplate} reduceMotion={reduceMotion} />
       </>
     );
   } else {
     body = (
       <>
-        <AutomationToolbar
-          filter={filter}
-          onFilterChange={setFilter}
-          counts={counts}
-          query={query}
-          onQueryChange={setQuery}
-          showSearch={items.length >= SEARCH_MIN_ITEMS}
-        />
         {error ? (
           <p
             className="mt-3 flex items-center gap-2 rounded-xl bg-destructive/[0.08] px-3 py-2 text-xs text-destructive"
@@ -295,7 +414,7 @@ export default function AutomationsPage({
             {error} Showing the last list we had.
           </p>
         ) : null}
-        <section aria-label="Your automations" className="mt-4">
+        <section aria-label="Your automations">
           {visible.length === 0 ? (
             <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-border/80 px-6 py-10 text-center text-sm text-muted-foreground">
               No automations match this filter.
@@ -349,7 +468,7 @@ export default function AutomationsPage({
     <TooltipProvider delayDuration={200}>
       <div className="flex h-full flex-col bg-background">
         {/* Page header — title and the primary New automation action. */}
-        <header className="relative flex-shrink-0 px-4 pb-4 pt-4 sm:px-6 sm:pt-6">
+        <header className="relative flex-shrink-0 px-4 pt-4 sm:px-6 sm:pt-6">
           <div className="mx-auto flex w-full max-w-4xl items-start justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
               {/* On mobile the sidebar is an overlay sheet — once collapsed
@@ -365,20 +484,32 @@ export default function AutomationsPage({
                   Automations
                 </h1>
                 <p className="mt-0.5 text-sm text-muted-foreground">
-                  Agents that run on their own — once, on a repeat, or on a calendar.
+                  {area === "workflows"
+                    ? "Multi-step flows — run by hand, or on the schedule their start step sets."
+                    : "Agents that run on their own — once, on a repeat, or on a calendar."}
                 </p>
               </div>
             </div>
-            <button type="button" onClick={openCreate} className={PRIMARY_BUTTON}>
-              <Plus className="h-4 w-4" aria-hidden />
-              <span className="max-[380px]:sr-only">New automation</span>
-            </button>
+          </div>
+          {/* One row: the tabs left, the tools (search, filter, sort, New) right. */}
+          <div className="mx-auto mt-5 flex w-full max-w-4xl flex-wrap items-center justify-between gap-2">
+            <AutomationsAreaSwitch value={area} onChange={onAreaChange} />
+            <AutomationToolbar
+              searchLabel={area === "workflows" ? "Search workflows" : "Search schedules"}
+              query={query}
+              onQueryChange={setQuery}
+              {...(area === "schedules" ? { filter, onFilterChange: setFilter, counts } : {})}
+              sort={sort}
+              onSortChange={setSort}
+              createLabel={createMeta.createLabel}
+              onCreate={onCreateInArea}
+            />
           </div>
         </header>
 
         {/* Body */}
         <div className="min-h-0 flex-1 overflow-y-auto px-4 sm:px-6">
-          <div className="mx-auto w-full max-w-4xl pb-10 pt-2">{body}</div>
+          <div className="mx-auto w-full max-w-4xl pb-10 pt-5">{body}</div>
         </div>
       </div>
 
@@ -411,6 +542,24 @@ export default function AutomationsPage({
         }
         confirmLabel="Delete automation"
         onConfirm={confirmDelete}
+      />
+
+      <ConfirmDialog
+        open={workflowDeleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setWorkflowDeleteTarget(null);
+        }}
+        title="Delete this workflow?"
+        description={
+          <>
+            <span className="font-medium text-foreground">
+              {workflowDeleteTarget?.name || "This workflow"}
+            </span>{" "}
+            and its run history are deleted; a run in progress is cancelled first.
+          </>
+        }
+        confirmLabel="Delete workflow"
+        onConfirm={confirmWorkflowDelete}
       />
     </TooltipProvider>
   );

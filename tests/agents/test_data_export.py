@@ -77,6 +77,21 @@ class FakeSkills:
         return rows[:limit]
 
 
+class FakeWorkflows:
+    """``WorkflowStore``'s export pages over a list of workflows and versions."""
+
+    def __init__(self, user_id, workflows, versions):
+        self.user_id, self.workflows, self.versions = user_id, workflows, versions
+
+    async def page_workflows(self, user_id, after_id, limit):
+        rows = [w for w in self.workflows if user_id == self.user_id and w["id"] > after_id]
+        return sorted(rows, key=lambda w: w["id"])[:limit]
+
+    async def page_versions(self, user_id, after, limit):
+        rows = [v for v in self.versions if user_id == self.user_id and (v["workflow_id"], v["version_no"]) > after]
+        return sorted(rows, key=lambda v: (v["workflow_id"], v["version_no"]))[:limit]
+
+
 PNG = b"\x89PNG\r\n\x1a\n" + bytes(range(60))
 
 
@@ -109,6 +124,13 @@ def export(agents_service, monkeypatch):
     monkeypatch.setattr(mod, "get_memory_pool", lambda: object())
     monkeypatch.setattr(mod, "AgentDefinitionStore", lambda pool: definitions)
     monkeypatch.setattr(mod, "SkillStore", lambda pool: skills)
+    workflows = FakeWorkflows(
+        "u1",
+        [{"id": f"wf-{i}", "name": f"Flow {i}", "description": "", "latest_version_no": 1,
+          "draft": {"name": f"Flow {i}"}, "created_at": NOW, "updated_at": NOW} for i in range(3)],
+        [{"workflow_id": "wf-0", "version_no": n, "spec": {"name": "Flow 0"}, "created_at": NOW} for n in (1, 2, 3)],
+    )
+    monkeypatch.setattr(mod, "WorkflowStore", lambda pool: workflows)
     monkeypatch.setattr(mod, "PAGE_ROWS", 2)            # force real paging
     monkeypatch.setattr(mod, "SLICE_CHARS", 8)          # force real slicing (multiple of 4)
     return mod
@@ -193,6 +215,7 @@ async def test_the_stream_ends_with_an_end_frame_and_counts(export):
     assert frames[-1]["counts"] == {
         "agents": 5, "agent_files": 2, "agent_versions": 5,
         "skills": 2, "skill_files": 1, "assignments": 1,
+        "workflows": 3, "workflow_versions": 3,
     }
     # Every open is closed before the next opens.
     depth = 0
@@ -207,7 +230,9 @@ async def test_another_user_gets_an_empty_but_complete_stream(export):
     files = _files(await _frames(export, user_id="someone-else"))
     assert files["agents/agents.ndjson"] == b"" and files["skills/skills.ndjson"] == b""
     assert files["agents/versions.ndjson"] == b""
-    assert not [p for p in files if p.count("/") > 1]
+    assert files["workflows/definitions/workflows.ndjson"] == b""
+    assert files["workflows/definitions/versions.ndjson"] == b""
+    assert not [p for p in files if p.count("/") > 1 and not p.startswith("workflows/definitions/")]
 
 
 @pytest.mark.asyncio
@@ -217,3 +242,13 @@ async def test_the_route_is_internal_only(client, export, internal_headers):
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("application/x-ndjson")
     assert json.loads(response.text.splitlines()[-1])["op"] == "end"
+
+
+@pytest.mark.asyncio
+async def test_workflow_definitions_and_versions_are_exported(export):
+    files = _files(await _frames(export))
+    workflows = [json.loads(line) for line in files["workflows/definitions/workflows.ndjson"].decode().splitlines()]
+    versions = [json.loads(line) for line in files["workflows/definitions/versions.ndjson"].decode().splitlines()]
+    assert [w["id"] for w in workflows] == ["wf-0", "wf-1", "wf-2"]
+    assert workflows[0]["draft"] == {"name": "Flow 0"}
+    assert [(v["workflow_id"], v["version"]) for v in versions] == [("wf-0", 1), ("wf-0", 2), ("wf-0", 3)]

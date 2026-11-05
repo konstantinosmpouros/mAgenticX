@@ -757,6 +757,55 @@ class AgentTrialSettings(BaseSettings):
     sweep_batch_size: int = Field(50, ge=1, le=1000, validation_alias="AGENT_TRIAL_SWEEP_BATCH_SIZE")
 
 
+class WorkflowSettings(BaseSettings):
+    """Workflow runs (plan 38, step 1): the bridge side of running a workflow.
+
+    The agents service owns definitions and executes them; the bridge starts a
+    run in the background, persists every AG-UI event it emits and fans them
+    out live. These numbers bound what one user can make the bridge hold.
+    """
+    model_config = _BASE_MODEL_CONFIG
+
+    # A run paused on an approval node (`waiting`) holds nothing but a row, so
+    # it may wait long — but not forever: past this it is failed as expired and
+    # its workflow is free to run again.
+    approval_ttl_hours: int = Field(24, ge=1, le=720, validation_alias="WORKFLOW_APPROVAL_TTL_HOURS")
+    # A streaming leg that has persisted nothing for this long is presumed dead
+    # (agents service hung, bridge replica gone) and failed by the watchdog.
+    # Above the agents read timeout, so a live-but-quiet node is not reaped.
+    stream_idle_timeout_seconds: int = Field(
+        900, ge=60, le=86400, validation_alias="WORKFLOW_RUN_STREAM_IDLE_TIMEOUT_SECONDS"
+    )
+    # Wall-clock ceiling on one streaming leg (start, or one resume): a runaway
+    # loop node cannot hold a run slot and an agents connection indefinitely.
+    stream_max_seconds: int = Field(3600, ge=60, le=86400, validation_alias="WORKFLOW_RUN_STREAM_MAX_SECONDS")
+    # How often the watchdog looks for stalled and expired runs.
+    watchdog_interval_seconds: int = Field(60, ge=5, le=3600, validation_alias="WORKFLOW_RUN_WATCHDOG_INTERVAL_SECONDS")
+    # Runs kept per workflow; the oldest finished ones are pruned on each start.
+    max_runs_per_workflow: int = Field(200, ge=1, le=10000, validation_alias="WORKFLOW_MAX_RUNS_PER_WORKFLOW")
+    # Runs a user may have queued or streaming at once, across all workflows
+    # (waiting runs hold no connection and are not counted).
+    max_active_runs_per_user: int = Field(5, ge=1, le=100, validation_alias="WORKFLOW_MAX_ACTIVE_RUNS_PER_USER")
+    # Events persisted per run. Past it only run-level events (RUN_*, the
+    # approval interrupt) are still kept, after one truncation marker.
+    max_events_per_run: int = Field(20000, ge=100, le=1_000_000, validation_alias="WORKFLOW_RUN_MAX_EVENTS")
+    # One event's serialised size; a larger one is stored as a marker plus a
+    # preview of this many bytes.
+    max_event_bytes: int = Field(64 * 1024, ge=1024, le=4 * 1024 * 1024, validation_alias="WORKFLOW_RUN_MAX_EVENT_BYTES")
+    # A run's `inputs`, serialised.
+    max_input_bytes: int = Field(64 * 1024, ge=256, le=4 * 1024 * 1024, validation_alias="WORKFLOW_RUN_MAX_INPUT_BYTES")
+    # A workflow spec as forwarded to the agents service (create/update/validate).
+    max_spec_bytes: int = Field(512 * 1024, ge=1024, le=8 * 1024 * 1024, validation_alias="WORKFLOW_MAX_SPEC_BYTES")
+    # Events written per transaction, and the longest an event waits in the
+    # buffer before it is persisted and published to live viewers.
+    persist_batch_size: int = Field(50, ge=1, le=1000, validation_alias="WORKFLOW_RUN_PERSIST_BATCH")
+    persist_interval_ms: int = Field(250, ge=10, le=10000, validation_alias="WORKFLOW_RUN_PERSIST_INTERVAL_MS")
+    # Runs per page of the run list.
+    runs_page_size: int = Field(20, ge=1, le=100, validation_alias="WORKFLOW_RUNS_PAGE_SIZE")
+    # Keep-alive comment on an idle live event stream, so proxies do not cut it.
+    stream_heartbeat_seconds: int = Field(15, ge=1, le=120, validation_alias="WORKFLOW_RUN_STREAM_HEARTBEAT_SECONDS")
+
+
 class ShareSettings(BaseSettings):
     model_config = _BASE_MODEL_CONFIG
 
@@ -1097,6 +1146,20 @@ class RateLimitSettings(BaseSettings):
     # carries the whole draft (up to ~1.3 MiB) — its own per-user bucket.
     agent_trial_max_attempts: int = Field(30, validation_alias="AGENT_TRIAL_RATE_LIMIT_MAX_ATTEMPTS")
     agent_trial_window_seconds: int = Field(60, validation_alias="AGENT_TRIAL_RATE_LIMIT_WINDOW_SECONDS")
+    # Workflows (plan 38): reading definitions, run history and the live event
+    # stream; saving/deleting/validating definitions and cancelling runs; and
+    # starting or resuming a run — each start spends model calls, so the
+    # tightest bucket.
+    workflow_read_max_attempts: int = Field(60, validation_alias="WORKFLOW_READ_RATE_LIMIT_MAX_ATTEMPTS")
+    workflow_read_window_seconds: int = Field(60, validation_alias="WORKFLOW_READ_RATE_LIMIT_WINDOW_SECONDS")
+    workflow_mutate_max_attempts: int = Field(20, validation_alias="WORKFLOW_MUTATE_RATE_LIMIT_MAX_ATTEMPTS")
+    workflow_mutate_window_seconds: int = Field(60, validation_alias="WORKFLOW_MUTATE_RATE_LIMIT_WINDOW_SECONDS")
+    # The builder's node catalog and live validation (called while editing) —
+    # their own, looser bucket, keyed on the session.
+    workflow_builder_max_attempts: int = Field(120, validation_alias="WORKFLOW_BUILDER_RATE_LIMIT_MAX_ATTEMPTS")
+    workflow_builder_window_seconds: int = Field(60, validation_alias="WORKFLOW_BUILDER_RATE_LIMIT_WINDOW_SECONDS")
+    workflow_run_max_attempts: int = Field(6, validation_alias="WORKFLOW_RUN_RATE_LIMIT_MAX_ATTEMPTS")
+    workflow_run_window_seconds: int = Field(60, validation_alias="WORKFLOW_RUN_RATE_LIMIT_WINDOW_SECONDS")
     # Minting an export download token. The export itself is bounded by the
     # cooldown column; this only stops a client hammering the token endpoint.
     export_token_max_attempts: int = Field(10, validation_alias="EXPORT_TOKEN_RATE_LIMIT_MAX_ATTEMPTS")
@@ -1251,6 +1314,7 @@ class Settings(BaseSettings):
     conversations: ConversationSettings = Field(default_factory=ConversationSettings)
     agent_trial: AgentTrialSettings = Field(default_factory=AgentTrialSettings)
     share: ShareSettings = Field(default_factory=ShareSettings)
+    workflows: WorkflowSettings = Field(default_factory=WorkflowSettings)
     export: ExportSettings = Field(default_factory=ExportSettings)
     account_deletion: AccountDeletionSettings = Field(default_factory=AccountDeletionSettings)
     profile: ProfileSettings = Field(default_factory=ProfileSettings)

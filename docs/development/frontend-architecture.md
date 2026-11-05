@@ -58,7 +58,7 @@ src/
     automations/   # the Automations page (plan 38): AutomationsPage, automations_parts/*
                    #   (AutomationCard, ScheduleForm, AutomationFormDialog, AutomationToolbar,
                    #   TemplateSection, TemplateCard, EmptyState, ErrorState), hooks/useAutomations,
-                   #   lib/ (kinds registry, filters, templates, schedule, routes, styles)
+                   #   lib/ (kinds registry, filters, templates, task status, routes, styles)
     settings/      # ProfilePanel (ChatGPT-taxonomy settings modal on the premium dark
                    #   shell), EditProfileDialog, ShortcutsPanel + HelpPanel (dedicated
                    #   modals, not settings tabs), profile_parts/* (General/Personalization
@@ -76,7 +76,9 @@ src/
   shared/                    # cross-cutting, feature-agnostic (imports NOTHING from features)
     ui/                      # design system — shadcn base + ai-elements + react_bits + shadcn-io
     lib/                     # api, http, schemas, types, consts, utils + persistence
-                             #   (authStorage, uiStateStorage, cookieConsentStorage), shortcuts
+                             #   (authStorage, uiStateStorage, cookieConsentStorage), shortcuts,
+                             #   schedule + workflowSchedule (schedule wording / preview shared
+                             #   by Automations → Schedules and the workflow builder)
     stores/                  # workspaceStore (Zustand)
     hooks/                   # use-mobile, use-toast (framework-generic)
 

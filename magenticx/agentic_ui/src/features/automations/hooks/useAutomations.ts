@@ -7,7 +7,7 @@ import {
   updateScheduledTask,
 } from "@/shared/lib/api";
 import type {
-  AutomationItem,
+  ScheduleAutomationItem,
   ScheduledTask,
   ScheduledTaskCreatePayload,
   ScheduledTaskUpdatePayload,
@@ -28,7 +28,7 @@ type UseAutomationsArgs = { userId: string | null | undefined; active: boolean }
 /**
  * The user's automations: the list (polled), its CRUD, and the running count
  * for the sidebar badge. The wire is still scheduled tasks in Phase 1; the list
- * is handed out as `AutomationItem`s so the page is already kind-agnostic.
+ * is handed out as `ScheduleAutomationItem`s, the Schedules area's cards.
  */
 export function useAutomations({ userId, active }: UseAutomationsArgs) {
   const [tasks, setTasks] = useState<ScheduledTask[]>([]);
@@ -114,7 +114,7 @@ export function useAutomations({ userId, active }: UseAutomationsArgs) {
     };
   }, [userId, active, refresh]);
 
-  const items = useMemo<AutomationItem[]>(
+  const items = useMemo<ScheduleAutomationItem[]>(
     () => tasks.map((task) => ({ kind: "schedule", task })),
     [tasks],
   );

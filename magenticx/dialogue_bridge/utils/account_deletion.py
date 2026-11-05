@@ -58,6 +58,9 @@ from core.database import (
     UserAgentToolPrefTable,
     UserPreferencesTable,
     UserTable,
+    WorkflowRunEventTable,
+    WorkflowRunTable,
+    WorkflowScheduleTable,
 )
 from core.logging import get_logger, hash_identifier
 from core.security.internal_trust import internal_service_headers
@@ -78,17 +81,24 @@ STEP_SESSIONS = "sessions"
 STEP_AGENT_THREADS = "agent_threads"
 STEP_AGENT_RUNTIME = "agent_runtime"
 STEP_CONVERSATIONS = "conversations"
+STEP_WORKFLOW_RUNS = "workflow_runs"
 STEP_USER = "user"
-#: The purge order. Threads need the messages (they name the threads), so they
-#: go before the conversations; the agents service's data goes before chat_db's
-#: so a failure there never leaves chat_db already emptied; the user row goes
-#: last — until then the user still exists for every retry.
-STEPS = (STEP_SESSIONS, STEP_AGENT_THREADS, STEP_AGENT_RUNTIME, STEP_CONVERSATIONS, STEP_USER)
+#: The purge order. Threads need the messages and workflow runs (they name the
+#: threads), so they go before both; the agents service's data goes before
+#: chat_db's so a failure there never leaves chat_db already emptied; the user
+#: row goes last — until then the user still exists for every retry. A
+#: deletion recorded before ``workflow_runs`` existed resumes by step name, so
+#: it simply runs the new step too.
+STEPS = (
+    STEP_SESSIONS, STEP_AGENT_THREADS, STEP_AGENT_RUNTIME, STEP_WORKFLOW_RUNS, STEP_CONVERSATIONS, STEP_USER,
+)
 
 _AGENT_COUNT_KEYS = (
     "agent_memories", "skill_pool", "skill_files", "agent_skills",
     "agent_definitions", "agent_definition_files", "agent_definition_versions",
     "conversation_files", "conversation_file_blobs",
+    # Workflow definitions (plan 38), when the agents service reports them.
+    "workflows", "workflow_versions",
 )
 
 
@@ -316,6 +326,23 @@ async def _conversation_id_pages(user_id: str) -> AsyncIterator[list[str]]:
         after = ids[-1]
 
 
+async def _workflow_thread_id_pages(user_id: str) -> AsyncIterator[list[str]]:
+    """The checkpoint threads of the user's workflow runs, a page at a time."""
+    after: Optional[str] = None
+    size = settings.account_deletion.thread_batch
+    while True:
+        query = select(WorkflowRunTable.id, WorkflowRunTable.thread_id).where(WorkflowRunTable.user_id == user_id)
+        if after is not None:
+            query = query.where(WorkflowRunTable.id > after)
+        async with SessionLocal() as session:
+            rows = (await session.execute(query.order_by(WorkflowRunTable.id).limit(size))).all()
+        if rows:
+            yield [thread_id for _run_id, thread_id in rows]
+        if len(rows) < size:
+            return
+        after = rows[-1][0]
+
+
 async def _step_sessions(user_id: str, deletion_id: str, counts: dict[str, Any]) -> None:
     """End every session again: the request did, but a purge must not depend on it."""
     async with SessionLocal() as session:
@@ -361,6 +388,12 @@ async def _step_agent_threads(user_id: str, deletion_id: str, counts: dict[str, 
                         )
                     ).scalars()
                 )
+            for thread_id in thread_ids:
+                pending.append(thread_id)
+                if len(pending) >= batch:
+                    await flush()
+        # A workflow run's engine state lives on its own checkpoint thread.
+        async for thread_ids in _workflow_thread_id_pages(user_id):
             for thread_id in thread_ids:
                 pending.append(thread_id)
                 if len(pending) >= batch:
@@ -489,6 +522,52 @@ async def _step_conversations(user_id: str, deletion_id: str, counts: dict[str, 
         await _delete_conversation_batch(ids, deletion_id, counts)
 
 
+async def _step_workflow_runs(user_id: str, deletion_id: str, counts: dict[str, Any]) -> None:
+    """Delete the user's workflow runs (plan 38): each run's events in batches of
+    ``ACCOUNT_PURGE_MESSAGE_BATCH``, then the runs — each part its own
+    transaction, like the conversations. "Whatever is still there", so a
+    resumed purge continues with what remains."""
+    cfg = settings.account_deletion
+    while True:
+        async with SessionLocal() as session:
+            run_ids = list(
+                (
+                    await session.execute(
+                        select(WorkflowRunTable.id)
+                        .where(WorkflowRunTable.user_id == user_id)
+                        .order_by(WorkflowRunTable.id)
+                        .limit(cfg.conversation_batch)
+                    )
+                ).scalars()
+            )
+        if not run_ids:
+            return
+        for run_id in run_ids:
+            while True:
+                async with SessionLocal() as session:
+                    batch = (
+                        select(WorkflowRunEventTable.seq)
+                        .where(WorkflowRunEventTable.run_id == run_id)
+                        .order_by(WorkflowRunEventTable.seq)
+                        .limit(cfg.message_batch)
+                    )
+                    removed = await session.execute(
+                        delete(WorkflowRunEventTable).where(
+                            WorkflowRunEventTable.run_id == run_id, WorkflowRunEventTable.seq.in_(batch.scalar_subquery())
+                        )
+                    )
+                    await session.commit()
+                if not removed.rowcount:
+                    break
+                counts["workflow_run_events"] = counts.get("workflow_run_events", 0) + removed.rowcount
+                await _save_progress(deletion_id, counts)
+        async with SessionLocal() as session:
+            removed = await session.execute(delete(WorkflowRunTable).where(WorkflowRunTable.id.in_(run_ids)))
+            await session.commit()
+        counts["workflow_runs"] = counts.get("workflow_runs", 0) + (removed.rowcount or 0)
+        await _save_progress(deletion_id, counts)
+
+
 async def _step_user(user_id: str, deletion_id: str, counts: dict[str, Any]) -> None:
     """Delete the user's remaining rows and the user, and close the step — atomically.
 
@@ -510,6 +589,9 @@ async def _step_user(user_id: str, deletion_id: str, counts: dict[str, Any]) -> 
             (UserPreferencesTable, UserPreferencesTable.user_id),
             (UserAgentToolPrefTable, UserAgentToolPrefTable.user_id),
             (ScheduledTaskTable, ScheduledTaskTable.user_id),
+            # Workflow schedules (plan 38 §3.9) cascade with the user too;
+            # deleted explicitly like every other table here.
+            (WorkflowScheduleTable, WorkflowScheduleTable.user_id),
             (ConversationReportTable, ConversationReportTable.user_id),
             (ConversationShareTable, ConversationShareTable.owner_user_id),
             # Usage rollups (plan 33; the tool rollup, plan 41) outlive deleted conversations by design —
@@ -535,6 +617,7 @@ _STEP_FUNCS: dict[str, Callable[[str, str, dict[str, Any]], Awaitable[None]]] = 
     STEP_AGENT_THREADS: _step_agent_threads,
     STEP_AGENT_RUNTIME: _step_agent_runtime,
     STEP_CONVERSATIONS: _step_conversations,
+    STEP_WORKFLOW_RUNS: _step_workflow_runs,
     STEP_USER: _step_user,
 }
 

@@ -29,7 +29,12 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Loader } from "@/shared/ui/shadcn-io/loader";
 
-import type { AccountSummary, ConversationSummary, UserProfile } from "@/shared/lib/types";
+import type {
+  AccountSummary,
+  ConversationSummary,
+  UserProfile,
+  Workflow as WorkflowSummary,
+} from "@/shared/lib/types";
 import AccountMenu, { AccountMenuItems } from "@/features/auth/components/AccountMenu";
 import { cn } from "@/shared/lib/utils";
 import {
@@ -56,6 +61,14 @@ import { INTERACTIVE_SURFACE } from "@/shared/lib/consts";
 import { useTouchMenuTrigger } from "@/features/chat/hooks/useTouchMenuTrigger";
 import { loadSidebarSectionOpen, saveSidebarSectionOpen } from "@/shared/lib/sidebarStorage";
 import { RADIX_MOTION } from "@/shared/lib/motion/panels";
+import {
+  PAGE_GLIDE,
+  ROW_SPRING,
+  SIDEBAR_PAGE_LAYOUT_ID,
+  SIDEBAR_ROW_LAYOUT_ID,
+  rowMotion,
+  sectionListMotion,
+} from "@/features/chat/lib/sidebarMotion";
 
 type ChatSidebarProps = {
   conversations: ConversationSummary[];
@@ -83,6 +96,12 @@ type ChatSidebarProps = {
   onOpenAgents?: () => void;
   /** The page open over the chat, if any — its menu entry is highlighted. */
   activePage?: "automations" | "agents" | null;
+  /** The user's workflows: one entry each in the Workflows section (hidden when there are none). */
+  workflows?: WorkflowSummary[];
+  /** The workflow whose view is open, if any — its entry is highlighted. */
+  activeWorkflowId?: string | null;
+  /** Open a workflow's view ("/workflows/:id"). */
+  onOpenWorkflow?: (workflowId: string) => void;
   /** Open the settings panel, optionally on a specific section. */
   onOpenSettings: (tab?: string) => void;
   /** Open the small "Edit profile" dialog. */
@@ -132,16 +151,6 @@ const ConversationLoadingSkeleton = ({ count = 3 }: { count?: number }) => (
 const pinnedTime = (conversation: ConversationSummary) =>
   conversation.pinnedAt ? new Date(conversation.pinnedAt).getTime() : 0;
 
-/** Fade-and-drop for a section's list: transform and opacity only, instant under reduced motion. */
-const sectionListMotion = (reduceMotion: boolean | null) => ({
-  initial: reduceMotion ? { opacity: 0 } : { opacity: 0, y: -6 },
-  animate: { opacity: 1, y: 0 },
-  exit: reduceMotion
-    ? { opacity: 0, transition: { duration: 0 } }
-    : { opacity: 0, y: -6, transition: { duration: 0.12, ease: "easeIn" as const } },
-  transition: reduceMotion ? { duration: 0 } : { duration: 0.18, ease: "easeOut" as const },
-});
-
 // Conversation rows are motion <li>s: they fade in with a short stagger (also
 // when the rail opens and the list mounts), slide to their new place when the
 // list reorders (a pin, a new chat on top), and the selected row's highlight
@@ -158,7 +167,6 @@ const NAV_ICON_MOTION =
 const RAIL_REVEAL = "motion-safe:animate-sidebar-reveal";
 // Labels also never wrap: mid-animation the rail is narrower than "New chat".
 const RAIL_LABEL = `whitespace-nowrap ${RAIL_REVEAL} group-data-[collapsible=icon]:hidden`;
-const ROW_SPRING = { type: "spring", stiffness: 520, damping: 42, mass: 0.8 } as const;
 // A page entry (Automations, Agents) while its page is open: the highlight is the
 // motion span inside it, so the button's own active fill stays off, and the
 // label reads as selected like the open conversation's title.
@@ -166,21 +174,6 @@ const PAGE_ENTRY_ACTIVE =
   "data-[active=true]:bg-transparent data-[active=true]:font-medium data-[active=true]:text-foreground";
 /** The active page's icon takes the theme's colour, on its pill. */
 const PAGE_ICON_ACTIVE = "group-data-[active=true]/nav:text-[hsl(var(--primary))]";
-const rowMotion = (reduceMotion: boolean | null, index: number) => ({
-  layout: "position" as const,
-  initial: reduceMotion ? { opacity: 0 } : { opacity: 0, y: 4 },
-  animate: { opacity: 1, y: 0 },
-  exit: reduceMotion
-    ? { opacity: 0, transition: { duration: 0 } }
-    : { opacity: 0, x: -8, transition: { duration: 0.15, ease: "easeIn" as const } },
-  transition: reduceMotion
-    ? { duration: 0 }
-    : {
-        opacity: { duration: 0.22, delay: Math.min(index * 0.025, 0.3) },
-        y: { duration: 0.22, delay: Math.min(index * 0.025, 0.3) },
-        layout: ROW_SPRING,
-      },
-});
 
 /**
  * A sidebar section heading that folds its list ("Pinned", "Chats").
@@ -222,6 +215,138 @@ function SectionToggle({
   );
 }
 
+/**
+ * One folding section of the sidebar (Workflows, Pinned, Chats): the heading
+ * and the list it folds. The three share this one path, so they expand and
+ * collapse alike: the list fades in and drops into place
+ * (`sectionListMotion`), its rows fade in on a short stagger (`rowMotion`, see
+ * `SidebarSectionRows`), and on collapse it all mirrors back out.
+ */
+function SidebarSection({
+  label,
+  open,
+  onToggle,
+  listId,
+  groupClassName,
+  listClassName,
+  contentClassName,
+  listRef,
+  onScroll,
+  children,
+}: {
+  label: string;
+  open: boolean;
+  onToggle: () => void;
+  listId: string;
+  groupClassName?: string;
+  /** The list's own box: its cap (a long list scrolls on its own) and padding. */
+  listClassName?: string;
+  contentClassName?: string;
+  listRef?: React.Ref<HTMLDivElement>;
+  onScroll?: React.UIEventHandler<HTMLDivElement>;
+  children: React.ReactNode;
+}) {
+  const reduceMotion = useReducedMotion();
+  return (
+    <SidebarGroup className={cn("gap-2 pb-0 pr-0", groupClassName)}>
+      <SectionToggle label={label} open={open} controlsId={listId} onToggle={onToggle} />
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            key="list"
+            id={listId}
+            ref={listRef}
+            onScroll={onScroll}
+            // The chat lists' scrollbar styling (scrollbars.css).
+            data-sidebar="chats-list"
+            data-motion="section-list"
+            className={cn("overflow-y-auto pr-5", listClassName)}
+            // Lets the rows' layout animations account for this list's scroll.
+            layoutScroll
+            {...sectionListMotion(reduceMotion)}
+          >
+            <SidebarGroupContent className={contentClassName}>{children}</SidebarGroupContent>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </SidebarGroup>
+  );
+}
+
+/** A section's rows: they fade in (staggered) as the list opens, and leave sliding out. */
+function SidebarSectionRows({ children }: { children: React.ReactNode }) {
+  return (
+    <SidebarMenu className="!gap-0">
+      <AnimatePresence>{children}</AnimatePresence>
+    </SidebarMenu>
+  );
+}
+
+/**
+ * The one row of the sidebar's lists (Workflows, Pinned, Chats): the same
+ * chrome, hover/press/focus surfaces, nudge-on-hover title, and the selected
+ * row's highlight. The highlight shares one layoutId across every list, so it
+ * glides between a chat and a workflow exactly as it does between two chats.
+ *
+ * `reserveActionSpace` keeps a row with no actions menu (a workflow) aligned
+ * with the rows that have one: SidebarMenuButton pads itself (pr-8) only when
+ * its item holds a SidebarMenuAction.
+ */
+const SidebarListRow = React.forwardRef<
+  HTMLButtonElement,
+  Omit<React.ComponentProps<typeof SidebarMenuButton>, "size" | "isActive"> & {
+    isActive: boolean;
+    reserveActionSpace?: boolean;
+  }
+>(({ isActive, reserveActionSpace = false, className, children, ...props }, ref) => {
+  const reduceMotion = useReducedMotion();
+  return (
+    <SidebarMenuButton
+      ref={ref}
+      size="lg"
+      isActive={isActive}
+      // Overflow stays visible so the gliding highlight is not clipped while
+      // it moves in; titles sit above it (z-[1]) in every row it passes.
+      className={cn(
+        "group/row relative !h-auto min-h-[2rem] items-center !overflow-visible rounded-xl bg-transparent px-2.5 py-1 text-left text-muted-foreground shadow-none transition-colors duration-150 supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] supports-[hover:hover]:hover:text-foreground active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface))] focus-visible:text-foreground focus-visible:ring-2 data-[active=true]:font-medium data-[active=true]:text-foreground",
+        reserveActionSpace && "pr-8",
+        className,
+      )}
+      {...props}
+    >
+      {isActive && (
+        // The selected row's highlight, shared across rows (and sections), so it
+        // glides to the newly selected row; a short bar of the brand gradient
+        // marks it.
+        <motion.span
+          layoutId={SIDEBAR_ROW_LAYOUT_ID}
+          data-layout-id={SIDEBAR_ROW_LAYOUT_ID}
+          aria-hidden
+          data-indicator="row"
+          className="absolute inset-0 z-0 rounded-xl bg-[hsl(var(--hover-surface))]"
+          transition={reduceMotion ? { duration: 0 } : ROW_SPRING}
+        >
+          <span
+            className="absolute left-[3px] top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-full"
+            style={{ background: "var(--gradient-primary)" }}
+          />
+        </motion.span>
+      )}
+      {children}
+    </SidebarMenuButton>
+  );
+});
+SidebarListRow.displayName = "SidebarListRow";
+
+/** A list row's title: truncated, above the highlight, nudged right on hover. */
+function SidebarListRowTitle({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="relative z-[1] truncate text-[13px] transition-transform duration-200 ease-out motion-safe:supports-[hover:hover]:group-hover/row:translate-x-[3px]">
+      {children}
+    </span>
+  );
+}
+
 export default function ChatSidebar({
   conversations,
   currentConversationId,
@@ -243,6 +368,9 @@ export default function ChatSidebar({
   automationsRunningCount = 0,
   onOpenAgents,
   activePage = null,
+  workflows = [],
+  activeWorkflowId = null,
+  onOpenWorkflow,
   onOpenSettings,
   onEditProfile,
   onOpenShortcuts,
@@ -266,14 +394,21 @@ export default function ChatSidebar({
   const contentRef = React.useRef<HTMLDivElement | null>(null);
   const reduceMotion = useReducedMotion();
   // Each section heading folds its list away; remembered per browser.
+  const [workflowsOpen, setWorkflowsOpen] = React.useState(() =>
+    loadSidebarSectionOpen("workflows"),
+  );
   const [pinnedOpen, setPinnedOpen] = React.useState(() => loadSidebarSectionOpen("pinned"));
   const [chatsOpen, setChatsOpen] = React.useState(() => loadSidebarSectionOpen("chats"));
+  React.useEffect(() => {
+    saveSidebarSectionOpen("workflows", workflowsOpen);
+  }, [workflowsOpen]);
   React.useEffect(() => {
     saveSidebarSectionOpen("pinned", pinnedOpen);
   }, [pinnedOpen]);
   React.useEffect(() => {
     saveSidebarSectionOpen("chats", chatsOpen);
   }, [chatsOpen]);
+  const workflowsListId = React.useId();
   const pinnedListId = React.useId();
   const chatsListId = React.useId();
   const rawProfileName =
@@ -351,6 +486,17 @@ export default function ChatSidebar({
     }
   }, [onOpenAutomations, isMobile, setOpenMobile]);
 
+  const handleWorkflowClick = React.useCallback(
+    (workflowId: string) => {
+      setOpenActionMenuId(null);
+      onOpenWorkflow?.(workflowId);
+      if (isMobile) {
+        setOpenMobile(false);
+      }
+    },
+    [onOpenWorkflow, isMobile, setOpenMobile],
+  );
+
   const handleAgentsClick = React.useCallback(() => {
     onOpenAgents?.();
     if (isMobile) {
@@ -365,12 +511,16 @@ export default function ChatSidebar({
   const pageHighlight = (page: "automations" | "agents") =>
     activePage === page ? (
       // A soft pill in the theme's colour (no side bar): it reads at a glance in
-      // the open rail and in the collapsed one, and glides between the pages.
+      // the open rail and in the collapsed one. Between the pages it glides on a
+      // short ease-out tween, position only: no spring overshoot, no stretch.
       <motion.span
-        layoutId="sidebar-active-page"
+        layoutId={SIDEBAR_PAGE_LAYOUT_ID}
+        data-layout-id={SIDEBAR_PAGE_LAYOUT_ID}
+        layout="position"
         aria-hidden
+        data-indicator="page"
         className="absolute inset-0 z-0 rounded-xl bg-[hsl(var(--primary)/0.1)] ring-1 ring-inset ring-[hsl(var(--primary)/0.16)]"
-        transition={reduceMotion ? { duration: 0 } : ROW_SPRING}
+        transition={reduceMotion ? { duration: 0 } : PAGE_GLIDE}
       />
     ) : null;
 
@@ -549,6 +699,51 @@ export default function ChatSidebar({
   const showAllPinnedHint =
     !showInitialSkeleton && !showEmptyState && !isLoadingMore && chatConversations.length === 0;
 
+  // A workflow's entry: the conversation row itself (SidebarListRow, whose
+  // gliding highlight is shared with the chat rows), with no actions menu —
+  // the workflow view is where a workflow is acted on — but the menu's space
+  // kept, so titles truncate at the same edge.
+  const renderWorkflowRow = (workflow: WorkflowSummary, index: number) => {
+    const isActive = workflow.id === activeWorkflowId;
+    return (
+      <MotionMenuItem key={workflow.id} data-motion="row" {...rowMotion(reduceMotion, index)}>
+        <SidebarListRow
+          isActive={isActive}
+          reserveActionSpace
+          aria-current={isActive ? "page" : undefined}
+          onClick={() => handleWorkflowClick(workflow.id)}
+          tooltip={{
+            children: (
+              <div className="flex max-w-xs flex-col gap-0.5">
+                <span className="text-sm font-medium">{workflow.name}</span>
+                {workflow.description && (
+                  <span className="text-xs leading-snug text-muted-foreground">
+                    {workflow.description}
+                  </span>
+                )}
+              </div>
+            ),
+          }}
+        >
+          {/* A workflow reads apart from a chat at a glance: its glyph first. */}
+          <span
+            aria-hidden
+            data-testid="sidebar-workflow-icon"
+            className={cn(
+              "relative z-[1] flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md transition-colors duration-150",
+              isActive
+                ? "bg-primary/[0.14] text-primary"
+                : "bg-primary/[0.07] text-primary/70 group-hover/row:text-primary",
+            )}
+          >
+            <Workflow className="!h-3 !w-3" />
+          </span>
+          <SidebarListRowTitle>{workflow.name}</SidebarListRowTitle>
+        </SidebarListRow>
+      </MotionMenuItem>
+    );
+  };
+
   // One row renderer for both sections: Pinned and Chats are views over the
   // same list, so rename, delete and the streaming spinner behave identically.
   const renderConversationRow = (conversation: ConversationSummary, index: number) => {
@@ -561,9 +756,8 @@ export default function ChatSidebar({
     const isActive = conversation.id === currentConversationId;
 
     return (
-      <MotionMenuItem key={conversation.id} {...rowMotion(reduceMotion, index)}>
-        <SidebarMenuButton
-          size="lg"
+      <MotionMenuItem key={conversation.id} data-motion="row" {...rowMotion(reduceMotion, index)}>
+        <SidebarListRow
           isActive={isActive}
           onClick={(event) => {
             if (isRenaming) {
@@ -592,26 +786,7 @@ export default function ChatSidebar({
               </div>
             ),
           }}
-          // Overflow stays visible so the gliding highlight is not clipped while
-          // it moves in; titles sit above it (z-[1]) in every row it passes.
-          className="group/row relative !h-auto min-h-[2rem] items-center !overflow-visible rounded-xl bg-transparent px-2.5 py-1 text-left text-muted-foreground shadow-none transition-colors duration-150 supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] supports-[hover:hover]:hover:text-foreground active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface))] focus-visible:text-foreground focus-visible:ring-2 data-[active=true]:font-medium data-[active=true]:text-foreground"
         >
-          {isActive && (
-            // The selected row's highlight, shared across rows (and sections), so it
-            // glides to the newly selected chat; a short bar of the brand gradient
-            // marks it.
-            <motion.span
-              layoutId="sidebar-active-row"
-              aria-hidden
-              className="absolute inset-0 z-0 rounded-xl bg-[hsl(var(--hover-surface))]"
-              transition={reduceMotion ? { duration: 0 } : ROW_SPRING}
-            >
-              <span
-                className="absolute left-[3px] top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-full"
-                style={{ background: "var(--gradient-primary)" }}
-              />
-            </motion.span>
-          )}
           {isRenaming ? (
             <div
               ref={renameContainerRef}
@@ -656,11 +831,9 @@ export default function ChatSidebar({
               </button>
             </div>
           ) : (
-            <span className="relative z-[1] truncate text-[13px] transition-transform duration-200 ease-out motion-safe:supports-[hover:hover]:group-hover/row:translate-x-[3px]">
-              {resolvedTitle}
-            </span>
+            <SidebarListRowTitle>{resolvedTitle}</SidebarListRowTitle>
           )}
-        </SidebarMenuButton>
+        </SidebarListRow>
         {!isRenaming &&
           (conversation.isStreaming ? (
             <SidebarMenuAction
@@ -1049,6 +1222,29 @@ export default function ChatSidebar({
       >
         {!isCollapsed && (
           <div className={cn("flex min-h-0 flex-1 flex-col", RAIL_REVEAL)}>
+            {/* No workflows, no section — like Pinned. One entry per workflow (its
+                runs are picked in the workflow view); workflows are created on the
+                Automations page (its Workflows area), not from here. */}
+            <AnimatePresence initial={false}>
+              {workflows.length > 0 && (
+                <motion.div
+                  key="workflows-section"
+                  className="shrink-0"
+                  {...sectionListMotion(reduceMotion)}
+                >
+                  <SidebarSection
+                    label="Workflows"
+                    open={workflowsOpen}
+                    onToggle={() => setWorkflowsOpen((open) => !open)}
+                    listId={workflowsListId}
+                    // Capped like Pinned: a long list scrolls on its own.
+                    listClassName="max-h-[25dvh]"
+                  >
+                    <SidebarSectionRows>{workflows.map(renderWorkflowRow)}</SidebarSectionRows>
+                  </SidebarSection>
+                </motion.div>
+              )}
+            </AnimatePresence>
             {/* No pins, no section: it appears with the first pin and leaves with the last. */}
             <AnimatePresence initial={false}>
               {pinnedConversations.length > 0 && (
@@ -1057,87 +1253,50 @@ export default function ChatSidebar({
                   className="shrink-0"
                   {...sectionListMotion(reduceMotion)}
                 >
-                  <SidebarGroup className="gap-2 pb-0 pr-0">
-                    <SectionToggle
-                      label="Pinned"
-                      open={pinnedOpen}
-                      controlsId={pinnedListId}
-                      onToggle={() => setPinnedOpen((open) => !open)}
-                    />
-                    <AnimatePresence initial={false}>
-                      {pinnedOpen && (
-                        <motion.div
-                          key="pinned-list"
-                          id={pinnedListId}
-                          data-sidebar="chats-list"
-                          // Capped so a long pin list scrolls on its own and
-                          // never pushes Chats off the screen.
-                          className="max-h-[30dvh] overflow-y-auto pr-5"
-                          // Lets the rows' layout animations account for this list's scroll.
-                          layoutScroll
-                          {...sectionListMotion(reduceMotion)}
-                        >
-                          <SidebarGroupContent>
-                            <SidebarMenu className="!gap-0">
-                              <AnimatePresence>
-                                {pinnedConversations.map(renderConversationRow)}
-                              </AnimatePresence>
-                            </SidebarMenu>
-                          </SidebarGroupContent>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </SidebarGroup>
+                  <SidebarSection
+                    label="Pinned"
+                    open={pinnedOpen}
+                    onToggle={() => setPinnedOpen((open) => !open)}
+                    listId={pinnedListId}
+                    // Capped so a long pin list scrolls on its own and never
+                    // pushes Chats off the screen.
+                    listClassName="max-h-[30dvh]"
+                  >
+                    <SidebarSectionRows>{pinnedConversations.map(renderConversationRow)}</SidebarSectionRows>
+                  </SidebarSection>
                 </motion.div>
               )}
             </AnimatePresence>
-            <SidebarGroup className="min-h-0 flex-1 gap-2 pb-0 pr-0">
-              <SectionToggle
-                label="Chats"
-                open={chatsOpen}
-                controlsId={chatsListId}
-                onToggle={() => setChatsOpen((open) => !open)}
-              />
-              <AnimatePresence initial={false}>
-                {chatsOpen && (
-                  <motion.div
-                    key="chats-list"
-                    id={chatsListId}
-                    ref={contentRef}
-                    onScroll={handleScroll}
-                    data-sidebar="chats-list"
-                    // Flush with the sidebar's right edge so the scrollbar sits
-                    // there; pr-5 keeps the rows where they were before.
-                    className="min-h-0 flex-1 overflow-y-auto pb-4 pr-5"
-                    layoutScroll
-                    {...sectionListMotion(reduceMotion)}
-                  >
-                    <SidebarGroupContent className="min-h-0 flex-1 space-y-2">
-                      {showInitialSkeleton ? (
-                        <ConversationLoadingSkeleton />
-                      ) : showEmptyState ? (
-                        <div className="flex flex-col items-center justify-center gap-1.5 rounded-lg bg-muted/10 py-10 text-center text-muted-foreground">
-                          <MessageSquare size={28} className="mb-3 text-muted-foreground/60" />
-                          <p className="text-sm">No conversations yet</p>
-                        </div>
-                      ) : (
-                        <SidebarMenu className="!gap-0">
-                          <AnimatePresence>
-                            {chatConversations.map(renderConversationRow)}
-                          </AnimatePresence>
-                        </SidebarMenu>
-                      )}
-                      {showAllPinnedHint && (
-                        <p className="px-2 py-2 text-xs text-muted-foreground">
-                          Chats you haven&apos;t pinned show up here.
-                        </p>
-                      )}
-                      {!showInitialSkeleton && isLoadingMore && <ConversationLoadingSkeleton />}
-                    </SidebarGroupContent>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </SidebarGroup>
+            <SidebarSection
+              label="Chats"
+              open={chatsOpen}
+              onToggle={() => setChatsOpen((open) => !open)}
+              listId={chatsListId}
+              groupClassName="min-h-0 flex-1"
+              // Flush with the sidebar's right edge so the scrollbar sits
+              // there; pr-5 keeps the rows where they were before.
+              listClassName="min-h-0 flex-1 pb-4"
+              contentClassName="min-h-0 flex-1 space-y-2"
+              listRef={contentRef}
+              onScroll={handleScroll}
+            >
+              {showInitialSkeleton ? (
+                <ConversationLoadingSkeleton />
+              ) : showEmptyState ? (
+                <div className="flex flex-col items-center justify-center gap-1.5 rounded-lg bg-muted/10 py-10 text-center text-muted-foreground">
+                  <MessageSquare size={28} className="mb-3 text-muted-foreground/60" />
+                  <p className="text-sm">No conversations yet</p>
+                </div>
+              ) : (
+                <SidebarSectionRows>{chatConversations.map(renderConversationRow)}</SidebarSectionRows>
+              )}
+              {showAllPinnedHint && (
+                <p className="px-2 py-2 text-xs text-muted-foreground">
+                  Chats you haven&apos;t pinned show up here.
+                </p>
+              )}
+              {!showInitialSkeleton && isLoadingMore && <ConversationLoadingSkeleton />}
+            </SidebarSection>
           </div>
         )}
       </SidebarContent>

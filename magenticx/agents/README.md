@@ -12,12 +12,13 @@ This README documents the current implementation under `magenticx/agents`, not a
 
 ## 1. What This Service Owns
 
-At a high level, the service owns four concerns:
+At a high level, the service owns five concerns:
 
 1. Agent registry and runtime selection.
 2. Per-request orchestration and SSE streaming.
 3. Tool discovery and MCP session management.
 4. Utility inference endpoints that are adjacent to chat: dictation and title generation.
+5. The workflow engine (plan 38): workflow definitions and versions in `agent_runtime`, and running them as AG-UI streams.
 
 It does not own authentication, chat persistence, or the primary user-facing API. Those responsibilities live in `dialogue_bridge` and the UI.
 
@@ -56,6 +57,10 @@ flowchart LR
 
 - `POST /dictate/transcribe` transcribes an uploaded audio file with OpenAI STT.
 - `POST /titles/generate` generates multiple short title candidates for a conversation from the first user message.
+
+### Workflow engine
+
+A workflow is a LangGraph graph described as data (`WorkflowSpec`: inputs, declared state with reducers, nodes from a closed catalogue, edges). It is not an agent, and a run is not a conversation. `harness/workflows/` validates a spec (node-addressed issues), compiles it onto the durable checkpointer and streams a run; every frame carries a `workflow` envelope (`runId`, `nodeId`, `executionId`, `parentExecutionId`, `iteration`). Step 1 nodes: `trigger.manual`, `tool`, `fetch` (SSRF-guarded), `condition`, `router`, `loop`, `approval`, `end`. Definitions live in `agent_runtime` (`workflow_definitions`, `workflow_versions`, `workflow_persisted_state`, DDL on boot); run history is the bridge's. Full reference: [docs/flows/workflows.md](../../docs/flows/workflows.md).
 
 ## 4. Runtime Architecture
 
@@ -199,6 +204,11 @@ System messages supplied by clients are stripped during normalization because ea
 | `/suggestions/generate` | `POST` | Generates personalized starter suggestions for a conversation |
 | `/speech/read-aloud` | `POST` | Generates TTS audio for an AI response |
 | `/realtime/session` | `POST` | Creates an OpenAI Realtime WebRTC session from an SDP offer |
+| `/workflows/catalog` | `GET` | Workflow node kinds with their config JSON Schemas |
+| `/workflows/validate` | `POST` | Dry-run a workflow spec; every issue as `{nodeId, path, message}` |
+| `/workflows/{owner_user_id}` | `GET` / `POST` | List / create a user's workflows |
+| `/workflows/{owner_user_id}/{workflow_id}` | `GET` / `PUT` / `DELETE` | One workflow; a save adds a version only when the spec changed |
+| `/workflows/runs/stream` | `POST` | Start or resume a workflow run; AG-UI SSE |
 
 ### 5.4 Returned stream format
 

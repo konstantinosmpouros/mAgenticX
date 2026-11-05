@@ -3,7 +3,22 @@ import { motion, type Variants } from "framer-motion";
 import { useSearchParams } from "react-router-dom";
 
 import AutomationsPage from "@/features/automations/components/AutomationsPage";
-import { AGENT_PARAM, TEMPLATE_PARAM } from "@/features/automations/lib/routes";
+import {
+  AGENT_PARAM,
+  TEMPLATE_PARAM,
+  VIEW_PARAM,
+  automationsAreaFromParam,
+} from "@/features/automations/lib/routes";
+import { useWorkflowMutations } from "@/features/workflows/hooks/useWorkflowMutations";
+import { useWorkflowQuickRun } from "@/features/workflows/hooks/useWorkflowQuickRun";
+import { useWorkflowSchedulePause } from "@/features/workflows/hooks/useWorkflowSchedulePause";
+import {
+  newWorkflowPath,
+  workflowEditPath,
+  workflowPath,
+  workflowRunPath,
+} from "@/features/workflows/lib/routes";
+import type { AutomationsArea } from "@/shared/lib/types";
 
 import { useChatWorkspaceContext } from "@/app/workspaceContext";
 import { useWorkspaceStore } from "@/shared/stores/workspaceStore";
@@ -33,19 +48,73 @@ const PAGE_FADE: Variants = {
  * All data/actions come from the workspace context built by ChatShell;
  * navigation drives open/close.
  *
+ * `?view=workflows` shows the Workflows area (`?view=schedules`, or none, the
+ * Schedules area); switching areas rewrites it in place, so a refresh or a
+ * link lands on the same area.
+ *
  * Deep links, each dropped from the URL once used (so a refresh or Back does
  * not open the form again):
  *   - `?agent=<id>`    — an agent's "Schedule it": the form opens on that agent;
  *   - `?template=<id>` — the form opens filled in from that template.
  */
 export default function AutomationsView() {
-  const { reduceMotion, navigate, automations } = useChatWorkspaceContext();
+  const { reduceMotion, navigate, automations, workflows } = useChatWorkspaceContext();
+  const { remove: removeWorkflow } = useWorkflowMutations();
+  const quickRun = useWorkflowQuickRun();
+  const setSchedulePaused = useWorkflowSchedulePause();
   // Store-backed: selecting it here keeps this view out of the bundle's
   // per-render churn (see ChatView for the same move).
   const agents = useWorkspaceStore((s) => s.agents);
   const [searchParams, setSearchParams] = useSearchParams();
   const createForAgentId = searchParams.get(AGENT_PARAM);
   const createFromTemplateId = searchParams.get(TEMPLATE_PARAM);
+  const area = automationsAreaFromParam(searchParams.get(VIEW_PARAM));
+  const changeArea = useCallback(
+    (next: AutomationsArea) =>
+      setSearchParams(
+        (prev) => {
+          const params = new URLSearchParams(prev);
+          if (next === "schedules") params.delete(VIEW_PARAM);
+          else params.set(VIEW_PARAM, next);
+          return params;
+        },
+        { replace: true },
+      ),
+    [setSearchParams],
+  );
+  const {
+    refresh: refreshWorkflows,
+    setSchedule: setWorkflowSchedule,
+    workflows: workflowList,
+  } = workflows;
+  const runWorkflow = useCallback(
+    async (workflowId: string) => {
+      const result = await quickRun(workflowId);
+      navigate(
+        result.started ? workflowRunPath(workflowId, result.runId) : workflowPath(workflowId),
+      );
+    },
+    [quickRun, navigate],
+  );
+  const deleteWorkflow = useCallback(
+    async (workflowId: string) => {
+      await removeWorkflow(workflowId);
+      refreshWorkflows();
+    },
+    [removeWorkflow, refreshWorkflows],
+  );
+  // Pause / resume on a card: the card flips at once, the server's answer
+  // (or, on failure, the old schedule) lands on the same list entry.
+  const setWorkflowSchedulePaused = useCallback(
+    async (workflowId: string, paused: boolean) => {
+      const current = workflowList.find((workflow) => workflow.id === workflowId)?.schedule;
+      if (!current) return;
+      await setSchedulePaused(workflowId, current, paused, (schedule) =>
+        setWorkflowSchedule(workflowId, schedule),
+      );
+    },
+    [workflowList, setSchedulePaused, setWorkflowSchedule],
+  );
   // Both links are dropped together: two separate updates in one commit would
   // each start from the same params, and the second would restore the first.
   const clearDeepLinks = useCallback(
@@ -100,6 +169,18 @@ export default function AutomationsView() {
         onCreateForAgentHandled={clearDeepLinks}
         createFromTemplateId={createFromTemplateId}
         onCreateFromTemplateHandled={clearDeepLinks}
+        area={area}
+        onAreaChange={changeArea}
+        workflows={workflows.workflows}
+        workflowsLoading={workflows.isLoading}
+        workflowsError={workflows.error}
+        onRetryWorkflows={refreshWorkflows}
+        onNewWorkflow={() => navigate(newWorkflowPath())}
+        onOpenWorkflow={(workflowId) => navigate(workflowPath(workflowId))}
+        onEditWorkflow={(workflowId) => navigate(workflowEditPath(workflowId))}
+        onRunWorkflow={runWorkflow}
+        onDeleteWorkflow={deleteWorkflow}
+        onSetWorkflowSchedulePaused={setWorkflowSchedulePaused}
       />
     </motion.div>
   );

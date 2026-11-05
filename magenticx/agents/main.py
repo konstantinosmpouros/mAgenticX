@@ -36,6 +36,7 @@ from router.skills import router as skills_router
 from router.agent_tools import router as agent_tools_router
 from router.user_agents import router as user_agents_router
 from router.voice import router as voice_router
+from router.workflows import router as workflows_router
 
 
 configure_logging()
@@ -133,3 +134,4 @@ app.include_router(skills_router)
 app.include_router(agent_tools_router)
 app.include_router(user_agents_router)
 app.include_router(voice_router)
+app.include_router(workflows_router)

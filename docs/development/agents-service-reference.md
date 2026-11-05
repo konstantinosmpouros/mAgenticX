@@ -84,6 +84,8 @@ magenticx/agents/
 │   │   ├── yaml_agent.py       YamlDeepAgent: one generic deep agent built from an AgentSpec
 │   │   ├── user_agents.py      User-authored agent validation + atomic write/read/delete + version list/read
 │   │   └── agent_seed.py       Boot: seed the image's platform agent folders onto the volume
+│   ├── workflows/              ★ workflow engine (plan 38): spec, state, templating, rules, validator, compiler,
+│   │                             runner, events (envelope), ssrf, store (DDL on boot), catalog, nodes/<kind>.py
 │   ├── agui/                   ★ AG-UI protocol (NOT runtime/protocols/agui)
 │   │   ├── emitter.py          AGUIEmitter — encodes every AG-UI event to SSE bytes
 │   │   ├── events.py           Custom event Pydantic models + name constants
@@ -186,6 +188,7 @@ magenticx/agents/
 - **AES at-rest encryption**: if `LANGGRAPH_AES_KEY` set → `EncryptedSerializer.from_pycryptodome_aes()`; else `serde=None`.
 - **DDL** (gated on `setup_on_startup`): `AsyncPostgresSaver(conn).setup()` under `pg_advisory_lock(hashtext('langgraph_setup'))` (serializes multi-replica `CREATE INDEX CONCURRENTLY`).
 - Wires the process-wide saver: `set_checkpointer(AsyncPostgresSaver(pool[, serde]))`.
+- **Workflow tables**: `WorkflowStore(pool).setup()` runs the idempotent DDL of `workflow_definitions`, `workflow_versions`, `workflow_persisted_state` (no alembic chain in `agent_runtime`; every column the code reads is asserted with `ADD COLUMN IF NOT EXISTS`).
 
 **App** — `app = FastAPI(lifespan=_lifespan, title="Agents Service")` (`main.py:212`), `register_exception_handlers(app)`, `app.add_middleware(RequestLoggingMiddleware)`.
 
@@ -270,6 +273,14 @@ Every endpoint below carries `dependencies=[Depends(require_internal_caller)]` (
 | 27 | GET | `/users/{uid}/custom-agents/{slug}/versions` | user_agents | — | `List[AgentVersionSummary]` — kept versions, newest first, no content; each with `based_on` and a `current` flag | 200 (404 unknown agent) |
 | 28 | GET | `/users/{uid}/custom-agents/{slug}/versions/{n}` | user_agents | — | `AgentVersionDetail` — one version with its `spec` and `files` | 200 (404 / 422 `n` < 1) |
 | 29 | POST | `/users/{uid}/custom-agents/{slug}/versions/{n}/restore` | user_agents | — | `UserAgentSummary` — the agent with the version written back; adds no version, makes that one current | 200 (404 / 422 with `{message, errors, issues}` when it no longer validates) |
+| 30 | GET | `/workflows/catalog` | workflows | — | `WorkflowCatalog{kinds}` — every node kind with label, group, branches and config JSON Schema | 200 |
+| 31 | POST | `/workflows/validate` | workflows | `WorkflowWrite{spec}` | `WorkflowValidation{ok, errors[{nodeId, path, message}]}` — dry run | 200 |
+| 32 | POST | `/workflows/runs/stream` | workflows | `WorkflowRunRequest` | SSE `text/event-stream` — the run's AG-UI frames (see [workflows](../flows/workflows.md)) | 200 (404 / 409 thread used or not waiting / 413 / 422 / 503 checkpointer not ready) |
+| 33 | GET | `/workflows/{owner_user_id}?limit=&offset=` | workflows | — | `List[WorkflowSummary]` — newest change first, `limit` ≤ 100 | 200 |
+| 34 | POST | `/workflows/{owner_user_id}` | workflows | `WorkflowWrite{spec}` | `WorkflowDetail` — draft + version 1 | 201 (422 `{message, errors}`) |
+| 35 | GET | `/workflows/{owner_user_id}/{workflow_id}` | workflows | — | `WorkflowDetail` — draft, `latest_version_no`, that version's `spec` | 200 (404) |
+| 36 | PUT | `/workflows/{owner_user_id}/{workflow_id}` | workflows | `WorkflowWrite{spec}` | `WorkflowDetail` — new version only when the spec changed | 200 (404 / 422) |
+| 37 | DELETE | `/workflows/{owner_user_id}/{workflow_id}` | workflows | — | — versions and persisted state cascade; compiled graphs forgotten | 204 (404) |
 
 **Selected behaviors:**
 - **`GET /agents`** — reads `definition.manifest` for each `AGENT_REGISTRY` entry (built once at import), sorted by name.
@@ -279,6 +290,7 @@ Every endpoint below carries `dependencies=[Depends(require_internal_caller)]` (
 - **`/agents/{slug}/stream` and slash commands** — `context.command = {name, args}` is checked by `harness.commands.resolve_invocation` (422 with the reason when refused) and the last user message is rewritten by `apply_command`; `BaseAgent.command_spec` feeds `command_permissions` (read-only) into the deep-agent build.
 - **Custom-agent YAML import** — `POST /users/{uid}/custom-agents/import` parses with `parse_agent_yaml` (inline prompts → files, a missing `slug` from the name) and runs `validate_definition`; it never saves. With `slug` in the body ("Replace from YAML…" on an existing agent) a YAML without `slug:` takes that slug and is checked with `existing_slug`, so another slug is an issue, as on a `PUT`.
 - **Custom-agent version history** — every save through `AgentDefinitionStore.save` (create, update) records the new state in `agent_definition_versions` in the same transaction as `max + 1`, unless nothing changed against the state it replaces; it stores `based_on` (the previous current version) and sets `agent_definitions.current_version` to the new number; every version is kept until the agent is deleted; an agent from before history gets a `baseline` first. A restore (`save(..., restored_from=n)`) writes version `n` back as the agent and sets `current_version = n` without recording a version, so restoring the previously current version undoes it. `list_versions` returns `based_on` and a `current` flag per row (the pointer if still kept, else the newest). A restore re-runs `validate_definition` on the stored version exactly like a `PUT`, so it can never store what a save would refuse. `DELETE /users/{uid}/custom-agents/{slug}` and `DELETE /users/{uid}` take the history too. See [agent-version-history](../flows/agent-version-history.md).
+- **Workflows** (plan 38) — `router/workflows.py` → `utils/workflows.py` → `harness/workflows/`. The fixed paths (`catalog`, `validate`, `runs/stream`) are declared before the `{owner_user_id}` family. Every store query is scoped by `owner_user_id`, so another user's workflow is a 404. Create / update / validate run `validate_spec` with the live MCP catalogue (`known_mcp_tool_keys`; unchecked when it cannot be read). `runs/stream` refuses up front (real status codes, not frames): inputs > 64 KiB → 413; unknown workflow/version → 404; a stored version that no longer validates → 422; a fresh run on a used thread or a resume with no pending `workflow.approval` interrupt → 409; bad inputs → 422 `{message, errors}` (a `trigger.schedule` workflow's static inputs are laid under the request's first). `trigger_kind` / `fired_at` go on the run config for the trigger node's output. It then compiles the pinned version (LRU cache per `(workflow_id, version_no)`) over the durable saver and streams; a client disconnect cancels the graph. See [workflows](../flows/workflows.md).
 - **Voice** — dictation (sync OpenAI STT), read-aloud (TTS via `asyncio.to_thread`, streams audio), realtime (POSTs SDP offer + session config to OpenAI Realtime, returns SDP answer; 503 if no key).
 
 ---
@@ -468,6 +480,8 @@ flowchart TD
 
 **Release** — `release_checkpoint_unless_paused(agent, run_id)` (in the `finally` of both SSE endpoints): probes `aget_state(...).interrupts`; if parked on a HITL interrupt, keeps the RAM namespace bindings (for a later `/resume`), else `release_namespace_bindings(run_id)`. **Durable checkpoint never deleted here.**
 
+**Workflow runs** — each run is its own thread (the bridge mints `workflow_runs.thread_id`); a start on a thread that already holds state is refused (409), and a resume continues on the same thread with `Command(resume={interrupt_id: answer})`. Workflow threads are purged with the user's other threads on account deletion.
+
 **Commit marker** — `emit_checkpoint_committed(agent, thread_id, ...)` reads the head checkpoint id and emits the terminal `CHECKPOINT_COMMITTED` event; the bridge persists `(thread_id, checkpoint_id)` on the assistant message so the next turn resumes/forks from it.
 
 ---
@@ -582,7 +596,7 @@ Structured, async, per-request-context logging.
 
 ## 21. Schemas reference (`schema/` package — one module per concept, re-exporting `__init__.py`)
 
-`Request{messages, config}` · `ResumeActionDecision{decision, reason?}` · `AgentResumeRequest{config, thread_id, decision, reason?, value?, interrupt_id?, decisions?}` · `InputFileIn{filename, mime, base64, size}` · `SeedInputFilesRequest{files}` · `SeedInputFilesResponse{written}` · `EmbedRequest{texts}` · `EmbedResponse{embeddings, model, dimensions}` · `ReapConversationRequest{thread_ids}` · `TitleRequest{user_input}` · `ConversationTitle{titles}` · `SuggestionsRequest{user_input}` · `ConversationSuggestions{suggestions}` · `ReadAloudRequest{text, voice?}` · `TranscriptionResponse{text}` · `RealtimeSessionRequest{sdp, model?, voice?, instructions, metadata}` · `RealtimeSessionResponse{sdp, model, voice}` · `AgentManifest{id, slug, name, version?, type, description, icon}` · `ToolManifest{server_id, tool_name, description, parameter_count}` · `SkillManifest{name, description, content, category}` · `SkillManifestEntry{name, type, description, source_path, category}` · `GlobalManifest{version, skills}` · `UserManifest{version, skills}` · `SkillFile{path, content, encoding, size}` · `CustomSkillCreate{name, description, files}` · `UserSkillDetail{…entry + content + files}` · `MemoryEntry{name, summary, created_at?, updated_at?, source_conversation_id?}` · `MemoryDetail{…entry + content}` · `@dataclass(frozen=True) AgentDefinition{slug, cls, manifest}`.
+`Request{messages, config}` · `ResumeActionDecision{decision, reason?}` · `AgentResumeRequest{config, thread_id, decision, reason?, value?, interrupt_id?, decisions?}` · `InputFileIn{filename, mime, base64, size}` · `SeedInputFilesRequest{files}` · `SeedInputFilesResponse{written}` · `EmbedRequest{texts}` · `EmbedResponse{embeddings, model, dimensions}` · `ReapConversationRequest{thread_ids}` · `TitleRequest{user_input}` · `ConversationTitle{titles}` · `SuggestionsRequest{user_input}` · `ConversationSuggestions{suggestions}` · `ReadAloudRequest{text, voice?}` · `TranscriptionResponse{text}` · `RealtimeSessionRequest{sdp, model?, voice?, instructions, metadata}` · `RealtimeSessionResponse{sdp, model, voice}` · `AgentManifest{id, slug, name, version?, type, description, icon}` · `ToolManifest{server_id, tool_name, description, parameter_count}` · `SkillManifest{name, description, content, category}` · `SkillManifestEntry{name, type, description, source_path, category}` · `GlobalManifest{version, skills}` · `UserManifest{version, skills}` · `SkillFile{path, content, encoding, size}` · `CustomSkillCreate{name, description, files}` · `UserSkillDetail{…entry + content + files}` · `MemoryEntry{name, summary, created_at?, updated_at?, source_conversation_id?}` · `MemoryDetail{…entry + content}` · `@dataclass(frozen=True) AgentDefinition{slug, cls, manifest}` · `WorkflowWrite{spec}` · `WorkflowIssue{nodeId, path, message}` · `WorkflowValidation{ok, errors}` · `WorkflowSummary{id, owner_user_id, name, description, latest_version_no, created_at, updated_at}` · `WorkflowDetail{…summary + draft, spec}` · `WorkflowCatalog{kinds}` · `WorkflowResume{decision: approve|reject, comment?}` · `WorkflowRunRequest{run_id, thread_id, owner_user_id, workflow_id, version_no?, inputs, resume?, trigger_kind: manual|schedule, fired_at?}`.
 
 ---
 

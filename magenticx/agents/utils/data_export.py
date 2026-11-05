@@ -3,7 +3,7 @@
 The bridge builds the export archive, but a user's custom agents and skills live
 here, in ``agent_runtime``. This module streams them to the bridge as a framed
 NDJSON sequence the bridge copies straight into the zip — so the agents service
-decides the layout under ``agents/`` and ``skills/``, and neither side ever holds
+decides the layout under ``agents/``, ``skills/`` and ``workflows/``, and neither side ever holds
 more than one small piece of it.
 
 Frames, one JSON object per line:
@@ -33,6 +33,7 @@ from harness.agent_registry.store import AgentDefinitionStore
 from harness.memory.pool import get_memory_pool
 from harness.skill_registry.remote import get_source, upstream_url
 from harness.skill_registry.store import POOL_TYPE_REMOTE, SkillStore
+from harness.workflows.store import WorkflowStore
 
 logger = get_logger(__name__)
 
@@ -104,9 +105,11 @@ async def stream_user_export(user_id: str) -> AsyncIterator[bytes]:
     pool = get_memory_pool()
     definitions = AgentDefinitionStore(pool)
     skills = SkillStore(pool)
+    workflows = WorkflowStore(pool)
     counts = {
         "agents": 0, "agent_files": 0, "agent_versions": 0,
         "skills": 0, "skill_files": 0, "assignments": 0,
+        "workflows": 0, "workflow_versions": 0,
     }
 
     # agents/agents.ndjson — the specs.
@@ -202,6 +205,39 @@ async def stream_user_export(user_id: str) -> AsyncIterator[bytes]:
         if len(page) < PAGE_ROWS:
             break
         after = (page[-1]["agent_slug"], page[-1]["skill_name"])
+    yield _frame({"op": "close"})
+
+    # workflows/definitions/workflows.ndjson — each workflow with its draft.
+    yield _frame({"op": "open", "path": "workflows/definitions/workflows.ndjson", "encoding": "utf-8"})
+    after_id = ""
+    while True:
+        page = await workflows.page_workflows(user_id, after_id, PAGE_ROWS)
+        for row in page:
+            counts["workflows"] += 1
+            yield _record({
+                "id": row["id"], "name": row["name"], "description": row["description"],
+                "latest_version_no": row["latest_version_no"], "draft": row["draft"],
+                "created_at": row["created_at"], "updated_at": row["updated_at"],
+            })
+        if len(page) < PAGE_ROWS:
+            break
+        after_id = page[-1]["id"]
+    yield _frame({"op": "close"})
+
+    # workflows/definitions/versions.ndjson — every saved version's spec.
+    yield _frame({"op": "open", "path": "workflows/definitions/versions.ndjson", "encoding": "utf-8"})
+    after_workflow_version: tuple[str, int] = ("", 0)
+    while True:
+        page = await workflows.page_versions(user_id, after_workflow_version, PAGE_ROWS)
+        for row in page:
+            counts["workflow_versions"] += 1
+            yield _record({
+                "workflow_id": row["workflow_id"], "version": row["version_no"],
+                "created_at": row["created_at"], "spec": row["spec"],
+            })
+        if len(page) < PAGE_ROWS:
+            break
+        after_workflow_version = (page[-1]["workflow_id"], page[-1]["version_no"])
     yield _frame({"op": "close"})
 
     yield _frame({"op": "end", "counts": counts})

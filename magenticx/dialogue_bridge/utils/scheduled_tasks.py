@@ -16,7 +16,7 @@ can never claim the same row and the row lock is never held across the agent cal
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 # Optional at import (module top, mirroring schema.scheduled_tasks): the
 # next-fire computation degrades gracefully when croniter/tzdata are absent on
@@ -36,6 +36,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+# A module object, not names: utils.workflow_schedules uses this module's
+# next-fire computation, so a ``from`` import either way would be circular.
+import utils.workflow_schedules as workflow_schedules
 from core.database import (
     ConversationTable,
     MessageTable,
@@ -43,8 +46,8 @@ from core.database import (
     SessionLocal,
     UserTable,
 )
-from core.settings import settings
 from core.logging import get_logger
+from core.settings import settings
 from schema import (
     InferenceStartPayload,
     MessageIn,
@@ -61,7 +64,7 @@ logger = get_logger(__name__)
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 # -------------------------------------------------------------------------------
@@ -78,15 +81,15 @@ def _next_cron(expr: str, tz: str | None, after: datetime) -> datetime | None:
     if croniter is None:
         logger.error("croniter_missing", "croniter is not installed; cannot compute cron next-fire")
         return None
-    zone = timezone.utc
+    zone = UTC
     if tz and ZoneInfo is not None:
         try:
             zone = ZoneInfo(tz)
         except Exception:
-            zone = timezone.utc
-    base = after.replace(tzinfo=timezone.utc).astimezone(zone)
+            zone = UTC
+    base = after.replace(tzinfo=UTC).astimezone(zone)
     nxt = croniter(expr, base).get_next(datetime)
-    return nxt.astimezone(timezone.utc).replace(tzinfo=None)
+    return nxt.astimezone(UTC).replace(tzinfo=None)
 
 
 def compute_next_run_at(
@@ -107,7 +110,7 @@ def compute_next_run_at(
         except (TypeError, ValueError):
             return None
         if run_at.tzinfo is not None:
-            run_at = run_at.astimezone(timezone.utc).replace(tzinfo=None)
+            run_at = run_at.astimezone(UTC).replace(tzinfo=None)
         return run_at if run_at > after else None
     if kind == "interval":
         seconds = int((spec or {}).get("interval_seconds") or 0)
@@ -118,7 +121,7 @@ def compute_next_run_at(
     return None
 
 
-def _schedule_spec_from_payload(payload: "ScheduledTaskCreate | ScheduledTaskUpdate") -> dict:
+def _schedule_spec_from_payload(payload: ScheduledTaskCreate | ScheduledTaskUpdate) -> dict:
     if payload.scheduleKind == "one_off":
         return {"run_at": payload.runAt.isoformat()}
     if payload.scheduleKind == "interval":
@@ -541,6 +544,15 @@ class Scheduler:
                     await _mark_fire_error(task_id, "The scheduled run could not be started.")
                 except Exception:
                     logger.error("scheduled_fire_mark_failed", "Could not record fire failure", exc_info=True, task_id=task_id)
+
+        # Workflow schedules (plan 38 §3.9) share this loop, its cadence and its
+        # SCHEDULER_ENABLED switch; their own table keeps them off the Schedules list.
+        try:
+            fired = await workflow_schedules.run_due_workflow_schedules()
+            if fired:
+                logger.info("scheduler_claimed_workflows", "Claimed due workflow schedules", count=fired)
+        except Exception:
+            logger.error("scheduler_workflow_tick_failed", "Workflow schedules tick failed", exc_info=True)
 
 
 scheduler = Scheduler()

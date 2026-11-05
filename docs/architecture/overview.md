@@ -125,6 +125,7 @@ Key nginx settings:
 - Handles voice signalling (WebRTC SDP exchange with OpenAI Realtime API)
 - Serves TTS audio and dictation transcription
 - Runs the **Scheduled Tasks** loop: a single `asyncio` task started in the FastAPI lifespan that claims due jobs (`SELECT ... FOR UPDATE SKIP LOCKED`) and fires them headlessly through the same inference pipeline. The bridge stays single-replica (the in-process `InferenceRunManager` already assumes it); the SKIP-LOCKED claim guards against the deploy-overlap double-fire.
+- Owns **workflow runs** (plan 38): proxies workflow definitions to the agents service, runs each run's stream in a background `WorkflowRunManager` leg, persists every event to `workflow_runs` / `workflow_run_events` before publishing it to Redis (`workflow:run:{id}:events`), and serves history + live tail over SSE; a watchdog fails stalled legs and expired approvals — see [workflows](../flows/workflows.md)
 
 ### Router Structure
 
@@ -144,6 +145,8 @@ All routes are mounted under the `/v1/` prefix by FastAPI's app router.
 | `shared_conv_router` | `/v1/shared-conversations` | share snapshots (full / branch / message scope) |
 | `search_router` | `/v1/search` | full-text search across conversations |
 | `scheduled_tasks_router` | `/v1/scheduled-tasks` | list, create, update (pause/resume), delete scheduled tasks |
+| `workflows_router` | `/v1/workflows` | node catalog, validate, workflow CRUD (proxied), start a run, list a workflow's runs |
+| `workflow_runs_router` | `/v1/workflow-runs` | run detail, live event stream (SSE), resume an approval, cancel |
 
 ### Internal Trust Model
 
@@ -170,6 +173,7 @@ In production this application-layer credential is backed by **transport-layer m
 - Persists durable LangGraph checkpoints in its own `agent_runtime` Postgres database (a single process-wide `AsyncPostgresSaver` over a long-lived connection pool, opened in the FastAPI lifespan) so a branch's run state survives across turns and process restarts
 - Integrates MCP tools from `mcp_gateway` (optional sibling)
 - Runs the `execute` tool through `sandbox_runner` (optional sibling) — see [sandboxed-execution.md](../flows/sandboxed-execution.md)
+- Owns **workflow definitions** (`agent_runtime.workflow_*`) and the workflow engine: validates a `WorkflowSpec`, compiles it onto the durable checkpointer and streams a run as AG-UI frames stamped with a run envelope; its `fetch` node is SSRF-guarded — see [workflows.md](../flows/workflows.md)
 - Calls `rag_service` for retrieval and structured data queries
 - Streams AG-UI protocol events over SSE
 
@@ -245,7 +249,7 @@ The `agent_runtime` DB is created automatically on a fresh volume (dev: `chat_po
 
 ### redis (Inference Event Log)
 
-Redis 7.4 (alpine) backs the durable per-run AG-UI event log used by the WebSocket observer. `dialogue_bridge` writes each parsed AG-UI event into a per-run stream (`inference:run:{message_id}:events`) via `XADD … MAXLEN ~ 5000`; the WebSocket handler reads from that stream with `XREAD BLOCK`, replaying from the client's `since=<seq>` cursor on reconnect. On terminal status the stream key gets an `EXPIRE` (default 3600 s), so late reconnects can still replay missed events. The Redis service is reachable only via the `backend` Docker network; AUTH is enforced via the `magenticx_redis_password` Swarm secret (or `REDIS_PASSWORD` env var in local dev). Persistence is disabled — the authoritative final state lives in Postgres.
+Redis 7.4 (alpine) backs the durable per-run AG-UI event log used by the WebSocket observer. `dialogue_bridge` writes each parsed AG-UI event into a per-run stream (`inference:run:{message_id}:events`) via `XADD … MAXLEN ~ 5000`; the WebSocket handler reads from that stream with `XREAD BLOCK`, replaying from the client's `since=<seq>` cursor on reconnect. On terminal status the stream key gets an `EXPIRE` (default 3600 s), so late reconnects can still replay missed events. The Redis service is reachable only via the `backend` Docker network; AUTH is enforced via the `magenticx_redis_password` Swarm secret (or `REDIS_PASSWORD` env var in local dev). Persistence is disabled — the authoritative final state lives in Postgres. Workflow runs use the same mechanism under `workflow:run:{run_id}:events`, but their events are persisted to `workflow_run_events` **before** they are published, so Redis is only the live fan-out.
 
 ### mcp_gateway (Optional)
 

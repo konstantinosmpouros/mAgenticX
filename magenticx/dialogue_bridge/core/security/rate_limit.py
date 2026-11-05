@@ -177,6 +177,40 @@ agent_trial_rate_limit = rate_limit(
     emit_headers=True,
 )
 
+# Workflows (plan 38) — per user, after auth (+ CSRF on mutations). Four
+# buckets so browsing history never eats into starting runs, and the builder's
+# live validation never blocks a save.
+workflow_read_rate_limit = rate_limit(
+    (settings.rate_limit.workflow_read_max_attempts, settings.rate_limit.workflow_read_window_seconds),
+    scope="workflow-read",
+    identifier=user_path_identity,
+    emit_headers=True,
+)
+
+workflow_mutate_rate_limit = rate_limit(
+    (settings.rate_limit.workflow_mutate_max_attempts, settings.rate_limit.workflow_mutate_window_seconds),
+    scope="workflow-mutate",
+    identifier=user_path_identity,
+    emit_headers=True,
+)
+
+# The builder's node catalog and live validation have no {user_id} in their
+# path, so they key on the verified session instead.
+workflow_builder_rate_limit = rate_limit(
+    (settings.rate_limit.workflow_builder_max_attempts, settings.rate_limit.workflow_builder_window_seconds),
+    scope="workflow-builder",
+    identifier=verified_identity,
+    emit_headers=True,
+)
+
+# Starting or resuming a run: each spends model calls on the user's behalf.
+workflow_run_rate_limit = rate_limit(
+    (settings.rate_limit.workflow_run_max_attempts, settings.rate_limit.workflow_run_window_seconds),
+    scope="workflow-run",
+    identifier=user_path_identity,
+    emit_headers=True,
+)
+
 export_token_rate_limit = rate_limit(
     (settings.rate_limit.export_token_max_attempts, settings.rate_limit.export_token_window_seconds),
     scope="export-token",

@@ -312,7 +312,8 @@ async def test_a_purge_cut_off_mid_conversations_resumes_with_accurate_totals(
     assert await account_deletion.purge_due_once() is True
     async with session_factory() as s:
         row = await s.get(AccountDeletionTable, deletion_id)
-    assert row.step == account_deletion.STEP_AGENT_RUNTIME and row.last_error_type == "OperationalError"
+    # The step before conversations (workflow runs, plan 38) is the last one done.
+    assert row.step == account_deletion.STEP_WORKFLOW_RUNS and row.last_error_type == "OperationalError"
     assert row.counts["conversations"] == 2                       # the first batch is recorded
     assert await _count(session_factory, ConversationTable, ConversationTable.user_id == seeded_user.id) == 3
 

@@ -26,6 +26,8 @@ export const USAGE_BASE_PATH = `${API_BASE_PATH}/usage`;
 export const EXPORT_BASE_PATH = `${API_BASE_PATH}/export`;
 export const ACCOUNT_BASE_PATH = `${API_BASE_PATH}/account`;
 export const COMMANDS_BASE_PATH = `${API_BASE_PATH}/commands`;
+export const WORKFLOWS_BASE_PATH = `${API_BASE_PATH}/workflows`;
+export const WORKFLOW_RUNS_BASE_PATH = `${API_BASE_PATH}/workflow-runs`;
 
 /**
  * Where a user's own photo is served, or `undefined` without one. Versioned by

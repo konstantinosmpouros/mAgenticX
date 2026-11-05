@@ -91,6 +91,8 @@ import ChatBody from "@/features/chat/components/ChatBody";
 import VoiceModeBody from "@/features/voice/components/VoiceModeBody";
 import { useAutomations } from "@/features/automations/hooks/useAutomations";
 import { isAutomationsPath } from "@/features/automations/lib/routes";
+import { useWorkflows } from "@/features/workflows/hooks/useWorkflows";
+import { isWorkflowsPath } from "@/features/workflows/lib/routes";
 import { useAccountDeletionReauthReturn } from "@/features/settings/hooks/useAccountDeletionReauthReturn";
 import { clearUISnapshot } from "@/shared/lib/uiStateStorage";
 import { CONV_PAGE_SIZE } from "@/shared/lib/consts";
@@ -309,13 +311,16 @@ export function useChatWorkspace({
   //   "/c/:id"          → that conversation
   //   "/automations"    → the Automations page ("/tasks" redirects there)
   //   "/agents…"        → the Agents pages (gallery, an agent, the builder)
-  // conversationId is undefined on "/", "/automations" and "/agents…".
+  //   "/workflows/…"    → a workflow's view (its latest run, or one run)
+  // conversationId is undefined on "/", "/automations", "/agents…" and "/workflows/…".
   const { conversationId } = useParams();
   const location = useLocation();
   const isAutomationsRoute = isAutomationsPath(location.pathname);
   const isAgentsRoute = isAgentsPath(location.pathname);
-  // A full page over the chat (Automations or Agents): no conversation surface.
-  const isPageRoute = isAutomationsRoute || isAgentsRoute;
+  const isWorkflowsRoute = isWorkflowsPath(location.pathname);
+  // A full page over the chat (Automations, Agents or a workflow): no
+  // conversation surface — the page replaces the chat body.
+  const isPageRoute = isAutomationsRoute || isAgentsRoute || isWorkflowsRoute;
   // Create toast wrapper for handlers
   const toastWrapper = useCallback(
     (opts: { title: string; description?: string; variant?: string; duration?: number }) => {
@@ -481,6 +486,8 @@ export function useChatWorkspace({
   });
 
   const automations = useAutomations({ userId: workspaceUserId, active: isAutomationsRoute });
+  // The sidebar's Workflows section (one entry per workflow).
+  const workflows = useWorkflows();
 
   useEffect(() => {
     const title = resolveConversationTitle(currentConversation);
@@ -1407,6 +1414,7 @@ export function useChatWorkspace({
     reduceMotion,
     voiceSession,
     automations,
+    workflows,
     resumeInferenceRunHandler,
     isDecisionInFlight,
     resolvedPreferences,

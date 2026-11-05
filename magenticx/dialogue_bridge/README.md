@@ -12,7 +12,7 @@ This README documents the current implementation under `magenticx/dialogue_bridg
 
 ## 1. What This Service Owns
 
-The bridge is the main application-facing API. It owns six major areas:
+The bridge is the main application-facing API. It owns seven major areas:
 
 1. Authentication and session lifecycle.
 2. User-scoped validation and authorization.
@@ -20,6 +20,7 @@ The bridge is the main application-facing API. It owns six major areas:
 4. Proxying agent capabilities from the `agents` service.
 5. Browser-facing safety concerns such as CSRF, CORS, rate limiting, and proxy-aware client IP handling.
 6. Detached inference run lifecycle — spawning server-owned asyncio tasks, appending AG-UI events to per-run Redis Streams, serving WebSocket observers with cursor-based replay, and writing the terminal snapshot to Postgres on completion.
+7. Workflow runs (plan 38) — starting, resuming and cancelling runs of the user's workflows, persisting every engine event to `workflow_run_events`, and serving history + live tail over SSE (definitions themselves are proxied to the agents service).
 
 It does not:
 
@@ -106,6 +107,8 @@ flowchart TD
 | attachments | `/v1/attachments` |
 | shared conversations | `/v1/shared-conversations` |
 | search | `/v1/search` |
+| workflows | `/v1/workflows` |
+| workflow runs | `/v1/workflow-runs` |
 
 ## 6. Authentication and Session Model
 
@@ -202,6 +205,8 @@ erDiagram
 | `messages` | user and AI messages, reactions, reasoning, plan, subagent state, plus `streaming_*` columns (status / message_path / started_at / completed_at / cancel_requested_at) that drive the inference-run lifecycle. A partial unique index on `conversation_id WHERE streaming_status IN ('queued','running','cancelling')` ensures at most one active stream per conversation. |
 | `attachments` | metadata for uploaded files |
 | `blobs` | raw binary payload storage |
+| `workflow_runs` | one run of a user's workflow (status, inputs, pinned version, engine thread); one live run per workflow per user (unique partial index) |
+| `workflow_run_events` | every AG-UI event of a run, keyed `(run_id, seq)`, with the envelope's node / execution ids lifted into columns |
 
 ### 7.2 Important message fields
 
@@ -709,6 +714,22 @@ Either `content` or at least one attachment must be present for non-placeholder 
 | `/v1/agents/{user_id}/{agent_id}/tools/approval` | `POST` | One approval gate |
 | `/v1/agents/{user_id}/{agent_id}/tools/approvals` | `PUT` | Every approval choice, one transaction |
 
+### 15.13 Workflows
+
+Definitions are proxied to the agents service as the session's user; runs are the bridge's own. Full reference: [docs/flows/workflows.md](../../docs/flows/workflows.md).
+
+| Endpoint | Method | Notes |
+| --- | --- | --- |
+| `/v1/workflows/catalog` | `GET` | Node kinds + config schemas |
+| `/v1/workflows/validate` | `POST` | Dry run; CSRF |
+| `/v1/workflows/{user_id}` | `GET` / `POST` | List / create; create is CSRF |
+| `/v1/workflows/{user_id}/{workflow_id}` | `GET` / `PUT` / `DELETE` | Writes CSRF; delete also removes the run history |
+| `/v1/workflows/{user_id}/{workflow_id}/runs` | `POST` / `GET` | Start (202 `{runId}`; 409 live run, 429 cap) / list runs (`?cursor=`) |
+| `/v1/workflow-runs/{user_id}/{run_id}` | `GET` | Run + inputs + events (`?after_seq=`, ≤ 5000 per page) |
+| `/v1/workflow-runs/{user_id}/{run_id}/events/stream` | `GET` | SSE: history, then live; `Last-Event-ID` resumes |
+| `/v1/workflow-runs/{user_id}/{run_id}/resume` | `POST` | `{decision: approve\|reject, comment?}`; 409 unless `waiting` |
+| `/v1/workflow-runs/{user_id}/{run_id}/cancel` | `POST` | Cancel a live run |
+
 ## 16. Observability, Security, and Edge Behavior
 
 ### 16.1 Observability
@@ -791,6 +812,10 @@ The bridge also refuses to start without the Microsoft Entra app registration (`
 | `INFERENCE_RATE_LIMIT_MAX_ATTEMPTS` | `10` |
 | `INFERENCE_RATE_LIMIT_WINDOW_SECONDS` | `60` |
 | `INFERENCE_MAX_ACTIVE_RUNS_PER_USER` | `5` |
+| `WORKFLOW_READ_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `60` / `60` |
+| `WORKFLOW_MUTATE_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `20` / `60` |
+| `WORKFLOW_BUILDER_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `120` / `60` |
+| `WORKFLOW_RUN_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `6` / `60` |
 | `TRUSTED_PROXY_HEADER_NAME` | `X-Internal-Proxy-Secret` |
 | `TRUSTED_PROXY_SECRET` | required (service refuses to start if unset) |
 
@@ -804,6 +829,10 @@ The bridge also refuses to start without the Microsoft Entra app registration (`
 | `REDIS_STREAM_MAXLEN` | `5000` (approximate cap on per-run event stream) |
 | `REDIS_STREAM_TERMINAL_TTL_SECONDS` | `3600` (replay window after a run ends) |
 | `REDIS_STREAM_READ_BLOCK_MS` | `30000` (`XREAD BLOCK` timeout) |
+
+### 17.5a Workflow run variables
+
+`WORKFLOW_*` (`WorkflowSettings`): approval TTL (24 h), leg idle timeout (900 s) and wall clock (3600 s), watchdog interval, runs kept per workflow, active runs per user (5), event count / size caps, input and spec size caps, persist batching, run-list page size, stream heartbeat. Every variable with its default: [docs/architecture/configuration.md](../../docs/architecture/configuration.md#workflow-runs-workflowsettings).
 
 ### 17.6 CORS variables
 
