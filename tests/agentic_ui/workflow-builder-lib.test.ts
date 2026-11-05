@@ -482,7 +482,9 @@ describe("draft, ids, templates and values", () => {
     expect(paths).toContain("input.job_url");
     expect(paths).toContain("state.attempts");
     expect(paths).toContain("nodes.poll.output.status");
-    expect(paths).toContain("nodes.start.output.job_url");
+    // The trigger's fields are the run's inputs (offered as `input.*`): only its whole output is listed.
+    expect(paths).toContain("nodes.start.output");
+    expect(paths).not.toContain("nodes.start.output.job_url");
     expect(paths).not.toContain("nodes.finish.output");
     expect(templatePaths(example(), "poll", { inAssign: true }).map((e) => e.path)).toContain("output.body");
   });

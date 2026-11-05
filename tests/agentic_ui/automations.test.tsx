@@ -542,9 +542,11 @@ describe("AutomationsPage — areas", () => {
     expect(cards[0]).toHaveAttribute("data-automation-kind", "workflow");
     expect(within(cards[0]!).getByText("Deploy")).toBeInTheDocument();
     expect(within(cards[0]!).getByText("Ships the build")).toBeInTheDocument();
-    expect(within(cards[0]!).getByText("Workflow")).toBeInTheDocument();
+    // Every card here is a workflow: no kind badge, no "runs by hand" box.
+    expect(within(cards[0]!).queryByText("Workflow")).not.toBeInTheDocument();
+    expect(within(cards[0]!).queryByText("Runs when you start it")).not.toBeInTheDocument();
     expect(within(cards[0]!).getByText("v3")).toBeInTheDocument();
-    expect(within(cards[0]!).getByText("Runs when you start it")).toBeInTheDocument();
+    expect(within(cards[0]!).getByTestId("workflow-schedule-line")).not.toBeEmptyDOMElement();
     expect(within(cards[1]!).getByText("Every day at 08:00")).toBeInTheDocument();
     expect(within(cards[1]!).getByText("Paused — no upcoming runs")).toBeInTheDocument();
   });

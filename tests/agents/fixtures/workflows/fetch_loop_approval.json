@@ -8,7 +8,7 @@
   ],
   "state": [
     {"name": "attempts", "type": "number", "reducer": "overwrite", "default": 0},
-    {"name": "history", "type": "array", "reducer": "append"},
+    {"name": "statuses", "type": "array", "reducer": "append"},
     {"name": "last_status", "type": "string", "reducer": "overwrite", "persist": true},
     {"name": "decision", "type": "string", "reducer": "overwrite", "default": "none"}
   ],
@@ -24,7 +24,7 @@
         "headers": {"Authorization": "Bearer {{input.token}}"},
         "timeout_seconds": 10,
         "response_type": "json",
-        "assign": {"history": "{{output.body.status}}", "last_status": "{{output.body.status}}"}
+        "assign": {"statuses": "{{output.body.status}}", "last_status": "{{output.body.status}}"}
       },
       "position": {"x": 240, "y": 0}
     },
@@ -71,7 +71,7 @@
         "outputs": {
           "status": "{{state.last_status}}",
           "attempts": "{{state.attempts}}",
-          "history": "{{state.history}}",
+          "history": "{{state.statuses}}",
           "decision": "{{state.decision}}"
         }
       },

@@ -7,13 +7,15 @@ import type {
 import { newNodeId } from "./ids";
 import { SCHEDULE_TRIGGER_KIND, defaultScheduleConfig } from "./schedule";
 import { defaultConfig } from "./schemaForm";
+import { dropStepIds, renameStepIds } from "./stepData";
 import { renameNodeReferences } from "./templates";
 
 /**
  * The builder's draft is the spec itself (`WorkflowSpec`), changed only by
  * `draftReducer` — pure, so every edit (and its undo) is a unit-tested value
- * change. Removing a node takes its edges; renaming one moves its edges and
- * the templates and rule paths that read it; a router case renamed keeps its
+ * change. Removing a node takes its edges (and the step ids other configs
+ * hold for it); renaming one moves its edges, the templates and rule paths
+ * that read it, and the `context.steps` / `thread` ids that name it; a router case renamed keeps its
  * edge, and a branch that is gone loses its edge.
  */
 
@@ -106,7 +108,8 @@ export function draftReducer(spec: WorkflowSpec, action: WorkflowDraftAction): W
         nodes: spec.nodes.map((node) => ({
           ...node,
           id: node.id === from ? to : node.id,
-          config: renameNodeReferences(node.config, from, to) as Record<string, unknown>,
+          // Templates and rule paths, then the ids held as plain values (`context.steps`, `thread`).
+          config: renameStepIds(renameNodeReferences(node.config, from, to) as Record<string, unknown>, from, to),
         })),
         edges: spec.edges.map((edge) => ({
           ...edge,
@@ -131,7 +134,13 @@ export function draftReducer(spec: WorkflowSpec, action: WorkflowDraftAction): W
       if (!nodeIds.size && !edgeIds.size) return spec;
       return {
         ...spec,
-        nodes: spec.nodes.filter((node) => !nodeIds.has(node.id)),
+        // What is left forgets the removed steps: no context picks them, no conversation is theirs.
+        nodes: spec.nodes
+          .filter((node) => !nodeIds.has(node.id))
+          .map((node) => {
+            const config = dropStepIds(node.config, nodeIds);
+            return config === node.config ? node : { ...node, config };
+          }),
         edges: spec.edges.filter(
           (edge) => !edgeIds.has(edge.id) && !nodeIds.has(edge.source) && !nodeIds.has(edge.target),
         ),

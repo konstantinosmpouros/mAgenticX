@@ -53,6 +53,13 @@ from harness.workflows.templating import (
 logger = get_logger(__name__)
 
 MAX_ASSIGNMENTS = 32
+#: Newest executions kept in ``nodes.<id>.outputs``. A loop is capped at 20
+#: iterations, so this keeps every iteration of a looped step while bounding a
+#: nested loop's growth.
+MAX_OUTPUT_HISTORY = 50
+#: Engine-owned state keys a node may write through ``NodeResult.engine_update``.
+#: Declared fields go through ``state_update``; nothing else is writable.
+ENGINE_UPDATE_KEYS = frozenset({"conversations"})
 
 
 class NodeConfig(BaseModel):
@@ -79,12 +86,16 @@ class NodeResult:
 
     ``output`` becomes ``nodes.<id>.output``; ``state_update`` writes declared
     fields (through their reducers, like ``assign``); ``branch`` picks the
-    outgoing edge of a branching kind.
+    outgoing edge of a branching kind. ``engine_update`` writes engine-owned
+    keys (only :data:`ENGINE_UPDATE_KEYS` — ``llm``'s conversation turn) through
+    their own reducers; it is not a declared-state write, so it is neither
+    type-checked against the spec nor part of ``STATE_DELTA``.
     """
 
     output: Any = None
     state_update: dict[str, Any] = field(default_factory=dict)
     branch: str | None = None
+    engine_update: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -210,10 +221,14 @@ class WorkflowNode(ABC):
         """Paths the ``assign`` block reads (``output`` allowed)."""
         return find_references(self.config.assign, roots=ASSIGN_ROOTS)
 
+    def extra_reads(self) -> list[str]:
+        """Paths the kind reads outside its templates (``llm`` / ``code`` context steps)."""
+        return []
+
     def reads(self) -> list[str]:
-        """Declared reads: the paths this node depends on (templates, rules, assign)."""
+        """Declared reads: the paths this node depends on (templates, rules, assign, context)."""
         refs = [*self.references(), *(r for r in self.assign_references() if r.root != "output")]
-        return sorted({ref.text for ref in refs})
+        return sorted({ref.text for ref in refs} | set(self.extra_reads()))
 
     def writes(self) -> list[str]:
         """Declared writes: its own output and every state field it assigns."""
@@ -261,6 +276,27 @@ class WorkflowNode(ABC):
             "unavailableReason": None if available else reason,
             "configSchema": cls.config_schema(),
         }
+
+    # ------------------------------------------------------------------
+    # Output views
+    # ------------------------------------------------------------------
+    @classmethod
+    def history_entry(cls, output: Any) -> Any:
+        """The copy of an output kept in ``nodes.<id>.outputs``.
+
+        Identity by default. A kind whose output embeds something that grows
+        with every execution (``llm``'s ``messages``) drops it here, or the
+        history would grow quadratically.
+        """
+        return output
+
+    @classmethod
+    def context_value(cls, output: Any) -> Any:
+        """What a later step's context sees of an output (``context.py``).
+
+        Identity by default; ``llm`` passes on only its answer.
+        """
+        return output
 
     # ------------------------------------------------------------------
     # Execution
@@ -322,6 +358,8 @@ class WorkflowNode(ABC):
                 writer=writer,
             )
             result = await self.run(state, ctx)
+            if not set(result.engine_update) <= ENGINE_UPDATE_KEYS:
+                raise NodeExecutionError("Wrote an engine key it may not write.", code="internal")
             if self.branch_names() and result.branch not in self.branch_names():
                 raise NodeExecutionError(f"Produced an unknown branch '{result.branch}'.", code="branch")
             updates = self._state_writes(result, scope)
@@ -365,10 +403,24 @@ class WorkflowNode(ABC):
             )
             raise WorkflowNodeError(self.id, error["message"], code=error["code"]) from exc
 
+        # Built from the current record: a workflow runs one path at a time, so
+        # nothing else writes this node's record concurrently. ``.get(...) or``
+        # because a checkpoint from before ``outputs`` existed lacks it.
+        previous = (state.get("nodes") or {}).get(self.id) or {}
+        outputs = [*(previous.get("outputs") or []), self.history_entry(result.output)][-MAX_OUTPUT_HISTORY:]
         return {
-            "nodes": {self.id: {"output": result.output, "branch": result.branch, "executionId": execution_id}},
+            "nodes": {
+                self.id: {
+                    "output": result.output,
+                    "outputs": outputs,
+                    "branch": result.branch,
+                    "executionId": execution_id,
+                }
+            },
             "iterations": {self.id: iteration},
             "trace": {"loops": self.next_loops(loops, result, execution_id), "last": execution_id},
+            "history": [{"node": self.id, "executionId": execution_id}],
+            **result.engine_update,
             **updates,
         }
 
@@ -428,6 +480,8 @@ def _describe(exc: Exception) -> dict[str, str]:
 
 
 __all__ = [
+    "ENGINE_UPDATE_KEYS",
+    "MAX_OUTPUT_HISTORY",
     "NodeConfig",
     "NodeContext",
     "NodeResult",

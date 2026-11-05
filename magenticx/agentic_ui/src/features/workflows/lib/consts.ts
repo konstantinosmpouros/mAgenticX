@@ -11,7 +11,6 @@ export const DETAIL_TABS: ReadonlyArray<{ id: WorkflowDetailTab; label: string }
   { id: "output", label: "Output" },
   { id: "state", label: "State" },
   { id: "tools", label: "Tool calls" },
-  { id: "events", label: "Raw events" },
 ];
 
 /** Room kept round the graph when it is framed (px): clear of the corner buttons. */
@@ -52,9 +51,6 @@ export const JSON_OPEN_DEPTH = 2;
 
 /** Long strings in a JSON tree are cut here, with a "show all" toggle. */
 export const JSON_STRING_PREVIEW = 280;
-
-/** Raw events list: newest last, capped so a long execution stays light. */
-export const RAW_EVENTS_LIMIT = 200;
 
 /** The filled primary pill (Run ▸), as on the Automations page. */
 export const PRIMARY_BUTTON =

@@ -414,7 +414,12 @@ export default function AutomationsPage({
             {error} Showing the last list we had.
           </p>
         ) : null}
-        <section aria-label="Your automations">
+        {/* The list scrolls on its own past a viewport-relative height, so the
+            templates below always peek in under it. */}
+        <section
+          aria-label="Your automations"
+          className="scrollbar-muted -mx-1 max-h-[max(16rem,calc(100dvh-22rem))] overflow-y-auto overscroll-contain px-1 py-1"
+        >
           {visible.length === 0 ? (
             <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-border/80 px-6 py-10 text-center text-sm text-muted-foreground">
               No automations match this filter.
@@ -457,7 +462,12 @@ export default function AutomationsPage({
             </motion.div>
           )}
         </section>
-        <div className="mt-10">
+        <div className="mt-24">
+          {/* A hairline that fades out at both ends. */}
+          <div
+            aria-hidden
+            className="mb-5 h-px bg-gradient-to-r from-transparent via-border to-transparent"
+          />
           <TemplateSection compact onUse={openTemplate} reduceMotion={reduceMotion} />
         </div>
       </>

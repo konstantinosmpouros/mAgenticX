@@ -2,6 +2,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { typeTemplate } from "./templateField";
 
 /**
  * The workflow builder as a page (plan 38, step 3): a new workflow starts
@@ -238,7 +239,7 @@ async function buildFetchAfterTrigger() {
   fireEvent.click(screen.getByRole("button", { name: "Add HTTP request" }));
   await waitFor(() => expect(node("fetch")).not.toBeNull());
   const url = await screen.findByLabelText(/^URL/);
-  fireEvent.change(url, { target: { value: "https://example.com/{{input.x}}" } });
+  typeTemplate(url, "https://example.com/{{input.x}}");
 }
 
 describe("workflow builder page", () => {
@@ -254,9 +255,7 @@ describe("workflow builder page", () => {
     fireEvent.keyDown(screen.getByRole("button", { name: /issue/ }), { key: "Enter" });
     expect(await screen.findAllByText(/undeclared input 'x'/)).not.toHaveLength(0);
     fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
-    fireEvent.change(await screen.findByLabelText(/^URL/), {
-      target: { value: "https://example.com/a" },
-    });
+    typeTemplate(await screen.findByLabelText(/^URL/), "https://example.com/a");
 
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
     await waitFor(() => expect(api.createWorkflow).toHaveBeenCalledTimes(1));
@@ -329,9 +328,7 @@ describe("workflow builder page", () => {
     nameIt("Poller");
     fireEvent.click(node("trigger")!);
     fireEvent.click(screen.getByRole("button", { name: "Add HTTP request" }));
-    fireEvent.change(await screen.findByLabelText(/^URL/), {
-      target: { value: "https://example.com" },
-    });
+    typeTemplate(await screen.findByLabelText(/^URL/), "https://example.com");
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
     await waitFor(() => expect(api.createWorkflow).toHaveBeenCalled());
     expect(await screen.findAllByText("The URL is refused.")).not.toHaveLength(0);
@@ -475,7 +472,7 @@ describe("workflow builder page", () => {
     api.createWorkflow.mockImplementation(async (_user: string, spec: WorkflowSpec) => saved(spec, 1));
     renderAt("/workflows/new");
     await buildFetchAfterTrigger();
-    fireEvent.change(await screen.findByLabelText(/^URL/), { target: { value: "https://example.com/a" } });
+    typeTemplate(await screen.findByLabelText(/^URL/), "https://example.com/a");
     await waitFor(() => expect(window.localStorage.getItem(key)).not.toBeNull(), { timeout: 2000 });
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
     await waitFor(() => expect(api.createWorkflow).toHaveBeenCalledTimes(1));

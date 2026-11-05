@@ -757,6 +757,7 @@ describe("details panel", () => {
   const detailed = exec({
     executionId: "poll#2",
     nodeId: "poll",
+    iteration: 2,
     startSeq: 5,
     input: { url: "https://api.example.test/status" },
     output: { status: 200 },
@@ -808,7 +809,6 @@ describe("details panel", () => {
       "Output",
       "State",
       "Tool calls",
-      "Raw events",
     ]);
     const panel = () => screen.getByRole("tabpanel");
     expect(screen.getByRole("tab", { name: "Output" })).toHaveAttribute("aria-selected", "true");
@@ -819,15 +819,60 @@ describe("details panel", () => {
     expect(within(panel()).getByText(/api\.example\.test/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("tab", { name: /State/ }));
-    expect(within(panel()).getByText("/attempts/-")).toBeInTheDocument();
-    expect(within(panel()).getByText("add")).toBeInTheDocument();
+    // The engine's own write (the result) comes first, then the declared field.
+    expect(within(panel()).getByText("nodes.poll.output")).toBeInTheDocument();
+    expect(within(panel()).getByText(/run 2 in nodes\.poll\.outputs/)).toBeInTheDocument();
+    expect(within(panel()).getByText("state.attempts")).toBeInTheDocument();
+    expect(within(panel()).getByText("Appended")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("tab", { name: /Tool calls/ }));
     expect(within(panel()).getAllByRole("listitem")).toHaveLength(1);
+  });
 
-    fireEvent.click(screen.getByRole("tab", { name: /Raw events/ }));
-    expect(within(panel()).getByText("STEP_STARTED")).toBeInTheDocument();
-    expect(within(panel()).getByText("STEP_FINISHED")).toBeInTheDocument();
+  it("shows an llm step's conversation turn and keeps messages out of its result", () => {
+    render(
+      <ExecutionDetails
+        execution={{
+          ...detailed,
+          executionId: "ask#1",
+          nodeId: "ask",
+          iteration: 1,
+          input: { thread: "chat" },
+          output: {
+            text: "Kiwi",
+            model: "m",
+            messages: [
+              { role: "user", content: "old", executionId: "ask#0" },
+              { role: "user", content: "Name a fruit", executionId: "ask#1" },
+              { role: "assistant", content: "Kiwi", executionId: "ask#1" },
+            ],
+          },
+          stateDelta: [],
+        }}
+        label="Ask"
+        kindLabel="LLM"
+        onResume={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("tab", { name: /State/ }));
+    const panel = screen.getByRole("tabpanel");
+    expect(within(panel).getByText("nodes.ask.output")).toBeInTheDocument();
+    expect(within(panel).getByText("conversations.chat")).toBeInTheDocument();
+    expect(within(panel).getByText("2 messages added to the conversation.")).toBeInTheDocument();
+    expect(within(panel).queryByText(/old/)).toBeNull();
+  });
+
+  it("says a failed step saved nothing", () => {
+    render(
+      <ExecutionDetails
+        execution={{ ...detailed, status: "failed", error: { code: "x", message: "boom" } }}
+        label="Poll API"
+        kindLabel="HTTP fetch"
+        onResume={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("tab", { name: /State/ }));
+    expect(screen.getByRole("tabpanel")).toHaveTextContent("The step failed, so it saved nothing.");
   });
 
   it("shows the execution's error", () => {

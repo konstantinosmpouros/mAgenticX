@@ -7,12 +7,12 @@ import type {
   WorkflowDetailTab,
   WorkflowExecution,
 } from "@/shared/lib/types";
-import { DETAIL_TABS, RAW_EVENTS_LIMIT } from "@/features/workflows/lib/consts";
+import { DETAIL_TABS } from "@/features/workflows/lib/consts";
 import {
+  executionStateWrites,
   formatClock,
   formatDuration,
   hasContent,
-  toPatchOps,
 } from "@/features/workflows/lib/format";
 import { EXECUTION_STATUS_META } from "@/features/workflows/lib/status";
 import { ApprovalCard } from "./ApprovalCard";
@@ -29,82 +29,55 @@ type ExecutionDetailsProps = {
   hideTitle?: boolean;
 };
 
-function StateTab({ execution }: { execution: WorkflowExecution }) {
-  const ops = React.useMemo(() => toPatchOps(execution.stateDelta), [execution.stateDelta]);
-  if (!ops.length) {
-    return (
-      <p className="rounded-xl bg-muted/30 px-3 py-2.5 text-xs italic text-muted-foreground">
-        This execution did not change the workflow state.
-      </p>
-    );
-  }
-  return (
-    <div className="space-y-3">
-      <ul className="space-y-2" aria-label="State changes">
-        {ops.map((op, index) => (
-          <li
-            key={`${op.op}-${op.path}-${index}`}
-            className="rounded-xl border border-border/60 bg-card px-3 py-2"
-          >
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="flex-shrink-0 rounded-full bg-primary/[0.1] px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-primary">
-                {op.op}
-              </span>
-              <code className="min-w-0 truncate font-mono text-[12px] text-foreground">
-                {op.path || "/"}
-              </code>
-            </div>
-            {op.hasValue ? (
-              <JsonView value={op.value} openDepth={1} className="mt-1.5" emptyText="(empty)" />
-            ) : null}
-          </li>
-        ))}
-      </ul>
-      <JsonView value={execution.stateDelta} title="Raw patch" openDepth={0} />
-    </div>
-  );
-}
+const STATE_EMPTY: Partial<Record<WorkflowExecution["status"], string>> = {
+  running: "Nothing saved yet — the step is still running.",
+  waiting: "Nothing saved yet — the step is waiting.",
+  failed: "The step failed, so it saved nothing.",
+  cancelled: "The step was cancelled, so it saved nothing.",
+};
 
-function EventsTab({ execution }: { execution: WorkflowExecution }) {
-  const events = execution.events.slice(-RAW_EVENTS_LIMIT);
-  const hidden = execution.events.length - events.length;
-  if (!events.length) {
+function StateTab({ execution }: { execution: WorkflowExecution }) {
+  const writes = React.useMemo(() => executionStateWrites(execution), [execution]);
+  if (!writes.length) {
     return (
       <p className="rounded-xl bg-muted/30 px-3 py-2.5 text-xs italic text-muted-foreground">
-        No events.
+        {STATE_EMPTY[execution.status] ?? "This step saved nothing."}
       </p>
     );
   }
   return (
-    <div className="space-y-2">
-      {hidden > 0 ? (
-        <p className="text-xs text-muted-foreground">
-          Showing the last {events.length} of {execution.events.length} events.
-        </p>
-      ) : null}
-      <ol className="space-y-2" aria-label="Raw events">
-        {events.map((event) => (
-          <li key={event.seq} className="rounded-xl border border-border/60 bg-card px-3 py-2">
-            <div className="mb-1 flex min-w-0 items-center gap-2 text-[11px] tabular-nums text-muted-foreground">
-              <span className="font-mono">#{event.seq}</span>
-              <span className="min-w-0 truncate font-mono font-semibold text-foreground">
-                {event.type}
-              </span>
-              <span className="ml-auto flex-shrink-0">{formatClock(event.createdAt)}</span>
-            </div>
-            <JsonView value={event.payload} openDepth={0} emptyText="(no payload)" />
-          </li>
-        ))}
-      </ol>
-    </div>
+    <ul className="space-y-2" aria-label="Saved to state">
+      {writes.map((write, index) => (
+        <li
+          key={`${write.kind}-${write.path}-${index}`}
+          className="rounded-xl border border-border/60 bg-card px-3 py-2"
+        >
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="flex-shrink-0 rounded-full bg-primary/[0.1] px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-primary">
+              {write.action}
+            </span>
+            <code className="min-w-0 truncate font-mono text-[12px] text-foreground" title={write.path}>
+              {write.path}
+            </code>
+          </div>
+          {write.note ? (
+            <p className="mt-1 text-[11.5px] leading-5 text-muted-foreground">{write.note}</p>
+          ) : null}
+          {write.hasValue ? (
+            <JsonView value={write.value} openDepth={1} className="mt-1.5" emptyText="(empty)" />
+          ) : null}
+        </li>
+      ))}
+    </ul>
   );
 }
 
 /**
  * One execution's details: its header (node, id, status, timing, branch), its
  * error, the approval it waits on, and tabs — Input (the resolved config it
- * ran with), Output (streamed text and the output), State (its patch ops),
- * Tool calls (the chat's tool views), Raw events. The chosen tab is kept when
+ * ran with), Output (streamed text and the output), State (what it saved:
+ * its result, an llm turn, declared fields), Tool calls (the chat's tool
+ * views). The chosen tab is kept when
  * another execution is selected, so stepping through a loop compares like
  * with like.
  */
@@ -122,9 +95,7 @@ export function ExecutionDetails({
   const duration = formatDuration(execution.durationMs);
 
   const counts: Partial<Record<WorkflowDetailTab, number>> = {
-    state: execution.stateDelta.length,
     tools: execution.toolCalls.length,
-    events: execution.events.length,
   };
 
   const focusTab = (offset: number) => {
@@ -281,7 +252,6 @@ export function ExecutionDetails({
           ) : null}
           {tab === "state" ? <StateTab execution={execution} /> : null}
           {tab === "tools" ? <ToolCallList calls={execution.toolCalls} /> : null}
-          {tab === "events" ? <EventsTab execution={execution} /> : null}
         </div>
       </div>
     </section>

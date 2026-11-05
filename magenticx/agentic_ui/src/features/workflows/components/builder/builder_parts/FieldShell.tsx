@@ -1,5 +1,6 @@
+import * as React from "react";
 import type { ReactNode } from "react";
-import { AlertCircle, AlertTriangle } from "lucide-react";
+import { AlertCircle, AlertTriangle, ChevronRight } from "lucide-react";
 
 import { cn } from "@/shared/lib/utils";
 import type { WorkflowBuilderIssue } from "@/shared/lib/types";
@@ -61,7 +62,12 @@ export function Field({
   return (
     <div className={cn("flex flex-col", className)}>
       <div className="mb-1.5 flex min-h-[1.25rem] items-center justify-between gap-3">
-        <label htmlFor={htmlFor} className="text-xs font-semibold text-foreground/85">
+        {/* The id names a control that is no labelable element (a template field) via aria-labelledby. */}
+        <label
+          htmlFor={htmlFor}
+          id={htmlFor ? `${htmlFor}-label` : undefined}
+          className="text-xs font-semibold text-foreground/85"
+        >
           {label}
           {required ? (
             <>
@@ -146,5 +152,66 @@ export function Toggle({
         aria-hidden
       />
     </button>
+  );
+}
+
+/**
+ * A quiet fold for settings most steps never need (a step's "Advanced", the
+ * workflow's variables): a header button with a chevron, the count of
+ * issues inside when folded (so a problem is never hidden silently).
+ */
+export function Disclosure({
+  id,
+  title,
+  description,
+  defaultOpen = false,
+  issueCount = 0,
+  children,
+}: {
+  id: string;
+  title: ReactNode;
+  description?: ReactNode;
+  defaultOpen?: boolean;
+  /** Issues inside, shown on the header while it is folded. */
+  issueCount?: number;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = React.useState(defaultOpen);
+  const panelId = `${id}-panel`;
+  return (
+    <section className="rounded-2xl border border-border/60 bg-muted/10">
+      <button
+        type="button"
+        id={id}
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={() => setOpen((value) => !value)}
+        className="flex min-h-[44px] w-full items-center gap-2 rounded-2xl px-3.5 py-2.5 text-left transition-colors hover:bg-[hsl(var(--hover-surface))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+      >
+        <ChevronRight
+          className={cn(
+            "h-3.5 w-3.5 flex-shrink-0 text-muted-foreground transition-transform duration-200 motion-reduce:transition-none",
+            open && "rotate-90",
+          )}
+          aria-hidden
+        />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[13px] font-semibold text-foreground">{title}</span>
+          {description ? <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">{description}</span> : null}
+        </span>
+        {!open && issueCount ? (
+          <span className="flex flex-shrink-0 items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] font-medium text-destructive">
+            <AlertCircle className="h-3 w-3" aria-hidden />
+            {issueCount}
+            <span className="sr-only"> {issueCount === 1 ? "issue" : "issues"} inside</span>
+          </span>
+        ) : null}
+      </button>
+      {open ? (
+        <div id={panelId} role="region" aria-labelledby={id} className="space-y-4 border-t border-border/50 px-3.5 pb-3.5 pt-3">
+          {children}
+        </div>
+      ) : null}
+    </section>
   );
 }

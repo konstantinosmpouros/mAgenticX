@@ -39,7 +39,9 @@ BRANCH_PATTERN = r"^[a-z][a-z0-9_]{0,31}$"
 
 #: State keys the engine itself uses; a declared field (or a node id — LangGraph
 #: refuses a node named like a state channel) may not take one.
-RESERVED_NAMES = frozenset({"input", "nodes", "iterations", "trace", "state", "output"})
+RESERVED_NAMES = frozenset(
+    {"input", "nodes", "iterations", "trace", "history", "conversations", "state", "output"}
+)
 
 ValueType = Literal["string", "number", "boolean", "object", "array"]
 Reducer = Literal["overwrite", "append", "merge"]

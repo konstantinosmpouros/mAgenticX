@@ -1,5 +1,5 @@
 """Path substitution for node configs — ``{{input.x}}``, ``{{state.x}}``,
-``{{nodes.<id>.output.<path>}}``.
+``{{nodes.<id>.output.<path>}}``, ``{{nodes.<id>.outputs.<n>.<path>}}``.
 
 This is the only way data moves between nodes, and it is deliberately not a
 template language: no expressions, no filters, no Jinja, no ``eval``. A
@@ -19,8 +19,10 @@ Rules:
   the node wrapper reports it against the node.
 
 Roots: ``input`` (run inputs), ``state`` (declared state fields), ``nodes``
-(``nodes.<id>.output…`` — each node's latest output) and, only inside a node's
-``assign`` block, ``output`` (the node's own fresh output).
+(``nodes.<id>.output…`` — each node's latest output; ``nodes.<id>.outputs…`` —
+the list of its outputs from every execution this run, oldest first, so a step
+after a loop can read each iteration of a step inside it) and, only inside a
+node's ``assign`` block, ``output`` (the node's own fresh output).
 """
 from __future__ import annotations
 
@@ -39,6 +41,8 @@ _SEGMENT = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 MAX_SEGMENTS = 16
 
 BASE_ROOTS = ("input", "state", "nodes")
+#: What a ``nodes.<id>`` path may read: the latest output, or every execution's.
+NODE_DATA_KEYS = ("output", "outputs")
 ASSIGN_ROOTS = (*BASE_ROOTS, "output")
 
 
@@ -55,7 +59,7 @@ class Reference:
 
     @property
     def node_id(self) -> str | None:
-        """For a ``nodes.<id>.output…`` path, the node it reads."""
+        """For a ``nodes.<id>.output…`` / ``nodes.<id>.outputs…`` path, the node it reads."""
         return self.segments[0] if self.root == "nodes" else None
 
     @property
@@ -68,7 +72,8 @@ def parse_path(expr: str, *, roots: Iterable[str] = BASE_ROOTS) -> Reference:
     """Parse a dotted path, refusing anything that is not one.
 
     ``nodes`` paths must read a node's ``output`` (``nodes.<id>.output[.<path>]``)
-    — the rest of a node's record is engine bookkeeping, not data.
+    or ``outputs`` (``nodes.<id>.outputs[.<n>[.<path>]]``) — the rest of a
+    node's record is engine bookkeeping, not data.
     """
     allowed = tuple(roots)
     parts = expr.strip().split(".")
@@ -81,8 +86,10 @@ def parse_path(expr: str, *, roots: Iterable[str] = BASE_ROOTS) -> Reference:
         )
     if root in ("input", "state") and not segments:
         raise TemplateError(f"'{expr}' must name a field ({root}.<name>).", path=expr)
-    if root == "nodes" and (len(segments) < 2 or segments[1] != "output"):
-        raise TemplateError(f"'{expr}' must read a node's output: nodes.<id>.output.", path=expr)
+    if root == "nodes" and (len(segments) < 2 or segments[1] not in NODE_DATA_KEYS):
+        raise TemplateError(
+            f"'{expr}' must read a node's output: nodes.<id>.output or nodes.<id>.outputs.", path=expr
+        )
     return Reference(root=root, segments=segments)
 
 
@@ -176,6 +183,7 @@ def render(value: Any, scope: Mapping[str, Any], *, roots: Iterable[str] = BASE_
 __all__ = [
     "ASSIGN_ROOTS",
     "BASE_ROOTS",
+    "NODE_DATA_KEYS",
     "PLACEHOLDER",
     "Reference",
     "find_references",

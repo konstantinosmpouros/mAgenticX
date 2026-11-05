@@ -228,7 +228,7 @@ export type WorkflowViewPageProps = {
 };
 
 /** The details panel's tabs. */
-export type WorkflowDetailTab = "input" | "output" | "state" | "tools" | "events";
+export type WorkflowDetailTab = "input" | "output" | "state" | "tools";
 
 /**
  * One row of the execution timeline: an execution plus where it sits in the
@@ -252,6 +252,20 @@ export type WorkflowInputErrors = Record<string, string>;
 
 /** One JSON Patch op of an execution's STATE_DELTA, as the State tab lists it. */
 export type WorkflowStatePatchOp = { op: string; path: string; value: unknown; hasValue: boolean };
+
+/** One thing an execution saved to the run's state, as the State tab lists it. */
+export type WorkflowStateWrite = {
+  /** Its result, an llm conversation turn, or a declared field. */
+  kind: "output" | "conversation" | "field";
+  /** Short verb: Saved, Added, Set, Appended, Removed. */
+  action: string;
+  /** Where it landed, as a template path (`nodes.fetch.output`, `state.count`). */
+  path: string;
+  /** One line on what it means; may be empty. */
+  note: string;
+  value: unknown;
+  hasValue: boolean;
+};
 
 /** The execution the user picked in the workflow view, tied to the run it belongs to. */
 export type WorkflowExecutionPick = { runId: string; executionId: string };

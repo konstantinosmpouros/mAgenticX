@@ -228,14 +228,14 @@ export function StateFieldsEditor({
           const at = `state[${index}]`;
           const own = issues.filter((issue) => issueIsOn(issue, at));
           return (
-            <div key={`state-${index}`} className="rounded-xl border border-border/60 bg-muted/20 p-2.5" role="group" aria-label={`State field ${index + 1}`}>
+            <div key={`state-${index}`} className="rounded-xl border border-border/60 bg-muted/20 p-2.5" role="group" aria-label={`Variable ${index + 1}`}>
               <div className="flex items-center gap-1.5">
                 <div className="min-w-0 flex-1">
                   <NameField
                     id={fieldDomId(null, `${at}.name`)}
                     value={field.name}
                     onChange={(name) => update(index, { name })}
-                    label={`State field ${index + 1} name`}
+                    label={`Variable ${index + 1} name`}
                     invalid={own.some((issue) => issue.field === `${at}.name`)}
                   />
                 </div>
@@ -254,15 +254,15 @@ export function StateFieldsEditor({
                       update(index, { type: next, reducer, default: null });
                     }}
                     small
-                    ariaLabel={`State field ${index + 1} type`}
+                    ariaLabel={`Variable ${index + 1} type`}
                   />
                 </div>
                 <button
                   type="button"
                   className={cn(ICON_BUTTON, "hover:text-destructive")}
                   onClick={() => onChange(state.filter((_, other) => other !== index))}
-                  aria-label={`Remove state field ${index + 1}`}
-                  title="Remove state field"
+                  aria-label={`Remove variable ${index + 1}`}
+                  title="Remove variable"
                 >
                   <Trash2 className="h-3.5 w-3.5" aria-hidden />
                 </button>
@@ -275,7 +275,7 @@ export function StateFieldsEditor({
                     options={REDUCER_OPTIONS}
                     onChange={(reducer) => update(index, { reducer: reducer as WorkflowReducer })}
                     small
-                    ariaLabel={`State field ${index + 1} reducer`}
+                    ariaLabel={`Variable ${index + 1} reducer`}
                   />
                 </div>
                 <DefaultField
@@ -283,13 +283,13 @@ export function StateFieldsEditor({
                   type={field.type}
                   value={field.default ?? null}
                   onChange={(value) => update(index, { default: value })}
-                  label={`State field ${index + 1} default`}
+                  label={`Variable ${index + 1} default`}
                 />
               </div>
               <div className="mt-1.5 flex items-center justify-between gap-2">
                 <p className="text-[11px] text-muted-foreground">{REDUCER_HINTS[field.reducer]}</p>
                 <label className="flex flex-shrink-0 items-center gap-1.5 text-xs text-muted-foreground" title="Kept for the next run when a run completes">
-                  <Toggle checked={Boolean(field.persist)} onChange={(persist) => update(index, { persist })} label={`Persist state field ${index + 1}`} />
+                  <Toggle checked={Boolean(field.persist)} onChange={(persist) => update(index, { persist })} label={`Persist variable ${index + 1}`} />
                   Persist
                 </label>
               </div>
@@ -298,7 +298,7 @@ export function StateFieldsEditor({
           );
         })
       ) : (
-        <EmptyNote>No state yet. Declare a field to carry values between steps (or, with Persist, between runs).</EmptyNote>
+        <EmptyNote>No variables yet. Add one to collect values across a loop&apos;s runs (or, with Persist, keep them between runs).</EmptyNote>
       )}
       <button
         type="button"
@@ -307,7 +307,7 @@ export function StateFieldsEditor({
         onClick={() => onChange([...state, { name: "", type: "string", reducer: "overwrite", default: null, persist: false }])}
       >
         <Plus className="h-3.5 w-3.5" aria-hidden />
-        Add state field
+        Add variable
       </button>
     </div>
   );

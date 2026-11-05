@@ -446,7 +446,7 @@ def test_reads_and_writes_are_declared(wf):
     spec = wf.spec.WorkflowSpec.model_validate(_example())
     poll = wf.nodes.NODE_KINDS["fetch"](spec.node("poll"), spec)
     assert poll.reads() == ["input.job_url", "input.token"]
-    assert poll.writes() == ["nodes.poll.output", "state.history", "state.last_status"]
+    assert poll.writes() == ["nodes.poll.output", "state.statuses", "state.last_status"]
     ready = wf.nodes.NODE_KINDS["condition"](spec.node("is_ready"), spec)
     assert ready.reads() == ["nodes.poll.output.body.status", "nodes.poll.output.status"]
 

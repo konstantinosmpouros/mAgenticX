@@ -12,7 +12,10 @@ What the box sees:
   :attr:`~WorkflowNode.literal_fields` key: never template-rendered (``{{`` is
   legitimate Python) and never checked as a reference.
 * ``/conversation/input/input.json`` — ``inputs``, template-rendered like any
-  config, as JSON (≤ 64 KiB). Both input files are read-only.
+  config (≤ 64 KiB), plus ``"steps"``: the data from earlier steps chosen by
+  ``context`` (``context.py``; ``[]`` with mode ``none``, ≤ 64 KiB). ``steps``
+  is therefore reserved as an ``inputs`` key while a context is on. Both input
+  files are read-only.
 * The working directory ``/conversation/output/``: a ``result.json`` written
   there comes back as the step's ``result``.
 
@@ -48,8 +51,16 @@ from core.logging import get_logger
 from core.security.internal_trust import internal_service_headers
 from core.security.tls import get_httpx_verify
 from core.settings import settings
+from harness.workflows import nodes as node_catalog
+from harness.workflows.context import StepContext, context_issues, context_reads, gather_context
 from harness.workflows.errors import NodeExecutionError
-from harness.workflows.nodes.base import NodeConfig, NodeContext, NodeResult, WorkflowNode
+from harness.workflows.nodes.base import (
+    NodeConfig,
+    NodeContext,
+    NodeResult,
+    ValidationContext,
+    WorkflowNode,
+)
 
 logger = get_logger(__name__)
 
@@ -75,6 +86,8 @@ AGENT_SLUG = "workflow"
 COMMAND = "python3 /conversation/input/main.py"
 RESULT_PATH = "output/result.json"
 UNAVAILABLE_REASON = "The sandbox runner is not configured, so code steps can't run."
+#: The ``input.json`` key that carries the context entries.
+STEPS_KEY = "steps"
 # C0/C1 controls except tab and newline (carriage returns are folded first).
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
 
@@ -101,6 +114,11 @@ class CodeConfig(NodeConfig):
         default_factory=dict,
         max_length=MAX_INPUT_KEYS,
         description="Values passed to the script as input.json; templates allowed.",
+    )
+    context: StepContext = Field(
+        default_factory=StepContext,
+        description='Data from earlier steps, passed to the script as "steps" in input.json.',
+        json_schema_extra={"x-widget": "context"},
     )
     timeout_seconds: int = Field(default=30, ge=1, le=MAX_TIMEOUT_SECONDS)
 
@@ -181,7 +199,17 @@ class CodeNode(WorkflowNode):
     group = "tools"
     description = "Run a Python script in the sandbox (no network); read inputs, return JSON."
     Config = CodeConfig
-    literal_fields = frozenset({"code"})
+    #: ``context`` is a setting, never templated.
+    literal_fields = frozenset({"code", "context"})
+
+    def validate_semantics(self, ctx: ValidationContext) -> list[tuple[str, str]]:
+        issues = context_issues(self.config.context, self.spec, self.id)
+        if self.config.context.mode != "none" and STEPS_KEY in self.config.inputs:
+            issues.append((f"inputs.{STEPS_KEY}", "'steps' is reserved for the data from earlier steps."))
+        return issues
+
+    def extra_reads(self) -> list[str]:
+        return context_reads(self.config.context)
 
     @classmethod
     def availability(cls) -> tuple[bool, str | None]:
@@ -199,11 +227,16 @@ class CodeNode(WorkflowNode):
         user_id, run_id = ctx.run.owner_user_id, ctx.run.run_id
         if not _ID_RE.match(user_id) or not _ID_RE.match(run_id):
             raise NodeExecutionError("This run's identity cannot be sent to the sandbox.", code="code_unavailable")
-        inputs_json = json.dumps(cfg.inputs, ensure_ascii=False, default=str).encode("utf-8")
-        if len(inputs_json) > MAX_INPUT_BYTES:
+        rendered_json = json.dumps(cfg.inputs, ensure_ascii=False, default=str).encode("utf-8")
+        if len(rendered_json) > MAX_INPUT_BYTES:
             raise NodeExecutionError(
                 f"The inputs are larger than {MAX_INPUT_BYTES // 1024} KiB.", code="code_input_too_large"
             )
+        # Capped on its own (64 KiB) by gather_context; always present, [] when none.
+        entries = gather_context(cfg.context, state, self.spec, self.id, kinds=node_catalog.NODE_KINDS)
+        inputs_json = json.dumps(
+            {**cfg.inputs, STEPS_KEY: entries}, ensure_ascii=False, default=str
+        ).encode("utf-8")
         payload = {
             "user_id": user_id,
             "agent_slug": AGENT_SLUG,

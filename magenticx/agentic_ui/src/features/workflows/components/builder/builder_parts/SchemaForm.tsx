@@ -5,6 +5,7 @@ import type {
   WorkflowBuilderIssue,
   WorkflowCasesChange,
   WorkflowFormField,
+  WorkflowSpec,
   WorkflowTemplatePath,
 } from "@/shared/lib/types";
 import { INPUT } from "@/features/workflows/lib/builder/consts";
@@ -13,11 +14,14 @@ import { asCases, asRules } from "@/features/workflows/lib/builder/schemaForm";
 import { issueIsOn } from "@/features/workflows/lib/builder/validate";
 import { CasesEditor } from "./CasesEditor";
 import { CodeField } from "./CodeField";
+import { ContextField } from "./ContextField";
 import { ChoiceSelect, LooseValueField } from "./Controls";
+import { ConversationField } from "./ConversationField";
 import { Field, Toggle } from "./FieldShell";
 import { JsonField } from "./JsonField";
 import { MapEditor } from "./MapEditor";
 import { RulesEditor } from "./RulesEditor";
+import { SchemaBuilderField } from "./SchemaBuilderField";
 import { TemplateField } from "./TemplateField";
 
 /** A number typed as text: committed when it parses, removed when emptied (the default applies). */
@@ -95,6 +99,7 @@ export function SchemaForm({
   assignPaths,
   barePaths,
   stateNames,
+  spec,
   prefix = "config",
 }: {
   nodeId: string;
@@ -109,6 +114,8 @@ export function SchemaForm({
   /** Rule paths: the same, without braces. */
   barePaths: readonly WorkflowTemplatePath[];
   stateNames: readonly string[];
+  /** The workflow: what "Data from earlier steps" and "Conversation" offer and preview. */
+  spec?: WorkflowSpec;
   prefix?: string;
 }) {
   const set = (key: string, value: unknown, cases?: WorkflowCasesChange) => {
@@ -117,6 +124,9 @@ export function SchemaForm({
     else next[key] = value;
     onChange(next, cases);
   };
+  // `memory` is shown inside the Conversation block, beside `thread`.
+  const memoryField = fields.find((field) => field.key === "memory" && field.widget === "enum");
+  const hasConversation = fields.some((field) => field.widget === "thread");
 
   return (
     <div className="space-y-5">
@@ -222,6 +232,7 @@ export function SchemaForm({
               </Field>
             );
           case "enum": {
+            if (field === memoryField && hasConversation) return null;
             const current = typeof value === "string" ? value : typeof field.default === "string" ? field.default : "";
             return (
               <Field key={field.key} label={field.label} htmlFor={id} required={field.required} hint={hint} issues={direct} issuesId={issuesId}>
@@ -257,6 +268,7 @@ export function SchemaForm({
                   assignPaths={assignPaths}
                   barePaths={barePaths}
                   stateNames={stateNames}
+                  spec={spec}
                   prefix={where}
                 />
                 {direct.length ? <Field label="" issues={direct}>{null}</Field> : null}
@@ -304,8 +316,8 @@ export function SchemaForm({
                   required={field.required}
                   hint={
                     stateNames.length
-                      ? hint ?? "State field → value; values may use {{…}} placeholders."
-                      : "Declare state fields in the workflow's settings (click the empty canvas) to write them here."
+                      ? hint ?? "Variable → value; values may use {{…}} placeholders."
+                      : "Declare variables in the workflow's settings (click the empty canvas) to set them here."
                   }
                   issues={own}
                 >
@@ -315,8 +327,8 @@ export function SchemaForm({
                     onChange={(next) => set(field.key, Object.keys(next).length || field.required ? next : undefined)}
                     paths={paths}
                     keyOptions={stateNames}
-                    addLabel="Add state write"
-                    emptyText="Nothing written to state."
+                    addLabel="Add variable"
+                    emptyText="No variables set."
                     max={field.maxProperties}
                   />
                 </Field>
@@ -325,11 +337,11 @@ export function SchemaForm({
             return (
               <Field
                 key={field.key}
-                label="Write to state"
+                label="Save to a variable"
                 hint={
                   stateNames.length
-                    ? "After this step runs, set state fields. Values may read {{output.…}}, this step's result."
-                    : "Declare state fields in the workflow's settings (click the empty canvas) to write them here."
+                    ? "After this step runs, save values to variables. Values may read {{output.…}}, this step's result."
+                    : "Declare variables in the workflow's settings (click the empty canvas) to save to them here."
                 }
                 issues={own}
               >
@@ -339,12 +351,54 @@ export function SchemaForm({
                   onChange={(next) => set(field.key, Object.keys(next).length ? next : undefined)}
                   paths={assignPaths}
                   keyOptions={stateNames}
-                  addLabel="Add state write"
-                  emptyText="Nothing written to state."
+                  addLabel="Add variable"
+                  emptyText="Nothing saved."
                   max={field.maxProperties}
                 />
               </Field>
             );
+          case "context":
+            return (
+              <Field key={field.key} label="Data from earlier steps" issues={own} issuesId={issuesId}>
+                <ContextField
+                  id={id}
+                  value={value}
+                  onChange={(next) => set(field.key, next)}
+                  spec={spec}
+                  nodeId={nodeId}
+                  describedBy={direct.length ? issuesId : undefined}
+                />
+              </Field>
+            );
+          case "thread": {
+            const memoryWhere = memoryField ? `${prefix}.${memoryField.key}` : "";
+            const memoryIssues = memoryField ? issues.filter((issue) => issueIsOn(issue, memoryWhere)) : [];
+            const storedMemory = memoryField ? config[memoryField.key] : undefined;
+            return (
+              <Field key={field.key} label="Conversation" issues={[...memoryIssues, ...own]}>
+                <ConversationField
+                  id={id}
+                  nodeId={nodeId}
+                  spec={spec}
+                  memory={
+                    memoryField
+                      ? typeof storedMemory === "string"
+                        ? storedMemory
+                        : typeof memoryField.default === "string"
+                          ? memoryField.default
+                          : (memoryField.options?.[0] ?? "")
+                      : null
+                  }
+                  memoryOptions={memoryField?.options ?? []}
+                  thread={typeof value === "string" ? value : ""}
+                  onMemory={(next) => memoryField && set(memoryField.key, next)}
+                  onThread={(next) => set(field.key, next)}
+                  memoryInvalid={memoryIssues.some((issue) => issue.severity === "error")}
+                  threadInvalid={invalid}
+                />
+              </Field>
+            );
+          }
           case "map":
             return (
               <Field key={field.key} label={field.label} required={field.required} hint={hint} issues={own}>
@@ -360,6 +414,29 @@ export function SchemaForm({
               </Field>
             );
           default:
+            if (field.jsonSchema) {
+              // The reply's shape only matters in JSON mode (the llm step's `output`).
+              if (config.output !== "json") return null;
+              return (
+                <Field
+                  key={field.key}
+                  label="Reply format"
+                  htmlFor={id}
+                  required
+                  hint={hint}
+                  issues={own}
+                  issuesId={issuesId}
+                >
+                  <SchemaBuilderField
+                    id={id}
+                    value={value}
+                    onChange={(next) => set(field.key, next)}
+                    invalid={invalid}
+                    describedBy={direct.length ? issuesId : undefined}
+                  />
+                </Field>
+              );
+            }
             return (
               <Field
                 key={field.key}

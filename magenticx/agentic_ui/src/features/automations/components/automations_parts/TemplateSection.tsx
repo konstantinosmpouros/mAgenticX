@@ -75,7 +75,7 @@ export function TemplateSection({
         {groups.map(([category, templates]) => (
           <div key={category}>
             {showCategories ? <p className={cn(EYEBROW, "mb-3")}>{category}</p> : null}
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
               {templates.map((template) => (
                 <TemplateCard
                   key={template.id}

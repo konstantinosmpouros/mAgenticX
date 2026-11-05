@@ -6,6 +6,8 @@ import type {
   WorkflowRule,
   WorkflowRuleOp,
 } from "@/shared/lib/types";
+import { CONTEXT_COUNT_MAX, CONTEXT_COUNT_MIN, CONTEXT_MODES, CONTEXT_STEPS_MAX } from "./consts";
+import { asContext } from "./stepData";
 
 /**
  * A node kind's config JSON Schema (Pydantic's `model_json_schema()`, from
@@ -15,8 +17,9 @@ import type {
  * string / scalar maps (`headers`, `query`, `args`, `outputs`), a `$ref`
  * object (`tool`) as nested fields — and anything else (`body`, `payload`, a
  * shape we don't know) falls back to a JSON editor. A property's
- * `"x-widget"` hint (`code`, `json`, `assign`; on the property or inside an
- * optional's `anyOf` branch) picks its editor outright. Pure: no React.
+ * `"x-widget"` hint (`code`, `json`, `assign`, `context`, `thread`; on the
+ * property or inside an optional's `anyOf` branch) picks its editor outright.
+ * Pure: no React.
  */
 
 type Schema = Record<string, unknown>;
@@ -106,7 +109,7 @@ function mapValueKind(additional: unknown): WorkflowMapValueKind {
 }
 
 /** The `"x-widget"` hints a catalogue schema may carry on a property. */
-const X_WIDGETS = new Set(["code", "json", "assign"]);
+const X_WIDGETS = new Set(["code", "json", "assign", "context", "thread"]);
 
 /**
  * An optional property (`x: T | None`) as Pydantic writes it — `anyOf: [T,
@@ -165,7 +168,28 @@ function fieldFor(key: string, raw: unknown, root: Schema, required: boolean): W
       };
     }
     if (hint === "json") {
-      return { ...base, widget: "json", templated: false, strictJson: true, jsonType: type || undefined };
+      return {
+        ...base,
+        widget: "json",
+        templated: false,
+        strictJson: true,
+        jsonType: type || undefined,
+        // The llm step's reply shape: a JSON Schema, so the structured-output builder applies.
+        ...(key === "json_schema" ? { jsonSchema: true } : {}),
+      };
+    }
+    if (hint === "context") {
+      // Step ids, never templates.
+      return { ...base, widget: "context", templated: false };
+    }
+    if (hint === "thread") {
+      return {
+        ...base,
+        widget: "thread",
+        templated: false,
+        maxLength: num(schema.maxLength),
+        pattern: str(schema.pattern) || undefined,
+      };
     }
     return {
       ...base,
@@ -280,8 +304,12 @@ export const emptyCase = (name: string): WorkflowRouterCase => ({ name, mode: "a
 
 /** The value a required field starts with on a new node (none for an optional one: the engine's default applies). */
 function initialValue(field: WorkflowFormField): unknown {
+  // A copy: the schema's default object must never be shared by two nodes.
+  if (field.widget === "context") return asContext(field.default);
   if (field.hasDefault && field.default !== null) return field.default;
   switch (field.widget) {
+    case "thread":
+      return "";
     case "rules":
       return Array.from({ length: Math.max(1, field.minItems ?? 1) }, emptyRule);
     case "cases":
@@ -310,11 +338,22 @@ function initialValue(field: WorkflowFormField): unknown {
   }
 }
 
+/**
+ * Optional fields a new node still starts with, so the inspector shows the
+ * choice made for it: what earlier steps it is sent, and (llm) its
+ * conversation — `thread` and the `memory` shown beside it.
+ */
+const seeded = (field: WorkflowFormField, fields: readonly WorkflowFormField[]): boolean =>
+  field.widget === "context" ||
+  field.widget === "thread" ||
+  (field.key === "memory" && field.widget === "enum" && fields.some((other) => other.widget === "thread"));
+
 /** A new node's config: its required fields started (and a `$ref` object's required parts). */
 export function defaultConfig(schema: Schema): Record<string, unknown> {
   const config: Record<string, unknown> = {};
-  for (const field of fieldsFromSchema(schema)) {
-    if (!field.required) continue;
+  const fields = fieldsFromSchema(schema);
+  for (const field of fields) {
+    if (!field.required && !seeded(field, fields)) continue;
     const value = initialValue(field);
     if (value !== undefined) config[field.key] = value;
   }
@@ -363,7 +402,8 @@ function fieldProblems(field: WorkflowFormField, value: unknown, where: string):
   switch (field.widget) {
     case "text":
     case "textarea":
-    case "code": {
+    case "code":
+    case "thread": {
       if (typeof value !== "string") {
         problems.push({ field: where, message: `${label} must be text.` });
         break;
@@ -463,6 +503,29 @@ function fieldProblems(field: WorkflowFormField, value: unknown, where: string):
       }
       if (field.valueKind === "string" && Object.values(value).some((entry) => typeof entry !== "string")) {
         problems.push({ field: where, message: `Every ${label.toLowerCase()} value is text.` });
+      }
+      break;
+    }
+    case "context": {
+      if (!isRecord(value)) {
+        problems.push({ field: where, message: `${label} must be a choice of steps.` });
+        break;
+      }
+      if (value.mode !== undefined && !CONTEXT_MODES.some((mode) => mode.value === value.mode)) {
+        problems.push({ field: where, message: "Pick what to send from earlier steps." });
+      }
+      const count = value.count;
+      if (
+        count !== undefined &&
+        (typeof count !== "number" || !Number.isInteger(count) || count < CONTEXT_COUNT_MIN || count > CONTEXT_COUNT_MAX)
+      ) {
+        problems.push({ field: where, message: `Send between ${CONTEXT_COUNT_MIN} and ${CONTEXT_COUNT_MAX} steps.` });
+      }
+      const steps = value.steps;
+      if (steps !== undefined && (!Array.isArray(steps) || steps.some((step) => typeof step !== "string"))) {
+        problems.push({ field: where, message: "The picked steps must be step ids." });
+      } else if (Array.isArray(steps) && steps.length > CONTEXT_STEPS_MAX) {
+        problems.push({ field: where, message: `Pick at most ${CONTEXT_STEPS_MAX} steps.` });
       }
       break;
     }

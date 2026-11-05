@@ -2,6 +2,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useNavigate, useParams } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { typeTemplate } from "./templateField";
 
 /**
  * The schedule trigger in the UI (plan 38, step 4): the inspector's schedule
@@ -344,9 +345,7 @@ describe("the builder's schedule trigger", () => {
     fireEvent.change(screen.getByLabelText("Workflow name"), { target: { value: "Nightly" } });
     fireEvent.click(screen.getByRole("button", { name: "Add HTTP request" }));
     await waitFor(() => expect(node("fetch")).not.toBeNull());
-    fireEvent.change(await screen.findByLabelText(/^URL/), {
-      target: { value: "https://example.com/a" },
-    });
+    typeTemplate(await screen.findByLabelText(/^URL/), "https://example.com/a");
 
     // Back on the trigger: its schedule editor (no manual/schedule switch: another start is another step).
     fireEvent.click(node("trigger")!);

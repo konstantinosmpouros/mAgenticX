@@ -96,10 +96,12 @@ describe("kind look", () => {
       spec([node("ask", "llm", { prompt: "hi" }), node("run", "code", { code: "x" }), node("w", "wait", { seconds: 1 })]),
       "done",
     ).map((entry) => entry.path);
+    // Text mode: the answer is `text` (`data` is JSON mode's).
+    expect(paths).not.toContain("nodes.ask.output.data");
     expect(paths).toEqual(
       expect.arrayContaining([
         "nodes.ask.output.text",
-        "nodes.ask.output.data",
+        "nodes.ask.output.messages",
         "nodes.run.output.stdout",
         "nodes.run.output.exitCode",
         "nodes.w.output.waitedSeconds",
@@ -196,7 +198,7 @@ describe("x-widget forms", () => {
         config={config}
         onChange={vi.fn()}
         issues={[]}
-        paths={[{ path: "input.topic", group: "input", hint: "string" }]}
+        paths={[{ path: "input.topic", group: "input", hint: "string", source: "Run input", label: "topic" }]}
         assignPaths={[]}
         barePaths={[]}
         stateNames={stateNames}
@@ -223,7 +225,10 @@ describe("x-widget forms", () => {
       properties: { src: { anyOf: [{ type: "string", "x-widget": "code" }, { type: "null" }], default: null } },
     });
     expect(nested).toMatchObject({ key: "src", widget: "code", templated: false });
-    expect(defaultConfig(info("code").configSchema)).toEqual({ code: "" });
+    expect(defaultConfig(info("code").configSchema)).toEqual({
+      code: "",
+      context: { mode: "previous", count: 3, steps: [] },
+    });
   });
 
   it("edits code in a monospace area with no path helper, and Tab indents", () => {
@@ -235,7 +240,7 @@ describe("x-widget forms", () => {
         config={{ code: "x = 1" }}
         onChange={onChange}
         issues={[]}
-        paths={[{ path: "input.topic", group: "input", hint: "string" }]}
+        paths={[{ path: "input.topic", group: "input", hint: "string", source: "Run input", label: "topic" }]}
         assignPaths={[]}
         barePaths={[]}
         stateNames={[]}
@@ -265,7 +270,9 @@ describe("x-widget forms", () => {
     const prompt = screen.getByLabelText(/^Prompt/);
     const promptField = prompt.closest("div.space-y-5 > *") as HTMLElement;
     expect(within(promptField).getByRole("button", { name: "Insert a value from the run" })).toBeInTheDocument();
-    const schema = screen.getByLabelText(/^Json schema/) as HTMLTextAreaElement;
+    // The reply's shape opens in the field builder; "Edit as JSON" is the JSON editor.
+    fireEvent.click(screen.getByRole("button", { name: "Edit as JSON" }));
+    const schema = screen.getByLabelText(/^Reply format/) as HTMLTextAreaElement;
     expect(schema.tagName).toBe("TEXTAREA");
     expect(schema.className).toContain("font-mono");
     expect(JSON.parse(schema.value)).toEqual({ type: "object" });
@@ -277,7 +284,7 @@ describe("x-widget forms", () => {
   it("edits set's values with the state-write editor", () => {
     renderForm("set", { values: { count: "1" } }, ["count", "total"]);
     expect(screen.getByText("Values")).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "Add state write" })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "Add variable" })).toHaveLength(2);
   });
 });
 

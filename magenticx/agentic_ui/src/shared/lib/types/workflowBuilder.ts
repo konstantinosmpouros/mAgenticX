@@ -58,7 +58,11 @@ export type WorkflowFormWidget =
   | "object"
   | "json"
   /** Source code (`"x-widget": "code"`): a monospace editor, never templated. */
-  | "code";
+  | "code"
+  /** Which earlier steps' outputs the step receives (`"x-widget": "context"`). */
+  | "context"
+  /** The llm conversation this step talks in (`"x-widget": "thread"`), shown with `memory`. */
+  | "thread";
 
 /** What a map's values may be: templated text, a scalar (string/number/bool), or any JSON. */
 export type WorkflowMapValueKind = "string" | "scalar" | "any";
@@ -99,6 +103,39 @@ export type WorkflowFormField = {
   strictJson?: boolean;
   /** `object`: its own fields. */
   fields?: WorkflowFormField[];
+  /**
+   * `json`: the value is itself a JSON Schema (the llm step's `json_schema`),
+   * so the form offers the structured-output builder on top of the JSON editor.
+   */
+  jsonSchema?: boolean;
+};
+
+// ---------- Data from earlier steps, conversations, structured output ----------
+
+/**
+ * Which earlier steps' outputs a step is sent (`config.context.mode`):
+ * the one that ran just before, the last N that ran, picked steps, or none.
+ */
+export type WorkflowContextMode = "previous" | "last" | "steps" | "none";
+
+/** An llm / code step's `config.context`, read leniently (the engine's field names). */
+export type WorkflowContextConfig = { mode: WorkflowContextMode; count: number; steps: string[] };
+
+/** An llm step's `config.memory`: keep its earlier turns, or start each run fresh. */
+export type WorkflowMemoryMode = "continue" | "fresh";
+
+/** A step the context widget or the conversation's "Share with" may name. */
+export type WorkflowStepOption = { id: string; label: string; kind: string };
+
+/** A property type the structured-output builder offers. */
+export type WorkflowSchemaFieldType = "string" | "number" | "integer" | "boolean" | "array" | "object";
+
+/** One row of the structured-output builder: a top-level property of the reply. */
+export type WorkflowSchemaField = {
+  name: string;
+  type: WorkflowSchemaFieldType;
+  description: string;
+  required: boolean;
 };
 
 export type WorkflowRuleOp =
@@ -127,8 +164,46 @@ export type WorkflowCasesChange = { rename?: [string, string]; drop?: string };
 export type WorkflowTemplatePath = {
   path: string;
   group: "input" | "state" | "node" | "output";
-  /** Short note: the field's type, or the node it comes from. */
+  /** Short note: the value's type (`text`, `number`, `list`…). */
   hint: string;
+  /** Where the value comes from, as people read it: the step's label (or id), `Run input`, `Variable`, `This step`. */
+  source: string;
+  /** The value's friendly name within its source: `Answer`, `Body`, `Every run`, `topic`. */
+  label: string;
+  /** `node` entries: the step's id and kind (its icon). */
+  nodeId?: string;
+  kind?: string;
+  /** Reachable but not offered by default (an llm step's conversation, a whole result): listed under "More". */
+  more?: boolean;
+};
+
+/** The template paths of one source (a step, the run's inputs, the variables), in the order they are offered. */
+export type WorkflowTemplateSource = {
+  key: string;
+  group: WorkflowTemplatePath["group"];
+  title: string;
+  nodeId?: string;
+  kind?: string;
+  entries: WorkflowTemplatePath[];
+};
+
+/** A run of a template string: plain text, or one `{{path}}` placeholder (`raw` is its exact text). */
+export type WorkflowTemplateSegment =
+  | { type: "text"; text: string }
+  | { type: "ref"; path: string; raw: string };
+
+/** How a placeholder reads in a field: `Fetch page › Body`, or invalid (shown as its raw path). */
+export type WorkflowTemplateRefLabel = { source: string; label: string; valid: boolean };
+
+/** A focused template field the data panel can insert into (`path` without braces). */
+export type WorkflowTemplateTarget = { insertPath: (path: string) => void };
+
+/** The inspector's template fields: which one was focused last, so the data panel inserts there. */
+export type WorkflowTemplateTargetRegistry = {
+  register: (target: WorkflowTemplateTarget) => () => void;
+  activate: (target: WorkflowTemplateTarget) => void;
+  /** Into the last focused field (else the first one); false when there is none. */
+  insertPath: (path: string) => boolean;
 };
 
 // ---------- Draft ----------

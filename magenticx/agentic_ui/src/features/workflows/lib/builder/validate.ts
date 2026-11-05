@@ -6,6 +6,7 @@ import type {
   WorkflowValidationIssue,
 } from "@/shared/lib/types";
 import {
+  CODE_KIND,
   END_KIND,
   LLM_KIND,
   LOOP_CONTINUE,
@@ -18,7 +19,9 @@ import {
 import { nodeBranches } from "@/features/workflows/lib/nodeCard";
 import { FIELD_NAME_PATTERN, NODE_ID_PATTERN, RESERVED_NAMES } from "./ids";
 import { SCHEDULE_TRIGGER_KIND, scheduleConfigProblems } from "./schedule";
+import { CODE_CONTEXT_KEY } from "./consts";
 import { configProblems, fieldsFromSchema } from "./schemaForm";
+import { asContext } from "./stepData";
 import { matchesType } from "./values";
 
 /**
@@ -179,6 +182,39 @@ export function checkSpec(
         const schema = node.config.json_schema;
         if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
           add(node.id, "config.json_schema", "Give the JSON output a schema.");
+        }
+      }
+      // Data from earlier steps: picked steps exist and aren't this one; a
+      // code step's context arrives as `steps` in input.json, so its inputs
+      // can't use that key too.
+      const contextField = kindFields(info).find((field) => field.widget === "context");
+      if (contextField) {
+        const context = asContext(node.config[contextField.key]);
+        // The engine's paths: the picked list, and the reserved inputs key.
+        const where = `config.${contextField.key}.steps`;
+        if (context.mode === "steps") {
+          for (const step of context.steps) {
+            if (step === node.id) add(node.id, where, "A step can't use its own output as context.");
+            else if (!spec.nodes.some((other) => other.id === step)) add(node.id, where, `'${step}' is not a step in this workflow.`);
+          }
+        }
+        const inputs = node.config.inputs;
+        if (
+          node.kind === CODE_KIND &&
+          context.mode !== "none" &&
+          inputs &&
+          typeof inputs === "object" &&
+          CODE_CONTEXT_KEY in inputs
+        ) {
+          add(node.id, `config.inputs.${CODE_CONTEXT_KEY}`, `'${CODE_CONTEXT_KEY}' is reserved for the data from earlier steps.`);
+        }
+      }
+      // A shared conversation names another llm step.
+      for (const field of kindFields(info).filter((entry) => entry.widget === "thread")) {
+        const thread = node.config[field.key];
+        if (typeof thread !== "string" || !thread || thread === node.id) continue;
+        if (!spec.nodes.some((other) => other.id === thread && other.kind === LLM_KIND)) {
+          add(node.id, `config.${field.key}`, `'${thread}' is not an LLM step in this workflow.`);
         }
       }
     }

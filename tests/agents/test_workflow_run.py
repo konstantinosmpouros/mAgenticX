@@ -167,9 +167,9 @@ async def test_example_runs_loops_pauses_and_resumes(wf, monkeypatch):
     assert output["output"]["body"] == {"status": "ready"} and output["error"] is None and output["branch"] is None
     assert isinstance(output["durationMs"], int)
     assert _by_execution(events, "is_ready#3")[2]["value"]["branch"] == "true"
-    # STATE_DELTA mirrors the reducers: history appends, last_status replaces.
+    # STATE_DELTA mirrors the reducers: statuses appends, last_status replaces.
     assert _by_execution(events, "poll#2")[3]["delta"] == [
-        {"op": "add", "path": "/history/-", "value": "pending"},
+        {"op": "add", "path": "/statuses/-", "value": "pending"},
         {"op": "add", "path": "/last_status", "value": "pending"},
     ]
 

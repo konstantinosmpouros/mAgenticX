@@ -624,6 +624,30 @@
           "title": "Prompt",
           "type": "string"
         },
+        "context": {
+          "$ref": "#/$defs/StepContext",
+          "description": "Data from earlier steps appended to the prompt as JSON.",
+          "x-widget": "context"
+        },
+        "memory": {
+          "default": "continue",
+          "description": "continue: send this step's earlier conversation (its thread) before the prompt, so in a loop the model remembers earlier iterations. fresh: send only this prompt.",
+          "enum": [
+            "continue",
+            "fresh"
+          ],
+          "title": "Memory",
+          "type": "string"
+        },
+        "thread": {
+          "default": "",
+          "description": "Conversation name. Empty = this step's own. LLM steps with the same thread share one conversation.",
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9_-]*$",
+          "title": "Thread",
+          "type": "string",
+          "x-widget": "thread"
+        },
         "output": {
           "default": "text",
           "enum": [
@@ -667,7 +691,47 @@
         "prompt"
       ],
       "title": "LlmConfig",
-      "type": "object"
+      "type": "object",
+      "$defs": {
+        "StepContext": {
+          "additionalProperties": false,
+          "description": "Which earlier steps' outputs a step receives.",
+          "properties": {
+            "mode": {
+              "default": "previous",
+              "description": "previous: the step that ran just before. last: the last `count` steps. steps: the steps listed. none: no data from earlier steps.",
+              "enum": [
+                "previous",
+                "last",
+                "steps",
+                "none"
+              ],
+              "title": "Mode",
+              "type": "string"
+            },
+            "count": {
+              "default": 3,
+              "description": "How many steps, for mode last.",
+              "maximum": 10,
+              "minimum": 1,
+              "title": "Count",
+              "type": "integer"
+            },
+            "steps": {
+              "description": "Step ids, for mode steps.",
+              "items": {
+                "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+                "type": "string"
+              },
+              "maxItems": 20,
+              "title": "Steps",
+              "type": "array"
+            }
+          },
+          "title": "StepContext",
+          "type": "object"
+        }
+      }
     }
   },
   {
@@ -779,6 +843,11 @@
           "title": "Inputs",
           "type": "object"
         },
+        "context": {
+          "$ref": "#/$defs/StepContext",
+          "description": "Data from earlier steps, passed to the script as \"steps\" in input.json.",
+          "x-widget": "context"
+        },
         "timeout_seconds": {
           "default": 30,
           "maximum": 120,
@@ -791,7 +860,47 @@
         "code"
       ],
       "title": "CodeConfig",
-      "type": "object"
+      "type": "object",
+      "$defs": {
+        "StepContext": {
+          "additionalProperties": false,
+          "description": "Which earlier steps' outputs a step receives.",
+          "properties": {
+            "mode": {
+              "default": "previous",
+              "description": "previous: the step that ran just before. last: the last `count` steps. steps: the steps listed. none: no data from earlier steps.",
+              "enum": [
+                "previous",
+                "last",
+                "steps",
+                "none"
+              ],
+              "title": "Mode",
+              "type": "string"
+            },
+            "count": {
+              "default": 3,
+              "description": "How many steps, for mode last.",
+              "maximum": 10,
+              "minimum": 1,
+              "title": "Count",
+              "type": "integer"
+            },
+            "steps": {
+              "description": "Step ids, for mode steps.",
+              "items": {
+                "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+                "type": "string"
+              },
+              "maxItems": 20,
+              "title": "Steps",
+              "type": "array"
+            }
+          },
+          "title": "StepContext",
+          "type": "object"
+        }
+      }
     }
   }
 ]

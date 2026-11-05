@@ -4,7 +4,6 @@ import {
   CalendarCheck,
   CalendarClock,
   Clock,
-  Hand,
   Loader2,
   Pause,
   Pencil,
@@ -18,8 +17,6 @@ import { cn } from "@/shared/lib/utils";
 import {
   ActionButton,
   AutomationCardFrame,
-  KindBadge,
-  MetaChip,
 } from "@/features/automations/components/automations_parts/AutomationCardChrome";
 import {
   describeWorkflowSchedule,
@@ -67,9 +64,9 @@ const SCHEDULE_CHIP: Record<
 };
 
 /**
- * One workflow on the Automations page (its Workflows area), in the schedule
- * card's chrome: name, description, version, its schedule when its start node
- * sets one (its state, next run, the last scheduled run and how it went), and
+ * One workflow on the Automations page (its Workflows area), compact: name,
+ * version and last change (or, when its start node sets a schedule, the
+ * schedule, its state, next run and last run), its description, and
  * Open / Run now / Pause or Resume (a scheduled one) / Edit / Delete.
  *
  * No latest-run line for a workflow started by hand: the runs list has no page
@@ -117,23 +114,19 @@ export const WorkflowCard = React.forwardRef<HTMLDivElement, WorkflowCardProps>(
         reduceMotion={reduceMotion}
         dimmed={paused}
       >
-        {/* Head: icon, name, kind and version. */}
-        <div className="relative flex items-start gap-3 px-4 pt-4">
-          <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary transition-transform duration-300 ease-out motion-safe:supports-[hover:hover]:group-hover/task:scale-105">
-            <WorkflowIcon className="h-[18px] w-[18px]" aria-hidden />
+        {/* Head: icon, name, and version · last change (or the schedule's state). */}
+        <div className="relative flex items-start gap-3 px-4 pt-3.5">
+          <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-transform duration-300 ease-out motion-safe:supports-[hover:hover]:group-hover/task:scale-105">
+            <WorkflowIcon className="h-4 w-4" aria-hidden />
           </span>
           <div className="min-w-0 flex-1">
-            <h3
-              className="line-clamp-2 min-w-0 text-[14.5px] font-semibold leading-snug text-foreground"
-              title={workflow.name}
-            >
-              {workflow.name}
-            </h3>
-            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-              <KindBadge kind={item.kind} />
-              {workflow.latestVersionNo !== null ? (
-                <MetaChip>v{workflow.latestVersionNo}</MetaChip>
-              ) : null}
+            <div className="flex min-w-0 items-start gap-2">
+              <h3
+                className="min-w-0 flex-1 truncate text-[14px] font-semibold leading-snug text-foreground"
+                title={workflow.name}
+              >
+                {workflow.name}
+              </h3>
               {chip && schedule ? (
                 <span
                   data-schedule-status={schedule.status}
@@ -147,35 +140,23 @@ export const WorkflowCard = React.forwardRef<HTMLDivElement, WorkflowCardProps>(
                 </span>
               ) : null}
             </div>
+            <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+              {workflow.latestVersionNo !== null ? (
+                <>
+                  <span className="flex-shrink-0 font-medium">v{workflow.latestVersionNo}</span>
+                  <span aria-hidden className="flex-shrink-0 text-muted-foreground/50">·</span>
+                </>
+              ) : null}
+              {/* A scheduled workflow's next run is on its own line below. */}
+              <span className="min-w-0 truncate" data-testid={schedule ? undefined : "workflow-schedule-line"}>
+                {schedule ? describeWorkflowSchedule(schedule) : scheduleLine}
+              </span>
+            </p>
           </div>
         </div>
 
-        {/* When: its schedule (from the start node), or by hand. */}
-        <div className="relative mx-4 mt-3.5 flex items-start gap-2.5 rounded-xl bg-background/60 px-3 py-2.5 ring-1 ring-inset ring-border/50">
-          {schedule ? (
-            paused ? (
-              <Pause className="mt-0.5 h-4 w-4 flex-shrink-0 text-muted-foreground" aria-hidden />
-            ) : (
-              <CalendarClock className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" aria-hidden />
-            )
-          ) : (
-            <Hand className="mt-0.5 h-4 w-4 flex-shrink-0 text-muted-foreground" aria-hidden />
-          )}
-          <div className="min-w-0 text-[13px] leading-5">
-            <div className="truncate font-medium text-foreground">
-              {schedule ? describeWorkflowSchedule(schedule) : "Runs when you start it"}
-            </div>
-            <div
-              className="truncate text-xs text-muted-foreground"
-              data-testid="workflow-schedule-line"
-            >
-              {scheduleLine}
-            </div>
-          </div>
-        </div>
-
-        {/* Description, and the last scheduled run when there is one. */}
-        <div className="relative mt-3 flex-1 space-y-2 px-4">
+        {/* Description, then (scheduled only) the next run and the last one. */}
+        <div className="relative mt-2.5 flex-1 space-y-1.5 px-4">
           {workflow.description ? (
             <p
               className="line-clamp-2 text-xs leading-relaxed text-muted-foreground"
@@ -184,12 +165,24 @@ export const WorkflowCard = React.forwardRef<HTMLDivElement, WorkflowCardProps>(
               {workflow.description}
             </p>
           ) : null}
+          {schedule ? (
+            <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+              {paused ? (
+                <Pause className="h-3.5 w-3.5 flex-shrink-0" aria-hidden />
+              ) : (
+                <CalendarClock className="h-3.5 w-3.5 flex-shrink-0 text-primary" aria-hidden />
+              )}
+              <span className="min-w-0 truncate" data-testid="workflow-schedule-line">
+                {scheduleLine}
+              </span>
+            </div>
+          ) : null}
           {lastRun ? (
             <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
               <span
                 aria-hidden
                 className={cn(
-                  "h-1.5 w-1.5 flex-shrink-0 rounded-full",
+                  "mx-[3px] h-1.5 w-1.5 flex-shrink-0 rounded-full",
                   lastRun.failed ? "bg-destructive" : "bg-success",
                 )}
               />
@@ -199,7 +192,7 @@ export const WorkflowCard = React.forwardRef<HTMLDivElement, WorkflowCardProps>(
         </div>
 
         {/* Actions. */}
-        <div className="relative mt-3 flex items-center justify-between gap-2 border-t border-border/50 px-2.5 py-2">
+        <div className="relative mt-3 flex items-center justify-between gap-2 border-t border-border/50 px-2.5 py-1.5">
           <button
             type="button"
             onClick={() => onOpen(workflow.id)}

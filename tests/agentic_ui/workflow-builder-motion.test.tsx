@@ -2,6 +2,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { typeTemplate } from "./templateField";
 
 /**
  * The workflow builder's motion: the inspector drawer is an overlay (opening
@@ -239,7 +240,7 @@ describe("workflow builder motion", () => {
     const text = "https://x.io/{{a,b}}";
     expect(text).toHaveLength(20);
     for (let index = 1; index <= text.length; index += 1) {
-      fireEvent.change(url, { target: { value: text.slice(0, index) } });
+      typeTemplate(url, text.slice(0, index));
       resizeAll();
     }
     // The server's verdict lands after its debounce: still nothing moves.
@@ -266,7 +267,7 @@ describe("workflow builder motion", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add HTTP request" }));
     const drawer = await screen.findByTestId("workflow-inspector-drawer");
     const url = await within(drawer).findByLabelText(/^URL/);
-    fireEvent.change(url, { target: { value: "https://x.io/{{input.a,b}}" } });
+    typeTemplate(url, "https://x.io/{{input.a,b}}");
     const issues = await waitFor(() => {
       const list = document.getElementById(`${url.id}-issues`);
       expect(list).not.toBeNull();

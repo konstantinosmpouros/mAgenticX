@@ -19,6 +19,8 @@ export const RESERVED_NAMES: ReadonlySet<string> = new Set([
   "trace",
   "state",
   "output",
+  "history",
+  "conversations",
 ]);
 
 export const isValidNodeId = (id: string): boolean => NODE_ID_PATTERN.test(id);
@@ -49,6 +51,41 @@ export function uniqueId(stem: string, taken: ReadonlySet<string>): string {
     const candidate = `${stem}_${n}`;
     if (!taken.has(candidate)) return candidate;
   }
+}
+
+/**
+ * Greek letters as Latin, for ids derived from a Greek label (accents are
+ * stripped first, so `ά` is read as `α`). `ου` is one sound and is handled
+ * as a pair before the single letters.
+ */
+const GREEK_TO_LATIN: Readonly<Record<string, string>> = {
+  α: "a", β: "v", γ: "g", δ: "d", ε: "e", ζ: "z", η: "i", θ: "th", ι: "i", κ: "k", λ: "l", μ: "m",
+  ν: "n", ξ: "x", ο: "o", π: "p", ρ: "r", σ: "s", ς: "s", τ: "t", υ: "y", φ: "f", χ: "ch", ψ: "ps", ω: "o",
+};
+
+/** The longest id a label may give, leaving room for a `_2` suffix under the 64-character limit. */
+const SLUG_MAX = 56;
+
+/**
+ * The step id a label gives: lower-case, Greek transliterated, accents
+ * dropped, every other character a single `_`, trimmed — `Σύνοψη ειδήσεων!`
+ * → `synopsi_eidiseon`. One that can't start with a letter (or is empty)
+ * falls back to the kind's stem; a reserved name gets `_node`; a taken one
+ * the next free suffix. Users never type ids: the builder derives them so
+ * templates and references stay readable.
+ */
+export function slugFromLabel(label: string, kind: string, taken: ReadonlySet<string>): string {
+  const latin = label
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/ου/g, "ou")
+    .replace(/[α-ως]/g, (letter) => GREEK_TO_LATIN[letter] ?? letter);
+  let slug = latin.replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  slug = slug.slice(0, SLUG_MAX).replace(/_+$/g, "");
+  if (!/^[a-z]/.test(slug)) slug = idStem(kind);
+  if (RESERVED_NAMES.has(slug)) slug = `${slug}_node`;
+  return uniqueId(slug, taken);
 }
 
 /** A fresh node id for a kind. */

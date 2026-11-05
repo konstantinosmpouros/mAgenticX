@@ -5,12 +5,13 @@ import type { WorkflowBuilderIssue, WorkflowDraftAction, WorkflowSpec } from "@/
 import { INPUT } from "@/features/workflows/lib/builder/consts";
 import { fieldDomId } from "@/features/workflows/lib/builder/ids";
 import { issueIsOn } from "@/features/workflows/lib/builder/validate";
-import { Field, FieldIssues, SectionHeading } from "./FieldShell";
+import { Disclosure, Field, FieldIssues, SectionHeading } from "./FieldShell";
 import { InputsEditor, StateFieldsEditor } from "./FieldListEditors";
 
 /**
  * The inspector with nothing picked: the workflow itself — its name and
- * description, the run's inputs and the declared state — and the issues that
+ * description, the run's inputs and its variables (declared state, folded
+ * away while there are none: most workflows never need one) — and the issues that
  * belong to no one step (one trigger, an End step).
  */
 export function WorkflowSettings({
@@ -88,22 +89,23 @@ export function WorkflowSettings({
         />
       </section>
 
-      <section className="space-y-3">
-        <SectionHeading
-          title="State"
-          description={
-            <>
-              Values steps share: read as <span className="font-mono">{"{{state.name}}"}</span>, written with a step&apos;s
-              &ldquo;Write to state&rdquo;.
-            </>
-          }
-        />
+      <Disclosure
+        id={fieldDomId(null, "state")}
+        title={spec.state.length ? `Variables (${spec.state.length})` : "Variables"}
+        description="Steps' results already reach later steps. Variables are only for collecting values across loop runs or keeping them between runs."
+        defaultOpen={spec.state.length > 0 || issues.some((issue) => issueIsOn(issue, "state"))}
+        issueCount={issues.filter((issue) => issueIsOn(issue, "state") && issue.severity === "error").length}
+      >
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          Read as <span className="font-mono">{"{{state.name}}"}</span>; set with a step&apos;s &ldquo;Save to a variable&rdquo;
+          (under Advanced).
+        </p>
         <StateFieldsEditor
           state={spec.state}
           onChange={(state) => dispatch({ type: "set-state", state }, { coalesce: "state" })}
           issues={issues}
         />
-      </section>
+      </Disclosure>
     </div>
   );
 }

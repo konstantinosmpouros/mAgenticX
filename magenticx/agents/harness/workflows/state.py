@@ -1,15 +1,25 @@
 """The LangGraph state of a workflow run, built from the spec.
 
 The state is a ``TypedDict`` assembled at compile time: one key per declared
-state field, each ``Annotated`` with the reducer the spec chose, plus four
+state field, each ``Annotated`` with the reducer the spec chose, plus six
 fixed keys the engine owns:
 
-``input``       the run's validated inputs (written once, at start)
-``nodes``       ``{node_id: {"output", "branch", "executionId"}}`` — each node's
-                latest result, merged per node
-``iterations``  ``{node_id: n}`` — how many times each node has executed
-``trace``       ``{"loops": [executionId, …], "last": executionId}`` — the
-                active loop iterations (innermost last) and the last execution
+``input``          the run's validated inputs (written once, at start)
+``nodes``          ``{node_id: {"output", "outputs", "branch", "executionId"}}`` —
+                   each node's latest result (``output``) and the outputs of
+                   its every execution this run (``outputs``, oldest first,
+                   capped), merged per node
+``iterations``     ``{node_id: n}`` — how many times each node has executed
+``trace``          ``{"loops": [executionId, …], "last": executionId}`` — the
+                   active loop iterations (innermost last) and the last execution
+``history``        ``[{"node", "executionId"}, …]`` — every execution in order,
+                   capped to the newest :data:`MAX_HISTORY`
+``conversations``  ``{thread: [message, …]}`` — the ``llm`` steps' conversation
+                   memory, appended per thread, capped to the newest
+                   :data:`MAX_CONVERSATION_MESSAGES` per thread
+
+Checkpoints written before ``history`` / ``conversations`` / ``outputs``
+existed lack them, so every read goes through ``.get(...) or <empty>``.
 
 Everything here is plain JSON data, so it checkpoints under the strict msgpack
 allow-list and replays identically.
@@ -22,7 +32,13 @@ from typing import Annotated, Any, TypedDict
 from harness.workflows.errors import NodeExecutionError
 from harness.workflows.spec import StateFieldSpec, WorkflowSpec, empty_value, type_matches
 
-FIXED_KEYS = ("input", "nodes", "iterations", "trace")
+FIXED_KEYS = ("input", "nodes", "iterations", "trace", "history", "conversations")
+
+#: Newest executions kept in ``history`` — enough for every step of a long
+#: looped run, bounded so the checkpoint stays small.
+MAX_HISTORY = 500
+#: Newest messages kept per conversation thread (a user/assistant pair per turn).
+MAX_CONVERSATION_MESSAGES = 100
 
 
 def merge_dicts(current: dict | None, update: dict | None) -> dict:
@@ -36,6 +52,25 @@ def append_items(current: list | None, update: Any) -> list:
     return [*(current or []), *items]
 
 
+def append_history(current: list | None, update: Any) -> list:
+    """The reducer of ``history``: append, keep the newest :data:`MAX_HISTORY`."""
+    items = update if isinstance(update, list) else [update]
+    return [*(current or []), *items][-MAX_HISTORY:]
+
+
+def append_conversations(current: dict | None, update: dict | None) -> dict:
+    """The reducer of ``conversations``: ``{thread: [new messages]}`` appends to
+    that thread, keeping its newest :data:`MAX_CONVERSATION_MESSAGES`.
+
+    Appending (not replacing) mirrors LangGraph's ``add_messages``: a node
+    returns only its own turn, never the whole thread it read.
+    """
+    merged = dict(current or {})
+    for thread, messages in (update or {}).items():
+        merged[thread] = [*(merged.get(thread) or []), *(messages or [])][-MAX_CONVERSATION_MESSAGES:]
+    return merged
+
+
 def build_state_type(spec: WorkflowSpec) -> type:
     """The run's state ``TypedDict``, with each declared field's reducer."""
     annotations: dict[str, Any] = {
@@ -43,6 +78,8 @@ def build_state_type(spec: WorkflowSpec) -> type:
         "nodes": Annotated[dict, merge_dicts],
         "iterations": Annotated[dict, merge_dicts],
         "trace": dict,
+        "history": Annotated[list, append_history],
+        "conversations": Annotated[dict, append_conversations],
     }
     for field in spec.state:
         if field.reducer == "append":
@@ -72,6 +109,8 @@ def initial_state(spec: WorkflowSpec, inputs: Mapping[str, Any], persisted: Mapp
         "nodes": {},
         "iterations": {},
         "trace": {"loops": [], "last": None},
+        "history": [],
+        "conversations": {},
     }
     for field in spec.state:
         value = field_default(field)
@@ -158,6 +197,10 @@ def state_patch(updates: Mapping[str, Any], fields: Mapping[str, StateFieldSpec]
 
 __all__ = [
     "FIXED_KEYS",
+    "MAX_CONVERSATION_MESSAGES",
+    "MAX_HISTORY",
+    "append_conversations",
+    "append_history",
     "append_items",
     "build_state_type",
     "check_state_write",

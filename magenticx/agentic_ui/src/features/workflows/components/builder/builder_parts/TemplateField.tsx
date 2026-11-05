@@ -1,24 +1,55 @@
 import * as React from "react";
-import { Braces, Search } from "lucide-react";
+import { Braces, CornerDownLeft, Search, TextCursorInput, Variable } from "lucide-react";
 
 import { cn } from "@/shared/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
-import type { WorkflowTemplatePath } from "@/shared/lib/types";
+import type { WorkflowTemplatePath, WorkflowTemplateSource } from "@/shared/lib/types";
+import { useTemplateTarget } from "@/features/workflows/hooks/useTemplateTarget";
+import { kindMeta } from "@/features/workflows/lib/kinds";
 import { INPUT, INPUT_SM } from "@/features/workflows/lib/builder/consts";
-import { placeholder } from "@/features/workflows/lib/builder/templates";
+import {
+  groupTemplatePaths,
+  placeholder,
+  templatePathMatches,
+} from "@/features/workflows/lib/builder/templates";
+import { TemplateInput, type TemplateInputHandle } from "./TemplateInput";
 
-const GROUP_LABELS: Record<WorkflowTemplatePath["group"], string> = {
-  input: "Run inputs",
-  state: "State",
-  node: "Earlier steps",
-  output: "This step's result",
-};
+/** A source's small icon tile: the step's kind glyph in its accent, or the inputs / variables / this-step glyph. */
+export function TemplateSourceIcon({ source, className }: { source: Pick<WorkflowTemplateSource, "group" | "kind">; className?: string }) {
+  if (source.group === "node" && source.kind) {
+    const meta = kindMeta(source.kind);
+    const Glyph = meta.icon;
+    return (
+      <span
+        className={cn("flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md", className)}
+        style={{ background: `hsl(${meta.accent} / 0.12)`, color: `hsl(${meta.accent})` }}
+        aria-hidden
+      >
+        <Glyph className="h-3 w-3" />
+      </span>
+    );
+  }
+  const Glyph = source.group === "input" ? TextCursorInput : source.group === "state" ? Variable : CornerDownLeft;
+  return (
+    <span
+      className={cn("flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground", className)}
+      aria-hidden
+    >
+      <Glyph className="h-3 w-3" />
+    </span>
+  );
+}
+
+const PICK_ROW =
+  "flex w-full items-baseline justify-between gap-3 rounded-lg py-1.5 pl-8 pr-2 text-left transition-colors hover:bg-[hsl(var(--hover-surface))] focus-visible:bg-[hsl(var(--hover-surface))] focus-visible:outline-none";
 
 /**
- * The template helper: a `{ }` button that lists what a field may read —
- * run inputs, state fields, earlier steps' outputs (and, in `assign`, this
- * step's own result) — and inserts the one picked. `bare` inserts the path
- * itself (a rule's path), else a `{{placeholder}}`.
+ * The template picker: a `{ }` button opening what a field may read, as
+ * people name it — grouped by source (this step's result in `assign`, each
+ * earlier step nearest first with its icon, the run's inputs, the
+ * variables), each value with its type; the rarely wanted ones (an llm step's
+ * conversation, a whole result) under "More". Search covers names and paths.
+ * Picking hands the path to `onPick`.
  */
 export function TemplateHelper({
   paths,
@@ -27,16 +58,24 @@ export function TemplateHelper({
   className,
 }: {
   paths: readonly WorkflowTemplatePath[];
-  onPick: (text: string) => void;
+  onPick: (path: string) => void;
   bare?: boolean;
   className?: string;
 }) {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
-  const shown = paths.filter((entry) => entry.path.toLowerCase().includes(query.trim().toLowerCase()));
-  const groups = (Object.keys(GROUP_LABELS) as Array<WorkflowTemplatePath["group"]>)
-    .map((group) => ({ group, items: shown.filter((entry) => entry.group === group) }))
-    .filter((entry) => entry.items.length);
+  /** A pick moves focus into the field: the popover must not pull it back to its button. */
+  const picked = React.useRef(false);
+  const shown = paths.filter((entry) => templatePathMatches(entry, query));
+  const sources = groupTemplatePaths(shown.filter((entry) => !entry.more)).filter((source) => source.entries.length);
+  const more = shown.filter((entry) => entry.more);
+  const pick = (path: string) => {
+    picked.current = true;
+    setOpen(false);
+    setQuery("");
+    onPick(path);
+  };
+  const label = bare ? "Pick a value to check" : "Insert a value from the run";
   return (
     <Popover
       open={open}
@@ -52,52 +91,73 @@ export function TemplateHelper({
             "flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-[hsl(var(--hover-surface))] hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
             className,
           )}
-          aria-label={bare ? "Pick a path" : "Insert a value from the run"}
-          title={bare ? "Pick a path" : "Insert a value from the run"}
+          aria-label={label}
+          title={label}
         >
           <Braces className="h-3.5 w-3.5" aria-hidden />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[min(20rem,calc(100vw-2rem))] p-1.5">
+      <PopoverContent
+        align="end"
+        className="w-[min(21rem,calc(100vw-2rem))] p-1.5"
+        onCloseAutoFocus={(event) => {
+          if (picked.current) event.preventDefault();
+          picked.current = false;
+        }}
+      >
         <div className="relative mb-1">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden />
           <input
+            type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Filter paths"
-            aria-label="Filter paths"
+            placeholder="Search data"
+            aria-label="Search data"
             className={cn(INPUT_SM, "pl-8")}
           />
         </div>
-        <div className="scrollbar-muted max-h-64 overflow-y-auto">
-          {groups.length ? (
-            groups.map(({ group, items }) => (
-              <div key={group} className="py-1">
-                <p className="px-2 pb-1 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                  {GROUP_LABELS[group]}
-                </p>
-                {items.map((entry) => (
-                  <button
-                    key={entry.path}
-                    type="button"
-                    onClick={() => {
-                      onPick(bare ? entry.path : placeholder(entry.path));
-                      setOpen(false);
-                      setQuery("");
-                    }}
-                    className="flex w-full items-baseline justify-between gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-[hsl(var(--hover-surface))] focus-visible:bg-[hsl(var(--hover-surface))] focus-visible:outline-none"
-                  >
-                    <span className="min-w-0 truncate font-mono text-[12px] text-foreground">{entry.path}</span>
-                    <span className="flex-shrink-0 text-[10.5px] text-muted-foreground">{entry.hint}</span>
-                  </button>
-                ))}
-              </div>
-            ))
+        <div className="scrollbar-muted max-h-72 overflow-y-auto overscroll-contain">
+          {sources.length || more.length ? (
+            <>
+              {sources.map((source) => (
+                <div key={source.key} role="group" aria-label={source.title} className="py-1">
+                  <p className="flex min-w-0 items-center gap-2 px-1.5 pb-0.5 pt-1">
+                    <TemplateSourceIcon source={source} />
+                    <span className="truncate text-[12px] font-semibold text-foreground/85">{source.title}</span>
+                  </p>
+                  {source.entries.map((entry) => (
+                    <button key={entry.path} type="button" title={entry.path} onClick={() => pick(entry.path)} className={PICK_ROW}>
+                      <span className="min-w-0 truncate text-[13px] text-foreground">{entry.label}</span>
+                      <span className="flex-shrink-0 text-[11px] text-muted-foreground">{entry.hint}</span>
+                    </button>
+                  ))}
+                </div>
+              ))}
+              {more.length ? (
+                <div role="group" aria-label="More" className="mt-1 border-t border-border/50 py-1">
+                  <p className="px-2 pb-0.5 pt-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">More</p>
+                  {more.map((entry) => (
+                    <button
+                      key={entry.path}
+                      type="button"
+                      title={entry.path}
+                      onClick={() => pick(entry.path)}
+                      className={cn(PICK_ROW, "pl-2")}
+                    >
+                      <span className="min-w-0 truncate text-[12.5px] text-muted-foreground">
+                        {entry.source} <span aria-hidden>›</span> <span className="text-foreground/85">{entry.label}</span>
+                      </span>
+                      <span className="flex-shrink-0 text-[11px] text-muted-foreground">{entry.hint}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </>
           ) : (
             <p className="px-2 py-3 text-xs leading-relaxed text-muted-foreground">
               {paths.length
                 ? "Nothing matches."
-                : "Nothing to read yet: declare inputs or state in the workflow's settings, or connect a step before this one."}
+                : "Nothing to read yet: declare inputs in the workflow's settings, or connect a step before this one."}
             </p>
           )}
         </div>
@@ -106,9 +166,15 @@ export function TemplateHelper({
   );
 }
 
+/** A dropped `{{path}}` in a bare path field: just the path. */
+const BARE_DROP = /^\s*\{\{\s*([^{}]+?)\s*\}\}\s*$/;
+
 /**
- * A text field that takes `{{placeholders}}`: the helper sits inside its
- * right edge and inserts at the caret (or, `bare`, replaces the value).
+ * A text field that takes `{{placeholders}}`, shown as chips
+ * (`TemplateInput`), with the picker inside its right edge inserting at the
+ * caret. `bare` (a rule's path) stays a plain input whose value is the path
+ * itself. Either way the field joins the inspector's data panel as a target
+ * when focused.
  */
 export function TemplateField({
   id,
@@ -141,53 +207,57 @@ export function TemplateField({
   mono?: boolean;
   maxLength?: number;
 }) {
-  const ref = React.useRef<HTMLInputElement & HTMLTextAreaElement>(null);
-  const insert = (text: string) => {
-    if (bare) {
-      onChange(text);
-      return;
-    }
-    const element = ref.current;
-    const start = element?.selectionStart ?? value.length;
-    const end = element?.selectionEnd ?? value.length;
-    const next = `${value.slice(0, start)}${text}${value.slice(end)}`;
-    onChange(next);
-    window.requestAnimationFrame(() => {
-      element?.focus({ preventScroll: true });
-      element?.setSelectionRange(start + text.length, start + text.length);
-    });
+  const editor = React.useRef<TemplateInputHandle>(null);
+  const insertPath = (path: string) => {
+    if (bare) onChange(path);
+    else editor.current?.insertText(placeholder(path));
   };
-  const shared = {
-    id,
-    value,
-    placeholder: hint,
-    maxLength,
-    "aria-label": ariaLabel,
-    "aria-invalid": invalid || undefined,
-    "aria-describedby": describedBy,
-    onBlur,
-    spellCheck: false,
-    className: cn(small ? INPUT_SM : INPUT, "pr-9", mono && "font-mono text-[12.5px]"),
-  };
+  const onTargetFocus = useTemplateTarget(insertPath);
+  const helperPosition = cn("absolute right-1", small ? "top-[3px] h-6 w-6" : "top-1.5");
   return (
     <div className="relative min-w-0 flex-1">
-      {multiline ? (
-        <textarea
-          ref={ref}
-          rows={3}
-          {...shared}
-          className={cn(shared.className, "block resize-y leading-relaxed")}
+      {bare ? (
+        <input
+          id={id}
+          value={value}
+          placeholder={hint}
+          maxLength={maxLength}
+          aria-label={ariaLabel}
+          aria-invalid={invalid || undefined}
+          aria-describedby={describedBy}
+          spellCheck={false}
           onChange={(event) => onChange(event.target.value)}
+          onFocus={onTargetFocus}
+          onBlur={onBlur}
+          onDrop={(event) => {
+            const match = BARE_DROP.exec(event.dataTransfer.getData("text/plain"));
+            if (!match) return;
+            event.preventDefault();
+            onChange(match[1]);
+          }}
+          className={cn(small ? INPUT_SM : INPUT, "pr-9", mono && "font-mono text-[12.5px]")}
         />
       ) : (
-        <input ref={ref} {...shared} onChange={(event) => onChange(event.target.value)} />
+        <TemplateInput
+          ref={editor}
+          id={id}
+          value={value}
+          onChange={onChange}
+          onFocus={onTargetFocus}
+          onBlur={onBlur}
+          paths={paths}
+          multiline={multiline}
+          small={small}
+          placeholder={hint}
+          invalid={invalid}
+          describedBy={describedBy}
+          ariaLabel={ariaLabel}
+          mono={mono}
+          maxLength={maxLength}
+          className="pr-9"
+        />
       )}
-      <TemplateHelper
-        paths={paths}
-        onPick={insert}
-        bare={bare}
-        className={cn("absolute right-1", small ? "top-[3px] h-6 w-6" : "top-1.5")}
-      />
+      <TemplateHelper paths={paths} onPick={insertPath} bare={bare} className={helperPosition} />
     </div>
   );
 }

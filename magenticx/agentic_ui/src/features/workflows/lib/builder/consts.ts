@@ -1,6 +1,12 @@
 import { CalendarDays, Repeat, Timer, type LucideIcon } from "lucide-react";
 
-import type { ScheduleKind } from "@/shared/lib/types";
+import type {
+  ScheduleKind,
+  WorkflowContextConfig,
+  WorkflowContextMode,
+  WorkflowMemoryMode,
+  WorkflowSchemaFieldType,
+} from "@/shared/lib/types";
 
 /**
  * The workflow builder's constants: its controls' classes (the agent
@@ -99,3 +105,67 @@ export const SCHEDULE_CRON_PRESETS: ReadonlyArray<{ label: string; expr: string 
   { label: "Daily at 08:00", expr: "0 8 * * *" },
   { label: "Hourly", expr: "0 * * * *" },
 ];
+
+/** An llm / code step's `context` when the config has none: the engine's default. */
+export const DEFAULT_CONTEXT: WorkflowContextConfig = { mode: "previous", count: 3, steps: [] };
+
+/** The context widget's choices, in the order people reach for them. */
+export const CONTEXT_MODES: ReadonlyArray<{ value: WorkflowContextMode; label: string }> = [
+  { value: "previous", label: "Previous step" },
+  { value: "last", label: "Last steps" },
+  { value: "steps", label: "Pick steps" },
+  { value: "none", label: "None" },
+];
+
+/** "Last steps": how many (the engine's bounds). */
+export const CONTEXT_COUNT_MIN = 1;
+export const CONTEXT_COUNT_MAX = 10;
+/** "Pick steps": at most this many. */
+export const CONTEXT_STEPS_MAX = 20;
+
+/** The `inputs` key a code step's context arrives under in input.json (so `inputs` may not use it). */
+export const CODE_CONTEXT_KEY = "steps";
+
+/** The llm step's memory choices, as radio cards. */
+export const MEMORY_CHOICES: ReadonlyArray<{ value: WorkflowMemoryMode; label: string; hint: string }> = [
+  { value: "continue", label: "Remember earlier turns", hint: "In a loop, the model sees its previous iterations." },
+  { value: "fresh", label: "Start fresh every time", hint: "Each run of this step is a new conversation." },
+];
+
+/** "Share with: This step only" — a select can't hold an empty value, so the empty thread goes by this. */
+export const OWN_THREAD = "__own__";
+
+/** A conversation id (`thread`): the engine's pattern and length. */
+export const THREAD_PATTERN = /^[A-Za-z0-9_-]*$/;
+export const THREAD_MAX = 64;
+
+/** The structured-output builder's property types. */
+export const SCHEMA_FIELD_TYPES: ReadonlyArray<WorkflowSchemaFieldType> = [
+  "string",
+  "number",
+  "integer",
+  "boolean",
+  "array",
+  "object",
+];
+
+/** A structured-output property name: an identifier. */
+export const SCHEMA_FIELD_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
+
+/**
+ * A `{{path}}` chip in a template field: a quiet inline token that reads as
+ * `Source › Field`, truncated so a long step name never widens the field.
+ */
+export const TEMPLATE_CHIP =
+  "mx-px inline-flex max-w-[min(15rem,100%)] select-none items-center gap-1 whitespace-nowrap rounded-md bg-primary/[0.09] px-1.5 py-px align-baseline font-sans text-[12px] font-medium leading-[18px] text-primary shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.14)]";
+
+/** A chip whose path the field cannot read: its raw path, in the error colour. */
+export const TEMPLATE_CHIP_INVALID =
+  "mx-px inline-block max-w-[min(15rem,100%)] select-none truncate whitespace-nowrap rounded-md bg-destructive/10 px-1.5 py-px align-middle font-mono text-[11.5px] leading-[18px] text-destructive underline decoration-destructive/50 decoration-wavy underline-offset-2 shadow-[inset_0_0_0_1px_hsl(var(--destructive)/0.25)]";
+
+/** A chip's source (the step's name): muted, and the first part to give way. */
+export const TEMPLATE_CHIP_SOURCE = "min-w-0 max-w-[7rem] flex-shrink truncate text-primary/70";
+export const TEMPLATE_CHIP_SEP = "flex-shrink-0 text-primary/40";
+
+/** Where the inspector's "Data from earlier steps" fold is remembered on this device. */
+export const DATA_PANEL_OPEN_STORAGE_KEY = "magenticx:workflow-builder:data-panel-open";

@@ -19,6 +19,8 @@ export const END_KIND = "end";
 export const ROUTER_KIND = "router";
 /** The single-model-call step (its JSON mode needs a schema). */
 export const LLM_KIND = "llm";
+/** The sandboxed snippet step (its context arrives as `steps`, a key its inputs can't use). */
+export const CODE_KIND = "code";
 /** The branch of a loop that may lead back into the loop's body (the back-edge). */
 export const LOOP_CONTINUE = "continue";
 
@@ -99,6 +101,46 @@ export function upstreamOf(nodeId: string, edges: readonly WorkflowEdgeDef[]): S
   const seen = reachableFrom(nodeId, reverse);
   seen.delete(nodeId);
   return seen;
+}
+
+/**
+ * The nodes before `nodeId` with their distance in steps (1 = right before
+ * it), so what is offered to a field can be listed nearest first.
+ */
+export function upstreamDistances(nodeId: string, edges: readonly WorkflowEdgeDef[]): Map<string, number> {
+  const reverse = adjacencyOf(edges.map((edge) => ({ ...edge, source: edge.target, target: edge.source })));
+  const distance = new Map<string, number>([[nodeId, 0]]);
+  const queue = [nodeId];
+  while (queue.length) {
+    const id = queue.shift() as string;
+    for (const { target } of reverse.get(id) ?? []) {
+      if (!distance.has(target)) {
+        distance.set(target, (distance.get(id) ?? 0) + 1);
+        queue.push(target);
+      }
+    }
+  }
+  distance.delete(nodeId);
+  return distance;
+}
+
+/**
+ * The nodes that can run more than once in a run: those on a cycle through a
+ * loop's `continue` edge (the loop step itself included) — reachable from
+ * where `continue` leads, and leading back to the loop. Their
+ * `nodes.<id>.outputs` lists every execution's output.
+ */
+export function loopBodyNodes(spec: Pick<WorkflowSpec, "nodes" | "edges">): Set<string> {
+  const body = new Set<string>();
+  const kinds = new Map(spec.nodes.map((node) => [node.id, node.kind]));
+  for (const edge of spec.edges) {
+    if (kinds.get(edge.source) !== LOOP_KIND || edge.branch !== LOOP_CONTINUE) continue;
+    const ahead = reachableFrom(edge.target, spec.edges);
+    if (!ahead.has(edge.source)) continue;
+    const behind = upstreamOf(edge.source, spec.edges);
+    for (const id of ahead) if (id === edge.source || behind.has(id)) body.add(id);
+  }
+  return body;
 }
 
 /**
