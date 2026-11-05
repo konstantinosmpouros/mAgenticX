@@ -64,6 +64,14 @@ export type WorkflowNodeKindInfo = {
   dynamicBranches: boolean;
   isTrigger: boolean;
   configSchema: Record<string, unknown>;
+  /**
+   * False when the server cannot run this kind right now (e.g. `code` without a
+   * sandbox runner): the palette shows it disabled and the checks flag it.
+   * Defaults to true when an older catalogue omits it.
+   */
+  available: boolean;
+  /** Why the kind is unavailable, for the tooltip, toast and check; null when available. */
+  unavailableReason: string | null;
 };
 
 // ---------- Definitions ----------

@@ -17,6 +17,8 @@ import { nodeBranches } from "@/features/workflows/lib/nodeCard";
 export const LOOP_KIND = "loop";
 export const END_KIND = "end";
 export const ROUTER_KIND = "router";
+/** The single-model-call step (its JSON mode needs a schema). */
+export const LLM_KIND = "llm";
 /** The branch of a loop that may lead back into the loop's body (the back-edge). */
 export const LOOP_CONTINUE = "continue";
 

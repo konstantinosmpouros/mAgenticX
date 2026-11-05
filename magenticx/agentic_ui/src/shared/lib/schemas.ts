@@ -1204,6 +1204,9 @@ const toWorkflowNodeKind = (raw: Record<string, unknown>) => ({
   dynamicBranches: raw.dynamicBranches === true,
   isTrigger: raw.isTrigger === true,
   configSchema: wfRecord(raw.configSchema),
+  // Absent on an older catalogue: every kind it lists is runnable.
+  available: raw.available !== false,
+  unavailableReason: raw.available === false ? wfNullableString(raw.unavailableReason) : null,
 });
 // The catalogue is passed through from the engine: a bare list of kinds, or an
 // object holding it under `kinds` / `nodes` — either is accepted.

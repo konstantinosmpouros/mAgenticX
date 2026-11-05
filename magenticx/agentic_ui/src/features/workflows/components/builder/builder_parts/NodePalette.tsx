@@ -37,11 +37,14 @@ function KindTile({ kind, className, iconClassName }: { kind: string; className?
  * One palette kind: drags onto the canvas (a card-shaped ghost follows the
  * pointer, the row dims where it was), or adds on click / Enter. Every kind,
  * a trigger too, can be added: the builder's checks (one trigger, reachable
- * steps) say what the graph still needs.
+ * steps) say what the graph still needs. A kind the server cannot run now
+ * (`available: false`, e.g. `code` with no sandbox runner) stays listed but
+ * disabled: it neither drags nor adds, and its tooltip says why.
  */
 function PaletteItem({ entry, onAdd }: { entry: WorkflowNodeKindInfo; onAdd: (kind: string) => void }) {
   const [dragging, setDragging] = React.useState(false);
   const ghostRef = React.useRef<HTMLDivElement>(null);
+  const unavailable = entry.available === false;
 
   return (
     <li>
@@ -49,17 +52,26 @@ function PaletteItem({ entry, onAdd }: { entry: WorkflowNodeKindInfo; onAdd: (ki
         <TooltipTrigger asChild>
           <button
             type="button"
-            draggable
-            aria-label={`Add ${entry.label}`}
+            draggable={!unavailable}
+            aria-label={unavailable ? `Add ${entry.label} (unavailable)` : `Add ${entry.label}`}
+            // aria-disabled (not `disabled`) keeps it focusable, so the tooltip
+            // saying why still opens from the keyboard.
+            aria-disabled={unavailable || undefined}
             data-dragging={dragging ? "true" : undefined}
             onDragStart={(event) => {
+              if (unavailable) {
+                event.preventDefault();
+                return;
+              }
               event.dataTransfer.setData(PALETTE_DRAG_TYPE, entry.kind);
               event.dataTransfer.effectAllowed = "move";
               if (ghostRef.current) event.dataTransfer.setDragImage?.(ghostRef.current, 28, 24);
               setDragging(true);
             }}
             onDragEnd={() => setDragging(false)}
-            onClick={() => onAdd(entry.kind)}
+            onClick={() => {
+              if (!unavailable) onAdd(entry.kind);
+            }}
             style={{ height: PALETTE_ROW_HEIGHT }}
             className={cn(
               PALETTE_ROW,
@@ -72,7 +84,9 @@ function PaletteItem({ entry, onAdd }: { entry: WorkflowNodeKindInfo; onAdd: (ki
             />
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[13px] font-medium leading-5 text-foreground">{entry.label}</span>
-              {entry.description ? (
+              {unavailable ? (
+                <span className="block truncate text-[11.5px] font-medium leading-4 text-muted-foreground">Unavailable</span>
+              ) : entry.description ? (
                 <span className="block truncate text-[11.5px] leading-4 text-muted-foreground">
                   {kindBlurb(entry.kind, entry.description)}
                 </span>
@@ -87,7 +101,13 @@ function PaletteItem({ entry, onAdd }: { entry: WorkflowNodeKindInfo; onAdd: (ki
         <TooltipContent side="right" sideOffset={10} className="max-w-[17rem] text-xs">
           <span className="block font-medium">{entry.label}</span>
           {entry.description ? <span className="mt-0.5 block text-muted-foreground">{entry.description}</span> : null}
-          <span className="mt-1 block text-[11px] text-muted-foreground/80">Drag onto the canvas, or click to add.</span>
+          {unavailable ? (
+            <span className="mt-1 block text-[11px] text-destructive">
+              {entry.unavailableReason ?? "This step is unavailable on this server."}
+            </span>
+          ) : (
+            <span className="mt-1 block text-[11px] text-muted-foreground/80">Drag onto the canvas, or click to add.</span>
+          )}
         </TooltipContent>
       </Tooltip>
       {/* The drag image: a card like the one it becomes, rendered off screen. */}

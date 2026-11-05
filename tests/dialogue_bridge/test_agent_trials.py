@@ -558,7 +558,9 @@ async def test_only_a_trial_may_have_no_agent(session_factory, seeded_user):
             await session.commit()
 
 
-def test_the_trial_migration_is_the_single_head():
+def test_the_trial_migration_sits_in_a_single_head_chain():
+    """One head (no fork in the migration chain), with the trial migration in it
+    on top of 0042. Later migrations go on top: the head is not pinned."""
     revisions: dict[str, str | None] = {}
     for path in VERSIONS.glob("*.py"):
         text = path.read_text(encoding="utf-8")
@@ -567,5 +569,10 @@ def test_the_trial_migration_is_the_single_head():
         revisions[revision] = down.group(1) if down else None
     parents = {down for down in revisions.values() if down}
     heads = [rev for rev in revisions if rev not in parents]
-    assert heads == ["0043_trial_conversations"]
+    assert len(heads) == 1, f"the migration chain forks: {heads}"
+    chain, current = [], heads[0]
+    while current:
+        chain.append(current)
+        current = revisions[current]
+    assert "0043_trial_conversations" in chain
     assert revisions["0043_trial_conversations"] == "0042_conversation_files"

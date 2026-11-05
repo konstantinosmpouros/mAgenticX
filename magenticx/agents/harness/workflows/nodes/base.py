@@ -160,6 +160,10 @@ class WorkflowNode(ABC):
     #: cadence and literal run inputs) sets it false, so a literal ``{{`` in a
     #: value is neither checked as a reference nor substituted.
     templated: ClassVar[bool] = True
+    #: Top-level config keys that are never templated in a templated kind —
+    #: passed to :meth:`run` exactly as written and skipped by the reference
+    #: check. ``code``'s script is one: ``{{`` is legitimate Python.
+    literal_fields: ClassVar[frozenset[str]] = frozenset()
 
     def __init__(self, node: NodeSpec, spec: WorkflowSpec) -> None:
         """Bind the kind to one node. Raises ``ValidationError`` on a bad config."""
@@ -180,8 +184,17 @@ class WorkflowNode(ABC):
         return self.branches
 
     def config_template(self) -> dict[str, Any]:
-        """The config as rendered before :meth:`run` — everything but ``assign``."""
-        return {key: value for key, value in self.node.config.items() if key != "assign"}
+        """The config as rendered before :meth:`run` — everything but ``assign``
+        and the kind's :attr:`literal_fields`."""
+        return {
+            key: value
+            for key, value in self.node.config.items()
+            if key != "assign" and key not in self.literal_fields
+        }
+
+    def config_literals(self) -> dict[str, Any]:
+        """The :attr:`literal_fields` the config sets, as written (never rendered)."""
+        return {key: value for key, value in self.node.config.items() if key in self.literal_fields}
 
     def rule_paths(self) -> list[str]:
         """Bare paths the kind reads besides its templates (rule ``path`` fields)."""
@@ -211,8 +224,31 @@ class WorkflowNode(ABC):
         return []
 
     @classmethod
+    def availability(cls) -> tuple[bool, str | None]:
+        """Whether this deployment can run the kind: ``(True, None)`` or
+        ``(False, reason)``.
+
+        Read live (settings, not a cached flag), so the catalogue and the
+        validator always agree. An unavailable kind stays in the catalogue —
+        the builder shows it disabled with the reason — but a spec that uses it
+        is refused by the validator, and the kind fails closed at run time.
+        """
+        return True, None
+
+    @classmethod
+    def config_schema(cls) -> dict[str, Any]:
+        """The config's JSON Schema as the builder's form reads it.
+
+        A kind whose choices depend on the deployment (``llm``'s model list)
+        overrides this to inject them; the Pydantic model stays the authority
+        and :meth:`validate_semantics` re-checks the live values.
+        """
+        return cls.Config.model_json_schema()
+
+    @classmethod
     def catalog_entry(cls) -> dict[str, Any]:
         """The kind as the builder sees it."""
+        available, reason = cls.availability()
         return {
             "kind": cls.kind,
             "label": cls.label,
@@ -221,7 +257,9 @@ class WorkflowNode(ABC):
             "branches": list(cls.branches),
             "dynamicBranches": cls.dynamic_branches,
             "isTrigger": cls.is_trigger,
-            "configSchema": cls.Config.model_json_schema(),
+            "available": available,
+            "unavailableReason": None if available else reason,
+            "configSchema": cls.config_schema(),
         }
 
     # ------------------------------------------------------------------
@@ -268,6 +306,7 @@ class WorkflowNode(ABC):
             scope = self.scope_of(state)
             template = self.config_template()
             rendered = render(template, scope, roots=BASE_ROOTS) if self.templated else template
+            rendered = {**rendered, **self.config_literals()}
             emitter.node_input(config=rendered, iteration=iteration, writer=writer)
             input_sent = True
             typed = self.Config.model_validate({**rendered, "assign": self.config.assign})

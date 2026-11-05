@@ -453,9 +453,10 @@ def test_reads_and_writes_are_declared(wf):
 
 def test_catalog_lists_every_kind_with_a_json_schema(wf):
     catalog = {entry["kind"]: entry for entry in wf.catalog.node_catalog()}
-    assert set(catalog) == {
-        "trigger.manual", "trigger.schedule", "tool", "fetch", "condition", "router", "loop", "approval", "end",
-    }
+    assert list(catalog) == [
+        "trigger.manual", "trigger.schedule", "llm", "tool", "code", "fetch", "set",
+        "condition", "router", "loop", "wait", "approval", "end",
+    ]
     assert catalog["condition"]["branches"] == ["true", "false"]
     assert catalog["router"]["dynamicBranches"] is True
     assert catalog["trigger.manual"]["isTrigger"] is True

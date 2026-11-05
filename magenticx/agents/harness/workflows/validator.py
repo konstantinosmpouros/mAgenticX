@@ -13,7 +13,9 @@ something to check):
 3. Names: unique node/edge/input/state names; none reserved; no node id that
    equals a state name (LangGraph channels and nodes share a namespace);
    reducers that fit their types; defaults that match their types.
-4. Nodes: a known kind, a valid ``config`` for it, the kind's own checks.
+4. Nodes: a known kind this deployment can run (``availability()`` — e.g.
+   ``code`` needs the sandbox runner), a valid ``config`` for it, the kind's
+   own checks.
 5. Graph: exactly one trigger (``trigger.manual`` or ``trigger.schedule``); edges between existing nodes; nothing into the
    trigger; nothing out of an ``end``; a branch label exactly when the source
    branches, one of its branches, at most one edge per (source, branch) — a
@@ -109,7 +111,9 @@ def validate_spec(
         return None, _shape_issues(raw, exc)
 
     issues = _name_issues(spec)
-    instances, node_issues = _build_nodes(spec, ValidationContext(known_mcp_tools=known_mcp_tools))
+    instances, node_issues = _build_nodes(
+        spec, ValidationContext(known_mcp_tools=known_mcp_tools), check_availability=True
+    )
     issues += node_issues
     issues += _graph_issues(spec, instances)
     issues += _reference_issues(spec, instances)
@@ -169,8 +173,15 @@ def _name_issues(spec: WorkflowSpec) -> list[ValidationIssue]:
 
 
 def _build_nodes(
-    spec: WorkflowSpec, vctx: ValidationContext
+    spec: WorkflowSpec, vctx: ValidationContext, *, check_availability: bool = False
 ) -> tuple[dict[str, WorkflowNode], list[ValidationIssue]]:
+    """Instantiate every node, collecting config and kind-specific issues.
+
+    ``check_availability`` refuses a kind this deployment cannot run (``code``
+    without a sandbox runner). It is on for :func:`validate_spec` — every save,
+    ``/validate`` and run start — and off for the compiler's own instantiation,
+    which only ever sees a spec that has just passed :func:`validate_spec`.
+    """
     instances: dict[str, WorkflowNode] = {}
     issues: list[ValidationIssue] = []
     for index, node in enumerate(spec.nodes):
@@ -178,6 +189,11 @@ def _build_nodes(
         if cls is None:
             issues.append(ValidationIssue(node.id, f"nodes[{index}].kind", f"Unknown node kind '{node.kind}'."))
             continue
+        if check_availability:
+            available, reason = cls.availability()
+            if not available:
+                message = reason or f"'{node.kind}' steps are not available on this deployment."
+                issues.append(ValidationIssue(node.id, f"nodes[{index}].kind", message))
         try:
             instance = cls(node, spec)
         except ValidationError as exc:

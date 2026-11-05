@@ -4,12 +4,14 @@ import {
   Box,
   Braces,
   CalendarClock,
+  CodeXml,
   Flag,
   GitBranch,
   Globe,
   Play,
   Repeat,
   ShieldCheck,
+  Sparkles,
   Split,
   Timer,
   Wrench,
@@ -33,6 +35,8 @@ export type WorkflowKindCategory =
   | "fetch"
   | "tool"
   | "agent"
+  | "llm"
+  | "code"
   | "condition"
   | "router"
   | "loop"
@@ -63,6 +67,10 @@ export const KIND_META: Record<WorkflowKindCategory, Omit<WorkflowKindMeta, "cat
   fetch: { icon: Globe, accent: "var(--info)" },
   tool: { icon: Wrench, accent: "var(--primary-glow)" },
   agent: { icon: Bot, accent: "var(--primary)" },
+  // A single model call: sparkles in the glow accent, apart from a full agent.
+  llm: { icon: Sparkles, accent: "var(--primary-glow)" },
+  // Python in the sandbox: a code glyph in the info accent.
+  code: { icon: CodeXml, accent: "var(--info)" },
   condition: { icon: GitBranch, accent: "var(--warning)" },
   router: { icon: Split, accent: "var(--warning)" },
   loop: { icon: Repeat, accent: "var(--info)" },
@@ -84,7 +92,10 @@ const KIND_MATCHERS: Array<[RegExp, WorkflowKindCategory]> = [
   [/loop|foreach|repeat|while/, "loop"],
   [/wait|delay|sleep/, "wait"],
   [/fetch|http|request|webhook/, "fetch"],
-  [/agent|llm|prompt/, "agent"],
+  // `llm` (and a prompt-shaped kind) is one model call, not an agent run.
+  [/llm|prompt/, "llm"],
+  [/agent/, "agent"],
+  [/^code$|^code\.|python|script/, "code"],
   [/tool|mcp/, "tool"],
   [/notify|email|slack|message/, "notify"],
   [/end|output|finish|return/, "end"],
@@ -118,6 +129,10 @@ const KIND_BLURBS: Record<string, string> = {
   loop: "Repeat a branch",
   approval: "Wait for a human decision",
   end: "Finish and return a result",
+  llm: "Ask a model, get text or JSON",
+  set: "Write values into state",
+  wait: "Pause for a while",
+  code: "Run Python in the sandbox",
 };
 
 /** The palette's one-line blurb for a kind; the catalogue description otherwise. */

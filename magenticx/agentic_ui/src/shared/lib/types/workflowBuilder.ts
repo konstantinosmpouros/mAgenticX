@@ -56,7 +56,9 @@ export type WorkflowFormWidget =
   | "assign"
   | "map"
   | "object"
-  | "json";
+  | "json"
+  /** Source code (`"x-widget": "code"`): a monospace editor, never templated. */
+  | "code";
 
 /** What a map's values may be: templated text, a scalar (string/number/bool), or any JSON. */
 export type WorkflowMapValueKind = "string" | "scalar" | "any";
@@ -86,9 +88,15 @@ export type WorkflowFormField = {
   minItems?: number;
   maxItems?: number;
   maxProperties?: number;
+  minProperties?: number;
   valueKind?: WorkflowMapValueKind;
   /** `json`: the JSON type the value must have (`array`, `object`); absent = any value, text included. */
   jsonType?: string;
+  /**
+   * `json`: the schema asked for a JSON editor (`"x-widget": "json"`), so the
+   * value is JSON even with no `jsonType` — never the loose text/JSON field.
+   */
+  strictJson?: boolean;
   /** `object`: its own fields. */
   fields?: WorkflowFormField[];
 };

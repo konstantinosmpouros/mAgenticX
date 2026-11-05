@@ -191,6 +191,8 @@ const catalog: WorkflowNodeKindInfo[] = [
     dynamicBranches: false,
     isTrigger: false,
     configSchema: {},
+    available: true,
+    unavailableReason: null,
   },
   {
     kind: "condition",
@@ -201,6 +203,8 @@ const catalog: WorkflowNodeKindInfo[] = [
     dynamicBranches: false,
     isTrigger: false,
     configSchema: {},
+    available: true,
+    unavailableReason: null,
   },
 ];
 
@@ -404,6 +408,8 @@ const kindInfo = (
   dynamicBranches: false,
   isTrigger: false,
   configSchema: {},
+  available: true,
+  unavailableReason: null,
   ...over,
 });
 

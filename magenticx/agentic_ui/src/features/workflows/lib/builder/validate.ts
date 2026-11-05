@@ -7,6 +7,7 @@ import type {
 } from "@/shared/lib/types";
 import {
   END_KIND,
+  LLM_KIND,
   LOOP_CONTINUE,
   LOOP_KIND,
   findCycle,
@@ -146,6 +147,11 @@ export function checkSpec(
     if (!info) {
       if (catalogKnown) add(node.id, "kind", `Unknown step kind '${node.kind}'.`);
     } else {
+      // A kind the server can't run now (e.g. `code` with no sandbox): the
+      // run would fail at this step, so say so up front, with the reason.
+      if (info.available === false) {
+        add(node.id, "kind", info.unavailableReason ?? `${info.label} steps can't run on this server.`);
+      }
       // The schedule trigger's config is checked as the engine checks it (its
       // schema alone can't say "exactly the kind's one spec field" or read
       // the static inputs against the declared ones); its `assign` as any.
@@ -157,18 +163,35 @@ export function checkSpec(
             ]
           : configProblems(kindFields(info), node.config);
       for (const problem of problems) add(node.id, problem.field, problem.message);
-      const assign = node.config.assign;
-      if (assign && typeof assign === "object" && !Array.isArray(assign)) {
-        for (const name of Object.keys(assign)) {
-          if (!stateNames.has(name)) add(node.id, "config.assign", `'${name}' is not a declared state field.`);
+      // Every state-write map — `assign`, and a field the schema marks as one
+      // (`"x-widget": "assign"`, the set step's `values`) — writes declared
+      // state fields only.
+      const writeKeys = new Set(["assign", ...kindFields(info).filter((f) => f.widget === "assign").map((f) => f.key)]);
+      for (const key of writeKeys) {
+        const writes = node.config[key];
+        if (!writes || typeof writes !== "object" || Array.isArray(writes)) continue;
+        for (const name of Object.keys(writes)) {
+          if (!stateNames.has(name)) add(node.id, `config.${key}`, `'${name}' is not a declared state field.`);
+        }
+      }
+      // The llm step's JSON mode needs the shape it asks the model for.
+      if (node.kind === LLM_KIND && node.config.output === "json") {
+        const schema = node.config.json_schema;
+        if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
+          add(node.id, "config.json_schema", "Give the JSON output a schema.");
         }
       }
     }
     if (isTriggerKind(catalog, node.kind)) triggers.push(node.id);
 
-    // A schedule trigger is not templated: a `{{` in its inputs is plain text.
+    // A schedule trigger is not templated: a `{{` in its inputs is plain text;
+    // nor is a code field (`"x-widget": "code"`): its braces are the program's.
     const templated = node.kind !== SCHEDULE_TRIGGER_KIND;
-    for (const { path, field } of templated ? referencedPaths(node.config) : []) {
+    const untemplated = new Set(
+      info ? kindFields(info).filter((f) => f.widget === "code").map((f) => `config.${f.key}`) : [],
+    );
+    const references = templated ? referencedPaths(node.config).filter((ref) => !untemplated.has(ref.field)) : [];
+    for (const { path, field } of references) {
       const [root, name] = path.split(".");
       if (root === "input" && name && !inputNames.has(name)) {
         add(node.id, field, `'${path}' reads an undeclared input '${name}'.`);

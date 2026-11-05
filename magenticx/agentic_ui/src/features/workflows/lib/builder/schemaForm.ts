@@ -14,7 +14,9 @@ import type {
  * editors — rule lists (`rules`, `while`), router `cases`, the `assign` map,
  * string / scalar maps (`headers`, `query`, `args`, `outputs`), a `$ref`
  * object (`tool`) as nested fields — and anything else (`body`, `payload`, a
- * shape we don't know) falls back to a JSON editor. Pure: no React.
+ * shape we don't know) falls back to a JSON editor. A property's
+ * `"x-widget"` hint (`code`, `json`, `assign`; on the property or inside an
+ * optional's `anyOf` branch) picks its editor outright. Pure: no React.
  */
 
 type Schema = Record<string, unknown>;
@@ -103,10 +105,42 @@ function mapValueKind(additional: unknown): WorkflowMapValueKind {
   return "any";
 }
 
+/** The `"x-widget"` hints a catalogue schema may carry on a property. */
+const X_WIDGETS = new Set(["code", "json", "assign"]);
+
+/**
+ * An optional property (`x: T | None`) as Pydantic writes it — `anyOf: [T,
+ * {type: null}]` — read as `T`, the outer keys (title, description, default,
+ * an `x-widget`) winning; any other `anyOf` is left as is (the JSON editor).
+ */
+function unwrapOptional(schema: Schema, root: Schema): Schema {
+  if (!Array.isArray(schema.anyOf)) return schema;
+  const branches = schema.anyOf.map((branch) => resolveRef(branch, root));
+  const real = branches.filter((branch) => branch.type !== "null");
+  if (real.length !== 1 || real.length === branches.length) return schema;
+  const { anyOf: _anyOf, ...outer } = schema;
+  return { ...real[0], ...outer };
+}
+
+/** The property's `"x-widget"` hint, on the property itself or on one of its `anyOf` branches. */
+function xWidget(schema: Schema, root: Schema): string {
+  const own = str(schema["x-widget"]);
+  if (own) return own;
+  const branches = Array.isArray(schema.anyOf) ? schema.anyOf : [];
+  for (const branch of branches) {
+    const hint = str(resolveRef(branch, root)["x-widget"]);
+    if (hint) return hint;
+  }
+  return "";
+}
+
 /** One property's field. */
 function fieldFor(key: string, raw: unknown, root: Schema, required: boolean): WorkflowFormField {
-  const schema = resolveRef(raw, root);
+  const resolved = resolveRef(raw, root);
+  const hint = xWidget(resolved, root);
+  const schema = unwrapOptional(resolved, root);
   const description = str(schema.description);
+  const type = str(schema.type);
   const base: WorkflowFormField = {
     key,
     label: humanize(key, str(schema.title)),
@@ -117,8 +151,30 @@ function fieldFor(key: string, raw: unknown, root: Schema, required: boolean): W
     templated: mentionsTemplates(description),
     ...("default" in schema ? { default: schema.default } : {}),
   };
-  const type = str(schema.type);
 
+  // The schema's own widget hint wins over guessing from the shape.
+  if (X_WIDGETS.has(hint)) {
+    if (hint === "code") {
+      // Code is never templated: a `{{` in it is the program's own text.
+      return {
+        ...base,
+        widget: "code",
+        templated: false,
+        minLength: num(schema.minLength),
+        maxLength: num(schema.maxLength),
+      };
+    }
+    if (hint === "json") {
+      return { ...base, widget: "json", templated: false, strictJson: true, jsonType: type || undefined };
+    }
+    return {
+      ...base,
+      widget: "assign",
+      templated: true,
+      maxProperties: num(schema.maxProperties),
+      minProperties: num(schema.minProperties),
+    };
+  }
   if (key === "assign") {
     return { ...base, widget: "assign", templated: true, maxProperties: num(schema.maxProperties) };
   }
@@ -247,6 +303,7 @@ function initialValue(field: WorkflowFormField): unknown {
       return false;
     case "text":
     case "textarea":
+    case "code":
       return "";
     default:
       return undefined;
@@ -305,7 +362,8 @@ function fieldProblems(field: WorkflowFormField, value: unknown, where: string):
   }
   switch (field.widget) {
     case "text":
-    case "textarea": {
+    case "textarea":
+    case "code": {
       if (typeof value !== "string") {
         problems.push({ field: where, message: `${label} must be text.` });
         break;
@@ -394,6 +452,12 @@ function fieldProblems(field: WorkflowFormField, value: unknown, where: string):
         break;
       }
       const count = Object.keys(value).length;
+      if (field.minProperties !== undefined && count < field.minProperties) {
+        problems.push({
+          field: where,
+          message: `Add at least ${field.minProperties} ${field.minProperties === 1 ? "entry" : "entries"}.`,
+        });
+      }
       if (field.maxProperties !== undefined && count > field.maxProperties) {
         problems.push({ field: where, message: `At most ${field.maxProperties} entries.` });
       }

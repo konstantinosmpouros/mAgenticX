@@ -358,10 +358,19 @@ export function WorkflowBuilderWorkspace({
 
   // ---- editing ----------------------------------------------------------------
   // Any kind may be added, a trigger too: "exactly one trigger" is the
-  // builder's check (and the engine's), not a lock on the palette.
+  // builder's check (and the engine's), not a lock on the palette. The one
+  // refusal is a kind the server cannot run now (`available: false`): the
+  // palette already disables it, this also covers a drop and any other path.
   const addNode = React.useCallback(
     (kind: string, position?: { x: number; y: number }) => {
       const info = kindInfoOf(catalog, kind);
+      if (info && info.available === false) {
+        toast({
+          title: `${info.label} is unavailable`,
+          description: info.unavailableReason ?? "This step can't run on this server.",
+        });
+        return;
+      }
       const at = position ?? nextNodePosition(spec, selectedNode?.id ?? null);
       const node = createNode(spec, kind, info, at);
       dispatch({ type: "add-node", node });
@@ -387,7 +396,7 @@ export function WorkflowBuilderWorkspace({
       if (!position) changeSelection({ nodes: [node.id], edges: [] });
       setPaletteOpen(false);
     },
-    [catalog, spec, selectedNode, dispatch, changeSelection],
+    [catalog, spec, selectedNode, dispatch, changeSelection, toast],
   );
 
   const connect = React.useCallback(

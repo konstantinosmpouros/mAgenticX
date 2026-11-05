@@ -12,6 +12,7 @@ import { fieldDomId } from "@/features/workflows/lib/builder/ids";
 import { asCases, asRules } from "@/features/workflows/lib/builder/schemaForm";
 import { issueIsOn } from "@/features/workflows/lib/builder/validate";
 import { CasesEditor } from "./CasesEditor";
+import { CodeField } from "./CodeField";
 import { ChoiceSelect, LooseValueField } from "./Controls";
 import { Field, Toggle } from "./FieldShell";
 import { JsonField } from "./JsonField";
@@ -79,8 +80,9 @@ const rangeHint = (field: WorkflowFormField): string | null => {
  * A node's config form, generated from its kind's JSON Schema
  * (`lib/builder/schemaForm`): text, numbers with their range, on/off,
  * choices, nested objects (`tool`), maps (`headers`, `args`, `outputs`),
- * `assign` (state field → template), rule lists and router cases, and a JSON
- * editor for anything else. Templated text gets the `{ }` helper; issues sit
+ * `assign` (state field → template), rule lists and router cases, source
+ * code (a monospace editor, never templated), and a JSON editor for
+ * anything else. Templated text gets the `{ }` helper; issues sit
  * under the field they name.
  */
 export function SchemaForm({
@@ -173,6 +175,27 @@ export function SchemaForm({
               </Field>
             );
           }
+          case "code":
+            return (
+              <Field
+                key={field.key}
+                label={field.label}
+                htmlFor={id}
+                required={field.required}
+                hint={[hint, "Tab indents; Esc, then Tab, leaves the editor."].filter(Boolean).join(" ")}
+                issues={direct}
+                issuesId={issuesId}
+              >
+                <CodeField
+                  id={id}
+                  value={typeof value === "string" ? value : ""}
+                  onChange={(next) => set(field.key, next)}
+                  maxLength={field.maxLength}
+                  invalid={invalid}
+                  describedBy={direct.length ? issuesId : undefined}
+                />
+              </Field>
+            );
           case "number":
             return (
               <Field
@@ -270,6 +293,35 @@ export function SchemaForm({
               </Field>
             );
           case "assign":
+            // A state-write map the schema names itself (`"x-widget": "assign"`,
+            // the set step's `values`): the same editor, under its own label;
+            // its values are the step's input, so they can't read its output.
+            if (field.key !== "assign") {
+              return (
+                <Field
+                  key={field.key}
+                  label={field.label}
+                  required={field.required}
+                  hint={
+                    stateNames.length
+                      ? hint ?? "State field → value; values may use {{…}} placeholders."
+                      : "Declare state fields in the workflow's settings (click the empty canvas) to write them here."
+                  }
+                  issues={own}
+                >
+                  <MapEditor
+                    id={id}
+                    value={value}
+                    onChange={(next) => set(field.key, Object.keys(next).length || field.required ? next : undefined)}
+                    paths={paths}
+                    keyOptions={stateNames}
+                    addLabel="Add state write"
+                    emptyText="Nothing written to state."
+                    max={field.maxProperties}
+                  />
+                </Field>
+              );
+            }
             return (
               <Field
                 key={field.key}
@@ -314,10 +366,10 @@ export function SchemaForm({
                 label={field.label}
                 htmlFor={id}
                 required={field.required}
-                hint={hint ?? (field.jsonType ? "JSON." : "JSON, or text with {{…}} placeholders.")}
+                hint={hint ?? (field.jsonType || field.strictJson ? "JSON." : "JSON, or text with {{…}} placeholders.")}
                 issues={own}
               >
-                {field.jsonType ? (
+                {field.jsonType || field.strictJson ? (
                   <JsonField id={id} value={value} onChange={(next) => set(field.key, next)} jsonType={field.jsonType} invalid={invalid} />
                 ) : (
                   <LooseValueField

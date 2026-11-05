@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import catalogJson from "./fixtures/workflow-catalog.json";
 import scheduleKindJson from "./fixtures/workflow-catalog-schedule.json";
 import type { WorkflowNodeKindInfo, WorkflowSchedule, WorkflowSpec } from "@/shared/lib/types";
-import { createNode, draftReducer } from "@/features/workflows/lib/builder/draft";
+import { createNode } from "@/features/workflows/lib/builder/draft";
 import { specToFlow } from "@/features/workflows/lib/builder/flow";
 import {
   MANUAL_TRIGGER_KIND,

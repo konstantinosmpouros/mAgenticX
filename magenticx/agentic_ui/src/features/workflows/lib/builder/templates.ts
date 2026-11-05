@@ -17,6 +17,10 @@ const OUTPUT_FIELDS: Record<string, string[]> = {
   router: ["case"],
   loop: ["iteration", "continue"],
   approval: ["decision", "comment"],
+  // `text` in text mode, `data` in JSON mode.
+  llm: ["text", "data", "model"],
+  wait: ["waitedSeconds"],
+  code: ["result", "stdout", "stderr", "exitCode", "durationMs"],
 };
 
 /** A node's known output paths, below `<prefix>` (`nodes.poll.output` or `output`). */

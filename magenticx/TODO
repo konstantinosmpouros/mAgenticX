@@ -4,7 +4,7 @@
 
 - Add as services in denis: n8n, penpot, appflowy, and other open source tools that can be used by the agents and the users.
 - Make it a platform with org level and user-level permissions, so that users can have their own workspaces and agents, and orgs can have their own workspaces and agents along with admins.
-- Review how scheduling runs end to end (scheduled tasks and workflow schedules in the bridge's scheduler) and decide whether it is production-grade architecture or needs a dedicated scheduler / job queue.
+- Review how scheduling runs end to end (scheduled tasks and workflow schedules in the bridge's scheduler) and decide whether it is production-grade architecture or needs a dedicated scheduler / job queue: runs missed while the bridge was down, runs in flight during a restart or deploy, and Grafana alerting when something did not run.
 - **Each user's own OpenAI key in the OCI Vault** — planned in [plan 31](../plans/31-user-openai-keys-in-oci-vault.md). The admin adds a person to the Entra group; they sign in and save their own OpenAI key under Settings → API keys (write-only, validated, stored as one OCI Vault secret per user); every OpenAI call made for them uses their key; no key = blocked. The shared `magenticx_openai_api_key` is retired.
 
 ## New Features

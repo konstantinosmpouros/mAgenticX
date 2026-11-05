@@ -28,8 +28,14 @@ vi.mock("@/shared/lib/api", async (importOriginal) => ({
   ...api,
 }));
 
+/** Every selection the React Flow stand-in reported, in order (the real one's SelectionListener). */
+const flowProbe = vi.hoisted(() => ({ reported: [] as string[][] }));
+
 vi.mock("@xyflow/react", async () => {
-  const { useEffect } = await vi.importActual<typeof import("react")>("react");
+  // Typed by hand: a type import of a bare module does not resolve from tests/.
+  const { useEffect } = (await vi.importActual("react")) as {
+    useEffect: (effect: () => void, deps: unknown[]) => void;
+  };
   type MockNode = {
     id: string;
     type: string;
@@ -37,8 +43,7 @@ vi.mock("@xyflow/react", async () => {
     ariaLabel?: string;
     selected?: boolean;
   };
-  /** Every selection the stand-in reported, in order (the real one's SelectionListener). */
-  const reported: string[][] = [];
+  const reported = flowProbe.reported;
   const ReactFlow = ({
     nodes,
     nodeTypes,
@@ -91,7 +96,6 @@ vi.mock("@xyflow/react", async () => {
     );
   };
   return {
-    __reported: reported,
     ReactFlow,
     ReactFlowProvider: ({ children }: { children: JSX.Element }) => children,
     useReactFlow: () => ({
@@ -285,8 +289,7 @@ describe("workflow builder page", () => {
   });
 
   it("moves the pick to a step added after another, once (no bounce back to the old pick)", async () => {
-    const reported = ((await import("@xyflow/react")) as unknown as { __reported: string[][] })
-      .__reported;
+    const reported = flowProbe.reported;
     renderAt("/workflows/new");
     await canvas();
     await screen.findByRole("button", { name: "Add HTTP request" });

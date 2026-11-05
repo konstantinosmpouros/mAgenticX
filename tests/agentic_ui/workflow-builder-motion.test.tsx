@@ -333,7 +333,7 @@ describe("workflow builder motion", () => {
     const first = renderBuilder();
     await screen.findByRole("button", { name: "Add HTTP request" });
     const palette = screen.getByTestId("workflow-palette");
-    const heading = within(palette).getByRole("button", { name: "Data, 1 step" });
+    const heading = within(palette).getByRole("button", { name: "Data, 2 steps" });
     expect(heading).toHaveAttribute("aria-expanded", "true");
 
     fireEvent.click(heading);
