@@ -5,7 +5,8 @@ Two routers, mounted in ``main.py``:
 * ``router`` at ``/v1/workflows`` — the node catalog, validation, a user's
   workflows (proxied to the agents service, each with the bridge's
   ``schedule``), pausing / resuming a workflow's schedule and, per workflow,
-  starting a run and listing its runs;
+  starting a run, listing its runs and its version history (list, one
+  version, restore);
 * ``runs_router`` at ``/v1/workflow-runs`` — one run: its detail, its live
   event stream (SSE), resume and cancel.
 
@@ -45,6 +46,8 @@ from schema import (
     WorkflowRunStarted,
     WorkflowScheduleOut,
     WorkflowValidation,
+    WorkflowVersionDetailOut,
+    WorkflowVersionPage,
     WorkflowWrite,
 )
 from utils import validate_userId
@@ -71,7 +74,10 @@ from utils.workflows import (
     delete_workflow,
     get_workflow,
     get_workflow_catalog,
+    get_workflow_version,
+    list_workflow_versions,
     list_workflows,
+    restore_workflow_version,
     update_workflow,
     validate_workflow_spec,
 )
@@ -84,6 +90,7 @@ logger = get_logger(__name__)
 _ID_PATTERN = r"^[A-Za-z0-9_-]{1,128}$"
 WorkflowId = Path(..., pattern=_ID_PATTERN)
 RunId = Path(..., pattern=_ID_PATTERN)
+VersionNo = Path(..., ge=1, le=1_000_000)
 
 _RUN_NOT_FOUND = "Workflow run not found."
 
@@ -193,6 +200,72 @@ async def delete_my_workflow(
     removed = await delete_runs_for_workflow(db, current_user.id, workflow_id)
     logger.info("workflow_deleted", "Workflow deleted", workflow_id=workflow_id, runs_deleted=removed)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ---------------------------------------------------------------------------
+# A workflow's version history (proxied)
+# ---------------------------------------------------------------------------
+@router.get(
+    "/{user_id}/{workflow_id}/versions",
+    response_model=WorkflowVersionPage,
+    status_code=status.HTTP_200_OK,
+)
+async def list_my_workflow_versions(
+    user_id: str,
+    workflow_id: str = WorkflowId,
+    limit: int = Query(50, ge=1, le=100),
+    before: int | None = Query(None, ge=1, le=1_000_000),
+    current_user: AuthUser = Depends(validate_userId),
+    _: None = Depends(workflow_read_rate_limit),
+) -> WorkflowVersionPage:
+    """The workflow's kept versions, newest first; pass ``nextBefore`` back as
+    ``?before=`` for older ones."""
+    set_context(user_id=user_id)
+    return await list_workflow_versions(current_user.id, workflow_id, limit=limit, before=before)
+
+
+@router.get(
+    "/{user_id}/{workflow_id}/versions/{version_no}",
+    response_model=WorkflowVersionDetailOut,
+    status_code=status.HTTP_200_OK,
+)
+async def get_my_workflow_version(
+    user_id: str,
+    workflow_id: str = WorkflowId,
+    version_no: int = VersionNo,
+    current_user: AuthUser = Depends(validate_userId),
+    _: None = Depends(workflow_read_rate_limit),
+) -> WorkflowVersionDetailOut:
+    """One kept version with its whole spec (the History panel's diff and preview)."""
+    set_context(user_id=user_id)
+    return await get_workflow_version(current_user.id, workflow_id, version_no)
+
+
+@router.post(
+    "/{user_id}/{workflow_id}/versions/{version_no}/restore",
+    response_model=WorkflowOut,
+    status_code=status.HTTP_200_OK,
+)
+async def restore_my_workflow_version(
+    user_id: str,
+    workflow_id: str = WorkflowId,
+    version_no: int = VersionNo,
+    current_user: AuthUser = Depends(validate_userId),
+    _: None = Depends(require_csrf_protection),
+    __: None = Depends(workflow_mutate_rate_limit),
+    db: AsyncSession = Depends(get_db),
+) -> WorkflowOut:
+    """Save an old version's spec as a new version — history is never
+    rewritten — then re-sync the schedule from it, as after any save (the old
+    version may have a different start node). 422 with the issues when the old
+    version no longer passes today's checks."""
+    set_context(user_id=user_id)
+    workflow = await restore_workflow_version(current_user.id, workflow_id, version_no)
+    logger.info(
+        "workflow_version_restored", "Workflow version restored",
+        workflow_id=workflow_id, restored_from=version_no, latest_version_no=workflow.latestVersionNo,
+    )
+    return await sync_workflow_schedule(db, current_user.id, workflow)
 
 
 # ---------------------------------------------------------------------------

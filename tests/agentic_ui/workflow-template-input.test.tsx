@@ -1,12 +1,11 @@
 // @vitest-environment happy-dom
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 
 import catalogJson from "./fixtures/workflow-catalog.json";
 import { templateText, typeTemplate } from "./templateField";
 import { NodeInspector } from "@/features/workflows/components/builder/builder_parts/NodeInspector";
 import { TemplateField } from "@/features/workflows/components/builder/builder_parts/TemplateField";
-import { DATA_PANEL_OPEN_STORAGE_KEY } from "@/features/workflows/lib/builder/consts";
 import { setCaretOffset } from "@/features/workflows/lib/builder/templateDom";
 import {
   describeTemplateRef,
@@ -21,7 +20,7 @@ import type { WorkflowNodeKindInfo, WorkflowSpec, WorkflowTemplatePath } from "@
 /**
  * The template chip editor and what it offers: a `{{path}}` shows as a chip
  * with a friendly label (and the value stays the same template string), the
- * picker and the inspector's data panel insert at the caret, a drop lands in
+ * picker (each field's `{ }`) inserts at the caret, a drop lands in
  * the field, an llm step hands on its answer (JSON schema properties too, its
  * conversation under "More"), and a step inside a loop offers "Every run".
  */
@@ -264,11 +263,7 @@ describe("template chip editor", () => {
   });
 });
 
-describe("data panel", () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-  });
-
+describe("data from earlier steps in a field", () => {
   const renderInspector = (spec: WorkflowSpec, nodeId: string, onConfig = vi.fn()) => {
     const target = spec.nodes.find((entry) => entry.id === nodeId)!;
     render(
@@ -287,42 +282,42 @@ describe("data panel", () => {
     return onConfig;
   };
 
-  it("lists earlier steps' values and inserts a clicked one into the field used last", () => {
+  it("has no separate panel: a field's { } lists earlier steps' values and inserts the one picked", () => {
     const spec = linear();
     spec.nodes.push(node("post", "fetch", { url: "https://example.com/" }, "Post result"));
     spec.edges = spec.edges.map((edge) => (edge.id === "e3" ? { ...edge, target: "post" } : edge));
     spec.edges.push({ id: "e4", source: "post", target: "done" });
     const onConfig = renderInspector(spec, "post");
-    const panel = screen.getByRole("region", { name: "Data from earlier steps" });
-    const groups = within(panel).getAllByRole("group").map((group) => group.getAttribute("aria-label"));
-    expect(groups).toEqual(["Ask AI", "Fetch page", "Run inputs", "Variables"]);
-    expect(within(panel).queryByRole("button", { name: /Conversation/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Data from earlier steps" })).toBeNull();
 
     const url = screen.getByRole("textbox", { name: /^URL/ });
     url.focus();
     act(() => setCaretOffset(url, "https://example.com/".length));
-    fireEvent.click(within(panel).getByRole("button", { name: "Insert Ask AI › Answer" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Insert a value from the run" })[0]);
+    expect(screen.getByRole("group", { name: "Ask AI" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Fetch page" })).toBeInTheDocument();
+    fireEvent.click(screen.getByTitle("nodes.ask.output.text"));
     expect(onConfig.mock.lastCall?.[0]).toMatchObject({ url: "https://example.com/{{nodes.ask.output.text}}" });
-
-    // Dragging carries the placeholder as plain text.
-    const setData = vi.fn();
-    fireEvent.dragStart(within(panel).getByRole("button", { name: "Insert Fetch page › Body" }), {
-      dataTransfer: { setData, effectAllowed: "all" },
-    });
-    expect(setData).toHaveBeenCalledWith("text/plain", "{{nodes.fetch.output.body}}");
   });
 
-  it("offers Every run after a loop, and remembers being folded", () => {
-    renderInspector(looped(), "after");
-    const panel = screen.getByRole("region", { name: "Data from earlier steps" });
-    expect(within(panel).getByRole("button", { name: "Insert Fetch page › Every run" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Data from earlier steps" }));
-    expect(screen.queryByRole("region", { name: "Data from earlier steps" })).toBeNull();
-    expect(window.localStorage.getItem(DATA_PANEL_OPEN_STORAGE_KEY)).toBe("false");
-  });
-
-  it("isn't shown on a trigger", () => {
+  it("leaves out Advanced on a trigger: nothing there is worth saving", () => {
     renderInspector(linear(), "start");
-    expect(screen.queryByRole("button", { name: "Data from earlier steps" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Advanced/ })).toBeNull();
+  });
+
+  it("keeps Advanced on a step that has a result to save", () => {
+    renderInspector(linear(), "fetch");
+    expect(screen.getByRole("button", { name: /^Advanced · Save to a variable/ })).toBeInTheDocument();
+  });
+
+  it("hides it on an end step too", () => {
+    renderInspector(linear(), "done");
+    expect(screen.queryByRole("button", { name: /^Advanced/ })).toBeNull();
+  });
+
+  it("offers Every run after a loop", () => {
+    renderInspector(looped(), "after");
+    fireEvent.click(screen.getAllByRole("button", { name: "Insert a value from the run" })[0]);
+    expect(within(screen.getByRole("group", { name: "Fetch page" })).getByText("Every run")).toBeInTheDocument();
   });
 });

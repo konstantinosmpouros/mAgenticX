@@ -43,7 +43,6 @@ from harness.workflows.compiler import CompiledWorkflow
 from harness.workflows.errors import WorkflowNodeError
 from harness.workflows.events import WorkflowEmitter, WorkflowEnvelope
 from harness.workflows.nodes.approval import APPROVAL_INTERRUPT_TYPE
-from harness.workflows.nodes.trigger_schedule import static_inputs
 from harness.workflows.state import coerce_inputs, initial_state
 
 logger = get_logger(__name__)
@@ -191,19 +190,6 @@ def _final_output(values: Mapping[str, Any]) -> Any:
     return ((values.get("nodes") or {}).get(node_id) or {}).get("output")
 
 
-def _run_inputs(compiled: CompiledWorkflow, requested: Mapping[str, Any] | None) -> dict[str, Any]:
-    """The request's inputs over the schedule trigger's static ones.
-
-    A ``null`` in the request means "not given", as it does in
-    :func:`coerce_inputs`, so it does not blank a static value.
-    """
-    merged = static_inputs(compiled.spec)
-    for name, value in (requested or {}).items():
-        if value is not None or name not in merged:
-            merged[name] = value
-    return merged
-
-
 def _pending_approval(snapshot: Any) -> Any | None:
     """The approval interrupt the thread is paused on, if any."""
     for item in list(getattr(snapshot, "interrupts", None) or []):
@@ -228,10 +214,9 @@ async def prepare_run(
 ) -> PreparedRun:
     """Check a run can start and build its graph input. Raises :class:`RunRefused`.
 
-    A fresh run's inputs are the ``trigger.schedule`` node's static inputs (if
-    the workflow has one) with the request's laid over them, then validated
-    against the declared inputs — so "Run now" on a scheduled workflow only
-    supplies what it changes.
+    A fresh run's inputs are the request's, validated against the declared
+    inputs; any input the request leaves out takes its default. A scheduled
+    fire sends none, so it runs on the defaults alone.
     """
     trigger = trigger or RunTrigger()
     config = {
@@ -262,7 +247,7 @@ async def prepare_run(
         existing = await compiled.graph.aget_state(config)
         if getattr(existing, "values", None) or getattr(existing, "next", None):
             raise RunRefused(409, "This thread already holds a run; start a new run on a new thread.")
-        values, errors = coerce_inputs(compiled.spec, _run_inputs(compiled, inputs))
+        values, errors = coerce_inputs(compiled.spec, inputs or {})
         if errors:
             raise RunRefused(422, "The run inputs are invalid.", errors)
         persisted: dict[str, Any] = {}

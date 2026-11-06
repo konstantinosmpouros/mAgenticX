@@ -29,6 +29,7 @@ export function WorkflowBuilderPage({
   onOpenView,
   onDeleted,
   onExit,
+  initialPanel = null,
 }: WorkflowBuilderPageProps) {
   useSidebarFocusMode();
   const catalog = useWorkflowCatalog();
@@ -74,6 +75,7 @@ export function WorkflowBuilderPage({
         onCreated={onCreated}
         onOpenView={onOpenView}
         onDeleted={onDeleted}
+        initialPanel={editing ? initialPanel : null}
       />
     </TooltipProvider>
   );

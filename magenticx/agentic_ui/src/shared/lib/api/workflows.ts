@@ -20,6 +20,8 @@ import type {
   WorkflowRunPage,
   WorkflowRunStreamFrame,
   WorkflowSchedule,
+  WorkflowVersionDetail,
+  WorkflowVersionPage,
 } from "../types";
 import { requestJson, requestRaw, requestVoid } from "../http";
 import {
@@ -32,6 +34,8 @@ import {
   WorkflowSchema,
   WorkflowScheduleSchema,
   WorkflowValidationSchema,
+  WorkflowVersionDetailSchema,
+  WorkflowVersionPageSchema,
   toWorkflowRunStreamFrame,
 } from "../schemas";
 import { WORKFLOW_RUNS_BASE_PATH, WORKFLOWS_BASE_PATH } from "./paths";
@@ -135,6 +139,50 @@ export async function resumeWorkflowSchedule(
     csrf: true,
     schema: WorkflowScheduleSchema,
     fallbackMessage: "The schedule could not be resumed.",
+  });
+}
+
+/** One page of a workflow's kept versions, newest first; pass `nextBefore` back for older ones. */
+export async function listWorkflowVersions(
+  userId: string,
+  workflowId: string,
+  before?: number | null,
+): Promise<WorkflowVersionPage> {
+  const query = before ? `?before=${Math.trunc(before)}` : "";
+  return requestJson(`${workflowUrl(userId, workflowId)}/versions${query}`, {
+    schema: WorkflowVersionPageSchema,
+    fallbackMessage: "The workflow's history could not be loaded.",
+  });
+}
+
+/** One kept version with its whole spec. */
+export async function getWorkflowVersion(
+  userId: string,
+  workflowId: string,
+  versionNo: number,
+): Promise<WorkflowVersionDetail> {
+  return requestJson(`${workflowUrl(userId, workflowId)}/versions/${Math.trunc(versionNo)}`, {
+    schema: WorkflowVersionDetailSchema,
+    fallbackMessage: "That version could not be loaded.",
+  });
+}
+
+/**
+ * Restore a kept version: its spec is saved as a NEW version (history is
+ * never rewritten). Resolves to the workflow as after a save — its
+ * `latestVersionNo` is the new version. A version that no longer passes
+ * today's checks is a 422 whose `detailObject.errors` lists the issues.
+ */
+export async function restoreWorkflowVersion(
+  userId: string,
+  workflowId: string,
+  versionNo: number,
+): Promise<Workflow> {
+  return requestJson(`${workflowUrl(userId, workflowId)}/versions/${Math.trunc(versionNo)}/restore`, {
+    method: "POST",
+    csrf: true,
+    schema: WorkflowSchema,
+    fallbackMessage: "That version could not be restored.",
   });
 }
 

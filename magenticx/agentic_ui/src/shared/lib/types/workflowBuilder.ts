@@ -195,17 +195,6 @@ export type WorkflowTemplateSegment =
 /** How a placeholder reads in a field: `Fetch page › Body`, or invalid (shown as its raw path). */
 export type WorkflowTemplateRefLabel = { source: string; label: string; valid: boolean };
 
-/** A focused template field the data panel can insert into (`path` without braces). */
-export type WorkflowTemplateTarget = { insertPath: (path: string) => void };
-
-/** The inspector's template fields: which one was focused last, so the data panel inserts there. */
-export type WorkflowTemplateTargetRegistry = {
-  register: (target: WorkflowTemplateTarget) => () => void;
-  activate: (target: WorkflowTemplateTarget) => void;
-  /** Into the last focused field (else the first one); false when there is none. */
-  insertPath: (path: string) => boolean;
-};
-
 // ---------- Draft ----------
 
 export type WorkflowNodePatch = {
@@ -242,13 +231,13 @@ export type WorkflowScheduleSpec = { run_at?: string; interval_seconds?: number;
 /**
  * A `trigger.schedule` node's config, read leniently from the spec (the
  * engine's field names). `timezone` is a cron expression's IANA zone (null:
- * UTC); `inputs` are the literal run inputs of a scheduled fire.
+ * UTC). A scheduled run has no inputs of its own: it uses each declared
+ * input's default.
  */
 export type WorkflowScheduleConfig = {
   schedule_kind: ScheduleKind;
   schedule_spec: WorkflowScheduleSpec;
   timezone: string | null;
-  inputs: Record<string, unknown>;
   enabled: boolean;
 };
 
@@ -269,6 +258,8 @@ export type WorkflowBuilderPageProps = {
   onDeleted: () => void;
   /** Back / close the builder: to the workflow's view when there is one saved. */
   onExit: (workflowId: string | null) => void;
+  /** Open with this panel showing (`?panel=history`: the view's History link). */
+  initialPanel?: "history" | null;
 };
 
 // ---------- The canvas's right-click menu ----------

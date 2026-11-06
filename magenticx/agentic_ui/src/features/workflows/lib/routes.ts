@@ -5,6 +5,7 @@
  *   /workflows/:workflowId/runs/:runId      …showing that run
  *   /workflows/new                          the builder, a new workflow (step 3)
  *   /workflows/:workflowId/edit             the builder, editing one
+ *   /workflows/:workflowId/edit?panel=history   …with its History panel open
  *
  * There is no "/workflows" index: workflows are listed (and created) on the
  * Automations page's Workflows area (`/automations?view=workflows`), with a
@@ -44,3 +45,10 @@ export const newWorkflowPath = (): string => `${WORKFLOWS_PATH}/${NEW_SEGMENT}`;
 
 /** The builder for an existing workflow. */
 export const workflowEditPath = (workflowId: string): string => `${workflowPath(workflowId)}/edit`;
+
+/** The builder's `?panel=` value that opens its History panel. */
+export const HISTORY_PANEL_PARAM = "history";
+
+/** The builder for an existing workflow, its History panel open. */
+export const workflowHistoryPath = (workflowId: string): string =>
+  `${workflowEditPath(workflowId)}?panel=${HISTORY_PANEL_PARAM}`;

@@ -9,7 +9,9 @@ the code reads is asserted in ``_DDL``.
 * ``workflow_definitions`` — one row per workflow: owner, name, the editable
   ``draft`` and the newest version number.
 * ``workflow_versions`` — immutable snapshots; a run pins one. A save that
-  changes nothing adds no version.
+  changes nothing adds no version. History is never rewritten: restoring an
+  old version appends a new one with the old spec (``restored_from`` names
+  the version it came from).
 * ``workflow_persisted_state`` — the ``persist: true`` state fields, carried
   from one completed run to the next.
 
@@ -27,6 +29,8 @@ from psycopg.types.json import Jsonb
 from harness.workflows.spec import canonical_json
 
 MAX_LIST_LIMIT = 100
+#: The most versions one history page returns.
+MAX_VERSION_PAGE = 100
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS workflow_definitions (
@@ -48,6 +52,7 @@ CREATE TABLE IF NOT EXISTS workflow_versions (
     spec         jsonb NOT NULL,
     created_by   text NOT NULL,
     created_at   timestamptz NOT NULL DEFAULT now(),
+    restored_from integer,
     PRIMARY KEY (workflow_id, version_no)
 );
 
@@ -65,6 +70,7 @@ CREATE INDEX IF NOT EXISTS workflow_persisted_state_owner_idx
 -- Idempotent column assertions: add a line here with every new column.
 ALTER TABLE workflow_definitions ADD COLUMN IF NOT EXISTS description text NOT NULL DEFAULT '';
 ALTER TABLE workflow_definitions ADD COLUMN IF NOT EXISTS latest_version_no integer NOT NULL DEFAULT 0;
+ALTER TABLE workflow_versions ADD COLUMN IF NOT EXISTS restored_from integer;
 """
 
 _COMMENTS = [
@@ -152,12 +158,21 @@ class WorkflowStore:
             )
         return workflow_id
 
-    async def update(self, owner_user_id: str, workflow_id: str, spec: dict[str, Any]) -> int | None:
+    async def update(
+        self,
+        owner_user_id: str,
+        workflow_id: str,
+        spec: dict[str, Any],
+        *,
+        restored_from: int | None = None,
+    ) -> int | None:
         """Save the draft; add a version only when the spec changed.
 
         Returns the newest version number, or ``None`` when the workflow is not
         the owner's. The row is locked for the read-compare-insert, so two
         concurrent saves cannot both claim the next version number.
+        ``restored_from`` marks the new version as a restore of that one (a
+        restore is a save of an old spec; history is never rewritten).
         """
         async with self._pool.connection() as conn, conn.transaction():
             cur = await conn.execute(
@@ -173,8 +188,9 @@ class WorkflowStore:
             if row["spec"] is None or canonical_json(_json(row["spec"])) != canonical_json(spec):
                 latest += 1
                 await conn.execute(
-                    "INSERT INTO workflow_versions (workflow_id, version_no, spec, created_by) VALUES (%s, %s, %s, %s)",
-                    (workflow_id, latest, Jsonb(spec), owner_user_id),
+                    "INSERT INTO workflow_versions (workflow_id, version_no, spec, created_by, restored_from) "
+                    "VALUES (%s, %s, %s, %s, %s)",
+                    (workflow_id, latest, Jsonb(spec), owner_user_id, restored_from),
                 )
             await conn.execute(
                 "UPDATE workflow_definitions SET draft = %s, name = %s, description = %s, "
@@ -206,6 +222,54 @@ class WorkflowStore:
             )
             row = await cur.fetchone()
         return None if row is None else (row["version_no"], _json(row["spec"]))
+
+    # -- history ---------------------------------------------------------------
+    async def list_versions(
+        self, owner_user_id: str, workflow_id: str, *, limit: int, before: int | None = None
+    ) -> list[dict[str, Any]] | None:
+        """One page of the workflow's versions, newest first, without their specs.
+
+        Keyset-paged on ``version_no`` (``before`` = the oldest number already
+        shown). Each row carries a short summary read inside the database —
+        the version's name and its step / connection counts — so a page never
+        moves whole specs. ``None`` when the workflow is not the owner's.
+        """
+        async with self._pool.connection() as conn:
+            cur = await conn.execute(
+                "SELECT 1 FROM workflow_definitions WHERE id = %s AND owner_user_id = %s",
+                (workflow_id, owner_user_id),
+            )
+            if await cur.fetchone() is None:
+                return None
+            cur = await conn.execute(
+                "SELECT v.version_no, v.created_at, v.created_by, v.restored_from, "
+                "COALESCE(v.spec->>'name', '') AS name, "
+                "COALESCE(v.spec->>'description', '') AS description, "
+                "CASE WHEN jsonb_typeof(v.spec->'nodes') = 'array' "
+                "THEN jsonb_array_length(v.spec->'nodes') ELSE 0 END AS node_count, "
+                "CASE WHEN jsonb_typeof(v.spec->'edges') = 'array' "
+                "THEN jsonb_array_length(v.spec->'edges') ELSE 0 END AS edge_count "
+                "FROM workflow_versions v WHERE v.workflow_id = %s "
+                "AND (%s::integer IS NULL OR v.version_no < %s::integer) "
+                "ORDER BY v.version_no DESC LIMIT %s",
+                (workflow_id, before, before, min(max(limit, 1), MAX_VERSION_PAGE)),
+            )
+            rows = await cur.fetchall()
+        return [dict(row) for row in rows]
+
+    async def get_version_detail(
+        self, owner_user_id: str, workflow_id: str, version_no: int
+    ) -> dict[str, Any] | None:
+        """One kept version with its whole spec, or ``None``."""
+        async with self._pool.connection() as conn:
+            cur = await conn.execute(
+                "SELECT v.version_no, v.spec, v.created_at, v.created_by, v.restored_from "
+                "FROM workflow_versions v JOIN workflow_definitions d ON d.id = v.workflow_id "
+                "WHERE d.id = %s AND d.owner_user_id = %s AND v.version_no = %s",
+                (workflow_id, owner_user_id, version_no),
+            )
+            row = await cur.fetchone()
+        return None if row is None else {**row, "spec": _json(row["spec"])}
 
     # -- persisted state ---------------------------------------------------
     async def load_persisted(self, owner_user_id: str, workflow_id: str) -> dict[str, Any]:
@@ -282,4 +346,4 @@ class WorkflowStore:
         return [{**row, "spec": _json(row["spec"])} for row in rows]
 
 
-__all__ = ["MAX_LIST_LIMIT", "WorkflowStore"]
+__all__ = ["MAX_LIST_LIMIT", "MAX_VERSION_PAGE", "WorkflowStore"]

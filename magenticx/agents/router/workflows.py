@@ -8,7 +8,11 @@ Route order matters: the fixed paths (``/workflows/catalog``,
 ``/workflows/validate``, ``/workflows/runs/stream``) are declared before the
 ``/workflows/{owner_user_id}`` family so they are never read as an owner id.
 
-An invalid spec on create/update is a 422 whose ``detail`` is
+History (``…/{workflow_id}/versions``): the kept versions newest first, one
+version's spec, and restore — which saves the old spec as a **new** version
+(history is never rewritten) after validating it again.
+
+An invalid spec on create/update/restore is a 422 whose ``detail`` is
 ``{message, errors: [{nodeId, path, message}]}``; another user's workflow is a
 404, indistinguishable from a missing one.
 """
@@ -32,6 +36,8 @@ from schema.workflows import (
     WorkflowRunRequest,
     WorkflowSummary,
     WorkflowValidation,
+    WorkflowVersionDetail,
+    WorkflowVersionPage,
     WorkflowWrite,
 )
 from utils.workflows import (
@@ -39,8 +45,11 @@ from utils.workflows import (
     create_workflow,
     delete_workflow,
     get_workflow,
+    get_workflow_version,
+    list_workflow_versions,
     list_workflows,
     open_workflow_run,
+    restore_workflow_version,
     update_workflow,
     validate_workflow,
 )
@@ -51,19 +60,20 @@ router = APIRouter(dependencies=[Depends(require_internal_caller)])
 
 OwnerId = Path(pattern=OWNER_ID_PATTERN)
 WorkflowId = Path(pattern=WORKFLOW_ID_PATTERN)
+VersionNo = Path(ge=1, le=1_000_000)
 
 
 def _issues(issues: list[ValidationIssue]) -> list[WorkflowIssue]:
     return [WorkflowIssue(node_id=i.node_id, path=i.path, message=i.message) for i in issues]
 
 
-def _invalid(issues: list[ValidationIssue]) -> JSONResponse:
+def _invalid(issues: list[ValidationIssue], message: str = "The workflow is invalid.") -> JSONResponse:
     """422 with every issue, so the builder can mark each node."""
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         content={
             "detail": {
-                "message": "The workflow is invalid.",
+                "message": message,
                 "errors": [issue.as_dict() for issue in issues],
             }
         },
@@ -155,3 +165,57 @@ async def delete_owner_workflow(owner_user_id: str = OwnerId, workflow_id: str =
     except WorkflowNotFound as exc:
         raise _not_found() from exc
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# -- history -----------------------------------------------------------------------
+
+
+@router.get("/workflows/{owner_user_id}/{workflow_id}/versions", response_model=WorkflowVersionPage)
+async def list_owner_workflow_versions(
+    owner_user_id: str = OwnerId,
+    workflow_id: str = WorkflowId,
+    limit: int = Query(default=50, ge=1, le=100),
+    before: int | None = Query(default=None, ge=1, le=1_000_000),
+) -> WorkflowVersionPage:
+    """The workflow's kept versions, newest first, each with a short summary."""
+    try:
+        page = await list_workflow_versions(owner_user_id, workflow_id, limit=limit, before=before)
+    except WorkflowNotFound as exc:
+        raise _not_found() from exc
+    return WorkflowVersionPage(**page)
+
+
+@router.get("/workflows/{owner_user_id}/{workflow_id}/versions/{version_no}", response_model=WorkflowVersionDetail)
+async def get_owner_workflow_version(
+    owner_user_id: str = OwnerId,
+    workflow_id: str = WorkflowId,
+    version_no: int = VersionNo,
+) -> WorkflowVersionDetail:
+    """One kept version with its whole spec (for a diff or a preview)."""
+    try:
+        return WorkflowVersionDetail(**await get_workflow_version(owner_user_id, workflow_id, version_no))
+    except WorkflowNotFound as exc:
+        raise _not_found() from exc
+
+
+@router.post(
+    "/workflows/{owner_user_id}/{workflow_id}/versions/{version_no}/restore",
+    response_model=WorkflowDetail,
+)
+async def restore_owner_workflow_version(
+    owner_user_id: str = OwnerId,
+    workflow_id: str = WorkflowId,
+    version_no: int = VersionNo,
+):
+    """Save version ``version_no``'s spec as the newest version.
+
+    The answer is the workflow as after a save (``latest_version_no`` is the
+    new version); 422 with every issue when the old spec no longer validates.
+    """
+    try:
+        detail, issues = await restore_workflow_version(owner_user_id, workflow_id, version_no)
+    except WorkflowNotFound as exc:
+        raise _not_found() from exc
+    if detail is None:
+        return _invalid(issues, "This version no longer passes today's checks, so it can't be restored.")
+    return WorkflowDetail(**detail)

@@ -808,6 +808,32 @@
     }
   },
   {
+    "kind": "join",
+    "label": "Wait for all",
+    "group": "flow",
+    "description": "Waits until every parallel path has finished, then continues once with all their results.",
+    "branches": [],
+    "dynamicBranches": false,
+    "isTrigger": false,
+    "available": true,
+    "unavailableReason": null,
+    "configSchema": {
+      "additionalProperties": false,
+      "description": "Fields every node kind's config has.\n\n``assign`` is how any node writes declared state: ``{field: template}``,\nrendered after the node ran, so its values may read the node's own result\nas ``{{output.<path>}}`` besides ``input`` / ``state`` / ``nodes``.",
+      "properties": {
+        "assign": {
+          "additionalProperties": true,
+          "description": "State fields to write after the node runs: {field: value}. Values are templates and may read {{output.<path>}}.",
+          "maxProperties": 32,
+          "title": "Assign",
+          "type": "object"
+        }
+      },
+      "title": "NodeConfig",
+      "type": "object"
+    }
+  },
+  {
     "kind": "code",
     "label": "Code",
     "group": "developer",

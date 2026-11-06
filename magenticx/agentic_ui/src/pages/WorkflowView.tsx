@@ -2,7 +2,11 @@ import { motion, type Variants } from "framer-motion";
 import { useParams } from "react-router-dom";
 
 import WorkflowViewPage from "@/features/workflows/components/WorkflowViewPage";
-import { workflowEditPath, workflowRunPath } from "@/features/workflows/lib/routes";
+import {
+  workflowEditPath,
+  workflowHistoryPath,
+  workflowRunPath,
+} from "@/features/workflows/lib/routes";
 
 import { useChatWorkspaceContext } from "@/app/workspaceContext";
 
@@ -48,6 +52,7 @@ export default function WorkflowView() {
         runId={runId ?? null}
         onSelectRun={(id) => navigate(workflowRunPath(workflowId, id))}
         onEdit={() => navigate(workflowEditPath(workflowId))}
+        onHistory={() => navigate(workflowHistoryPath(workflowId))}
       />
     </motion.div>
   );

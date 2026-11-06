@@ -6,7 +6,7 @@ import type {
   WorkflowTemplateSegment,
   WorkflowTemplateSource,
 } from "@/shared/lib/types";
-import { LLM_KIND, loopBodyNodes, upstreamDistances } from "./graph";
+import { JOIN_KIND, LLM_KIND, loopBodyNodes, upstreamDistances } from "./graph";
 
 /**
  * What a templated field may read, and how a template reads to a person.
@@ -104,11 +104,25 @@ function llmFields(node: WorkflowNodeDef): OutputField[] {
   ];
 }
 
+/**
+ * A "Wait for all" step's output: one entry per parallel path, keyed by the
+ * path's last step (`{a_set: …, b_set: …}`), named after that step.
+ */
+function joinFields(node: WorkflowNodeDef, spec: WorkflowSpec): OutputField[] {
+  return spec.edges
+    .filter((edge) => edge.target === node.id)
+    .map((edge) => {
+      const source = spec.nodes.find((other) => other.id === edge.source);
+      return { key: edge.source, label: source?.label?.trim() || edge.source, hint: "any" };
+    });
+}
+
 /** A node's known output paths below `prefix` (`nodes.poll.output` or `output`), the whole result last. */
 function outputEntries(
   node: WorkflowNodeDef,
   prefix: string,
   base: Pick<WorkflowTemplatePath, "group" | "source" | "nodeId" | "kind">,
+  spec: WorkflowSpec,
 ): WorkflowTemplatePath[] {
   const trigger = node.kind.startsWith("trigger.");
   // A trigger's output is the run's inputs, which `input.<name>` already offers:
@@ -117,7 +131,9 @@ function outputEntries(
     ? []
     : node.kind === LLM_KIND
       ? llmFields(node)
-      : (OUTPUT_FIELDS[node.kind] ?? []);
+      : node.kind === JOIN_KIND
+        ? joinFields(node, spec)
+        : (OUTPUT_FIELDS[node.kind] ?? []);
   const entries: WorkflowTemplatePath[] = fields.map((field) => ({
     ...base,
     path: `${prefix}.${field.key}`,
@@ -151,7 +167,7 @@ export function templatePaths(
   if (nodeId) {
     if (options.inAssign) {
       const self = spec.nodes.find((node) => node.id === nodeId);
-      if (self) paths.push(...outputEntries(self, "output", { group: "output", source: SOURCE_SELF }));
+      if (self) paths.push(...outputEntries(self, "output", { group: "output", source: SOURCE_SELF }, spec));
     }
     const distances = upstreamDistances(nodeId, spec.edges);
     const looped = loopBodyNodes(spec);
@@ -164,7 +180,7 @@ export function templatePaths(
       );
     for (const node of before) {
       const base = { group: "node" as const, source: node.label?.trim() || node.id, nodeId: node.id, kind: node.kind };
-      const entries = outputEntries(node, `nodes.${node.id}.output`, base);
+      const entries = outputEntries(node, `nodes.${node.id}.output`, base, spec);
       if (looped.has(node.id)) {
         // Ahead of the whole result: every execution's output, which the steps after the loop need.
         entries.splice(entries.length - 1, 0, {

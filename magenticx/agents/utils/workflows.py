@@ -93,6 +93,63 @@ async def update_workflow(
     return await get_workflow(owner_user_id, workflow_id), []
 
 
+async def list_workflow_versions(
+    owner_user_id: str, workflow_id: str, *, limit: int, before: int | None
+) -> dict[str, Any]:
+    """One page of the workflow's history, newest first, with the next page's key."""
+    rows = await workflow_store().list_versions(owner_user_id, workflow_id, limit=limit, before=before)
+    if rows is None:
+        raise WorkflowNotFound(workflow_id)
+    # A full page may have more behind it; the oldest number shown is the key.
+    oldest = rows[-1]["version_no"] if rows else None
+    next_before = oldest if len(rows) >= limit and oldest is not None and oldest > 1 else None
+    return {"items": rows, "next_before": next_before}
+
+
+async def get_workflow_version(owner_user_id: str, workflow_id: str, version_no: int) -> dict[str, Any]:
+    """One kept version with its spec (404 for another owner's or a missing one)."""
+    row = await workflow_store().get_version_detail(owner_user_id, workflow_id, version_no)
+    if row is None:
+        raise WorkflowNotFound(workflow_id)
+    return row
+
+
+async def restore_workflow_version(
+    owner_user_id: str, workflow_id: str, version_no: int
+) -> tuple[dict[str, Any] | None, list[ValidationIssue]]:
+    """Save an old version's spec as the newest version — never rewrite history.
+
+    The old spec is validated again with today's rules and live catalogue: a
+    step kind or MCP tool may have gone since it was saved, and a restore must
+    never store what a save would refuse (the issues come back instead). A
+    spec equal to the newest one adds no version (the store's save rule).
+    """
+    row = await workflow_store().get_version_detail(owner_user_id, workflow_id, version_no)
+    if row is None:
+        raise WorkflowNotFound(workflow_id)
+    spec, issues = await validate_workflow(row["spec"])
+    if spec is None:
+        logger.info(
+            "workflow_restore_refused",
+            "An old workflow version no longer validates",
+            workflow_id=workflow_id,
+            version_no=version_no,
+            issue_count=len(issues),
+        )
+        return None, issues
+    latest = await workflow_store().update(owner_user_id, workflow_id, spec, restored_from=version_no)
+    if latest is None:
+        raise WorkflowNotFound(workflow_id)
+    logger.info(
+        "workflow_version_restored",
+        "Workflow version restored as a new version",
+        workflow_id=workflow_id,
+        restored_from=version_no,
+        latest_version_no=latest,
+    )
+    return await get_workflow(owner_user_id, workflow_id), []
+
+
 async def delete_workflow(owner_user_id: str, workflow_id: str) -> None:
     if not await workflow_store().delete(owner_user_id, workflow_id):
         raise WorkflowNotFound(workflow_id)
@@ -152,8 +209,11 @@ __all__ = [
     "create_workflow",
     "delete_workflow",
     "get_workflow",
+    "get_workflow_version",
+    "list_workflow_versions",
     "list_workflows",
     "open_workflow_run",
+    "restore_workflow_version",
     "update_workflow",
     "validate_workflow",
     "workflow_store",

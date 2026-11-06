@@ -68,21 +68,6 @@ export const currentVersion = (
   versions: AgentVersionSummary[] | null,
 ): AgentVersionSummary | null => versions?.find((v) => v.current) ?? versions?.[0] ?? null;
 
-/** A version's date and time in the viewer's locale, or null when unreadable. */
-export const formatVersionTime = (iso: string | null): string | null => {
-  if (!iso) return null;
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime())
-    ? null
-    : d.toLocaleString([], {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-};
-
 /** One item of a list field, keyed for comparison and labelled for display. */
 export type ListItem = { key: string; label: string };
 

@@ -8,7 +8,9 @@ their outputs as one JSON list — appended to the ``llm`` prompt, or as
 
 Modes (``StepContext.mode``):
 
-``previous``  the step that executed last before this one (default)
+``previous``  the step that led here: the newest execution among the steps
+              connected into this one (on a parallel path the newest step
+              overall can be on another path); else the newest step (default)
 ``last``      the last ``count`` distinct steps that executed, oldest first
 ``steps``     the named steps, in the given order — those that have not run
               (yet, or on a branch not taken) are skipped
@@ -65,11 +67,17 @@ class StepContext(BaseModel):
     )
 
 
-def _selected_ids(ctx_spec: StepContext, state: Mapping[str, Any], self_id: str) -> list[str]:
+def _selected_ids(
+    ctx_spec: StepContext,
+    state: Mapping[str, Any],
+    self_id: str,
+    predecessors: frozenset[str] = frozenset(),
+) -> list[str]:
     """The node ids to include, oldest first (``steps``: as listed).
 
     Only nodes with a record in ``state["nodes"]`` qualify — a step that never
-    ran has nothing to pass on.
+    ran has nothing to pass on. ``predecessors`` are the steps with an edge
+    into ``self_id`` (for ``previous``).
     """
     records = state.get("nodes") or {}
     history = state.get("history") or []  # a pre-history checkpoint lacks it
@@ -77,6 +85,11 @@ def _selected_ids(ctx_spec: StepContext, state: Mapping[str, Any], self_id: str)
         return []
     if ctx_spec.mode == "steps":
         return [step for step in ctx_spec.steps if step in records]
+    if ctx_spec.mode == "previous":
+        for entry in reversed(history):
+            node_id = entry.get("node") if isinstance(entry, Mapping) else None
+            if node_id in predecessors and node_id != self_id and node_id in records:
+                return [node_id]
     wanted = 1 if ctx_spec.mode == "previous" else ctx_spec.count
     picked: list[str] = []
     for entry in reversed(history):
@@ -105,7 +118,8 @@ def gather_context(
     """
     records = state.get("nodes") or {}
     entries: list[dict[str, Any]] = []
-    for node_id in _selected_ids(ctx_spec, state, self_id):
+    predecessors = frozenset(edge.source for edge in spec.edges if edge.target == self_id)
+    for node_id in _selected_ids(ctx_spec, state, self_id, predecessors):
         node = spec.node(node_id)
         if node is None:
             continue

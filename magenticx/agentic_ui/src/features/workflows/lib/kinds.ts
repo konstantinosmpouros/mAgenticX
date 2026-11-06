@@ -7,6 +7,7 @@ import {
   CodeXml,
   Flag,
   GitBranch,
+  GitMerge,
   Globe,
   Play,
   Repeat,
@@ -42,6 +43,7 @@ export type WorkflowKindCategory =
   | "loop"
   | "approval"
   | "wait"
+  | "join"
   | "notify"
   | "transform"
   | "end"
@@ -76,6 +78,8 @@ export const KIND_META: Record<WorkflowKindCategory, Omit<WorkflowKindMeta, "cat
   loop: { icon: Repeat, accent: "var(--info)" },
   approval: { icon: ShieldCheck, accent: "var(--primary-glow)" },
   wait: { icon: Timer, accent: "var(--muted-foreground)" },
+  // "Wait for all": where parallel paths meet.
+  join: { icon: GitMerge, accent: "var(--warning)" },
   notify: { icon: Bell, accent: "var(--primary-glow)" },
   transform: { icon: Braces, accent: "var(--info)" },
   end: { icon: Flag, accent: "var(--muted-foreground)" },
@@ -90,6 +94,7 @@ const KIND_MATCHERS: Array<[RegExp, WorkflowKindCategory]> = [
   [/condition|if$|^if\./, "condition"],
   [/router|switch/, "router"],
   [/loop|foreach|repeat|while/, "loop"],
+  [/^join$|merge|barrier/, "join"],
   [/wait|delay|sleep/, "wait"],
   [/fetch|http|request|webhook/, "fetch"],
   // `llm` (and a prompt-shaped kind) is one model call, not an agent run.
@@ -132,6 +137,7 @@ const KIND_BLURBS: Record<string, string> = {
   llm: "Ask a model, get text or JSON",
   set: "Save values into variables",
   wait: "Pause for a while",
+  join: "Wait until parallel paths finish",
   code: "Run Python in the sandbox",
 };
 

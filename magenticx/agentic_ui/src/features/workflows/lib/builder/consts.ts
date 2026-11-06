@@ -97,7 +97,7 @@ export const REDUCER_HINTS: Record<(typeof REDUCERS)[number], string> = {
 export const SCHEDULE_KIND_TABS: ReadonlyArray<{ id: ScheduleKind; label: string; icon: LucideIcon }> = [
   { id: "one_off", label: "Once", icon: Timer },
   { id: "interval", label: "Every…", icon: Repeat },
-  { id: "cron", label: "Custom (cron)", icon: CalendarDays },
+  { id: "cron", label: "Cron", icon: CalendarDays },
 ];
 
 /** One-click cron expressions for the schedule trigger's Custom tab. */
@@ -168,5 +168,10 @@ export const TEMPLATE_CHIP_INVALID =
 export const TEMPLATE_CHIP_SOURCE = "min-w-0 max-w-[7rem] flex-shrink truncate text-primary/70";
 export const TEMPLATE_CHIP_SEP = "flex-shrink-0 text-primary/40";
 
-/** Where the inspector's "Data from earlier steps" fold is remembered on this device. */
-export const DATA_PANEL_OPEN_STORAGE_KEY = "magenticx:workflow-builder:data-panel-open";
+/**
+ * Kinds whose "Save to a variable" is hidden: a trigger's inputs read as
+ * `input.*`, a join's or set's result as `nodes.<id>.output`, a set step
+ * already writes variables, and wait / end have nothing worth saving.
+ * A value saved before (an import) still shows, so it can be removed.
+ */
+export const NO_ASSIGN_KINDS: ReadonlySet<string> = new Set(["join", "set", "wait", "end"]);

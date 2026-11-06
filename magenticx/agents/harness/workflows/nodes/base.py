@@ -168,7 +168,7 @@ class WorkflowNode(ABC):
     is_trigger: ClassVar[bool] = False
     #: Whether the config's string values are templates rendered before each
     #: execution. A kind whose config is static data (``trigger.schedule``: a
-    #: cadence and literal run inputs) sets it false, so a literal ``{{`` in a
+    #: cadence) sets it false, so a literal ``{{`` in a
     #: value is neither checked as a reference nor substituted.
     templated: ClassVar[bool] = True
     #: Top-level config keys that are never templated in a templated kind —
@@ -413,8 +413,9 @@ class WorkflowNode(ABC):
             )
             raise WorkflowNodeError(self.id, error["message"], code=error["code"]) from exc
 
-        # Built from the current record: a workflow runs one path at a time, so
-        # nothing else writes this node's record concurrently. ``.get(...) or``
+        # Built from the current record: a step sits on one path only (the
+        # validator keeps parallel paths disjoint), so nothing else writes this
+        # node's record concurrently. ``.get(...) or``
         # because a checkpoint from before ``outputs`` existed lacks it.
         previous = (state.get("nodes") or {}).get(self.id) or {}
         outputs = [*(previous.get("outputs") or []), self.history_entry(result.output)][-MAX_OUTPUT_HISTORY:]

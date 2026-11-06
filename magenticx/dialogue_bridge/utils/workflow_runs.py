@@ -350,7 +350,7 @@ async def start_workflow_run(
     ``workflow`` instead of reading it twice.
 
     ``trigger_kind`` is ``manual`` ("Run now") or ``schedule`` (a scheduler
-    fire, whose ``inputs`` are the trigger node's static ones); the engine is
+    fire, which passes no ``inputs``: the engine fills the spec's defaults); the engine is
     told, and its trigger node reports it.
     """
     if workflow is None:

@@ -63,3 +63,10 @@ export const SECONDARY_BUTTON =
 /** A small icon-only button (copy, fold). */
 export const ICON_BUTTON =
   "inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] supports-[hover:hover]:hover:text-foreground";
+
+/** The History panel's soft surface: the agent history's SoftPanel, rounded and faintly tinted. */
+export const HISTORY_PANEL = "rounded-[1.4rem] bg-muted/30";
+
+/** The History panel's row actions: the secondary pill with tighter padding and text for the narrow drawer. */
+export const HISTORY_ROW_BUTTON =
+  "inline-flex min-h-[2.5rem] flex-shrink-0 items-center gap-1.5 rounded-full border border-border/70 bg-card/60 px-3 py-1.5 text-[13px] font-medium text-foreground transition-colors disabled:pointer-events-none disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))]";

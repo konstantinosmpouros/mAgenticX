@@ -18,9 +18,10 @@ something to check):
    own checks.
 5. Graph: exactly one trigger (``trigger.manual`` or ``trigger.schedule``); edges between existing nodes; nothing into the
    trigger; nothing out of an ``end``; a branch label exactly when the source
-   branches, one of its branches, at most one edge per (source, branch) — a
-   workflow runs one path at a time; every node reachable from the trigger; no
-   cycle except through a ``loop`` node's ``continue`` edge.
+   branches, one of its branches, at most one edge per (source, branch);
+   several plain edges from one node start parallel paths, which must meet at
+   one ``join`` (``_parallel_issues``); every node reachable from the trigger;
+   no cycle except through a ``loop`` node's ``continue`` edge.
 6. References: every template and rule path names an existing input, state
    field or node; ``assign`` writes only declared state fields.
 """
@@ -36,6 +37,7 @@ from pydantic import ValidationError
 from harness.workflows.errors import TemplateError
 from harness.workflows.nodes import NODE_KINDS, ValidationContext, WorkflowNode
 from harness.workflows.nodes.end import EndNode
+from harness.workflows.nodes.join import JoinNode
 from harness.workflows.nodes.loop import LoopNode
 from harness.workflows.spec import (
     MAX_NODES,
@@ -224,6 +226,7 @@ def _graph_issues(spec: WorkflowSpec, instances: dict[str, WorkflowNode]) -> lis
 
     adjacency: dict[str, list[tuple[str, str | None]]] = defaultdict(list)
     used: set[tuple[str, str | None]] = set()
+    plain_pairs: set[tuple[str, str]] = set()
     for index, edge in enumerate(spec.edges):
         path = f"edges[{index}]"
         if edge.source not in node_ids:
@@ -255,13 +258,19 @@ def _graph_issues(spec: WorkflowSpec, instances: dict[str, WorkflowNode]) -> lis
             issues.append(
                 ValidationIssue(edge.source, f"{path}.branch", f"Unknown branch '{edge.branch}' (expected: {', '.join(branches)}).")
             )
+        # A branch leads to one step. Plain edges may be several: they start
+        # parallel paths (checked by ``_parallel_issues``), but never the same
+        # target twice.
         key = (edge.source, edge.branch)
-        if key in used:
-            label = f"branch '{edge.branch}'" if edge.branch else "an outgoing edge"
+        if edge.branch is not None and key in used:
             issues.append(
-                ValidationIssue(edge.source, path, f"'{edge.source}' already has {label}; a workflow runs one path at a time.")
+                ValidationIssue(edge.source, path, f"'{edge.source}' already has branch '{edge.branch}'; a branch leads to one step.")
             )
+        elif edge.branch is None and (edge.source, edge.target) in plain_pairs:
+            issues.append(ValidationIssue(edge.source, path, f"'{edge.source}' is already connected to '{edge.target}'."))
         used.add(key)
+        if edge.branch is None:
+            plain_pairs.add((edge.source, edge.target))
 
     for node_id, instance in instances.items():
         if isinstance(instance, LoopNode) and (node_id, "continue") not in used:
@@ -283,6 +292,115 @@ def _graph_issues(spec: WorkflowSpec, instances: dict[str, WorkflowNode]) -> lis
                 f"Cycle {' -> '.join(cycle)} does not go through a loop's 'continue' edge.",
             )
         )
+    else:
+        issues += _parallel_issues(spec)
+    return issues
+
+
+def _parallel_issues(spec: WorkflowSpec) -> list[ValidationIssue]:
+    """Parallel paths must be safe to wait for.
+
+    A step with two or more plain outgoing edges (a *fork*) starts each target
+    at once. From each target a *path* runs to one ``join`` ("Wait for all"),
+    which the compiler wires as a barrier: it runs once every path has
+    arrived. So every path must be sure to arrive, exactly once:
+
+    * a path is a straight chain — each step on it is reached only from the
+      path, has one plain outgoing edge, does not branch (no condition, router,
+      loop or approval) and is not an end;
+    * no fork inside a path (nested parallel paths are not supported yet);
+    * every path of a fork ends at the same join, which nothing else leads into;
+    * a join closes exactly one fork's paths.
+
+    Runs only on an acyclic-but-for-loops graph (the cycle check passed), and
+    walks only well-formed edges.
+    """
+    issues: list[ValidationIssue] = []
+    kinds = {n.id: NODE_KINDS.get(n.kind) for n in spec.nodes}
+    plain_out: dict[str, list[str]] = defaultdict(list)
+    incoming: dict[str, list[str]] = defaultdict(list)
+    for edge in spec.edges:
+        if edge.source not in kinds or edge.target not in kinds:
+            continue
+        incoming[edge.target].append(edge.source)
+        if edge.branch is None:
+            plain_out[edge.source].append(edge.target)
+
+    def is_join(node_id: str) -> bool:
+        return kinds.get(node_id) is JoinNode
+
+    def step_problem(node_id: str) -> str | None:
+        cls = kinds.get(node_id)
+        if cls is None:
+            return ""  # unknown kind: already reported on the node
+        if cls.branches or cls.dynamic_branches:
+            return (
+                "A step on a parallel path can't branch (condition, router, loop or approval). "
+                "Put it before the paths split or after 'Wait for all'."
+            )
+        if cls is EndNode:
+            return "Parallel paths must meet at a 'Wait for all' step before the end."
+        if len(incoming[node_id]) != 1:
+            return "A step on a parallel path can only be reached from that path."
+        if len(plain_out[node_id]) > 1:
+            return "A parallel path can't split again (nested parallel paths are not supported yet)."
+        if not plain_out[node_id]:
+            return "This parallel path stops here; lead it into a 'Wait for all' step."
+        return None
+
+    closed: set[str] = set()
+    for fork, targets in list(plain_out.items()):
+        cls = kinds.get(fork)
+        if len(targets) < 2 or cls is None or cls.branches or cls.dynamic_branches:
+            continue  # a branching step's plain edges are already an error
+        joins: set[str] = set()
+        ends: list[str] = []
+        complete = True
+        for target in targets:
+            node, previous, seen = target, fork, set()
+            while not is_join(node):
+                problem = step_problem(node)
+                if problem is not None or node in seen:
+                    if problem:
+                        issues.append(ValidationIssue(node, "edges", problem))
+                    complete = False
+                    break
+                seen.add(node)
+                previous, node = node, plain_out[node][0]
+            else:
+                if previous == fork:
+                    issues.append(
+                        ValidationIssue(fork, "edges", "Each parallel path needs at least one step before 'Wait for all'.")
+                    )
+                    complete = False
+                joins.add(node)
+                ends.append(previous)
+        if not complete:
+            continue
+        if len(joins) != 1:
+            issues.append(
+                ValidationIssue(fork, "edges", "The parallel paths that start here must all end at the same 'Wait for all' step.")
+            )
+            continue
+        join = joins.pop()
+        if sorted(incoming[join]) != sorted(ends):
+            issues.append(
+                ValidationIssue(join, "edges", "Only the parallel paths that start at one step may lead into this 'Wait for all'.")
+            )
+        closed.add(join)
+
+    # Only when the paths themselves are fine: a broken path already explains
+    # why its join is not closed.
+    for node in spec.nodes if not issues else ():
+        if is_join(node.id) and node.id not in closed:
+            issues.append(
+                ValidationIssue(
+                    node.id,
+                    "edges",
+                    "'Wait for all' joins parallel paths: connect one step to two or more steps, "
+                    "and lead each of those paths here.",
+                )
+            )
     return issues
 
 

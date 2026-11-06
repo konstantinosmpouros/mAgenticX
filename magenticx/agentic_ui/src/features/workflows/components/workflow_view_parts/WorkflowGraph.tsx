@@ -21,7 +21,7 @@ import type {
   WorkflowSchedule,
   WorkflowSpec,
 } from "@/shared/lib/types";
-import { GRAPH_FIT_VIEW } from "@/features/workflows/lib/consts";
+import { graphFitView } from "@/features/workflows/lib/consts";
 import {
   buildWorkflowFlow,
   type WorkflowFlowEdge,
@@ -59,6 +59,11 @@ export type WorkflowGraphProps = {
   onSelectNode: (nodeId: string) => void;
   /** The workflow's live schedule: the schedule trigger's card shows its next run. */
   schedule?: WorkflowSchedule | null;
+  /**
+   * How much of the canvas's right edge something covers (px) — the builder's
+   * History drawer while a version is previewed — so the graph frames clear of it.
+   */
+  rightInset?: number;
 };
 
 function GraphCanvas({
@@ -68,9 +73,11 @@ function GraphCanvas({
   selectedNodeId,
   onSelectNode,
   schedule = null,
+  rightInset = 0,
 }: WorkflowGraphProps) {
   const reduceMotion = useReducedMotion() ?? false;
   const { fitView } = useReactFlow();
+  const fitOptions = React.useMemo(() => graphFitView(rightInset), [rightInset]);
   const { nodes, edges } = React.useMemo(
     () =>
       buildWorkflowFlow({ spec, view, catalog, selectedNodeId, animate: !reduceMotion, schedule }),
@@ -85,10 +92,10 @@ function GraphCanvas({
     if (count === fittedCount.current) return;
     fittedCount.current = count;
     const frame = window.requestAnimationFrame(() => {
-      void fitView({ ...GRAPH_FIT_VIEW, duration });
+      void fitView({ ...fitOptions, duration });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [count, duration, fitView]);
+  }, [count, duration, fitView, fitOptions]);
 
   const nodeIdFromEvent = (event: React.SyntheticEvent): string | null => {
     const target = event.target as HTMLElement;
@@ -115,7 +122,7 @@ function GraphCanvas({
         edgeTypes={EDGE_TYPES}
         onNodeClick={(_, node) => onSelectNode(node.id)}
         fitView
-        fitViewOptions={GRAPH_FIT_VIEW}
+        fitViewOptions={fitOptions}
         minZoom={0.2}
         maxZoom={1.75}
         nodesDraggable={false}
@@ -140,7 +147,7 @@ function GraphCanvas({
         <Controls
           position="bottom-left"
           showInteractive={false}
-          fitViewOptions={{ ...GRAPH_FIT_VIEW, duration }}
+          fitViewOptions={{ ...fitOptions, duration }}
           className="agent-map-flow-controls"
         />
       </ReactFlow>

@@ -21,6 +21,8 @@ export const ROUTER_KIND = "router";
 export const LLM_KIND = "llm";
 /** The sandboxed snippet step (its context arrives as `steps`, a key its inputs can't use). */
 export const CODE_KIND = "code";
+/** "Wait for all": where parallel paths meet; its output is keyed by each path's last step. */
+export const JOIN_KIND = "join";
 /** The branch of a loop that may lead back into the loop's body (the back-edge). */
 export const LOOP_CONTINUE = "continue";
 
@@ -147,8 +149,10 @@ export function loopBodyNodes(spec: Pick<WorkflowSpec, "nodes" | "edges">): Set<
  * Whether an edge from `source` (on `branch`) to `target` may be added — the
  * instant check behind dropping a connection on the canvas. Refused: a self
  * edge, an unknown end, anything into the trigger or out of an `end`, a
- * missing or unknown branch, a second edge on the same (source, branch), the
- * same edge twice, and a cycle that does not pass through a loop's `continue`.
+ * missing or unknown branch, a second edge on the same branch (a branch leads
+ * to one step), the same edge twice, and a cycle that does not pass through a
+ * loop's `continue`. Several plain edges from one step are fine: they start
+ * parallel paths (the server checks that they meet at a "Wait for all").
  */
 export function canConnect(
   spec: Pick<WorkflowSpec, "nodes" | "edges">,
@@ -169,17 +173,12 @@ export function canConnect(
   }
   if (!branches.length && branch) return { ok: false, reason: "This step does not branch." };
   if (branch && !branches.includes(branch)) return { ok: false, reason: `Unknown branch '${branch}'.` };
-  const existing = spec.edges.find(
-    (edge) => edge.source === source && (edge.branch ?? null) === branch,
-  );
-  if (existing) {
-    if (existing.target === target) return { ok: false, reason: "These steps are already connected." };
-    return {
-      ok: false,
-      reason: branch
-        ? `'${branch}' already leads somewhere: a workflow runs one path at a time.`
-        : "This step already leads somewhere: a workflow runs one path at a time.",
-    };
+  const fromHere = spec.edges.filter((edge) => edge.source === source && (edge.branch ?? null) === branch);
+  if (fromHere.some((edge) => edge.target === target)) {
+    return { ok: false, reason: "These steps are already connected." };
+  }
+  if (branch && fromHere.length) {
+    return { ok: false, reason: `'${branch}' already leads somewhere: a branch leads to one step.` };
   }
   const cycle = findCycle({
     nodes: spec.nodes,

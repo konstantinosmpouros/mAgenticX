@@ -1,9 +1,9 @@
 import { motion, type Variants } from "framer-motion";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import WorkflowBuilderPage from "@/features/workflows/components/builder/WorkflowBuilderPage";
 import { automationsAreaPath } from "@/features/automations/lib/routes";
-import { workflowEditPath, workflowPath } from "@/features/workflows/lib/routes";
+import { HISTORY_PANEL_PARAM, workflowEditPath, workflowPath } from "@/features/workflows/lib/routes";
 
 import { useChatWorkspaceContext } from "@/app/workspaceContext";
 
@@ -32,11 +32,15 @@ const PAGE_FADE: Variants = {
  * delete — or leaving a workflow never saved — returns to the Automations
  * page's Workflows area, where workflows are listed and created. Leaving a
  * saved workflow opens its view (the back button is labelled with its name).
+ * `?panel=history` (the workflow view's History link) opens the builder with
+ * its History panel showing.
  */
 export default function WorkflowBuilderView() {
   const { reduceMotion, workflows } = useChatWorkspaceContext();
   const navigate = useNavigate();
   const { workflowId } = useParams();
+  const [searchParams] = useSearchParams();
+  const initialPanel = searchParams.get("panel") === HISTORY_PANEL_PARAM ? "history" : null;
 
   return (
     <motion.div
@@ -54,6 +58,7 @@ export default function WorkflowBuilderView() {
         onOpenView={(id) => navigate(workflowPath(id))}
         onDeleted={() => navigate(automationsAreaPath("workflows"), { replace: true })}
         onExit={(id) => navigate(id ? workflowPath(id) : automationsAreaPath("workflows"))}
+        initialPanel={initialPanel}
       />
     </motion.div>
   );

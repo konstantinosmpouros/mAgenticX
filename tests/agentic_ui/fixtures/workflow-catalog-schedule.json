@@ -2,10 +2,12 @@
   "kind": "trigger.schedule",
   "label": "Schedule",
   "group": "trigger",
-  "description": "Starts the workflow on a schedule (once, every N seconds, or on a cron expression) with fixed inputs; it can still be run by hand. Output: {trigger, firedAt, inputs}.",
+  "description": "Starts the workflow on a schedule; it can still be run by hand. Scheduled runs use each input's default.",
   "branches": [],
   "dynamicBranches": false,
   "isTrigger": true,
+  "available": true,
+  "unavailableReason": null,
   "configSchema": {
     "$defs": {
       "ScheduleSpec": {
@@ -62,7 +64,7 @@
       }
     },
     "additionalProperties": false,
-    "description": "When the workflow runs on its own, and with which inputs.",
+    "description": "When the workflow runs on its own.",
     "properties": {
       "assign": {
         "additionalProperties": true,
@@ -99,13 +101,6 @@
         "default": null,
         "description": "IANA timezone a cron expression is read in (default UTC). Ignored by the other kinds.",
         "title": "Timezone"
-      },
-      "inputs": {
-        "additionalProperties": true,
-        "description": "Run inputs of a scheduled run: {input name: literal value}. Not templated.",
-        "maxProperties": 32,
-        "title": "Inputs",
-        "type": "object"
       },
       "enabled": {
         "default": true,

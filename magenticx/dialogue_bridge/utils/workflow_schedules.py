@@ -20,7 +20,9 @@ materialisation its scheduler polls:
   firing. A fire is an ordinary run (``trigger_kind = 'schedule'``) through
   :func:`utils.workflow_runs.start_workflow_run`; while the workflow already
   has a live run the fire is recorded ``skipped``. A one-off is ``finished``
-  once fired.
+  once fired. A fire passes no inputs: the engine fills each of the spec's
+  ``inputs`` from its default (a legacy ``inputs`` on the trigger config is
+  ignored).
 
 Kept out of ``scheduled_tasks`` on purpose: the Automations → Schedules list
 (agent + prompt schedules) never mixes the two, and a workflow schedule is
@@ -89,10 +91,9 @@ class DesiredSchedule:
     kind: str
     spec: dict[str, Any]
     timezone: str | None
-    inputs: dict[str, Any]
 
     def same_cadence(self, row: WorkflowScheduleTable) -> bool:
-        """Whether the row already runs on this cadence (inputs aside)."""
+        """Whether the row already runs on this cadence."""
         return (
             row.schedule_kind == self.kind
             and (row.schedule_spec or {}) == self.spec
@@ -168,7 +169,6 @@ def desired_schedule(spec: dict[str, Any] | None) -> DesiredSchedule | None:
         kind=trigger.schedule_kind,
         spec=schedule,
         timezone=timezone_value,
-        inputs=dict(trigger.inputs),
     )
 
 
@@ -203,14 +203,14 @@ async def _apply(
             schedule_kind=desired.kind,
             schedule_spec=desired.spec,
             timezone=desired.timezone,
-            inputs=desired.inputs,
+            inputs={},  # kept column; a fire passes no inputs
             status="active" if next_run is not None else "finished",
             next_run_at=next_run,
             run_count=0,
         ))
         return
     row.node_id = desired.node_id
-    row.inputs = desired.inputs
+    row.inputs = {}  # clears what an older row stored
     if desired.same_cadence(row):
         return  # keep next_run_at and status: a re-save does not reset the clock
     row.schedule_kind = desired.kind
@@ -414,7 +414,7 @@ async def fire_workflow_schedule(workflow_id: str) -> None:
             return
         try:
             run = await start_workflow_run(
-                db, user_id, workflow_id, desired.inputs, trigger_kind="schedule", workflow=workflow
+                db, user_id, workflow_id, {}, trigger_kind="schedule", workflow=workflow
             )
         except HTTPException as exc:
             await db.rollback()

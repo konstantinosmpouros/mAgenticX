@@ -10,7 +10,6 @@ import type { AgentHistoryHandlers } from "@/features/agents/hooks/useAgentHisto
 import {
   compareVersions,
   currentVersion,
-  formatVersionTime,
   isEmptyComparison,
   versionKindLabel,
   versionSummary,
@@ -18,9 +17,9 @@ import {
 import { PRIMARY_BUTTON, SECONDARY_BUTTON } from "@/features/agents/lib/styles";
 import { SoftPanel } from "@/features/settings/components/profile_parts/shared";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
-import { layoutVersionGraph } from "@/features/agents/lib/versionGraph";
+import { formatVersionTime, layoutVersionGraph, railWidth } from "@/shared/lib/versionHistory";
+import { VersionGraphRail } from "@/shared/ui/version-graph-rail";
 import { VersionChanges } from "./VersionChanges";
-import { VersionGraphRail, railWidth } from "./VersionGraphRail";
 
 /**
  * The agent page's History section (your own agents only): every save kept as

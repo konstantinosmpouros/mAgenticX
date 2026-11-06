@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { layoutVersionGraph, parentOf } from "@/features/agents/lib/versionGraph";
+import { layoutVersionGraph, parentOf } from "@/shared/lib/versionHistory";
 import type { AgentVersionSummary } from "@/shared/lib/types";
 
 /**

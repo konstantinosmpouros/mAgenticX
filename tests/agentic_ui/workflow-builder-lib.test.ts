@@ -266,7 +266,7 @@ describe("connect check", () => {
     return spec;
   };
 
-  it("refuses self, into the trigger, out of an end, wrong branches and a second edge", () => {
+  it("refuses self, into the trigger, out of an end, wrong branches and a second edge on a branch", () => {
     const spec = base();
     expect(canConnect(spec, catalog, { source: "poll", target: "poll", branch: null }).ok).toBe(false);
     expect(canConnect(spec, catalog, { source: "poll", target: "start", branch: null })).toEqual({
@@ -276,7 +276,14 @@ describe("connect check", () => {
     expect(canConnect(spec, catalog, { source: "finish", target: "ok", branch: null }).ok).toBe(false);
     expect(canConnect(spec, catalog, { source: "done", target: "finish", branch: null }).ok).toBe(false);
     expect(canConnect(spec, catalog, { source: "done", target: "finish", branch: "true" }).ok).toBe(false);
-    expect(canConnect(spec, catalog, { source: "poll", target: "finish", branch: null }).ok).toBe(false);
+    // A second plain connection starts parallel paths; the same one twice does not.
+    expect(canConnect(spec, catalog, { source: "poll", target: "finish", branch: null })).toEqual({ ok: true });
+    const existing = spec.edges.find((edge) => edge.source === "poll" && !edge.branch);
+    expect(existing).toBeDefined();
+    expect(canConnect(spec, catalog, { source: "poll", target: existing!.target, branch: null })).toEqual({
+      ok: false,
+      reason: "These steps are already connected.",
+    });
   });
 
   it("allows a back-edge only through a loop's continue", () => {
@@ -506,5 +513,40 @@ describe("draft, ids, templates and values", () => {
     const touched = { ...spec, name: ` ${spec.name} `, nodes: spec.nodes.map((n) => ({ ...n, label: n.label ?? "" })) };
     expect(sameSpec(spec, touched)).toBe(true);
     expect(normalizeSpec(touched).name).toBe("Poll a job");
+  });
+});
+
+describe("parallel paths", () => {
+  const parallel = (): WorkflowSpec => ({
+    ...newWorkflowSpec(),
+    name: "parallel",
+    nodes: [
+      { id: "start", kind: "trigger.manual", label: null, config: {}, position: { x: 0, y: 0 } },
+      { id: "a", kind: "set", label: "Path A", config: { values: {} }, position: { x: 1, y: 0 } },
+      { id: "b", kind: "set", label: "Path B", config: { values: {} }, position: { x: 1, y: 1 } },
+      { id: "all", kind: "join", label: "Wait for all", config: {}, position: { x: 2, y: 0 } },
+      { id: "next", kind: "set", label: null, config: { values: {} }, position: { x: 3, y: 0 } },
+    ],
+    edges: [
+      { id: "e1", source: "start", target: "a", branch: null },
+      { id: "e2", source: "start", target: "b", branch: null },
+      { id: "e3", source: "a", target: "all", branch: null },
+      { id: "e4", source: "b", target: "all", branch: null },
+      { id: "e5", source: "all", target: "next", branch: null },
+    ],
+  });
+
+  it("does not flag a step that starts parallel paths", () => {
+    const issues = checkSpec(parallel(), catalog).filter((issue) => issue.field === "edges");
+    expect(issues).toEqual([]);
+  });
+
+  it("offers each path's result of a Wait for all, named after the path's last step", () => {
+    const paths = templatePaths(parallel(), "next").filter((entry) => entry.nodeId === "all");
+    expect(paths.map((entry) => [entry.path, entry.label])).toEqual([
+      ["nodes.all.output.a", "Path A"],
+      ["nodes.all.output.b", "Path B"],
+      ["nodes.all.output", "Whole result"],
+    ]);
   });
 });

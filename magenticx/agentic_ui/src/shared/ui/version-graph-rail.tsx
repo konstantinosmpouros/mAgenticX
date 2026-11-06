@@ -1,9 +1,5 @@
 import { cn } from "@/shared/lib/utils";
-import type { GraphRow } from "@/features/agents/lib/versionGraph";
-
-/** Horizontal space per lane, and the dot's height in the row (the title line's middle). */
-export const LANE_WIDTH = 16;
-export const NODE_Y = 20;
+import { LANE_WIDTH, NODE_Y, railWidth, type GraphRow } from "@/shared/lib/versionHistory";
 
 // One colour per lane, cycling; lane 0 is the primary line.
 const LANE_STROKES = [
@@ -17,9 +13,6 @@ const LANE_FILLS = ["bg-primary", "bg-sky-500", "bg-amber-500", "bg-emerald-500"
 
 const laneX = (lane: number) => lane * LANE_WIDTH + LANE_WIDTH / 2;
 const stroke = (lane: number) => LANE_STROKES[lane % LANE_STROKES.length];
-
-/** The rail's width for a graph of `lanes` lanes. */
-export const railWidth = (lanes: number) => Math.max(lanes, 1) * LANE_WIDTH;
 
 /**
  * One row's slice of the version graph, filling the row's height: lanes that

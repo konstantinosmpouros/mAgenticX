@@ -4,7 +4,6 @@ import { Braces, CornerDownLeft, Search, TextCursorInput, Variable } from "lucid
 import { cn } from "@/shared/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
 import type { WorkflowTemplatePath, WorkflowTemplateSource } from "@/shared/lib/types";
-import { useTemplateTarget } from "@/features/workflows/hooks/useTemplateTarget";
 import { kindMeta } from "@/features/workflows/lib/kinds";
 import { INPUT, INPUT_SM } from "@/features/workflows/lib/builder/consts";
 import {
@@ -173,8 +172,7 @@ const BARE_DROP = /^\s*\{\{\s*([^{}]+?)\s*\}\}\s*$/;
  * A text field that takes `{{placeholders}}`, shown as chips
  * (`TemplateInput`), with the picker inside its right edge inserting at the
  * caret. `bare` (a rule's path) stays a plain input whose value is the path
- * itself. Either way the field joins the inspector's data panel as a target
- * when focused.
+ * itself. The `{ }` button is how a field gets data from earlier steps.
  */
 export function TemplateField({
   id,
@@ -212,7 +210,6 @@ export function TemplateField({
     if (bare) onChange(path);
     else editor.current?.insertText(placeholder(path));
   };
-  const onTargetFocus = useTemplateTarget(insertPath);
   const helperPosition = cn("absolute right-1", small ? "top-[3px] h-6 w-6" : "top-1.5");
   return (
     <div className="relative min-w-0 flex-1">
@@ -227,7 +224,6 @@ export function TemplateField({
           aria-describedby={describedBy}
           spellCheck={false}
           onChange={(event) => onChange(event.target.value)}
-          onFocus={onTargetFocus}
           onBlur={onBlur}
           onDrop={(event) => {
             const match = BARE_DROP.exec(event.dataTransfer.getData("text/plain"));
@@ -243,7 +239,6 @@ export function TemplateField({
           id={id}
           value={value}
           onChange={onChange}
-          onFocus={onTargetFocus}
           onBlur={onBlur}
           paths={paths}
           multiline={multiline}

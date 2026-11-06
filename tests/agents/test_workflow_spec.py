@@ -455,7 +455,7 @@ def test_catalog_lists_every_kind_with_a_json_schema(wf):
     catalog = {entry["kind"]: entry for entry in wf.catalog.node_catalog()}
     assert list(catalog) == [
         "trigger.manual", "trigger.schedule", "llm", "tool", "code", "fetch", "set",
-        "condition", "router", "loop", "wait", "approval", "end",
+        "condition", "router", "loop", "wait", "join", "approval", "end",
     ]
     assert catalog["condition"]["branches"] == ["true", "false"]
     assert catalog["router"]["dynamicBranches"] is True

@@ -893,7 +893,8 @@ class WorkflowScheduleTable(Base):
     schedule_kind = Column(String, nullable=False)
     schedule_spec = Column(JSON, nullable=False, default=dict)
     timezone = Column(String, nullable=True)
-    # The literal run inputs of a scheduled fire (the node's ``inputs``).
+    # Always ``{}`` now: a fire passes no inputs (the engine fills the spec's
+    # defaults). Kept for older rows, which may still hold literal inputs.
     inputs = Column(JSON, nullable=False, default=dict)
     status = Column(String, nullable=False, server_default="active")
     # Naive UTC; NULL once the schedule is spent.

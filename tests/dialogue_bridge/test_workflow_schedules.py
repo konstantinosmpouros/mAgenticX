@@ -11,7 +11,8 @@ the suite's fakeredis. What is pinned:
   with ``lastRunStatus`` read from the newest fire's run;
 * pause / resume (404 without a schedule, ownership-scoped);
 * the scheduler: a due row fires a run with ``trigger_kind = schedule`` and
-  the static inputs, is advanced before firing, a one-off finishes, a live run
+  no inputs (the engine fills the spec's defaults; a legacy trigger
+  ``config.inputs`` is ignored), is advanced before firing, a one-off finishes, a live run
   makes the fire ``skipped``, a deleted workflow drops the row, a changed spec
   re-syncs instead of firing, a frozen account is skipped;
 * account purge and export include the table.
@@ -49,8 +50,7 @@ def _now() -> datetime:
 
 
 def _trigger(**config: Any) -> dict[str, Any]:
-    base = {"schedule_kind": "interval", "schedule_spec": {"interval_seconds": 3600},
-            "inputs": {"topic": "news"}}
+    base = {"schedule_kind": "interval", "schedule_spec": {"interval_seconds": 3600}}
     base.update(config)
     return {"id": "start", "kind": "trigger.schedule", "config": base}
 
@@ -58,7 +58,7 @@ def _trigger(**config: Any) -> dict[str, Any]:
 def _spec(trigger: dict[str, Any] | None = None) -> dict[str, Any]:
     return {
         "version": 1, "name": "Daily digest",
-        "inputs": [{"name": "topic", "type": "string", "required": True}],
+        "inputs": [{"name": "topic", "type": "string", "required": True, "default": "news"}],
         "nodes": [trigger or _trigger(), {"id": "done", "kind": "end", "config": {}}],
         "edges": [{"id": "e1", "source": "start", "target": "done"}],
     }
@@ -161,7 +161,7 @@ async def test_create_materialises_the_schedule(client, upstream, seeded_user, s
     assert schedule["lastRunStatus"] is None
 
     row = await _row(session_factory)
-    assert row.user_id == seeded_user.id and row.node_id == "start" and row.inputs == {"topic": "news"}
+    assert row.user_id == seeded_user.id and row.node_id == "start" and row.inputs == {}
     assert before + timedelta(seconds=3590) < row.next_run_at < _now() + timedelta(seconds=3610)
 
 
@@ -177,12 +177,12 @@ async def test_update_keeps_the_clock_unless_the_cadence_changes(client, upstrea
     pinned = _now() + timedelta(minutes=7)
     await _set_row(session_factory, next_run_at=pinned, status="paused")
 
-    # Inputs change only: the clock and the paused state are kept.
-    upstream.spec = _spec(_trigger(inputs={"topic": "sport"}))
+    # Same cadence (another trigger key only): the clock and the paused state are kept.
+    upstream.spec = _spec(_trigger(assign={"topic": "sport"}))
     resp = await client.put(f"/v1/workflows/{seeded_user.id}/{WF_ID}", json={"spec": upstream.spec})
     assert resp.status_code == 200 and resp.json()["schedule"]["status"] == "paused"
     row = await _row(session_factory)
-    assert row.next_run_at == pinned and row.inputs == {"topic": "sport"}
+    assert row.next_run_at == pinned and row.inputs == {}
 
     # A new cadence re-arms the clock; paused still stays paused.
     upstream.spec = _spec(_trigger(schedule_kind="cron", schedule_spec={"cron_expr": "0 8 * * *"},
@@ -331,9 +331,9 @@ async def test_a_due_schedule_fires_a_scheduled_run(client, upstream, seeded_use
     runs = await _runs(session_factory)
     assert len(runs) == 1
     run = runs[0]
-    assert run.trigger_kind == "schedule" and run.inputs == {"topic": "news"} and run.status == "succeeded"
+    assert run.trigger_kind == "schedule" and run.inputs == {} and run.status == "succeeded"
     sent = upstream.bodies[0]
-    assert sent["trigger_kind"] == "schedule" and sent["inputs"] == {"topic": "news"} and sent["fired_at"]
+    assert sent["trigger_kind"] == "schedule" and sent["inputs"] == {} and sent["fired_at"]
 
     row = await _row(session_factory)
     assert row.run_count == 1 and row.last_run_id == run.id and row.last_run_status == "started"
@@ -344,6 +344,24 @@ async def test_a_due_schedule_fires_a_scheduled_run(client, upstream, seeded_use
     # Not due any more: the next tick fires nothing.
     await _tick()
     assert len(await _runs(session_factory)) == 1
+
+
+async def test_a_legacy_trigger_inputs_is_ignored(client, upstream, seeded_user, session_factory):
+    """An older spec still carrying ``config.inputs`` schedules fine; the row
+    stores ``{}`` (clearing what an older row held) and the fire sends ``{}``."""
+    upstream.spec = _spec(_trigger(inputs={"topic": "legacy"}))
+    resp = await client.post(f"/v1/workflows/{seeded_user.id}", json={"spec": upstream.spec})
+    assert resp.status_code == 201 and resp.json()["schedule"]["status"] == "active"
+    assert (await _row(session_factory)).inputs == {}
+
+    await _set_row(session_factory, inputs={"topic": "stale"}, next_run_at=_now() - timedelta(seconds=5))
+    await _tick()
+    runs = await _runs(session_factory)
+    assert len(runs) == 1 and runs[0].inputs == {}
+    assert upstream.bodies[0]["inputs"] == {}
+
+    await client.put(f"/v1/workflows/{seeded_user.id}/{WF_ID}", json={"spec": upstream.spec})
+    assert (await _row(session_factory)).inputs == {}
 
 
 async def test_a_one_off_finishes_after_firing(client, upstream, seeded_user, session_factory):

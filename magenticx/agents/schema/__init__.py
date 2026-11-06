@@ -71,6 +71,9 @@ from schema.workflows import (
     WorkflowRunRequest,
     WorkflowSummary,
     WorkflowValidation,
+    WorkflowVersionDetail,
+    WorkflowVersionPage,
+    WorkflowVersionSummary,
     WorkflowWrite,
 )
 
@@ -138,5 +141,8 @@ __all__ = [
     "WorkflowRunRequest",
     "WorkflowSummary",
     "WorkflowValidation",
+    "WorkflowVersionDetail",
+    "WorkflowVersionPage",
+    "WorkflowVersionSummary",
     "WorkflowWrite",
 ]

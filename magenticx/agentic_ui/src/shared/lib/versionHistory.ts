@@ -1,14 +1,32 @@
-import type { AgentVersionSummary } from "@/shared/lib/types";
-
 /**
- * The History tab's version graph: each version is a dot in a lane, joined to
- * the version it was saved on top of. Two saves on top of one version (edit,
- * restore it, edit again) are two branches that meet at it.
+ * What a version history shows beside each version, shared by the custom
+ * agent's History tab and the workflow builder's History panel: the version
+ * graph (each version a dot in a lane, joined to the version it was saved on
+ * top of — two saves on top of one version are two branches that meet at it)
+ * and a version's time as the rows print it.
  *
- * Laid out like `git log --graph`, newest row first: a lane waits for the
- * version it leads down to; a row nobody waits for starts a lane of its own
- * (a branch tip); every lane waiting for a row ends in it.
+ * The graph is laid out like `git log --graph`, newest row first: a lane waits
+ * for the version it leads down to; a row nobody waits for starts a lane of
+ * its own (a branch tip); every lane waiting for a row ends in it. A history
+ * that only ever appends (a workflow's: a restore is a new version on top) is
+ * one straight lane.
  */
+
+/** The little the graph needs of a version, whatever kind of history it is in. */
+export type GraphVersion = {
+  versionNo: number;
+  /** The version it was saved on top of; null when unrecorded or the first. */
+  basedOn: number | null;
+  /** `created` / `baseline` start a history: they lead nowhere. */
+  kind: string;
+};
+
+/** Horizontal space per lane, and the dot's height in the row (the title line's middle). */
+export const LANE_WIDTH = 16;
+export const NODE_Y = 20;
+
+/** The rail's width for a graph of `lanes` lanes (`VersionGraphRail`). */
+export const railWidth = (lanes: number) => Math.max(lanes, 1) * LANE_WIDTH;
 
 /** One row's slice of the graph. Lanes are columns, 0 on the left. */
 export type GraphRow = {
@@ -29,10 +47,7 @@ export type VersionGraph = { rows: GraphRow[]; lanes: number };
  * from before `basedOn` was recorded follows the one listed below it; the
  * first version (created, or the baseline) leads nowhere.
  */
-export const parentOf = (
-  versions: AgentVersionSummary[],
-  index: number,
-): number | null => {
+export const parentOf = (versions: GraphVersion[], index: number): number | null => {
   const version = versions[index];
   if (version.basedOn !== null) {
     return versions.some((v) => v.versionNo === version.basedOn) ? version.basedOn : null;
@@ -42,7 +57,7 @@ export const parentOf = (
 };
 
 /** The graph for versions listed newest first. */
-export function layoutVersionGraph(versions: AgentVersionSummary[]): VersionGraph {
+export function layoutVersionGraph(versions: GraphVersion[]): VersionGraph {
   // lanes[i] is the version lane i leads down to, or null when it is free.
   const lanes: (number | null)[] = [];
   let widest = 0;
@@ -66,3 +81,18 @@ export function layoutVersionGraph(versions: AgentVersionSummary[]): VersionGrap
   });
   return { rows, lanes: widest };
 }
+
+/** A version's date and time in the viewer's locale, or null when unreadable. */
+export const formatVersionTime = (iso: string | null): string | null => {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? null
+    : d.toLocaleString([], {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+};

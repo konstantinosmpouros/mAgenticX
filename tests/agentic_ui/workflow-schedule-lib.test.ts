@@ -30,7 +30,7 @@ import {
  * dumped from `ScheduleTriggerNode.catalog_entry()`).
  *
  * Pinned: the client mirror of the engine's checks (interval floor, empty
- * cron, exactly one spec field, timezone, static inputs — required ones only
+ * cron, exactly one spec field, timezone, required inputs need a default — only
  * while enabled — and no template checks on a config that isn't templated),
  * placed on the node; Manual ↔ Schedule switching in place (id, position,
  * label and edges kept; a new schedule starts daily and on); the kind switch
@@ -135,28 +135,22 @@ describe("schedule trigger: client validation", () => {
     });
   });
 
-  it("checks static inputs: declared, typed, required ones set while enabled", () => {
+  it("needs a default for every required input while enabled; an older spec's inputs are ignored", () => {
     const inputs: WorkflowSpec["inputs"] = [
       { name: "topic", type: "string", required: true },
       { name: "limit", type: "number", required: true, default: 5 },
     ];
     const config = (patch: Record<string, unknown>) => ({ ...defaultScheduleConfig(), ...patch });
-    // A required input without a default must be set while the schedule is on…
-    expect(onTrigger(scheduled(config({ inputs: {} }), inputs))).toEqual([
-      ["config.inputs.topic", "A scheduled run needs a value for the required input 'topic'."],
+    const message =
+      "A scheduled run can't fill the required input 'topic': give it a default in Settings › Inputs, or turn the schedule off.";
+    // A required input without a default: a scheduled run has no one to fill it in…
+    expect(onTrigger(scheduled(config({}), inputs))).toEqual([["config.enabled", message]]);
+    // …an older spec's own value no longer counts…
+    expect(onTrigger(scheduled(config({ inputs: { topic: "news" } }), inputs))).toEqual([
+      ["config.enabled", message],
     ]);
-    // …but not while it is off (it never fires; a manual run brings its own).
-    expect(onTrigger(scheduled(config({ inputs: {}, enabled: false }), inputs))).toEqual([]);
-    expect(
-      onTrigger(scheduled(config({ inputs: { topic: "news", limit: "ten", extra: 1 } }), inputs)),
-    ).toEqual([
-      ["config.inputs.limit", "Input 'limit' must be of type number."],
-      ["config.inputs.extra", "'extra' is not a declared input."],
-    ]);
-    // Not templated: a `{{` is text, never an undeclared reference.
-    expect(onTrigger(scheduled(config({ inputs: { topic: "{{input.nope}}" } }), inputs))).toEqual(
-      [],
-    );
+    // …and a schedule that is off never fires.
+    expect(onTrigger(scheduled(config({ enabled: false }), inputs))).toEqual([]);
   });
 
   it("puts the issues on the node: its card's count", () => {
@@ -177,7 +171,6 @@ describe("schedule trigger: kinds and switching", () => {
       schedule_kind: "interval",
       schedule_spec: { interval_seconds: 86400 },
       timezone: null,
-      inputs: {},
       enabled: true,
     });
   });

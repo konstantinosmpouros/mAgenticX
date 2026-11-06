@@ -19,14 +19,15 @@ kind        ``schedule_spec``                               ``timezone``
 ``cron``    ``{"cron_expr": "<5-field cron>"}``             IANA, default UTC
 =========== =============================================== ================
 
-``inputs`` are the literal run inputs of a scheduled fire, checked against the
-workflow's declared inputs (unknown names, types, and — while ``enabled`` —
-every required input without a default). The config is **not templated**: it is
-data, so a ``{{`` in an input value is kept as text.
+The node carries **no inputs of its own**: a workflow's run inputs are declared
+once, in the spec (``spec.inputs``). A scheduled fire sends none, so each input
+takes its ``default``; while ``enabled``, a required input without a default is
+therefore an issue — no scheduled run could fill it. The config is **not
+templated**: it is data.
 
-A scheduled workflow can still be run by hand. The run request's inputs are
-merged **over** these static ones (:func:`static_inputs`), and the node reports
-how the run started: ``{trigger: "schedule"|"manual", firedAt, inputs}``.
+A scheduled workflow can still be run by hand, with the run request's inputs.
+The node reports how the run started: ``{trigger: "schedule"|"manual",
+firedAt, inputs}``.
 
 A one-off moment in the past is not an error here: the stored spec is
 re-validated at every run start, so refusing it would break "Run now" once the
@@ -47,7 +48,6 @@ from harness.workflows.nodes.base import (
     ValidationContext,
     WorkflowNode,
 )
-from harness.workflows.spec import MAX_INPUTS, WorkflowSpec, type_matches
 
 # Optional at import, as in the bridge's schedule schema: validation degrades
 # leniently where croniter or a tz database is missing (a bare dev host); the
@@ -109,7 +109,7 @@ class ScheduleSpec(BaseModel):
 
 
 class ScheduleTriggerConfig(NodeConfig):
-    """When the workflow runs on its own, and with which inputs."""
+    """When the workflow runs on its own."""
 
     schedule_kind: ScheduleKind = Field(description="one_off, interval or cron.")
     schedule_spec: ScheduleSpec = Field(description="The kind's one parameter (see each field).")
@@ -119,12 +119,16 @@ class ScheduleTriggerConfig(NodeConfig):
         max_length=MAX_TIMEZONE_CHARS,
         description="IANA timezone a cron expression is read in (default UTC). Ignored by the other kinds.",
     )
-    inputs: dict[str, Any] = Field(
-        default_factory=dict,
-        max_length=MAX_INPUTS,
-        description="Run inputs of a scheduled run: {input name: literal value}. Not templated.",
-    )
     enabled: bool = Field(default=True, description="Off: the workflow keeps its schedule but never fires on it.")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_legacy_inputs(cls, data: Any) -> Any:
+        # Older specs carry an ``inputs`` map here; its values are no longer
+        # used — scheduled runs use each input's default.
+        if isinstance(data, dict) and "inputs" in data:
+            data = {key: value for key, value in data.items() if key != "inputs"}
+        return data
 
     @field_validator("timezone", mode="after")
     @classmethod
@@ -156,34 +160,29 @@ class ScheduleTriggerNode(WorkflowNode):
     kind = KIND
     label = "Schedule"
     group = "trigger"
-    description = (
-        "Starts the workflow on a schedule (once, every N seconds, or on a cron expression) "
-        "with fixed inputs; it can still be run by hand. Output: {trigger, firedAt, inputs}."
-    )
+    description = "Starts the workflow on a schedule; it can still be run by hand. Scheduled runs use each input's default."
     is_trigger = True
     templated = False
     Config = ScheduleTriggerConfig
 
     def validate_semantics(self, ctx: ValidationContext) -> list[tuple[str, str]]:
-        """The static inputs against the declared ones.
+        """A scheduled run sends no inputs, so every required one needs a default.
 
-        Required inputs are only demanded while the schedule is enabled: a
-        disabled schedule never fires, and a manual run supplies its own.
+        Only demanded while the schedule is enabled: a disabled schedule never
+        fires, and a manual run supplies its own inputs.
         """
         config: ScheduleTriggerConfig = self.config
-        declared = {item.name: item for item in self.spec.inputs}
-        issues: list[tuple[str, str]] = []
-        for name, value in config.inputs.items():
-            item = declared.get(name)
-            if item is None:
-                issues.append((f"inputs.{name}", f"'{name}' is not a declared input."))
-            elif value is not None and not type_matches(item.type, value):
-                issues.append((f"inputs.{name}", f"Input '{name}' must be of type {item.type}."))
-        if config.enabled:
-            for name, item in declared.items():
-                if item.required and item.default is None and config.inputs.get(name) is None:
-                    issues.append((f"inputs.{name}", f"A scheduled run needs a value for the required input '{name}'."))
-        return issues
+        if not config.enabled:
+            return []
+        return [
+            (
+                "enabled",
+                f"A scheduled run can't fill the required input '{item.name}': "
+                "give it a default in Settings › Inputs, or turn the schedule off.",
+            )
+            for item in self.spec.inputs
+            if item.required and item.default is None
+        ]
 
     async def run(self, state: Mapping[str, Any], ctx: NodeContext) -> NodeResult:
         fired_at = ctx.run.fired_at or datetime.now(UTC).isoformat().replace("+00:00", "Z")
@@ -196,24 +195,10 @@ class ScheduleTriggerNode(WorkflowNode):
         )
 
 
-def static_inputs(spec: WorkflowSpec) -> dict[str, Any]:
-    """The literal inputs of the spec's ``trigger.schedule`` node, or ``{}``.
-
-    The runner lays a run request's inputs over these, so "Run now" on a
-    scheduled workflow needs to supply only what it wants to change.
-    """
-    for node in spec.nodes:
-        if node.kind == KIND:
-            inputs = node.config.get("inputs")
-            return dict(inputs) if isinstance(inputs, dict) else {}
-    return {}
-
-
 __all__ = [
     "KIND",
     "MIN_INTERVAL_SECONDS",
     "ScheduleSpec",
     "ScheduleTriggerConfig",
     "ScheduleTriggerNode",
-    "static_inputs",
 ]

@@ -4,7 +4,9 @@ One graph node per spec node — the node instance's wrapper
 (``WorkflowNode.__call__``) is what runs. ``START`` leads to the trigger. A
 branching node gets a conditional edge that reads the branch it recorded in
 ``state["nodes"][id]["branch"]``; a branch with no edge, or a node with no
-outgoing edge, ends the run. The graph is compiled against a checkpointer — in
+outgoing edge, ends the run. A node with several plain edges starts every
+target at once (parallel paths, one LangGraph superstep); the edges into a
+``join`` become one barrier edge, so it runs once, after every path arrived. The graph is compiled against a checkpointer — in
 the service the process-wide durable ``AsyncPostgresSaver``, so an ``approval``
 pause survives a restart exactly like an agent's HITL pause.
 
@@ -23,6 +25,7 @@ from langgraph.graph import END, START, StateGraph
 
 from harness.workflows.errors import WorkflowSpecInvalid
 from harness.workflows.nodes import WorkflowNode
+from harness.workflows.nodes.join import JoinNode
 from harness.workflows.nodes.loop import LoopNode
 from harness.workflows.spec import WorkflowSpec
 from harness.workflows.state import build_state_type
@@ -87,19 +90,33 @@ def compile_workflow(spec: WorkflowSpec, *, checkpointer: Any) -> CompiledWorkfl
     trigger = next(node_id for node_id, instance in nodes.items() if instance.is_trigger)
     graph.add_edge(START, trigger)
 
-    outgoing: dict[str, dict[str | None, str]] = {node_id: {} for node_id in nodes}
+    branch_targets: dict[str, dict[str, str]] = {node_id: {} for node_id in nodes}
+    plain_targets: dict[str, list[str]] = {node_id: [] for node_id in nodes}
+    join_sources: dict[str, list[str]] = {node_id: [] for node_id, n in nodes.items() if isinstance(n, JoinNode)}
     for edge in spec.edges:
-        outgoing[edge.source][edge.branch] = edge.target
-    for node_id, instance in nodes.items():
-        targets = outgoing[node_id]
-        if instance.branch_names():
-            branch_targets = {branch: target for branch, target in targets.items() if branch is not None}
-            destinations = [*sorted(set(branch_targets.values())), END]
-            graph.add_conditional_edges(node_id, _router(node_id, branch_targets), destinations)
-        elif None in targets:
-            graph.add_edge(node_id, targets[None])
+        if edge.branch is not None:
+            branch_targets[edge.source][edge.branch] = edge.target
+        elif edge.target in join_sources:
+            join_sources[edge.target].append(edge.source)
         else:
+            plain_targets[edge.source].append(edge.target)
+    for node_id, instance in nodes.items():
+        if instance.branch_names():
+            targets = branch_targets[node_id]
+            destinations = [*sorted(set(targets.values())), END]
+            graph.add_conditional_edges(node_id, _router(node_id, targets), destinations)
+            continue
+        # Several plain edges: every target starts in the next superstep, in
+        # parallel. Edges into a join are wired below, as its barrier.
+        for target in plain_targets[node_id]:
+            graph.add_edge(node_id, target)
+        leads_to_join = any(node_id in sources for sources in join_sources.values())
+        if not plain_targets[node_id] and not leads_to_join:
             graph.add_edge(node_id, END)
+    # "Wait for all": one barrier edge from every path's last step, so the join
+    # runs once, after the last of them (and again on a loop's next pass).
+    for join_id, sources in join_sources.items():
+        graph.add_edge(sources, join_id)
 
     return CompiledWorkflow(
         graph=graph.compile(checkpointer=checkpointer),

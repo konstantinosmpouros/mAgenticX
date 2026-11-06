@@ -5,11 +5,11 @@ Pins what the bridge and the builder rely on:
 * the config mirrors the bridge's schedule model (``schedule_kind`` +
   ``schedule_spec`` + ``timezone``): one spec field per kind, the 300 s
   interval floor, a valid cron and IANA zone, unknown keys refused;
-* static ``inputs`` are checked against the declared inputs (names, types,
-  required-while-enabled) and are never templated;
+* the node has no inputs of its own: a legacy ``inputs`` key is accepted and
+  ignored, and while enabled every required input needs a default;
 * exactly one trigger of either kind;
 * the node's output says how the run started (``schedule`` / ``manual``), when,
-  and with which inputs — a manual run's inputs laid over the static ones;
+  and with which inputs — a scheduled fire runs on the defaults;
 * the catalogue exposes it as a trigger with its JSON Schema.
 """
 from __future__ import annotations
@@ -46,12 +46,12 @@ def _spec(trigger_config: dict | None = None, *, inputs: list | None = None) -> 
         "version": 1,
         "name": "scheduled",
         "inputs": inputs if inputs is not None else [
-            {"name": "topic", "type": "string", "required": True},
+            {"name": "topic", "type": "string", "required": True, "default": "news"},
             {"name": "limit", "type": "number", "default": 5},
         ],
         "nodes": [
             {"id": "start", "kind": "trigger.schedule",
-             "config": trigger_config if trigger_config is not None else _schedule(inputs={"topic": "news"})},
+             "config": trigger_config if trigger_config is not None else _schedule()},
             {"id": "done", "kind": "end", "config": {"outputs": {"how": "{{nodes.start.output.trigger}}"}}},
         ],
         "edges": [{"id": "e1", "source": "start", "target": "done"}],
@@ -72,14 +72,13 @@ def _paths(issues) -> set[str]:
 
 
 @pytest.mark.parametrize("config", [
-    _schedule(inputs={"topic": "x"}),
-    _schedule(schedule_kind="one_off", schedule_spec={"run_at": "2027-01-01T08:00:00Z"}, inputs={"topic": "x"}),
+    _schedule(),
+    _schedule(schedule_kind="one_off", schedule_spec={"run_at": "2027-01-01T08:00:00Z"}),
     # A one-off in the past still validates: a stored version is re-validated
     # at every run start, and "Run now" must keep working after it fired.
-    _schedule(schedule_kind="one_off", schedule_spec={"run_at": "2020-01-01T08:00:00"}, inputs={"topic": "x"}),
-    _schedule(schedule_kind="cron", schedule_spec={"cron_expr": "0 8 * * 1-5"}, timezone="Europe/Athens",
-              inputs={"topic": "x"}),
-    _schedule(schedule_kind="cron", schedule_spec={"cron_expr": "*/30 * * * *"}, inputs={"topic": "x"}),
+    _schedule(schedule_kind="one_off", schedule_spec={"run_at": "2020-01-01T08:00:00"}),
+    _schedule(schedule_kind="cron", schedule_spec={"cron_expr": "0 8 * * 1-5"}, timezone="Europe/Athens"),
+    _schedule(schedule_kind="cron", schedule_spec={"cron_expr": "*/30 * * * *"}),
 ])
 def test_valid_schedules(wf, config):
     assert _issues(wf, _spec(config)) == []
@@ -97,28 +96,40 @@ def test_valid_schedules(wf, config):
     ({"schedule_spec": {"interval_seconds": 600}}, "Field required"),
 ])
 def test_invalid_schedules_are_pinned_to_the_trigger(wf, config, fragment):
-    config.setdefault("inputs", {"topic": "x"})
     issues = _issues(wf, _spec(config))
     assert issues and all(issue.node_id == "start" for issue in issues)
     assert any(fragment in issue.message for issue in issues), [i.message for i in issues]
     assert all(issue.path.startswith("nodes[0].config") for issue in issues)
 
 
-def test_static_inputs_are_checked_against_the_declared_ones(wf):
-    issues = _issues(wf, _spec(_schedule(inputs={"topic": 3, "nope": "x"})))
-    assert _paths(issues) == {"nodes[0].config.inputs.topic", "nodes[0].config.inputs.nope"}
-
-    # Required (no default) must be supplied while enabled…
-    issues = _issues(wf, _spec(_schedule(inputs={})))
-    assert _paths(issues) == {"nodes[0].config.inputs.topic"}
-    assert "required input 'topic'" in issues[0].message
-    # …but not when the schedule is switched off.
-    assert _issues(wf, _spec(_schedule(inputs={}, enabled=False))) == []
+def test_a_legacy_inputs_key_is_accepted_and_ignored(wf):
+    # Older specs carry literal inputs on the trigger; they no longer mean anything.
+    raw = _spec(_schedule(inputs={"topic": 3, "nope": "x"}))
+    assert _issues(wf, raw) == []
+    # The stored spec is left as it was; only the node's config drops the key.
+    assert wf.spec.WorkflowSpec.model_validate(raw).nodes[0].config["inputs"] == {"topic": 3, "nope": "x"}
 
 
-def test_static_inputs_are_data_not_templates(wf):
-    # A reference to an undeclared input would fail a templated node; here it is text.
-    assert _issues(wf, _spec(_schedule(inputs={"topic": "{{input.nope}}"}))) == []
+_REQUIRED_NO_DEFAULT = [{"name": "topic", "type": "string", "required": True}]
+
+
+def test_a_required_input_without_a_default_blocks_an_enabled_schedule(wf):
+    issues = _issues(wf, _spec(_schedule(), inputs=_REQUIRED_NO_DEFAULT))
+    assert [(i.node_id, i.path, i.message) for i in issues] == [(
+        "start",
+        "nodes[0].config.enabled",
+        "A scheduled run can't fill the required input 'topic': "
+        "give it a default in Settings › Inputs, or turn the schedule off.",
+    )]
+
+
+def test_a_disabled_schedule_needs_no_defaults(wf):
+    assert _issues(wf, _spec(_schedule(enabled=False), inputs=_REQUIRED_NO_DEFAULT)) == []
+
+
+def test_a_required_input_with_a_default_is_fine(wf):
+    inputs = [{"name": "topic", "type": "string", "required": True, "default": "news"}]
+    assert _issues(wf, _spec(_schedule(), inputs=inputs)) == []
 
 
 def test_exactly_one_trigger_of_either_kind(wf):
@@ -135,7 +146,7 @@ def test_catalog_exposes_the_schedule_trigger(wf):
     assert entry["isTrigger"] is True and entry["group"] == "trigger" and entry["branches"] == []
     schema = entry["configSchema"]
     assert set(schema["properties"]) == {
-        "assign", "schedule_kind", "schedule_spec", "timezone", "inputs", "enabled",
+        "assign", "schedule_kind", "schedule_spec", "timezone", "enabled",
     }
     assert schema["properties"]["schedule_kind"]["enum"] == ["one_off", "interval", "cron"]
     assert set(schema["required"]) == {"schedule_kind", "schedule_spec"}
@@ -176,32 +187,36 @@ def _trigger_output(events: list[dict]) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_a_scheduled_fire_reports_schedule_and_the_static_inputs(wf):
+async def test_a_scheduled_fire_with_no_inputs_runs_on_the_defaults(wf):
     trigger = wf.runner.RunTrigger(kind="schedule", fired_at="2026-11-04T08:00:00Z")
-    events = await _run(wf, _spec(), inputs={"topic": "news"}, trigger=trigger)
+    events = await _run(wf, _spec(), inputs=None, trigger=trigger)
     assert _trigger_output(events) == {
         "trigger": "schedule", "firedAt": "2026-11-04T08:00:00Z", "inputs": {"topic": "news", "limit": 5},
     }
     assert events[-1]["type"] == "RUN_FINISHED"
     assert events[-1]["result"]["output"] == {"how": "schedule"}
-    # Not templated: node_input shows the config as written.
-    node_input = next(e for e in events if e.get("name") == "workflow.node_input")
-    assert node_input["value"]["config"]["inputs"] == {"topic": "news"}
 
 
 @pytest.mark.asyncio
-async def test_run_now_lays_the_request_inputs_over_the_static_ones(wf):
+async def test_a_legacy_inputs_key_does_not_reach_a_run(wf):
+    trigger = wf.runner.RunTrigger(kind="schedule", fired_at="2026-11-04T08:00:00Z")
+    events = await _run(wf, _spec(_schedule(inputs={"topic": "old"})), inputs={}, trigger=trigger)
+    assert _trigger_output(events)["inputs"] == {"topic": "news", "limit": 5}
+
+
+@pytest.mark.asyncio
+async def test_run_now_uses_the_request_inputs_over_the_defaults(wf):
     events = await _run(wf, _spec(), inputs={"limit": 9, "topic": None})
     output = _trigger_output(events)
     assert output["trigger"] == "manual"
     assert output["firedAt"].endswith("Z")
-    # A null does not blank the static value; a given one wins.
+    # A null means "not given": the default fills it; a given value wins.
     assert output["inputs"] == {"topic": "news", "limit": 9}
 
 
 @pytest.mark.asyncio
-async def test_run_now_still_validates_the_merged_inputs(wf):
-    raw = _spec(_schedule(inputs={}, enabled=False))
+async def test_run_now_still_validates_the_inputs(wf):
+    raw = _spec(_schedule(enabled=False), inputs=_REQUIRED_NO_DEFAULT)
     spec = wf.spec.WorkflowSpec.model_validate(raw)
     compiled = wf.compiler.compile_workflow(spec, checkpointer=InMemorySaver())
     with pytest.raises(wf.runner.RunRefused) as refused:

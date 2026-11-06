@@ -7,8 +7,7 @@
  * A contenteditable, uncontrolled inside: the DOM is redrawn from the value
  * only when the value from outside differs from the last one this field
  * emitted (so typing keeps its caret). Plain typing is left to the browser;
- * every other edit — Enter, paste, drop, an insert from the picker or the
- * data panel, deleting a chip — is made on the string and redrawn
+ * every other edit — Enter, paste, drop, an insert from the picker, deleting a chip — is made on the string and redrawn
  * (`lib/builder/templateDom`).
  */
 import * as React from "react";

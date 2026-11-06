@@ -12,6 +12,8 @@ fixed keys the engine owns:
 ``iterations``     ``{node_id: n}`` — how many times each node has executed
 ``trace``          ``{"loops": [executionId, …], "last": executionId}`` — the
                    active loop iterations (innermost last) and the last execution
+                   (steps on parallel paths write it in the same superstep; one
+                   wins — they share the loop frames, so only ``last`` differs)
 ``history``        ``[{"node", "executionId"}, …]`` — every execution in order,
                    capped to the newest :data:`MAX_HISTORY`
 ``conversations``  ``{thread: [message, …]}`` — the ``llm`` steps' conversation
@@ -46,6 +48,18 @@ def merge_dicts(current: dict | None, update: dict | None) -> dict:
     return {**(current or {}), **(update or {})}
 
 
+def replace_value(current: Any, update: Any) -> Any:
+    """The reducer of ``overwrite`` fields and of ``trace``: the update wins.
+
+    A reducer (not LangGraph's plain last-value channel) because steps on
+    parallel paths finish in the same superstep, and a plain channel refuses
+    two writes in one step. Two parallel steps writing the same field: one of
+    them wins (unordered) — collect from parallel paths with an ``append`` or
+    ``merge`` field instead.
+    """
+    return update
+
+
 def append_items(current: list | None, update: Any) -> list:
     """The reducer of ``append`` fields: a list extends, anything else is one item."""
     items = update if isinstance(update, list) else [update]
@@ -77,7 +91,7 @@ def build_state_type(spec: WorkflowSpec) -> type:
         "input": dict,
         "nodes": Annotated[dict, merge_dicts],
         "iterations": Annotated[dict, merge_dicts],
-        "trace": dict,
+        "trace": Annotated[dict, replace_value],
         "history": Annotated[list, append_history],
         "conversations": Annotated[dict, append_conversations],
     }
@@ -87,7 +101,7 @@ def build_state_type(spec: WorkflowSpec) -> type:
         elif field.reducer == "merge":
             annotations[field.name] = Annotated[dict, merge_dicts]
         else:
-            annotations[field.name] = Any
+            annotations[field.name] = Annotated[Any, replace_value]
     return TypedDict("WorkflowState", annotations)  # type: ignore[operator]
 
 
@@ -209,5 +223,6 @@ __all__ = [
     "field_default",
     "initial_state",
     "merge_dicts",
+    "replace_value",
     "state_patch",
 ]

@@ -12,6 +12,10 @@ workflow, a cap) are forwarded with their ``detail``; anything else becomes a
 502/503 with a generic message. Every JSON body coming back is validated
 against the bridge's own schemas before it is returned.
 
+Version history (list, one version, restore) is proxied the same way; a
+restore is a save upstream (a new version with the old spec), so the router
+re-syncs the schedule from its answer like after any save.
+
 Run history is not here: see :mod:`utils.workflow_runs`.
 """
 from typing import Any, NoReturn
@@ -25,7 +29,7 @@ from core.logging import get_context, get_logger
 from core.security.internal_trust import internal_service_headers
 from core.security.tls import get_httpx_client_cert, get_httpx_verify
 from core.settings import settings
-from schema import WorkflowOut, WorkflowValidation
+from schema import WorkflowOut, WorkflowValidation, WorkflowVersionDetailOut, WorkflowVersionPage
 
 logger = get_logger(__name__)
 
@@ -35,6 +39,8 @@ _FORWARDED_STATUSES = frozenset({400, 404, 409, 413, 422, 429})
 _WORKFLOW = TypeAdapter(WorkflowOut)
 _WORKFLOW_LIST = TypeAdapter(list[WorkflowOut])
 _VALIDATION = TypeAdapter(WorkflowValidation)
+_VERSION_PAGE = TypeAdapter(WorkflowVersionPage)
+_VERSION = TypeAdapter(WorkflowVersionDetailOut)
 
 
 def workflows_base_url() -> str:
@@ -181,3 +187,42 @@ async def delete_workflow(user_id: str, workflow_id: str) -> None:
         "DELETE", _owner_url(user_id, workflow_id),
         operation="workflow_delete", public_detail="The workflow could not be deleted.", expect_json=False,
     )
+
+
+def _version_url(user_id: str, workflow_id: str, version_no: int | None = None) -> str:
+    url = f"{_owner_url(user_id, workflow_id)}/versions"
+    return url if version_no is None else f"{url}/{int(version_no)}"
+
+
+async def list_workflow_versions(
+    user_id: str, workflow_id: str, *, limit: int, before: int | None
+) -> WorkflowVersionPage:
+    """One page of a workflow's kept versions, newest first."""
+    detail = "The workflow's history could not be loaded."
+    query = f"?limit={int(limit)}" + (f"&before={int(before)}" if before is not None else "")
+    body = await _call(
+        "GET", f"{_version_url(user_id, workflow_id)}{query}",
+        operation="workflow_versions_list", public_detail=detail,
+    )
+    return _validated(_VERSION_PAGE, body, "workflow_versions_list", detail)
+
+
+async def get_workflow_version(user_id: str, workflow_id: str, version_no: int) -> WorkflowVersionDetailOut:
+    """One kept version with its spec (404 when it is not the caller's or not there)."""
+    detail = "That version could not be loaded."
+    body = await _call(
+        "GET", _version_url(user_id, workflow_id, version_no),
+        operation="workflow_version_get", public_detail=detail,
+    )
+    return _validated(_VERSION, body, "workflow_version_get", detail)
+
+
+async def restore_workflow_version(user_id: str, workflow_id: str, version_no: int) -> WorkflowOut:
+    """Save an old version's spec as the newest version (422 with the issues
+    when it no longer validates); the answer is the workflow as after a save."""
+    detail = "That version could not be restored."
+    body = await _call(
+        "POST", f"{_version_url(user_id, workflow_id, version_no)}/restore",
+        operation="workflow_version_restore", public_detail=detail,
+    )
+    return _validated(_WORKFLOW, body, "workflow_version_restore", detail)

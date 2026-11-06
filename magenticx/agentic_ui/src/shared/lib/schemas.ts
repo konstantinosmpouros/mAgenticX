@@ -1195,6 +1195,36 @@ export const WorkflowListSchema = z
   .catch([])
   .transform((rows) => wfRecords(rows).map(toWorkflow).filter((workflow) => workflow.id));
 
+// A workflow's history (kept versions). Every field is read here, or the
+// panel never sees it: a new one must be added to these mappers.
+const wfInt = (value: unknown, fallback = 0): number =>
+  typeof value === "number" && Number.isInteger(value) ? value : fallback;
+const toWorkflowVersionSummary = (raw: Record<string, unknown>) => ({
+  versionNo: wfInt(raw.versionNo),
+  createdAt: wfNullableString(raw.createdAt),
+  createdBy: wfString(raw.createdBy),
+  restoredFrom: wfNullableInt(raw.restoredFrom),
+  name: wfString(raw.name),
+  description: wfString(raw.description),
+  nodeCount: wfInt(raw.nodeCount),
+  edgeCount: wfInt(raw.edgeCount),
+});
+/** `GET …/versions`: newest first; rows without a usable number are dropped. */
+export const WorkflowVersionPageSchema = z.record(z.unknown()).transform((raw) => ({
+  items: wfRecords(raw.items)
+    .map(toWorkflowVersionSummary)
+    .filter((version) => version.versionNo > 0),
+  nextBefore: wfNullableInt(raw.nextBefore),
+}));
+/** `GET …/versions/{n}`: one version with its spec. */
+export const WorkflowVersionDetailSchema = z.record(z.unknown()).transform((raw) => ({
+  versionNo: wfInt(raw.versionNo),
+  createdAt: wfNullableString(raw.createdAt),
+  createdBy: wfString(raw.createdBy),
+  restoredFrom: wfNullableInt(raw.restoredFrom),
+  spec: toWorkflowSpec(raw.spec),
+}));
+
 const toWorkflowNodeKind = (raw: Record<string, unknown>) => ({
   kind: wfString(raw.kind),
   label: wfString(raw.label, wfString(raw.kind)),

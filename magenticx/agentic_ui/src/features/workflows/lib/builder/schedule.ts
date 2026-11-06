@@ -22,12 +22,11 @@ import {
 } from "@/shared/lib/schedule";
 import { workflowScheduleSubtitle } from "@/shared/lib/workflowSchedule";
 import type { ConfigProblem } from "./schemaForm";
-import { matchesType } from "./values";
 
 /**
  * The schedule trigger (`trigger.schedule`) in the builder: its config read
  * and written with the engine's field names (`schedule_kind`,
- * `schedule_spec`, `timezone`, `inputs`, `enabled`), the checks the engine
+ * `schedule_spec`, `timezone`, `enabled`), the checks the engine
  * runs on it (`agents/harness/workflows/nodes/trigger_schedule.py`, mirrored
  * so a bad value shows on the node as it is typed), the switch between a
  * manual and a scheduled start, and the card's compact subtitle. The
@@ -56,8 +55,6 @@ const KIND_WORDS: Record<ScheduleKind, string> = {
 export const DEFAULT_INTERVAL_SECONDS = 86400;
 /** The cron a "Custom" schedule starts from: every day at 08:00. */
 export const DEFAULT_CRON_EXPR = "0 8 * * *";
-/** Most inputs a scheduled fire may carry (the engine's `MAX_INPUTS`). */
-export const MAX_SCHEDULE_INPUTS = 32;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -76,7 +73,6 @@ export function readScheduleConfig(config: Record<string, unknown>): WorkflowSch
     schedule_kind: isScheduleKind(config.schedule_kind) ? config.schedule_kind : "interval",
     schedule_spec: spec,
     timezone: typeof config.timezone === "string" && config.timezone ? config.timezone : null,
-    inputs: isRecord(config.inputs) ? { ...config.inputs } : {},
     enabled: config.enabled !== false,
   };
 }
@@ -101,7 +97,6 @@ export function defaultScheduleConfig(): Record<string, unknown> {
     schedule_kind: "interval",
     schedule_spec: defaultScheduleSpec("interval"),
     timezone: null,
-    inputs: {},
     enabled: true,
   };
 }
@@ -132,11 +127,22 @@ export function withScheduleKind(
 // ---------- Checks (the engine's, field for field) ----------
 
 /**
+ * The config without the `inputs` older specs carried: a scheduled run has no
+ * inputs of its own (it uses each declared input's default), and the engine
+ * drops the key.
+ */
+export function withoutLegacyInputs(config: Record<string, unknown>): Record<string, unknown> {
+  if (!("inputs" in config)) return config;
+  const { inputs: _legacy, ...rest } = config;
+  return rest;
+}
+
+/**
  * Every problem with a schedule trigger's config, addressed like the
- * engine's (`config.schedule_spec.interval_seconds`, `config.inputs.topic`):
+ * engine's (`config.schedule_spec.interval_seconds`, `config.enabled`):
  * the kind, exactly the kind's one spec field and its range, the timezone,
- * and the static inputs against the declared ones — every required input
- * without a default set while the schedule is on.
+ * and — while the schedule is on — every required input without a default,
+ * which a scheduled run has no one to fill in.
  */
 export function scheduleConfigProblems(
   config: Record<string, unknown>,
@@ -201,28 +207,12 @@ export function scheduleConfigProblems(
   const enabled = config.enabled ?? true;
   if (typeof enabled !== "boolean") add("enabled", "Enabled must be on or off.");
 
-  const inputs = config.inputs ?? {};
-  if (!isRecord(inputs)) {
-    add("inputs", "Inputs are name → value pairs.");
-    return problems;
-  }
-  if (Object.keys(inputs).length > MAX_SCHEDULE_INPUTS)
-    add("inputs", `At most ${MAX_SCHEDULE_INPUTS} inputs.`);
-  const byName = new Map(declared.map((input) => [input.name, input]));
-  for (const [name, value] of Object.entries(inputs)) {
-    const input = byName.get(name);
-    if (!input) add(`inputs.${name}`, `'${name}' is not a declared input.`);
-    else if (value !== null && value !== undefined && !matchesType(input.type, value)) {
-      add(`inputs.${name}`, `Input '${name}' must be of type ${input.type}.`);
-    }
-  }
   if (enabled !== false) {
     for (const input of declared) {
-      const missing = inputs[input.name] === undefined || inputs[input.name] === null;
-      if (input.required && (input.default === undefined || input.default === null) && missing) {
+      if (input.required && (input.default === undefined || input.default === null)) {
         add(
-          `inputs.${input.name}`,
-          `A scheduled run needs a value for the required input '${input.name}'.`,
+          "enabled",
+          `A scheduled run can't fill the required input '${input.name}': give it a default in Settings › Inputs, or turn the schedule off.`,
         );
       }
     }

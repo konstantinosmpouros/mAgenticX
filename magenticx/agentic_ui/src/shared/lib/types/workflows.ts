@@ -106,6 +106,39 @@ export type WorkflowSchedule = {
   lastRunStatus: string | null;
 };
 
+// ---------- History (kept versions) ----------
+
+/**
+ * One kept version, as the builder's History panel lists it: no spec, a
+ * summary read off it. `restoredFrom` names the version a restore copied — a
+ * restore appends a version, it never rewrites one.
+ */
+export type WorkflowVersionSummary = {
+  versionNo: number;
+  createdAt: string | null;
+  createdBy: string;
+  restoredFrom: number | null;
+  name: string;
+  description: string;
+  nodeCount: number;
+  edgeCount: number;
+};
+
+/** A page of versions, newest first; `nextBefore` asks for the older ones. */
+export type WorkflowVersionPage = {
+  items: WorkflowVersionSummary[];
+  nextBefore: number | null;
+};
+
+/** One kept version with its whole spec (the diff, the preview, the restore). */
+export type WorkflowVersionDetail = {
+  versionNo: number;
+  createdAt: string | null;
+  createdBy: string;
+  restoredFrom: number | null;
+  spec: WorkflowSpec;
+};
+
 // ---------- Runs ----------
 
 export type WorkflowRunStatus = "queued" | "running" | "waiting" | "succeeded" | "failed" | "cancelled";
@@ -225,6 +258,8 @@ export type WorkflowViewPageProps = {
   onSelectRun: (runId: string) => void;
   /** Open the builder on this workflow (`/workflows/:id/edit`); no Edit button without it. */
   onEdit?: () => void;
+  /** Open the builder with its History panel showing; no History button without it. */
+  onHistory?: () => void;
 };
 
 /** The details panel's tabs. */

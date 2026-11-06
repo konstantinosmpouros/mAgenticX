@@ -88,25 +88,19 @@ class WorkflowScheduleTrigger(BaseModel):
 
     The engine has already validated it; this is output validation of an
     upstream body, so it is as strict about types and the kind ↔ spec pairing
-    and lenient only about keys the bridge does not use (``assign``). Its
-    cadence rules (the minimum interval, a valid cron and zone) are applied by
-    :func:`utils.workflow_schedules.desired_schedule` with the bridge's own
-    settings.
+    and lenient only about keys the bridge does not use (``assign``, and a
+    legacy ``inputs`` that older specs may still carry: a scheduled run starts
+    with no inputs and the engine fills each one from the spec's ``inputs``
+    defaults). Its cadence rules (the minimum interval, a valid cron and zone)
+    are applied by :func:`utils.workflow_schedules.desired_schedule` with the
+    bridge's own settings.
     """
     model_config = ConfigDict(extra="ignore")
 
     schedule_kind: ScheduleKind
     schedule_spec: WorkflowScheduleSpec
     timezone: str | None = Field(None, max_length=64)
-    inputs: dict[str, Any] = Field(default_factory=dict)
     enabled: bool = True
-
-    @field_validator("inputs", mode="after")
-    @classmethod
-    def _bound_inputs(cls, value: dict[str, Any]) -> dict[str, Any]:
-        if _json_size(value) > settings.workflows.max_input_bytes:
-            raise ValueError("The scheduled run inputs are too large.")
-        return value
 
 
 class WorkflowScheduleOut(BaseModel):
@@ -157,6 +151,46 @@ class WorkflowOut(BaseModel):
     createdAt: UTCDateTime | None = Field(None, validation_alias=AliasChoices("createdAt", "created_at"))
     updatedAt: UTCDateTime | None = Field(None, validation_alias=AliasChoices("updatedAt", "updated_at"))
     schedule: WorkflowScheduleOut | None = None
+
+
+class WorkflowVersionSummaryOut(BaseModel):
+    """One kept version of a workflow, as its History list shows it.
+
+    No spec: a short summary the agents service reads off the version (its
+    name, description and step / connection counts). ``restoredFrom`` names
+    the version a restore copied — a restore appends a version, it never
+    rewrites one.
+    """
+    model_config = ConfigDict(populate_by_name=True)
+
+    versionNo: int = Field(validation_alias=AliasChoices("versionNo", "version_no"))
+    createdAt: UTCDateTime = Field(validation_alias=AliasChoices("createdAt", "created_at"))
+    createdBy: str = Field(validation_alias=AliasChoices("createdBy", "created_by"))
+    restoredFrom: int | None = Field(None, validation_alias=AliasChoices("restoredFrom", "restored_from"))
+    name: str = ""
+    description: str = ""
+    nodeCount: int = Field(0, validation_alias=AliasChoices("nodeCount", "node_count"))
+    edgeCount: int = Field(0, validation_alias=AliasChoices("edgeCount", "edge_count"))
+
+
+class WorkflowVersionPage(BaseModel):
+    """A page of a workflow's versions, newest first. Pass ``nextBefore`` back
+    as ``?before=`` for the next (older) page; it is null on the last one."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    items: list[WorkflowVersionSummaryOut]
+    nextBefore: int | None = Field(None, validation_alias=AliasChoices("nextBefore", "next_before"))
+
+
+class WorkflowVersionDetailOut(BaseModel):
+    """One kept version with its whole spec, for a diff or a preview."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    versionNo: int = Field(validation_alias=AliasChoices("versionNo", "version_no"))
+    createdAt: UTCDateTime = Field(validation_alias=AliasChoices("createdAt", "created_at"))
+    createdBy: str = Field(validation_alias=AliasChoices("createdBy", "created_by"))
+    restoredFrom: int | None = Field(None, validation_alias=AliasChoices("restoredFrom", "restored_from"))
+    spec: dict[str, Any]
 
 
 # ---------------------------------------------------------------------------

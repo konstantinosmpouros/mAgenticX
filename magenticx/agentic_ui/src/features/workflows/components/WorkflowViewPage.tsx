@@ -85,6 +85,7 @@ export function WorkflowViewPage({
   runId,
   onSelectRun,
   onEdit,
+  onHistory,
 }: WorkflowViewPageProps) {
   const { toast } = useToast();
   const isMobile = useIsMobile();
@@ -248,6 +249,7 @@ export function WorkflowViewPage({
           onRun={() => setRunDialogOpen(true)}
           runDisabled={!spec}
           onEdit={onEdit}
+          onHistory={onHistory}
           schedule={workflow.schedule ?? null}
           now={now}
           onSetSchedulePaused={(paused) => void handleSchedulePaused(paused)}

@@ -67,6 +67,45 @@ class WorkflowDetail(WorkflowSummary):
     spec: dict[str, Any] | None
 
 
+class WorkflowVersionSummary(BaseModel):
+    """One kept version as the History list shows it: no spec, a short summary.
+
+    ``restored_from`` names the version a restore copied (a restore appends a
+    new version; history is never rewritten). ``name`` / ``description`` /
+    ``node_count`` / ``edge_count`` are read off the version's own spec.
+    """
+
+    version_no: int
+    created_at: datetime
+    created_by: str
+    restored_from: int | None = None
+    name: str
+    description: str
+    node_count: int
+    edge_count: int
+
+
+class WorkflowVersionPage(BaseModel):
+    """``GET /workflows/{owner}/{id}/versions``: newest first.
+
+    ``next_before`` is the ``before`` to pass for the next (older) page; null
+    on the last one.
+    """
+
+    items: list[WorkflowVersionSummary]
+    next_before: int | None = None
+
+
+class WorkflowVersionDetail(BaseModel):
+    """One kept version with its whole spec, for a diff, a preview or a restore."""
+
+    version_no: int
+    created_at: datetime
+    created_by: str
+    restored_from: int | None = None
+    spec: dict[str, Any]
+
+
 class WorkflowCatalog(BaseModel):
     """``GET /workflows/catalog``: every node kind with its config schema."""
 
@@ -111,5 +150,8 @@ __all__ = [
     "WorkflowRunRequest",
     "WorkflowSummary",
     "WorkflowValidation",
+    "WorkflowVersionDetail",
+    "WorkflowVersionPage",
+    "WorkflowVersionSummary",
     "WorkflowWrite",
 ]

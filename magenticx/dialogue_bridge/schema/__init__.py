@@ -182,6 +182,9 @@ from schema.workflows import (
     WorkflowTriggerKind,
     WorkflowValidation,
     WorkflowValidationIssue,
+    WorkflowVersionDetailOut,
+    WorkflowVersionPage,
+    WorkflowVersionSummaryOut,
     WorkflowWrite,
 )
 
@@ -320,5 +323,8 @@ __all__ = [
     "WorkflowTriggerKind",
     "WorkflowValidation",
     "WorkflowValidationIssue",
+    "WorkflowVersionDetailOut",
+    "WorkflowVersionPage",
+    "WorkflowVersionSummaryOut",
     "WorkflowWrite",
 ]

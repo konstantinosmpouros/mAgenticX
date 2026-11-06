@@ -4,6 +4,7 @@ import { cn } from "@/shared/lib/utils";
 import type { WorkflowBuilderIssue, WorkflowDraftAction, WorkflowSpec } from "@/shared/lib/types";
 import { INPUT } from "@/features/workflows/lib/builder/consts";
 import { fieldDomId } from "@/features/workflows/lib/builder/ids";
+import { SCHEDULE_TRIGGER_KIND } from "@/features/workflows/lib/builder/schedule";
 import { issueIsOn } from "@/features/workflows/lib/builder/validate";
 import { Disclosure, Field, FieldIssues, SectionHeading } from "./FieldShell";
 import { InputsEditor, StateFieldsEditor } from "./FieldListEditors";
@@ -29,6 +30,7 @@ export function WorkflowSettings({
   const general = issues.filter(
     (issue) => !["name", "description"].includes(issue.field) && !issueIsOn(issue, "inputs") && !issueIsOn(issue, "state"),
   );
+  const scheduled = spec.nodes.some((node) => node.kind === SCHEDULE_TRIGGER_KIND);
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
@@ -79,6 +81,7 @@ export function WorkflowSettings({
           description={
             <>
               Asked for when a run starts; steps read them as <span className="font-mono">{"{{input.name}}"}</span>.
+              {scheduled ? " A scheduled run uses each input's default." : null}
             </>
           }
         />

@@ -100,7 +100,6 @@ import { SidebarProvider } from "@/shared/ui/sidebar";
 import { TooltipProvider } from "@/shared/ui/tooltip";
 import type {
   Workflow,
-  WorkflowInputDef,
   WorkflowNodeKindInfo,
   WorkflowSchedule,
   WorkflowSpec,
@@ -128,14 +127,13 @@ beforeEach(() => {
  * The editor over a config it owns, as the inspector holds it: every write is
  * recorded and rendered back in, so the next interaction sees it.
  */
-function renderEditor(initial: Record<string, unknown>, inputs: WorkflowInputDef[] = []) {
+function renderEditor(initial: Record<string, unknown>) {
   const writes: Record<string, unknown>[] = [];
   let view: ReturnType<typeof render> | null = null;
   const ui = (config: Record<string, unknown>) => (
     <ScheduleTriggerEditor
       nodeId="trigger"
       config={config}
-      inputs={inputs}
       issues={[]}
       onChange={(next) => {
         writes.push(next);
@@ -199,7 +197,7 @@ describe("schedule editor ↔ node config", () => {
       timezone: "Europe/Athens",
     };
     const writes = renderEditor(initial);
-    expect(radio("Custom (cron)")).toHaveAttribute("aria-checked", "true");
+    expect(radio("Cron")).toHaveAttribute("aria-checked", "true");
     const expr = screen.getByLabelText(/Cron expression/) as HTMLInputElement;
     expect(expr.value).toBe("0 9 * * 1-5");
     expect(screen.getByRole("button", { name: "Weekdays at 09:00" })).toHaveAttribute(
@@ -229,7 +227,7 @@ describe("schedule editor ↔ node config", () => {
     fireEvent.click(radio("Once"));
     expect(last(writes)).toMatchObject({ schedule_kind: "one_off", timezone: null });
     expect(Object.keys(last(writes).schedule_spec as object)).toEqual(["run_at"]);
-    fireEvent.click(radio("Custom (cron)"));
+    fireEvent.click(radio("Cron"));
     expect(last(writes)).toMatchObject({
       schedule_kind: "cron",
       schedule_spec: { cron_expr: "0 8 * * *" },
@@ -243,31 +241,12 @@ describe("schedule editor ↔ node config", () => {
     });
   });
 
-  it("edits the static inputs by type, marks required ones, and turns the schedule off", () => {
-    const inputs: WorkflowInputDef[] = [
-      { name: "topic", type: "string", required: true },
-      { name: "limit", type: "number" },
-      { name: "draft", type: "boolean" },
-      { name: "tags", type: "array" },
-    ];
-    const writes = renderEditor(defaultScheduleConfig(), inputs);
-    expect(screen.getByText("Inputs for scheduled runs")).toBeInTheDocument();
-    expect(screen.getByLabelText(/topic/)).toBeInTheDocument();
-    expect(screen.getAllByText("(required)")).toHaveLength(1);
-    fireEvent.change(screen.getByLabelText(/topic/), { target: { value: "news {{x}}" } });
-    fireEvent.change(screen.getByLabelText(/limit/), { target: { value: "10" } });
-    fireEvent.click(
-      within(screen.getByRole("radiogroup", { name: "draft" })).getByRole("radio", { name: "Yes" }),
-    );
-    fireEvent.change(screen.getByLabelText(/tags/), { target: { value: '["a", "b"]' } });
-    expect(last(writes)).toMatchObject({
-      inputs: { topic: "news {{x}}", limit: 10, draft: true, tags: ["a", "b"] },
-    });
-    fireEvent.change(screen.getByLabelText(/limit/), { target: { value: "" } });
-    expect((last(writes).inputs as Record<string, unknown>).limit).toBeUndefined();
-
+  it("has no inputs of its own, drops an older spec's on the first change, and turns off", () => {
+    const writes = renderEditor({ ...defaultScheduleConfig(), inputs: { topic: "news" } });
+    expect(screen.queryByText("Inputs for scheduled runs")).toBeNull();
     fireEvent.click(screen.getByRole("switch", { name: "Enabled" }));
     expect(last(writes)).toMatchObject({ enabled: false });
+    expect("inputs" in last(writes)).toBe(false);
     expect(screen.getByTestId("schedule-preview")).toHaveTextContent(/won.t fire/);
   });
 });
@@ -382,7 +361,6 @@ describe("the builder's schedule trigger", () => {
         schedule_kind: "interval",
         schedule_spec: { interval_seconds: 600 },
         timezone: null,
-        inputs: {},
         enabled: true,
       },
     });

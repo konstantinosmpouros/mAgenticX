@@ -1,12 +1,10 @@
 import * as React from "react";
-import { Trash2 } from "lucide-react";
 
 import { cn } from "@/shared/lib/utils";
 import type {
   ScheduleIntervalUnit,
   ScheduleKind,
   WorkflowBuilderIssue,
-  WorkflowInputDef,
   WorkflowScheduleSpec,
 } from "@/shared/lib/types";
 import { INTERVAL_UNITS, MIN_SCHEDULE_INTERVAL_SECONDS } from "@/shared/lib/consts";
@@ -20,7 +18,6 @@ import {
 import { SchedulePreview } from "@/shared/ui/schedule-preview";
 import { Segmented } from "@/shared/ui/segmented";
 import {
-  ICON_BUTTON,
   INPUT,
   SCHEDULE_CRON_PRESETS,
   SCHEDULE_KIND_TABS,
@@ -31,29 +28,15 @@ import {
   readScheduleConfig,
   scheduleConfigPreview,
   withScheduleKind,
+  withoutLegacyInputs,
   type ScheduleKindMemory,
 } from "@/features/workflows/lib/builder/schedule";
 import { ChoiceSelect } from "./Controls";
-import { EmptyNote, Field, FieldIssues, SectionHeading, Toggle } from "./FieldShell";
-import { JsonField } from "./JsonField";
+import { Field, FieldIssues, SectionHeading, Toggle } from "./FieldShell";
 
 type Issues = readonly WorkflowBuilderIssue[];
 
 const on = (issues: Issues, field: string) => issues.filter((issue) => issue.field === field);
-
-const TYPE_HINT: Record<WorkflowInputDef["type"], string> = {
-  string: "Text",
-  number: "Number",
-  boolean: "Yes / no",
-  object: "JSON object",
-  array: "JSON array",
-};
-
-const BOOLEAN_CHOICES: { id: "unset" | "true" | "false"; label: string }[] = [
-  { id: "unset", label: "Not set" },
-  { id: "true", label: "Yes" },
-  { id: "false", label: "No" },
-];
 
 /** A chip button (the Schedules form's quick picks). */
 const chipClass = (active: boolean) =>
@@ -134,136 +117,25 @@ function IntervalField({
   );
 }
 
-/** A number typed as text: written when it parses, removed when emptied. */
-function NumberText({
-  id,
-  value,
-  onChange,
-  invalid,
-}: {
-  id: string;
-  value: unknown;
-  onChange: (value: unknown) => void;
-  invalid: boolean;
-}) {
-  const [text, setText] = React.useState(typeof value === "number" ? String(value) : "");
-  React.useEffect(() => {
-    if (Number(text) !== value || (value === undefined && text !== "")) {
-      setText(typeof value === "number" ? String(value) : "");
-    }
-    // An outside change only.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value]);
-  return (
-    <input
-      id={id}
-      type="number"
-      step="any"
-      inputMode="decimal"
-      value={text}
-      onChange={(event) => {
-        const next = event.target.value;
-        setText(next);
-        if (!next.trim()) onChange(undefined);
-        else if (Number.isFinite(Number(next))) onChange(Number(next));
-      }}
-      aria-invalid={invalid || undefined}
-      className={cn(INPUT, "tabular-nums")}
-    />
-  );
-}
-
-/** One declared input's literal value for a scheduled run, edited by its type. */
-function ScheduleInputField({
-  nodeId,
-  def,
-  value,
-  onChange,
-  issues,
-}: {
-  nodeId: string;
-  def: WorkflowInputDef;
-  value: unknown;
-  onChange: (value: unknown) => void;
-  issues: Issues;
-}) {
-  const id = fieldDomId(nodeId, `config.inputs.${def.name}`);
-  const fieldIssues = on(issues, `config.inputs.${def.name}`);
-  const invalid = fieldIssues.length > 0;
-  const hasDefault = def.default !== undefined && def.default !== null;
-  const hint = [
-    TYPE_HINT[def.type],
-    def.description,
-    hasDefault ? `Default: ${JSON.stringify(def.default)}` : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-
-  let control: React.ReactNode;
-  if (def.type === "boolean") {
-    control = (
-      <Segmented
-        idPrefix={id}
-        size="sm"
-        ariaLabel={def.name}
-        value={value === true ? "true" : value === false ? "false" : "unset"}
-        options={BOOLEAN_CHOICES}
-        onChange={(choice) => onChange(choice === "unset" ? undefined : choice === "true")}
-      />
-    );
-  } else if (def.type === "number") {
-    control = <NumberText id={id} value={value} onChange={onChange} invalid={invalid} />;
-  } else if (def.type === "object" || def.type === "array") {
-    control = (
-      <JsonField id={id} value={value} onChange={onChange} jsonType={def.type} invalid={invalid} />
-    );
-  } else {
-    control = (
-      <input
-        id={id}
-        value={typeof value === "string" ? value : ""}
-        onChange={(event) => onChange(event.target.value === "" ? undefined : event.target.value)}
-        placeholder={hasDefault ? String(def.default) : undefined}
-        aria-invalid={invalid || undefined}
-        className={INPUT}
-      />
-    );
-  }
-  return (
-    <Field
-      label={<span className="font-mono">{def.name}</span>}
-      htmlFor={def.type === "boolean" ? undefined : id}
-      required={Boolean(def.required) && !hasDefault}
-      issues={fieldIssues}
-      hint={hint}
-    >
-      {control}
-    </Field>
-  );
-}
-
 /**
  * The schedule trigger's editor (`trigger.schedule`), in place of the
  * generic form and in the Schedules form's visual language: an on / off
  * switch; the kind as tabs — Once (a date and time), Every… (an amount and a
- * unit, 5 minutes at least), Custom (a cron expression with one-click
- * presets and its timezone); a live summary with the next runs; and the
- * literal inputs a scheduled run starts with, one typed field per declared
- * input (required ones marked). Every change is written straight into the
+ * unit, 5 minutes at least), Cron (an expression with one-click presets and
+ * its timezone); and a live summary with the next runs. It has no inputs of
+ * its own: a scheduled run uses each declared input's default (Settings), and
+ * the `inputs` older specs carried are dropped on the first change. Every change is written straight into the
  * node's config with the engine's field names; the checks live in
  * `lib/builder/schedule` and show here, on the card and in the Issues menu.
  */
 export function ScheduleTriggerEditor({
   nodeId,
   config,
-  inputs,
   issues,
   onChange,
 }: {
   nodeId: string;
   config: Record<string, unknown>;
-  /** The workflow's declared inputs. */
-  inputs: readonly WorkflowInputDef[];
   /** This node's issues. */
   issues: Issues;
   onChange: (config: Record<string, unknown>) => void;
@@ -282,22 +154,14 @@ export function ScheduleTriggerEditor({
   const preview = React.useMemo(() => scheduleConfigPreview(read, now), [read, now]);
   const zones = React.useMemo(() => timeZoneOptions(read.timezone), [read.timezone]);
 
-  const set = (patch: Record<string, unknown>) => onChange({ ...config, ...patch });
+  const set = (patch: Record<string, unknown>) => onChange({ ...withoutLegacyInputs(config), ...patch });
   const setSpec = (next: WorkflowScheduleSpec) => set({ schedule_spec: next });
   const pickKind = (next: ScheduleKind) => {
     if (next === kind) return;
     memory.current[kind] = { spec, timezone: read.timezone };
-    onChange(withScheduleKind(config, next, memory.current[next]));
-  };
-  const setInput = (name: string, value: unknown) => {
-    const nextInputs = { ...read.inputs };
-    if (value === undefined) delete nextInputs[name];
-    else nextInputs[name] = value;
-    set({ inputs: nextInputs });
+    onChange(withScheduleKind(withoutLegacyInputs(config), next, memory.current[next]));
   };
 
-  const declaredNames = new Set(inputs.map((input) => input.name));
-  const strays = Object.keys(read.inputs).filter((name) => !declaredNames.has(name));
   const kindIssues = [...on(issues, "config.schedule_kind"), ...on(issues, "config.schedule_spec")];
   const runAtId = fieldDomId(nodeId, "config.schedule_spec.run_at");
   const cronId = fieldDomId(nodeId, "config.schedule_spec.cron_expr");
@@ -438,52 +302,6 @@ export function ScheduleTriggerEditor({
         </SchedulePreview>
       </section>
 
-      <section className="space-y-3.5">
-        <SectionHeading
-          title="Inputs for scheduled runs"
-          description="What each scheduled run starts with. Fixed values, not templates. Run now can still override them."
-        />
-        <FieldIssues issues={on(issues, "config.inputs")} />
-        {inputs.length ? (
-          <div className="space-y-4">
-            {inputs.map((def) => (
-              <ScheduleInputField
-                key={def.name}
-                nodeId={nodeId}
-                def={def}
-                value={read.inputs[def.name]}
-                onChange={(value) => setInput(def.name, value)}
-                issues={issues}
-              />
-            ))}
-          </div>
-        ) : (
-          <EmptyNote>
-            This workflow declares no inputs, so its scheduled runs start with none. Add inputs in
-            its Settings.
-          </EmptyNote>
-        )}
-        {strays.map((name) => (
-          <div
-            key={name}
-            className="flex items-start justify-between gap-3 rounded-xl border border-destructive/25 bg-destructive/[0.05] px-3 py-2.5"
-          >
-            <div className="min-w-0">
-              <p className="truncate font-mono text-xs text-foreground">{name}</p>
-              <FieldIssues issues={on(issues, `config.inputs.${name}`)} />
-            </div>
-            <button
-              type="button"
-              className={ICON_BUTTON}
-              aria-label={`Remove the value for ${name}`}
-              title="Remove"
-              onClick={() => setInput(name, undefined)}
-            >
-              <Trash2 className="h-3.5 w-3.5" aria-hidden />
-            </button>
-          </div>
-        ))}
-      </section>
     </div>
   );
 }

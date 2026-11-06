@@ -2,12 +2,14 @@ import * as React from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   ArrowLeft,
+  Eye,
   History,
   Loader2,
   MoreHorizontal,
   PanelLeft,
   Play,
   Redo2,
+  RotateCcw,
   Settings2,
   Shapes,
   Trash2,
@@ -43,6 +45,7 @@ import type {
 import { usePaletteOpen } from "@/features/workflows/hooks/usePaletteOpen";
 import { useWorkflowDraft } from "@/features/workflows/hooks/useWorkflowDraft";
 import { useWorkflowDraftAutosave } from "@/features/workflows/hooks/useWorkflowDraftAutosave";
+import { useWorkflowHistory } from "@/features/workflows/hooks/useWorkflowHistory";
 import { useWorkflowUserId } from "@/features/workflows/hooks/useWorkflowUserId";
 import { formatSavedAt } from "@/shared/lib/savedAt";
 import { useWorkflowMutations } from "@/features/workflows/hooks/useWorkflowMutations";
@@ -65,10 +68,15 @@ import { checkSpec, issueCountByNode, mergeIssues } from "@/features/workflows/l
 import { IssuesMenu } from "./builder_parts/IssuesMenu";
 import { NodeInspector } from "./builder_parts/NodeInspector";
 import { NodePalette } from "./builder_parts/NodePalette";
+import { WorkflowHistory } from "./builder_parts/WorkflowHistory";
 import { WorkflowSettings } from "./builder_parts/WorkflowSettings";
 
 // The canvas brings React Flow along: its own chunk, fetched when the builder opens.
 const BuilderCanvas = React.lazy(() => import("./builder_parts/BuilderCanvas"));
+// A previewed version is drawn read-only by the workflow view's graph (its own chunk).
+const PreviewGraph = React.lazy(() => import("../workflow_view_parts/WorkflowGraph"));
+/** The preview graph's node clicks go nowhere: it is read-only. */
+const ignoreNodePick = () => undefined;
 
 const NO_SELECTION: WorkflowBuilderSelection = { nodes: [], edges: [] };
 const sameIds = (a: readonly string[], b: readonly string[]) =>
@@ -142,6 +150,13 @@ const isTextTarget = (target: EventTarget | null) => {
  * own checks on every change, the server's ~800 ms later, the leave guard.
  * Save is: the builder's checks, the server's validate, then create (and the
  * page moves to the edit route) or update (a new version only if changed).
+ *
+ * History (a saved workflow only) is the drawer's third face, opened from the
+ * `vN` badge or the ⋯ menu: the kept versions with what each changed
+ * (`WorkflowHistory`). Preview lays a version read-only over the canvas (the
+ * draft underneath is untouched); Restore — confirmed, with a warning when
+ * there are unsaved edits — saves that version again as the newest one and
+ * loads it into the builder.
  */
 export function WorkflowBuilderWorkspace({
   workflowId,
@@ -158,6 +173,7 @@ export function WorkflowBuilderWorkspace({
   onCreated,
   onOpenView,
   onDeleted,
+  initialPanel = null,
 }: {
   /** The saved workflow; null until the first save. */
   workflowId: string | null;
@@ -177,11 +193,13 @@ export function WorkflowBuilderWorkspace({
   onCreated: (workflowId: string) => void;
   onOpenView: (workflowId: string) => void;
   onDeleted: () => void;
+  /** Open with the History panel showing (the workflow view's History link). */
+  initialPanel?: "history" | null;
 }) {
   const { toast } = useToast();
   const mobile = useIsMobile();
   const reduceMotion = useReducedMotion();
-  const { spec, dispatch, undo, redo, canUndo, canRedo, dirty, markSaved, restore } = useWorkflowDraft(
+  const { spec, dispatch, undo, redo, canUndo, canRedo, dirty, markSaved, reset, restore } = useWorkflowDraft(
     initialSpec,
     workflowId ? initialSpec : null,
   );
@@ -201,6 +219,11 @@ export function WorkflowBuilderWorkspace({
   const [inspectorOpen, setInspectorOpen] = React.useState(false);
   // The workflow's settings in the drawer (nothing picked).
   const [settingsOpen, setSettingsOpen] = React.useState(false);
+  // The History panel in the drawer (a phone: a sheet), and the version laid
+  // read-only over the canvas, if any.
+  const [historyOpen, setHistoryOpen] = React.useState(initialPanel === "history" && Boolean(workflowId));
+  const [preview, setPreview] = React.useState<number | null>(null);
+  const [confirmRestore, setConfirmRestore] = React.useState<number | null>(null);
   const palette = usePaletteOpen();
   const [confirmClear, setConfirmClear] = React.useState(false);
   // The palette lies over the canvas's left edge: the canvas always starts
@@ -237,19 +260,87 @@ export function WorkflowBuilderWorkspace({
   // ---- leaving --------------------------------------------------------------
   const guard = useLeaveGuard(dirty && saving === null);
 
+  // ---- history: kept versions, preview, restore ---------------------------
+  // Nothing loads until the panel opens on a saved workflow.
+  const history = useWorkflowHistory({ workflowId: savedId, enabled: historyOpen && Boolean(savedId) });
+  const previewDetail = preview !== null ? (history.details[preview] ?? null) : null;
+  const previewFailed = preview !== null && !previewDetail && history.failedVersions.has(preview);
+  const previewRef = React.useRef(preview);
+  previewRef.current = preview;
+  const { loadVersion } = history;
+  React.useEffect(() => {
+    if (preview !== null) void loadVersion(preview);
+  }, [preview, loadVersion]);
+
+  const openHistory = React.useCallback(() => {
+    if (!savedId) return;
+    setSettingsOpen(false);
+    setSelection(NO_SELECTION);
+    setInspectorOpen(false);
+    setHistoryOpen(true);
+  }, [savedId]);
+
+  const showPreview = React.useCallback(
+    (versionNo: number | null) => {
+      setPreview(versionNo);
+      // The draft under the preview is not editable: no palette over it.
+      if (versionNo !== null) {
+        palette.setOpen(false);
+        setPaletteOpen(false);
+        // A phone: the sheet steps aside so the canvas shows.
+        if (mobile) setHistoryOpen(false);
+      }
+    },
+    [palette, mobile],
+  );
+
+  const restoreVersion = async (versionNo: number) => {
+    const before = version;
+    const workflow = await history.restore(versionNo);
+    if (!workflow) return;
+    // The restored spec is the newest version now: the builder loads it as
+    // saved (undo history starts over; the autosaved draft is done with).
+    const restoredSpec = workflow.spec ?? history.details[versionNo]?.spec ?? null;
+    if (restoredSpec) reset(restoredSpec);
+    autosave.clear();
+    setAttempted(false);
+    setPreview(null);
+    changeSelection(NO_SELECTION);
+    setVersion(workflow.latestVersionNo);
+    setSavedSchedule(workflow.schedule ?? null);
+    setFitSignal((n) => n + 1);
+    onSaved(workflow);
+    if (workflow.latestVersionNo !== null && workflow.latestVersionNo !== before) {
+      toast({
+        title: `Version ${versionNo} restored`,
+        description: `Saved as version ${workflow.latestVersionNo}; new runs use it. Every earlier version is still in the history.`,
+      });
+    } else {
+      toast({
+        title: "Nothing to restore",
+        description: `Version ${versionNo} is the same as the current version.`,
+      });
+    }
+  };
+
   // ---- selection --------------------------------------------------------------
   const selectedNode =
     selection.nodes.length === 1 ? (spec.nodes.find((node) => node.id === selection.nodes[0]) ?? null) : null;
   const changeSelection = React.useCallback((next: WorkflowBuilderSelection) => {
-    // A pick takes the drawer over from the settings.
-    if (next.nodes.length || next.edges.length) setSettingsOpen(false);
+    // A pick takes the drawer over from the settings (and the history).
+    if (next.nodes.length || next.edges.length) {
+      setSettingsOpen(false);
+      setHistoryOpen(false);
+      setPreview(null);
+    }
     setSelection((current) =>
       sameIds(current.nodes, next.nodes) && sameIds(current.edges, next.edges) ? current : next,
     );
   }, []);
   const hasSelection = selection.nodes.length > 0 || selection.edges.length > 0;
-  // Desktop: the drawer is open while something is picked, or the settings are.
-  const drawerOpen = !mobile && (settingsOpen || hasSelection);
+  // Desktop: the drawer is open while something is picked, or the settings
+  // (or the history) are.
+  const drawerOpen = !mobile && (settingsOpen || historyOpen || hasSelection);
 
   // A step is brought into view only once the drawer has finished opening (one
   // move after the slide, never during it); with the drawer already open, or
@@ -285,6 +376,8 @@ export function WorkflowBuilderWorkspace({
 
   const closeDrawer = React.useCallback(() => {
     setSettingsOpen(false);
+    setHistoryOpen(false);
+    setPreview(null);
     changeSelection(NO_SELECTION);
   }, [changeSelection]);
 
@@ -299,6 +392,8 @@ export function WorkflowBuilderWorkspace({
       return;
     }
     changeSelection(NO_SELECTION);
+    setHistoryOpen(false);
+    setPreview(null);
     setSettingsOpen(true);
   }, [mobile, settingsOpen, changeSelection]);
   // A step that went away (deleted, undone) is no longer picked.
@@ -376,8 +471,10 @@ export function WorkflowBuilderWorkspace({
       dispatch({ type: "add-node", node });
       // The first step on an empty canvas: frame it (nothing was framed yet).
       if (!spec.nodes.length) setFitSignal((n) => n + 1);
-      // Added by click after a step that leads nowhere yet: connect them.
-      if (!position && selectedNode) {
+      // Added by click after a step that leads nowhere yet: connect them. (A
+      // second connection would start parallel paths — drawn by hand only.)
+      const leadsSomewhere = spec.edges.some((edge) => edge.source === selectedNode?.id);
+      if (!position && selectedNode && !leadsSomewhere) {
         const branch = null;
         const check = canConnect({ nodes: [...spec.nodes, node], edges: spec.edges }, catalog, {
           source: selectedNode.id,
@@ -507,6 +604,8 @@ export function WorkflowBuilderWorkspace({
     // (next run) included: the trigger card reads it from here on.
     setSavedSchedule(workflow.schedule ?? null);
     onSaved(workflow);
+    // A new version may have joined the list the panel shows.
+    if (historyOpen) void history.reload();
     if (!savedId) {
       setSavedId(workflow.id);
       toast({ title: "Workflow created", description: "Version 1 is saved. Run it from the top bar." });
@@ -531,8 +630,8 @@ export function WorkflowBuilderWorkspace({
         void saveRef.current();
         return;
       }
-      // In a text field, undo is the field's own.
-      if (isTextTarget(event.target)) return;
+      // In a text field, undo is the field's own; under a preview the draft is out of sight.
+      if (isTextTarget(event.target) || previewRef.current !== null) return;
       if (key === "z" && !event.shiftKey) {
         event.preventDefault();
         undo();
@@ -575,7 +674,20 @@ export function WorkflowBuilderWorkspace({
     );
   };
 
-  const inspectorBody = selectedNode ? (
+  const historyBody = savedId ? (
+    <WorkflowHistory
+      history={history}
+      workflowName={spec.name.trim() || "this workflow"}
+      currentVersionNo={version}
+      previewing={preview}
+      onPreview={showPreview}
+      onRequestRestore={setConfirmRestore}
+    />
+  ) : null;
+
+  const inspectorBody = historyOpen && !mobile ? (
+    historyBody
+  ) : selectedNode ? (
     <NodeInspector
       key={selectedNode.id}
       node={selectedNode}
@@ -612,8 +724,18 @@ export function WorkflowBuilderWorkspace({
   ) : mobile || settingsOpen ? (
     <WorkflowSettings spec={spec} dispatch={dispatch} issues={visibleIssues.filter((issue) => !issue.nodeId)} />
   ) : null;
-  const inspectorKey = selectedNode ? `node:${selectedNode.id}` : hasSelection ? "many" : inspectorBody ? "workflow" : "none";
-  const inspectorTitle = selectedNode ? "Edit the step" : hasSelection ? "Selection" : "Workflow settings";
+  const inspectorKey =
+    historyOpen && !mobile
+      ? "history"
+      : selectedNode
+        ? `node:${selectedNode.id}`
+        : hasSelection
+          ? "many"
+          : inspectorBody
+            ? "workflow"
+            : "none";
+  const inspectorTitle =
+    historyOpen && !mobile ? "History" : selectedNode ? "Edit the step" : hasSelection ? "Selection" : "Workflow settings";
 
   const inspector = (
     // A steady scrollbar gutter: a form growing past the drawer's height (an
@@ -678,12 +800,29 @@ export function WorkflowBuilderWorkspace({
             )}
           />
           {version !== null ? (
-            <span
-              className="hidden flex-shrink-0 rounded-full bg-primary/[0.08] px-2 py-0.5 text-[10.5px] font-semibold tabular-nums text-primary sm:inline"
-              title={`Saved as version ${version}`}
-            >
-              v{version}
-            </span>
+            savedId ? (
+              <button
+                type="button"
+                onClick={() => (historyOpen ? closeDrawer() : openHistory())}
+                aria-pressed={historyOpen}
+                aria-label={`Version ${version}: open the history`}
+                title="Version history"
+                data-testid="workflow-version-badge"
+                className={cn(
+                  "hidden flex-shrink-0 items-center gap-1 rounded-full bg-primary/[0.08] px-2 py-0.5 text-[10.5px] font-semibold tabular-nums text-primary transition-colors hover:bg-primary/[0.16] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 sm:inline-flex",
+                  historyOpen && "bg-primary/[0.16] ring-1 ring-primary/30",
+                )}
+              >
+                <History className="h-3 w-3" aria-hidden />v{version}
+              </button>
+            ) : (
+              <span
+                className="hidden flex-shrink-0 rounded-full bg-primary/[0.08] px-2 py-0.5 text-[10.5px] font-semibold tabular-nums text-primary sm:inline"
+                title={`Saved as version ${version}`}
+              >
+                v{version}
+              </span>
+            )
           ) : null}
           <AnimatePresence initial={false}>
             {dirty ? (
@@ -786,6 +925,10 @@ export function WorkflowBuilderWorkspace({
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="rounded-xl p-1">
+              <DropdownMenuItem onSelect={openHistory} className="gap-2 rounded-lg">
+                <History className="h-3.5 w-3.5" aria-hidden />
+                Version history
+              </DropdownMenuItem>
               <DropdownMenuItem
                 onSelect={() => setConfirmDelete(true)}
                 className="gap-2 rounded-lg text-destructive focus:text-destructive"
@@ -836,6 +979,64 @@ export function WorkflowBuilderWorkspace({
                 onClick={() => autosave.dismiss({ discard: true })}
               >
                 Discard
+              </button>
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      {/* ---- preview banner: a kept version is shown read-only ---- */}
+      <AnimatePresence initial={false}>
+        {preview !== null ? (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, transition: { duration: 0.12 } }}
+            transition={{ duration: reduceMotion ? 0 : 0.2, ease: "easeOut" }}
+            className="flex-shrink-0 border-b border-border/60 bg-muted/40"
+            role="status"
+            data-testid="workflow-preview-banner"
+          >
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5">
+              <Eye className="h-4 w-4 flex-shrink-0 text-primary" aria-hidden />
+              <p className="min-w-0 flex-1 text-[13px] text-foreground">
+                <span className="font-semibold">Previewing version {preview}</span>
+                <span className="text-muted-foreground">
+                  {" "}
+                  · read-only{dirty ? ". Your unsaved changes are kept underneath." : "."}
+                </span>
+              </p>
+              {preview !== version ? (
+                <button
+                  type="button"
+                  className={cn(BAR_PRIMARY, "px-3 py-1 text-xs")}
+                  onClick={() => setConfirmRestore(preview)}
+                  disabled={history.restoringVersion !== null}
+                >
+                  {history.restoringVersion === preview ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                  ) : (
+                    <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+                  )}
+                  Restore this version
+                </button>
+              ) : null}
+              {mobile ? (
+                <button
+                  type="button"
+                  className={cn(BAR_SECONDARY, "px-3 py-1 text-xs")}
+                  onClick={() => setHistoryOpen(true)}
+                >
+                  <History className="h-3.5 w-3.5" aria-hidden />
+                  History
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className={cn(BAR_SECONDARY, "px-3 py-1 text-xs")}
+                onClick={() => setPreview(null)}
+              >
+                Back to editing
               </button>
             </div>
           </motion.div>
@@ -912,7 +1113,40 @@ export function WorkflowBuilderWorkspace({
               savedSchedule={savedSchedule}
             />
           </React.Suspense>
-          {!mobile && !palette.open ? (
+          {/* A previewed version, read-only over the draft (which stays mounted
+              underneath, untouched: its pan, zoom and undo history survive). */}
+          {preview !== null ? (
+            <div
+              className="absolute inset-0 z-[15] bg-background"
+              data-testid="workflow-preview-canvas"
+              aria-label={`Version ${preview}, read-only`}
+              role="region"
+            >
+              {previewDetail ? (
+                <React.Suspense fallback={<CanvasLoading />}>
+                  <PreviewGraph
+                    key={preview}
+                    spec={previewDetail.spec}
+                    view={null}
+                    catalog={catalog}
+                    selectedNodeId={null}
+                    onSelectNode={ignoreNodePick}
+                    rightInset={drawerOpen ? INSPECTOR_DRAWER_WIDTH : 0}
+                  />
+                </React.Suspense>
+              ) : previewFailed ? (
+                <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-sm text-muted-foreground">
+                  <p>Version {preview} could not be loaded.</p>
+                  <button type="button" className={BAR_SECONDARY} onClick={() => void loadVersion(preview)}>
+                    Try again
+                  </button>
+                </div>
+              ) : (
+                <CanvasLoading />
+              )}
+            </div>
+          ) : null}
+          {!mobile && !palette.open && preview === null ? (
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
@@ -933,7 +1167,7 @@ export function WorkflowBuilderWorkspace({
               </TooltipContent>
             </Tooltip>
           ) : null}
-          {mobile ? (
+          {mobile && preview === null ? (
             <div className="absolute bottom-3 right-3 z-10 flex gap-2">
               <button type="button" className={cn(BAR_SECONDARY, "bg-card shadow-sm")} onClick={() => setPaletteOpen(true)}>
                 <PanelLeft className="h-3.5 w-3.5" aria-hidden />
@@ -944,7 +1178,7 @@ export function WorkflowBuilderWorkspace({
                 {selectedNode ? "Edit step" : "Settings"}
               </button>
             </div>
-          ) : (
+          ) : mobile ? null : (
             // Over the canvas from the right. Shut, it is not rendered at all
             // (unmounted once it has slid out), so nothing of it — its shadow,
             // its border, its header — is left at the canvas's edge.
@@ -1009,8 +1243,49 @@ export function WorkflowBuilderWorkspace({
               {inspector}
             </SheetContent>
           </Sheet>
+          <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
+            <SheetContent side="bottom" aria-describedby={undefined} className="h-[75dvh] rounded-t-[1.5rem] p-0">
+              <SheetTitle className="sr-only">Version history</SheetTitle>
+              <button
+                type="button"
+                onClick={() => setHistoryOpen(false)}
+                aria-label="Close"
+                className={cn(ICON_BUTTON, "absolute right-3 top-3 z-10 h-8 w-8")}
+              >
+                <X className="h-4 w-4" aria-hidden />
+              </button>
+              <div className="scrollbar-muted h-full min-h-0 overflow-y-auto overscroll-contain px-5 py-5">
+                {historyBody}
+              </div>
+            </SheetContent>
+          </Sheet>
         </>
       ) : null}
+
+      <ConfirmDialog
+        open={confirmRestore !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmRestore(null);
+        }}
+        title={`Restore version ${confirmRestore ?? ""}?`}
+        description={
+          <>
+            Version {confirmRestore} is saved again as a new version{version !== null ? ` (version ${version + 1})` : ""}{" "}
+            and opens here; new runs use it. Nothing is deleted — version {version ?? ""} stays in the history.
+            {dirty ? (
+              <span className="mt-2 block font-medium text-destructive">
+                Your unsaved changes in the builder will be discarded.
+              </span>
+            ) : null}
+          </>
+        }
+        confirmLabel={dirty ? "Discard changes and restore" : "Restore"}
+        destructive={dirty}
+        onConfirm={async () => {
+          if (confirmRestore === null) return;
+          await restoreVersion(confirmRestore);
+        }}
+      />
 
       <ConfirmDialog
         open={confirmDelete}

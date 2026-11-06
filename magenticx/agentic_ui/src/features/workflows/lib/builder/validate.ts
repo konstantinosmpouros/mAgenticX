@@ -267,9 +267,11 @@ export function checkSpec(
     } else if (info && branch && !branches.includes(branch)) {
       add(from.id, "edges", `Branch '${branch}' no longer exists.`);
     }
-    const key = `${edge.source}\u0000${branch ?? ""}`;
+    // A branch leads to one step; plain connections may be several (parallel
+    // paths — their structure is the server's check), never the same twice.
+    const key = branch ? `${edge.source}\u0000${branch}` : `${edge.source}\u0000\u0000${edge.target}`;
     if (used.has(key)) {
-      add(from.id, "edges", branch ? `Branch '${branch}' leads to two steps.` : "It leads to two steps; a run follows one path.");
+      add(from.id, "edges", branch ? `Branch '${branch}' leads to two steps.` : "These steps are connected twice.");
     }
     used.add(key);
   });

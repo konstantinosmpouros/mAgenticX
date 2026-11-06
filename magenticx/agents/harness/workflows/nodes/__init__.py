@@ -19,6 +19,7 @@ from harness.workflows.nodes.code_step import CodeNode
 from harness.workflows.nodes.condition import ConditionNode
 from harness.workflows.nodes.end import EndNode
 from harness.workflows.nodes.fetch import FetchNode
+from harness.workflows.nodes.join import JoinNode
 from harness.workflows.nodes.llm import LlmNode
 from harness.workflows.nodes.loop import LoopNode
 from harness.workflows.nodes.router import RouterNode
@@ -43,6 +44,7 @@ NODE_KINDS: dict[str, type[WorkflowNode]] = {
         RouterNode,
         LoopNode,
         WaitNode,
+        JoinNode,
         ApprovalNode,
         EndNode,
     )
