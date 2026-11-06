@@ -7,10 +7,13 @@ import type {
   WorkflowFormField,
   WorkflowSpec,
   WorkflowTemplatePath,
+  WorkflowToolInfo,
 } from "@/shared/lib/types";
+import { useWorkflowTools } from "@/features/workflows/hooks/useWorkflowTools";
 import { INPUT } from "@/features/workflows/lib/builder/consts";
 import { fieldDomId } from "@/features/workflows/lib/builder/ids";
 import { asCases, asRules } from "@/features/workflows/lib/builder/schemaForm";
+import { asToolRef, findTool, pruneArgs } from "@/features/workflows/lib/builder/toolArgs";
 import { issueIsOn } from "@/features/workflows/lib/builder/validate";
 import { variableNames } from "@/features/workflows/lib/builder/variables";
 import { CasesEditor } from "./CasesEditor";
@@ -25,6 +28,8 @@ import { MapEditor } from "./MapEditor";
 import { RulesEditor } from "./RulesEditor";
 import { SchemaBuilderField } from "./SchemaBuilderField";
 import { TemplateField } from "./TemplateField";
+import { ToolArgsField } from "./ToolArgsField";
+import { ToolField } from "./ToolField";
 
 /** A number typed as text: committed when it parses, removed when emptied (the default applies). */
 function NumberInput({
@@ -88,7 +93,9 @@ const rangeHint = (field: WorkflowFormField): string | null => {
  * choices, nested objects (`tool`), maps (`headers`, `args`, `outputs`),
  * a Set step's variables (name → template), an End step's variables to
  * keep for the next run, rule lists and router cases, source code (a
- * monospace editor, never templated), and a JSON editor for anything else.
+ * monospace editor, never templated), a tool step's tool (a searchable
+ * picker over `GET /v1/workflows/tools`) and that tool's own arguments, and
+ * a JSON editor for anything else.
  * Templated text gets the `{ }` helper; issues sit under the field they name.
  */
 export function SchemaForm({
@@ -124,6 +131,23 @@ export function SchemaForm({
   // `memory` is shown inside the Conversation block, beside `thread`.
   const memoryField = fields.find((field) => field.key === "memory" && field.widget === "enum");
   const hasConversation = fields.some((field) => field.widget === "thread");
+  // A tool step: its tool is picked from the tool list, and its arguments follow the picked tool's schema.
+  const toolField = fields.find((field) => field.widget === "tool");
+  const argsField = fields.find((field) => field.widget === "tool_args");
+  const tools = useWorkflowTools(Boolean(toolField));
+  const toolRef = toolField ? asToolRef(config[toolField.key]) : null;
+  const pickedTool = tools.data ? findTool(tools.data.tools, toolRef) : null;
+  const pickTool = (tool: WorkflowToolInfo) => {
+    if (!toolField) return;
+    const next: Record<string, unknown> = { ...config, [toolField.key]: { source: tool.source, name: tool.name } };
+    if (argsField) {
+      // Keep the values of the arguments the new tool also takes.
+      const kept = pruneArgs(config[argsField.key], tool);
+      if (Object.keys(kept).length) next[argsField.key] = kept;
+      else delete next[argsField.key];
+    }
+    onChange(next);
+  };
 
   return (
     <div className="space-y-5">
@@ -377,6 +401,52 @@ export function SchemaForm({
               </Field>
             );
           }
+          case "tool":
+            return (
+              <Field key={field.key} label={field.label} htmlFor={id} required={field.required} issues={own} issuesId={issuesId}>
+                <ToolField
+                  id={id}
+                  current={toolRef}
+                  tools={tools}
+                  onPick={pickTool}
+                  invalid={own.some((issue) => issue.severity === "error")}
+                  describedBy={own.length ? issuesId : undefined}
+                />
+              </Field>
+            );
+          case "tool_args":
+            if (!toolField) return null;
+            if (pickedTool) {
+              return (
+                <fieldset key={field.key} className="min-w-0 space-y-3 rounded-2xl border border-border/60 bg-muted/15 p-3.5">
+                  <legend className="px-1 text-xs font-semibold text-foreground/85">Arguments</legend>
+                  <ToolArgsField
+                    key={`${pickedTool.source}:${pickedTool.name}`}
+                    nodeId={nodeId}
+                    where={where}
+                    value={value}
+                    onChange={(next) => set(field.key, next)}
+                    tool={pickedTool}
+                    paths={paths}
+                    issues={own}
+                  />
+                </fieldset>
+              );
+            }
+            // No tool yet: nothing to fill in. The list is loading, can't be
+            // read or no longer has the tool: the stored arguments as a plain map.
+            if (!toolRef || (tools.isLoading && !tools.data)) return null;
+            return (
+              <Field key={field.key} label="Arguments" hint={hint} issues={own}>
+                <MapEditor
+                  id={id}
+                  value={value}
+                  onChange={(next) => set(field.key, Object.keys(next).length ? next : undefined)}
+                  paths={paths}
+                  emptyText="No arguments."
+                />
+              </Field>
+            );
           case "map":
             return (
               <Field key={field.key} label={field.label} required={field.required} hint={hint} issues={own}>

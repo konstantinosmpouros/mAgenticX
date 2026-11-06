@@ -12,6 +12,7 @@ import {
   sourceHandleId,
 } from "@/features/workflows/lib/nodeCard";
 import { EXECUTION_STATUS_META } from "@/features/workflows/lib/status";
+import { TOOL_KIND } from "@/features/workflows/lib/builder/graph";
 import { StatusChip } from "../workflow_view_parts/StatusChip";
 
 type WorkflowNodeCardProps = NodeProps<Node<WorkflowNodeCardData>>;
@@ -39,7 +40,7 @@ const own = (event: React.SyntheticEvent) => event.stopPropagation();
  * ×N badge when it ran more than once, its taken branch lit, faded when the
  * run has not reached it. `mode: "edit"` shows the issue badge and, on hover,
  * focus or selection, the delete action (`onDelete`). A `subtitle` (the
- * schedule trigger's cadence and next run, or "Paused") sits under the label
+ * schedule trigger's cadence and next run, or "Paused"; a tool step's tool) sits under the label
  * in either mode. Motion stops under
  * reduced motion (styles/workflow-flow.css).
  */
@@ -105,7 +106,7 @@ export function WorkflowNodeCard({ data, selected: flowSelected }: WorkflowNodeC
               >
                 {data.subtitlePaused ? (
                   <Pause className="h-2.5 w-2.5 flex-shrink-0" aria-hidden />
-                ) : (
+                ) : data.kind === TOOL_KIND ? null : (
                   <CalendarClock
                     className="workflow-node-kind h-2.5 w-2.5 flex-shrink-0"
                     aria-hidden

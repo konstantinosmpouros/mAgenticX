@@ -50,6 +50,7 @@ import { useWorkflowUserId } from "@/features/workflows/hooks/useWorkflowUserId"
 import { formatSavedAt } from "@/shared/lib/savedAt";
 import { useWorkflowMutations } from "@/features/workflows/hooks/useWorkflowMutations";
 import { useWorkflowValidation } from "@/features/workflows/hooks/useWorkflowValidation";
+import { useWorkflowTools } from "@/features/workflows/hooks/useWorkflowTools";
 import { nodeLabel } from "@/features/workflows/lib/kinds";
 import {
   BAR_PRIMARY,
@@ -62,7 +63,7 @@ import {
 import { createNode, normalizeSpec } from "@/features/workflows/lib/builder/draft";
 import { layoutSpec, nextNodePosition } from "@/features/workflows/lib/builder/flow";
 import { NODE_CARD } from "@/features/workflows/lib/nodeCard";
-import { canConnect, kindInfoOf } from "@/features/workflows/lib/builder/graph";
+import { TOOL_KIND, canConnect, kindInfoOf } from "@/features/workflows/lib/builder/graph";
 import { fieldDomId, newEdgeId } from "@/features/workflows/lib/builder/ids";
 import { checkSpec, issueCountByNode, mergeIssues } from "@/features/workflows/lib/builder/validate";
 import { IssuesMenu } from "./builder_parts/IssuesMenu";
@@ -236,13 +237,17 @@ export function WorkflowBuilderWorkspace({
   const inspectorRef = React.useRef<HTMLDivElement>(null);
 
   // ---- issues ---------------------------------------------------------------
-  const clientIssues = React.useMemo(() => checkSpec(spec, catalog), [spec, catalog]);
+  // A tool step's arguments are checked against its tool's schema once the tool list is in.
+  const hasToolStep = spec.nodes.some((node) => node.kind === TOOL_KIND);
+  const tools = useWorkflowTools(hasToolStep);
+  const toolList = hasToolStep ? tools.data : null;
+  const clientIssues = React.useMemo(() => checkSpec(spec, catalog, toolList), [spec, catalog, toolList]);
   const server = useWorkflowValidation(spec, catalog.length > 0);
   const allIssues = React.useMemo(() => mergeIssues(clientIssues, server.issues), [clientIssues, server.issues]);
   // "Still empty" on a field nobody touched yet waits for a save attempt;
   // everything else (a broken edge, a bad id) shows at once.
   const visibleIssues = React.useMemo(
-    () => (attempted ? allIssues : allIssues.filter((issue) => !/is required\.|needs a name\.|Give the workflow a name\.|Add a trigger:/.test(issue.message))),
+    () => (attempted ? allIssues : allIssues.filter((issue) => !/is required\.|needs a name\.|Give the workflow a name\.|Add a trigger:|Pick a tool\./.test(issue.message))),
     [allIssues, attempted],
   );
   const issueCounts = React.useMemo(() => issueCountByNode(visibleIssues), [visibleIssues]);

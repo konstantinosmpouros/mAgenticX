@@ -112,6 +112,24 @@ class WorkflowCatalog(BaseModel):
     kinds: list[dict[str, Any]]
 
 
+class WorkflowTool(BaseModel):
+    """One tool a ``tool`` step may call, with its input JSON Schema."""
+
+    source: Literal["native", "mcp"]
+    name: str
+    server: str | None = None
+    description: str = ""
+    inputSchema: dict[str, Any]
+
+
+class WorkflowTools(BaseModel):
+    """``GET /workflows/tools``: the Tool step's picker. ``mcpAvailable`` is
+    false when the MCP gateway could not be read (native tools still listed)."""
+
+    mcpAvailable: bool
+    tools: list[WorkflowTool]
+
+
 class WorkflowResume(_Strict):
     """The answer to an ``approval`` pause."""
 

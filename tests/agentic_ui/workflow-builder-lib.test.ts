@@ -308,7 +308,7 @@ describe("schema → form, per step-1 kind", () => {
 
   it("reads every kind's fields with the right widgets (no `assign` anywhere)", () => {
     expect(widgets("trigger.manual")).toEqual({});
-    expect(widgets("tool")).toEqual({ tool: "object", args: "map", timeout_seconds: "number" });
+    expect(widgets("tool")).toEqual({ tool: "tool", args: "tool_args", timeout_seconds: "number" });
     expect(widgets("fetch")).toEqual({
       method: "enum",
       url: "text",
@@ -336,10 +336,7 @@ describe("schema → form, per step-1 kind", () => {
     const timeout = fetchFields.find((field) => field.key === "timeout_seconds")!;
     expect(timeout).toMatchObject({ default: 15, maximum: 30, exclusiveMinimum: 0 });
     const tool = fieldsFromSchema(kind("tool").configSchema).find((field) => field.key === "tool")!;
-    expect(tool.fields?.map((field) => [field.key, field.widget])).toEqual([
-      ["source", "enum"],
-      ["name", "text"],
-    ]);
+    expect(tool).toMatchObject({ widget: "tool", required: true, templated: false });
     const loop = fieldsFromSchema(kind("loop").configSchema).find((field) => field.key === "max_iterations")!;
     expect(loop).toMatchObject({ integer: true, minimum: 1, maximum: 20, default: 5 });
   });
@@ -351,7 +348,8 @@ describe("schema → form, per step-1 kind", () => {
     });
     expect(defaultConfig(kind("fetch").configSchema)).toEqual({ url: "" });
     expect(defaultConfig(kind("approval").configSchema)).toEqual({ message: "" });
-    expect(defaultConfig(kind("tool").configSchema)).toEqual({ tool: { source: "native", name: "" } });
+    // No tool until one is picked from the list.
+    expect(defaultConfig(kind("tool").configSchema)).toEqual({});
     expect(defaultConfig(kind("loop").configSchema)).toEqual({});
     expect(defaultConfig(kind("end").configSchema)).toEqual({});
     const fields = fieldsFromSchema(kind("fetch").configSchema);

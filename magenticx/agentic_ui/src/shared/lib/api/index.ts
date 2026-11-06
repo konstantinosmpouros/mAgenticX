@@ -149,6 +149,7 @@ export {
   listWorkflows,
   getWorkflow,
   getWorkflowCatalog,
+  getWorkflowTools,
   createWorkflow,
   updateWorkflow,
   deleteWorkflow,

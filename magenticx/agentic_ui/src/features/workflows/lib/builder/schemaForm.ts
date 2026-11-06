@@ -18,8 +18,10 @@ import { asContext } from "./stepData";
  * nested fields — and anything else (`body`, `payload`, a shape we don't
  * know) falls back to a JSON editor. A property's `"x-widget"` hint (`code`,
  * `json`, `assign` — a Set step's variable → template map —, `keep` — an End
- * step's variables for the next run —, `context`, `thread`; on the property
- * or inside an optional's `anyOf` branch) picks its editor outright.
+ * step's variables for the next run —, `context`, `thread`, `tool` — a tool
+ * step's tool, picked from the tool list —, `tool_args` — that tool's own
+ * arguments —; on the property or inside an optional's `anyOf` branch) picks
+ * its editor outright.
  * Pure: no React.
  */
 
@@ -110,7 +112,7 @@ function mapValueKind(additional: unknown): WorkflowMapValueKind {
 }
 
 /** The `"x-widget"` hints a catalogue schema may carry on a property. */
-const X_WIDGETS = new Set(["code", "json", "assign", "keep", "context", "thread"]);
+const X_WIDGETS = new Set(["code", "json", "assign", "keep", "context", "thread", "tool", "tool_args"]);
 
 /**
  * An optional property (`x: T | None`) as Pydantic writes it — `anyOf: [T,
@@ -191,6 +193,14 @@ function fieldFor(key: string, raw: unknown, root: Schema, required: boolean): W
         maxLength: num(schema.maxLength),
         pattern: str(schema.pattern) || undefined,
       };
+    }
+    if (hint === "tool") {
+      // Picked from the tool list, never typed or templated.
+      return { ...base, widget: "tool", templated: false };
+    }
+    if (hint === "tool_args") {
+      // The picked tool's own arguments; their values may be placeholders.
+      return { ...base, widget: "tool_args", templated: true };
     }
     if (hint === "keep") {
       // Variable names, never templates.
@@ -303,6 +313,8 @@ function initialValue(field: WorkflowFormField): unknown {
   // A copy: the schema's default object must never be shared by two nodes.
   if (field.widget === "context") return asContext(field.default);
   if (field.widget === "keep") return [];
+  // No tool until one is picked (the checks ask for it); its arguments follow the pick.
+  if (field.widget === "tool" || field.widget === "tool_args") return undefined;
   if (field.hasDefault && field.default !== null) return field.default;
   switch (field.widget) {
     case "thread":
@@ -390,6 +402,14 @@ function ruleProblems(rules: unknown, where: string): ConfigProblem[] {
 function fieldProblems(field: WorkflowFormField, value: unknown, where: string): ConfigProblem[] {
   const problems: ConfigProblem[] = [];
   const label = field.label;
+  if (field.widget === "tool") {
+    // A tool is a picked {source, name}; its arguments are checked against the tool's schema (`validate`).
+    const name = isRecord(value) ? str(value.name).trim() : "";
+    if (!name) {
+      if (field.required || !isEmptyValue(value)) problems.push({ field: where, message: "Pick a tool." });
+    }
+    return problems;
+  }
   if (isEmptyValue(value)) {
     if (field.required && !(field.widget === "rules" && (field.minItems ?? 0) === 0)) {
       problems.push({ field: where, message: `${label} is required.` });

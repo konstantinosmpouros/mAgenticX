@@ -14,6 +14,7 @@ import type {
   WorkflowSpec,
   WorkflowValidation,
   WorkflowNodeKindInfo,
+  WorkflowToolCatalog,
   WorkflowRun,
   WorkflowRunDetail,
   WorkflowRunEvent,
@@ -33,6 +34,7 @@ import {
   WorkflowRunStartedSchema,
   WorkflowSchema,
   WorkflowScheduleSchema,
+  WorkflowToolCatalogSchema,
   WorkflowValidationSchema,
   WorkflowVersionDetailSchema,
   WorkflowVersionPageSchema,
@@ -68,6 +70,14 @@ export async function getWorkflowCatalog(): Promise<WorkflowNodeKindInfo[]> {
   return requestJson(`${WORKFLOWS_BASE_PATH}/catalog`, {
     schema: WorkflowCatalogSchema,
     fallbackMessage: "The workflow catalog could not be loaded.",
+  });
+}
+
+/** The tools a tool step may call, each with its input schema (`mcpAvailable` false: the gateway could not be read). */
+export async function getWorkflowTools(): Promise<WorkflowToolCatalog> {
+  return requestJson(`${WORKFLOWS_BASE_PATH}/tools`, {
+    schema: WorkflowToolCatalogSchema,
+    fallbackMessage: "The tools could not be loaded.",
   });
 }
 

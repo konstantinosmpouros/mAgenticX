@@ -59,8 +59,12 @@ class ToolRef(BaseModel):
 class ToolConfig(NodeConfig):
     """The tool and its arguments."""
 
-    tool: ToolRef
-    args: dict[str, Any] = Field(default_factory=dict, description="Tool arguments; templates allowed")
+    tool: ToolRef = Field(json_schema_extra={"x-widget": "tool"})
+    args: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Tool arguments; templates allowed",
+        json_schema_extra={"x-widget": "tool_args"},
+    )
     timeout_seconds: float = Field(default=60.0, gt=0, le=MAX_TIMEOUT_SECONDS)
 
 

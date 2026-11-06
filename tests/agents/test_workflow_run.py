@@ -464,6 +464,44 @@ async def test_catalog_and_validate_routes(client, internal_headers, wf, monkeyp
 
 
 @pytest.mark.asyncio
+async def test_tools_route_lists_native_and_gateway_tools_with_their_schemas(client, internal_headers, monkeypatch):
+    catalog = importlib.import_module("harness.workflows.catalog")
+    gateway = [SimpleNamespace(
+        name="tavily-search",
+        description=" Search the web. ",
+        inputSchema={"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]},
+    )]
+
+    async def definitions():
+        return gateway
+
+    monkeypatch.setattr(catalog, "mcp_tool_definitions", definitions)
+    assert (await client.get("/workflows/tools")).status_code == 403
+    body = (await client.get("/workflows/tools", headers=internal_headers)).json()
+    assert body["mcpAvailable"] is True
+    native, mcp = body["tools"]
+    assert native["source"] == "native" and native["name"] == "search_past_conversations"
+    assert native["inputSchema"]["required"] == ["query"] and "limit" in native["inputSchema"]["properties"]
+    assert mcp == {
+        "source": "mcp", "name": "tavily-search", "server": "tavily", "description": "Search the web.",
+        "inputSchema": gateway[0].inputSchema,
+    }
+
+    async def gateway_down():
+        return None
+
+    monkeypatch.setattr(catalog, "mcp_tool_definitions", gateway_down)
+    body = (await client.get("/workflows/tools", headers=internal_headers)).json()
+    assert body["mcpAvailable"] is False and [t["source"] for t in body["tools"]] == ["native"]
+
+
+def test_the_tool_step_schema_asks_for_the_tool_widgets(wf):
+    tool = importlib.import_module("harness.workflows.nodes.tool")
+    props = tool.ToolNode.catalog_entry()["configSchema"]["properties"]
+    assert props["tool"]["x-widget"] == "tool" and props["args"]["x-widget"] == "tool_args"
+
+
+@pytest.mark.asyncio
 async def test_stream_route_runs_the_owner_s_workflow_and_404s_anyone_else(client, internal_headers, wf, monkeypatch):
     _mock_job(wf, monkeypatch, ["failed"])
     store = FakeWorkflowStore()

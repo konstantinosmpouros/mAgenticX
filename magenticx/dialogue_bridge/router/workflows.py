@@ -74,6 +74,7 @@ from utils.workflows import (
     delete_workflow,
     get_workflow,
     get_workflow_catalog,
+    get_workflow_tools,
     get_workflow_version,
     list_workflow_versions,
     list_workflows,
@@ -105,6 +106,15 @@ async def workflow_catalog(
 ) -> dict[str, Any] | list[Any]:
     """The node kinds the builder offers, with their JSON Schemas."""
     return await get_workflow_catalog()
+
+
+@router.get("/tools", response_model=dict[str, Any], status_code=status.HTTP_200_OK)
+async def workflow_tools(
+    _: AuthUser = Depends(require_current_user),
+    __: None = Depends(workflow_builder_rate_limit),
+) -> dict[str, Any]:
+    """The tools a Tool step may call, each with its input JSON Schema."""
+    return await get_workflow_tools()
 
 
 @router.post(

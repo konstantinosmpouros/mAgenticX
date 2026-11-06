@@ -168,3 +168,12 @@ export const TEMPLATE_CHIP_SEP = "flex-shrink-0 text-primary/40";
  * issue still shows it, so the problem can be seen.
  */
 export const NO_ADVANCED_KINDS: ReadonlySet<string> = new Set(["join", "set", "wait", "end"]);
+
+/** How long the tool step's tool list (`GET /v1/workflows/tools`) is reused before it is asked for again (ms). */
+export const WORKFLOW_TOOLS_STALE_MS = 5 * 60 * 1000;
+
+/** The tool picker's group for the agents' own tools. */
+export const TOOL_GROUP_BUILTIN = "Built-in";
+
+/** The tool picker's group for a gateway tool whose server is not known. */
+export const TOOL_GROUP_MCP = "MCP";

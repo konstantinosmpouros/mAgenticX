@@ -24,9 +24,10 @@ import {
   nodeCardHeight,
   sourceHandleId,
 } from "@/features/workflows/lib/nodeCard";
-import { isTriggerKind, kindInfoOf } from "./graph";
+import { TOOL_KIND, isTriggerKind, kindInfoOf } from "./graph";
 import { snap } from "./draft";
 import { SCHEDULE_TRIGGER_KIND, scheduleNodeSubtitle } from "./schedule";
+import { toolNodeSubtitle } from "./toolArgs";
 
 /**
  * The builder's spec ↔ React Flow. `specToFlow` draws the draft with the
@@ -91,8 +92,13 @@ export function specToFlow(
     const kindInfo = kindInfoOf(catalog, node.kind);
     const issueCount = issueCounts.get(node.id) ?? 0;
     const label = nodeLabel(node);
+    const toolName = node.kind === TOOL_KIND ? toolNodeSubtitle(node.config) : null;
     const subtitle =
-      node.kind === SCHEDULE_TRIGGER_KIND ? scheduleNodeSubtitle(node.config, now, savedSchedule) : null;
+      node.kind === SCHEDULE_TRIGGER_KIND
+        ? scheduleNodeSubtitle(node.config, now, savedSchedule)
+        : toolName
+          ? { text: toolName, paused: false }
+          : null;
     return {
       id: node.id,
       type: WORKFLOW_NODE_TYPE,

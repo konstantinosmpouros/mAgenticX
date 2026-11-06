@@ -57,13 +57,15 @@
       "description": "The tool and its arguments.",
       "properties": {
         "tool": {
-          "$ref": "#/$defs/ToolRef"
+          "$ref": "#/$defs/ToolRef",
+          "x-widget": "tool"
         },
         "args": {
           "additionalProperties": true,
           "description": "Tool arguments; templates allowed",
           "title": "Args",
-          "type": "object"
+          "type": "object",
+          "x-widget": "tool_args"
         },
         "timeout_seconds": {
           "default": 60.0,

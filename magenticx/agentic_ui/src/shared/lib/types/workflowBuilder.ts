@@ -63,7 +63,11 @@ export type WorkflowFormWidget =
   /** Which earlier steps' outputs the step receives (`"x-widget": "context"`). */
   | "context"
   /** The llm conversation this step talks in (`"x-widget": "thread"`), shown with `memory`. */
-  | "thread";
+  | "thread"
+  /** A tool step's tool (`"x-widget": "tool"`): picked from `GET /v1/workflows/tools`. */
+  | "tool"
+  /** A tool step's arguments (`"x-widget": "tool_args"`): fields from the picked tool's input schema. */
+  | "tool_args";
 
 /** What a map's values may be: templated text, a scalar (string/number/bool), or any JSON. */
 export type WorkflowMapValueKind = "string" | "scalar" | "any";
@@ -279,3 +283,51 @@ export type WorkflowCanvasMenuTarget =
 
 /** The open right-click menu: where (px, in the canvas) and on what. */
 export type WorkflowCanvasMenu = { x: number; y: number; target: WorkflowCanvasMenuTarget };
+
+// ---------- Tool step: the tools a workflow may call ----------
+
+/** Where a tool comes from: the agents' own (`native`) or the MCP gateway. */
+export type WorkflowToolSource = "native" | "mcp";
+
+/** A tool step's `config.tool`. */
+export type WorkflowToolRef = { source: WorkflowToolSource; name: string };
+
+/** One tool a tool step may call (`GET /v1/workflows/tools`). `inputSchema` is the tool's own JSON Schema, read defensively. */
+export type WorkflowToolInfo = {
+  source: WorkflowToolSource;
+  name: string;
+  /** The MCP server it comes from; null for a native tool. */
+  server: string | null;
+  description: string;
+  inputSchema: Record<string, unknown>;
+};
+
+/** `GET /v1/workflows/tools`: `mcpAvailable` false = the gateway could not be read (native tools are still listed). */
+export type WorkflowToolCatalog = { mcpAvailable: boolean; tools: WorkflowToolInfo[] };
+
+/** What an argument's control edits. */
+export type WorkflowToolArgType = "string" | "number" | "integer" | "boolean" | "object" | "array" | "unknown";
+
+/** One argument of a tool, read from its input schema. */
+export type WorkflowToolArg = {
+  name: string;
+  label: string;
+  description: string;
+  type: WorkflowToolArgType;
+  required: boolean;
+  /** Fixed choices (`enum`), when the schema lists them. */
+  options: Array<string | number | boolean> | null;
+  hasDefault: boolean;
+  default?: unknown;
+};
+
+/** The tool picker's groups: "Built-in" first, then one per server. */
+export type WorkflowToolGroup = { key: string; label: string; tools: WorkflowToolInfo[] };
+
+/** The tool list as the builder holds it (`useWorkflowTools`): shared by the picker, the arguments and the checks. */
+export type WorkflowToolsState = {
+  data: WorkflowToolCatalog | null;
+  isLoading: boolean;
+  error: string | null;
+  retry: () => void;
+};

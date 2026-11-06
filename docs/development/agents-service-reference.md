@@ -274,6 +274,7 @@ Every endpoint below carries `dependencies=[Depends(require_internal_caller)]` (
 | 28 | GET | `/users/{uid}/custom-agents/{slug}/versions/{n}` | user_agents | — | `AgentVersionDetail` — one version with its `spec` and `files` | 200 (404 / 422 `n` < 1) |
 | 29 | POST | `/users/{uid}/custom-agents/{slug}/versions/{n}/restore` | user_agents | — | `UserAgentSummary` — the agent with the version written back; adds no version, makes that one current | 200 (404 / 422 with `{message, errors, issues}` when it no longer validates) |
 | 30 | GET | `/workflows/catalog` | workflows | — | `WorkflowCatalog{kinds}` — every node kind with label, group, branches and config JSON Schema | 200 |
+| 30a | GET | `/workflows/tools` | workflows | — | `WorkflowTools{mcpAvailable, tools[{source, name, server, description, inputSchema}]}` — the Tool step's picker | 200 |
 | 31 | POST | `/workflows/validate` | workflows | `WorkflowWrite{spec}` | `WorkflowValidation{ok, errors[{nodeId, path, message}]}` — dry run | 200 |
 | 32 | POST | `/workflows/runs/stream` | workflows | `WorkflowRunRequest` | SSE `text/event-stream` — the run's AG-UI frames (see [workflows](../flows/workflows.md)) | 200 (404 / 409 thread used or not waiting / 413 / 422 / 503 checkpointer not ready) |
 | 33 | GET | `/workflows/{owner_user_id}?limit=&offset=` | workflows | — | `List[WorkflowSummary]` — newest change first, `limit` ≤ 100 | 200 |

@@ -24,7 +24,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from core.logging import get_logger, set_context
 from core.security.internal_trust import require_internal_caller
 from harness.checkpointer import has_checkpointer_initialized
-from harness.workflows.catalog import node_catalog
+from harness.workflows.catalog import node_catalog, tool_catalog
 from harness.workflows.runner import RunRefused
 from harness.workflows.validator import ValidationIssue
 from schema.workflows import (
@@ -35,6 +35,7 @@ from schema.workflows import (
     WorkflowIssue,
     WorkflowRunRequest,
     WorkflowSummary,
+    WorkflowTools,
     WorkflowValidation,
     WorkflowVersionDetail,
     WorkflowVersionPage,
@@ -88,6 +89,12 @@ def _not_found() -> HTTPException:
 async def workflow_catalog() -> WorkflowCatalog:
     """Every node kind with its label, group, branches and config JSON Schema."""
     return WorkflowCatalog(kinds=node_catalog())
+
+
+@router.get("/workflows/tools", response_model=WorkflowTools)
+async def workflow_tools() -> WorkflowTools:
+    """The tools a Tool step may call, each with its input JSON Schema."""
+    return WorkflowTools.model_validate(await tool_catalog())
 
 
 @router.post("/workflows/validate", response_model=WorkflowValidation)

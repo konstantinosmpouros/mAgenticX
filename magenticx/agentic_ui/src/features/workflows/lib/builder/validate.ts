@@ -3,6 +3,7 @@ import type {
   WorkflowFormField,
   WorkflowNodeKindInfo,
   WorkflowSpec,
+  WorkflowToolCatalog,
   WorkflowValidationIssue,
 } from "@/shared/lib/types";
 import {
@@ -22,6 +23,7 @@ import { SCHEDULE_TRIGGER_KIND, scheduleConfigProblems } from "./schedule";
 import { CODE_CONTEXT_KEY } from "./consts";
 import { configProblems, fieldsFromSchema } from "./schemaForm";
 import { asContext } from "./stepData";
+import { asToolRef, findTool, toolArgProblems } from "./toolArgs";
 import { matchesType } from "./values";
 import { variableNames } from "./variables";
 
@@ -33,7 +35,8 @@ import { variableNames } from "./variables";
  * the edges and branches, loops, reachability, cycles, inputs, the variables
  * Set steps write and End steps keep, and template paths that name nothing
  * (`state.<name>` names a variable some Set step writes; `nodes.<id>.outputs.<n>`
- * reads one run of a step). The server's validate (debounced, and on
+ * reads one run of a step), and — once the tool list is in (`tools`) — a tool
+ * step's arguments against its tool's schema. The server's validate (debounced, and on
  * save) has the last word; its issues are mapped onto the same nodes and
  * fields by `placeServerIssues`.
  */
@@ -84,6 +87,8 @@ function referencedPaths(config: Record<string, unknown>): Array<{ path: string;
 export function checkSpec(
   spec: WorkflowSpec,
   catalog: readonly WorkflowNodeKindInfo[],
+  /** The tools a tool step may call; without it (not loaded, failed) arguments are left to the server. */
+  tools: WorkflowToolCatalog | null = null,
 ): WorkflowBuilderIssue[] {
   const issues: WorkflowBuilderIssue[] = [];
   const add = (nodeId: string | null, field: string, message: string, severity: "error" | "warning" = "error") =>
@@ -203,6 +208,18 @@ export function checkSpec(
           CODE_CONTEXT_KEY in inputs
         ) {
           add(node.id, `config.inputs.${CODE_CONTEXT_KEY}`, `'${CODE_CONTEXT_KEY}' is reserved for the data from earlier steps.`);
+        }
+      }
+      // A tool step's arguments (`"x-widget": "tool_args"`), against the picked
+      // tool's input schema when the tool list knows it.
+      const toolField = kindFields(info).find((field) => field.widget === "tool");
+      const argsField = kindFields(info).find((field) => field.widget === "tool_args");
+      if (toolField && argsField && tools) {
+        const tool = findTool(tools.tools, asToolRef(node.config[toolField.key]));
+        if (tool) {
+          for (const problem of toolArgProblems(tool, node.config[argsField.key], `config.${argsField.key}`)) {
+            add(node.id, problem.field, problem.message);
+          }
         }
       }
       // A shared conversation names another llm step.

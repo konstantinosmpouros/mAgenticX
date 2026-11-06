@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createWorkflow, deleteWorkflow, updateWorkflow, validateWorkflow } from "@/shared/lib/api";
+import { createWorkflow, deleteWorkflow, getWorkflowTools, updateWorkflow, validateWorkflow } from "@/shared/lib/api";
 import { ApiError } from "@/shared/lib/http";
 import { toWorkflowValidationIssues } from "@/shared/lib/schemas";
 import type { WorkflowSpec } from "@/shared/lib/types";
@@ -87,5 +87,27 @@ describe("workflow builder API", () => {
     expect(toWorkflowValidationIssues((error as ApiError).detailObject?.errors)).toEqual([
       { nodeId: "a", path: "nodes", message: "No." },
     ]);
+  });
+
+  it("reads the tool list with GET, its envelope leniently", async () => {
+    fetchMock.mockResolvedValueOnce(
+      json({
+        mcpAvailable: false,
+        tools: [
+          { source: "native", name: "search_past_conversations", server: null, description: "Search.", inputSchema: { type: "object" } },
+          { source: "mcp", name: "" },
+          "junk",
+        ],
+      }),
+    );
+    const result = await getWorkflowTools();
+    expect(call().url).toBe("/api/v1/workflows/tools");
+    expect(call().init.method ?? "GET").toBe("GET");
+    expect(result).toEqual({
+      mcpAvailable: false,
+      tools: [
+        { source: "native", name: "search_past_conversations", server: null, description: "Search.", inputSchema: { type: "object" } },
+      ],
+    });
   });
 });

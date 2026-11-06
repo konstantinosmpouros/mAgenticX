@@ -544,6 +544,12 @@ async def test_definition_proxy_validates_and_maps(client, app, agents_service, 
     assert json.loads(agents_service.called("POST", f"/workflows/{seeded_user.id}")[0].content) == {"spec": {"nodes": []}}
     assert (await client.get("/v1/workflows/catalog")).json() == {"nodes": [{"kind": "agent"}]}
 
+    tools = {"mcpAvailable": False, "tools": [{"source": "native", "name": "x", "inputSchema": {}}]}
+    agents_service.on("GET", "/workflows/tools", httpx.Response(200, json=tools))
+    assert (await client.get("/v1/workflows/tools")).json() == tools
+    agents_service.on("GET", "/workflows/tools", httpx.Response(200, json={"tools": "nope"}))
+    assert (await client.get("/v1/workflows/tools")).status_code == 502
+
 
 async def test_account_purge_deletes_runs_and_their_threads(session_factory, seeded_user, monkeypatch):
     monkeypatch.setattr(account_deletion, "SessionLocal", session_factory)

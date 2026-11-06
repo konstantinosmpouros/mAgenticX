@@ -11,6 +11,8 @@ import type {
 } from "@/shared/lib/types";
 import { workflowScheduleSubtitle } from "@/shared/lib/workflowSchedule";
 import { SCHEDULE_TRIGGER_KIND, scheduleNodeSubtitle } from "./builder/schedule";
+import { TOOL_KIND } from "./builder/graph";
+import { toolNodeSubtitle } from "./builder/toolArgs";
 import { kindView, nodeLabel } from "./kinds";
 import {
   backEdgeFloor,
@@ -166,12 +168,15 @@ export function buildWorkflowFlow({
     const finished = lastFinished(view, node.id);
     // The schedule trigger says when it runs: from the live schedule when the
     // workflow has one, else (switched off, not synced yet) from its config.
+    const toolName = node.kind === TOOL_KIND ? toolNodeSubtitle(node.config) : null;
     const subtitle =
       node.kind === SCHEDULE_TRIGGER_KIND
         ? schedule
           ? workflowScheduleSubtitle(schedule, now)
           : scheduleNodeSubtitle(node.config, now)
-        : null;
+        : toolName
+          ? { text: toolName, paused: false }
+          : null;
     return {
       id: node.id,
       type: WORKFLOW_NODE_TYPE,

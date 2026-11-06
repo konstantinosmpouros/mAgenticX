@@ -1242,6 +1242,25 @@ export const WorkflowCatalogSchema = z
     return wfRecords(rows).map(toWorkflowNodeKind).filter((kind) => kind.kind);
   });
 
+// `GET /v1/workflows/tools`: the tools a tool step may call. A tool's
+// `inputSchema` is the MCP server's own JSON Schema: kept as a record and read
+// defensively where it is used (`lib/builder/toolArgs`); rows without a name
+// are dropped.
+const WORKFLOW_TOOL_SOURCES = ["native", "mcp"] as const;
+const toWorkflowTool = (raw: Record<string, unknown>) => ({
+  source: wfOneOf(WORKFLOW_TOOL_SOURCES, raw.source, "mcp"),
+  name: wfString(raw.name),
+  server: wfNullableString(raw.server),
+  description: wfString(raw.description),
+  inputSchema: wfRecord(raw.inputSchema),
+});
+export const WorkflowToolCatalogSchema = z.record(z.unknown()).transform((raw) => ({
+  mcpAvailable: raw.mcpAvailable !== false,
+  tools: wfRecords(raw.tools)
+    .map(toWorkflowTool)
+    .filter((tool) => tool.name),
+}));
+
 const toWorkflowRun = (raw: Record<string, unknown>) => ({
   id: wfString(raw.id),
   workflowId: wfString(raw.workflowId),

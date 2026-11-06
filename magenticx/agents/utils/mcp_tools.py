@@ -19,6 +19,9 @@ class MCPToolsClientError(RuntimeError):
 
 
 _MCP_TOOL_MANIFEST_CACHE: Dict[str, ToolManifest] = {}
+#: The raw definitions of the last successful gateway fetch (the workflow
+#: builder reads each tool's input schema from them).
+_MCP_TOOL_DEFINITIONS: list[types.Tool] = []
 #: After a failed catalog fetch, fetches fail fast for this long (seconds).
 #: Runs never consult it: each run tries the gateway itself, so a gateway that
 #: comes back is picked up by the next chat at once.
@@ -207,11 +210,28 @@ async def list_mcp_tools(*, force_refresh: bool = False) -> List[types.Tool]:
         return []
 
     tools = await _fetch_tools_from_gateway()
+    _MCP_TOOL_DEFINITIONS[:] = tools
     if settings.mcp.manifest_cache_enabled:
         _prime_manifest_cache(tools)
         logger.info("mcp_tools_cache_refreshed", "MCP tool manifest cache refreshed", tool_count=len(_MCP_TOOL_MANIFEST_CACHE))
 
     return tools
+
+
+async def mcp_tool_definitions() -> Optional[list[types.Tool]]:
+    """The gateway's raw tool definitions (name, description, input schema).
+
+    Served from the last fetch when there is one, else fetched now. Empty when
+    MCP is off on this deployment; ``None`` when the gateway cannot be read.
+    """
+    if not settings.mcp.enabled:
+        return []
+    if not _MCP_TOOL_DEFINITIONS:
+        try:
+            await list_mcp_tools(force_refresh=True)
+        except MCPToolsClientError:
+            return None
+    return list(_MCP_TOOL_DEFINITIONS)
 
 
 async def known_mcp_tool_keys() -> Optional[frozenset[str]]:

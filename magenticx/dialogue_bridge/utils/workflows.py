@@ -134,6 +134,19 @@ async def get_workflow_catalog() -> dict[str, Any] | list[Any]:
     return body
 
 
+async def get_workflow_tools() -> dict[str, Any]:
+    """The tools a Tool step may call, each with its input JSON Schema.
+
+    Passed through as JSON (the schemas belong to the tools); only the
+    envelope's shape is checked here.
+    """
+    detail = "The tool list is unavailable."
+    body = await _call("GET", f"{workflows_base_url()}/tools", operation="workflow_tools", public_detail=detail)
+    if not (isinstance(body, dict) and isinstance(body.get("tools"), list) and isinstance(body.get("mcpAvailable"), bool)):
+        _invalid(None, "workflow_tools", detail)
+    return body
+
+
 async def validate_workflow_spec(spec: dict[str, Any]) -> WorkflowValidation:
     """Dry-run a spec so the builder can show every problem before saving."""
     detail = "The workflow could not be validated."

@@ -25,6 +25,8 @@ export const CODE_KIND = "code";
 export const JOIN_KIND = "join";
 /** "Set variables": its `values` keys are the workflow's variables. */
 export const SET_KIND = "set";
+/** "Tool": calls one native or MCP tool; its picker and arguments come from `GET /v1/workflows/tools`. */
+export const TOOL_KIND = "tool";
 /** The branch of a loop that may lead back into the loop's body (the back-edge). */
 export const LOOP_CONTINUE = "continue";
 
