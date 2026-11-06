@@ -187,43 +187,93 @@ def test_template_references_must_exist(wf):
     raw["nodes"][1]["config"]["url"] = "{{input.nope}}"
     raw["nodes"][2]["config"]["rules"][0]["path"] = "nodes.ghost.output.status"
     raw["nodes"][4]["config"]["payload"] = "{{state.missing}} {{nodes.poll.status}}"
-    raw["nodes"][5]["config"]["assign"] = {"undeclared": "{{output.status}}"}
     _, issues = wf.validator.validate_spec(raw)
     messages = " | ".join(_messages(issues))
     assert "undeclared input 'nope'" in messages
     assert "unknown node 'ghost'" in messages
     assert "must read a node's output" in messages
-    assert "'undeclared' is not a declared state field" in messages
-    assert {i.node_id for i in issues} == {"poll", "is_ready", "approve", "finish"}
+    assert {i.node_id for i in issues} == {"poll", "is_ready", "approve"}
 
 
-def test_output_root_is_only_allowed_in_assign(wf):
+def test_a_state_reference_must_name_a_variable_some_set_writes(wf):
+    raw = _example()
+    raw["nodes"][4]["config"]["message"] = "Publish? {{state.missing}}"
+    _, issues = wf.validator.validate_spec(raw)
+    assert [i.as_dict() for i in issues] == [
+        {"nodeId": "approve", "path": "nodes[4].config", "message": "'missing' is not a variable: no Set step writes it."}
+    ]
+
+
+def test_a_variable_is_readable_from_every_step(wf):
+    # 'decision' is written by the Set after the approval, yet the poll (the
+    # second step) may read it: it may hold the previous run's kept value.
+    raw = _example()
+    raw["nodes"][1]["config"]["headers"]["X-Decision"] = "{{state.decision}}"
+    spec, issues = wf.validator.validate_spec(raw)
+    assert issues == [] and spec is not None
+
+
+def test_variables_are_the_keys_every_set_step_writes(wf):
+    spec = wf.spec.WorkflowSpec.model_validate(_example())
+    assert spec.variables() == ["last_status", "decision"]
+    assert spec.kept_variables() == ["last_status"]
+    assert wf.spec.WorkflowSpec.model_validate(_minimal()).variables() == []
+
+
+def test_the_output_root_is_gone(wf):
     raw = _example()
     raw["nodes"][1]["config"]["url"] = "{{output.body}}"
     _, issues = wf.validator.validate_spec(raw)
     assert any(i.node_id == "poll" and "must start with one of" in i.message for i in issues)
 
 
-def test_names_reducers_and_defaults(wf):
-    raw = _minimal(
-        state=[
-            {"name": "nodes", "type": "object"},
-            {"name": "items", "type": "string", "reducer": "append"},
-            {"name": "bag", "type": "array", "reducer": "merge"},
-            {"name": "n", "type": "number", "default": "five"},
-            {"name": "done", "type": "string"},
-        ],
-        inputs=[{"name": "a", "type": "boolean", "default": "yes"}, {"name": "a"}],
-    )
+def test_names_and_defaults(wf):
+    raw = _minimal(inputs=[{"name": "a", "type": "boolean", "default": "yes"}, {"name": "a"}])
+    raw["nodes"].append({"id": "vars", "kind": "end", "config": {}})
+    raw["edges"].append({"id": "e2", "source": "start", "target": "vars"})
     _, issues = wf.validator.validate_spec(raw)
     messages = " | ".join(_messages(issues))
-    assert "'nodes' is reserved" in messages
-    assert "append reducer needs an array" in messages
-    assert "merge reducer needs an object" in messages
-    assert "default must be of type number" in messages
     assert "default must be of type boolean" in messages
     assert "Input 'a' is declared more than once" in messages
-    assert "clashes with a state name" in messages  # node 'done' vs field 'done'
+    assert "Id 'vars' is reserved." in messages  # the engine's variables key
+
+
+def test_keep_names_variables_once(wf):
+    raw = _example()
+    raw["nodes"][5]["config"]["keep"] = ["last_status", "nope", "last_status"]
+    _, issues = wf.validator.validate_spec(raw)
+    assert [i.as_dict() for i in issues] == [
+        {"nodeId": "finish", "path": "nodes[5].config.keep", "message": "'nope' is not a variable: no Set step writes it."},
+        {"nodeId": "finish", "path": "nodes[5].config.keep", "message": "'last_status' is kept more than once."},
+    ]
+    raw["nodes"][5]["config"]["keep"] = ["not a name"]
+    _, issues = wf.validator.validate_spec(raw)
+    assert [i.path for i in issues] == ["nodes[5].config.keep[0]"]
+
+
+def test_a_legacy_spec_with_state_persist_and_assign_still_parses(wf):
+    raw = _example()
+    raw["state"] = [
+        {"name": "last_status", "type": "string", "reducer": "overwrite", "persist": True},
+        {"name": "decision", "type": "string", "persist": True},
+        {"name": "attempts", "type": "number", "reducer": "overwrite", "default": 0},
+    ]
+    raw["nodes"][1]["config"]["assign"] = {"last_status": "{{output.body.status}}"}
+    spec, issues = wf.validator.validate_spec(raw)
+    assert issues == [] and spec is not None
+    dumped = spec.model_dump(mode="json")
+    assert "state" not in dumped
+    assert all("assign" not in node["config"] for node in dumped["nodes"])
+    # persist: true became the end step's keep, without a duplicate.
+    assert spec.node("finish").config["keep"] == ["last_status", "decision"]
+    # The node config models drop a legacy assign on their own too.
+    config = wf.nodes.NODE_KINDS["fetch"].Config.model_validate(
+        {"url": "https://a.example", "assign": {"x": "{{output.status}}"}}
+    )
+    assert "assign" not in config.model_dump()
+    # What the API returns: normalized; a document that no longer parses: as stored.
+    assert wf.spec.normalize_spec(raw) == dumped
+    assert wf.spec.normalize_spec({"version": 2}) == {"version": 2}
 
 
 def test_router_case_names(wf):
@@ -446,7 +496,10 @@ def test_reads_and_writes_are_declared(wf):
     spec = wf.spec.WorkflowSpec.model_validate(_example())
     poll = wf.nodes.NODE_KINDS["fetch"](spec.node("poll"), spec)
     assert poll.reads() == ["input.job_url", "input.token"]
-    assert poll.writes() == ["nodes.poll.output", "state.statuses", "state.last_status"]
+    assert poll.writes() == ["nodes.poll.output"]
+    track = wf.nodes.NODE_KINDS["set"](spec.node("track"), spec)
+    assert track.reads() == ["nodes.poll.output.body.status"]
+    assert track.writes() == ["nodes.track.output", "state.last_status"]
     ready = wf.nodes.NODE_KINDS["condition"](spec.node("is_ready"), spec)
     assert ready.reads() == ["nodes.poll.output.body.status", "nodes.poll.output.status"]
 
@@ -464,4 +517,10 @@ def test_catalog_lists_every_kind_with_a_json_schema(wf):
     assert catalog["fetch"]["configSchema"]["properties"]["timeout_seconds"]["maximum"] == 30
     for entry in catalog.values():
         assert entry["configSchema"]["additionalProperties"] is False
-        assert "assign" in entry["configSchema"]["properties"]
+        assert "assign" not in entry["configSchema"].get("properties", {})
+    assert (catalog["set"]["label"], catalog["set"]["description"]) == (
+        "Set variables", "Save values into variables; every step can read them."
+    )
+    assert catalog["set"]["configSchema"]["properties"]["values"]["x-widget"] == "assign"
+    keep = catalog["end"]["configSchema"]["properties"]["keep"]
+    assert keep["type"] == "array" and keep["items"]["type"] == "string" and keep["x-widget"] == "keep"

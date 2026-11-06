@@ -30,7 +30,6 @@ import { PRIMARY_BUTTON, SECONDARY_BUTTON } from "@/features/workflows/lib/const
 type WorkflowHeaderProps = {
   name: string;
   description: string | null;
-  versionNo: number | null;
   /** The run picker (absent before the first run). */
   picker?: ReactNode;
   /** Shown while the selected run is live. */
@@ -40,7 +39,7 @@ type WorkflowHeaderProps = {
   runDisabled?: boolean;
   /** Open the builder (an Edit button before Run). */
   onEdit?: () => void;
-  /** Open the version history (the `vN` badge and a History button). */
+  /** Open the version history (the ⋯ menu's "Version history"). */
   onHistory?: () => void;
   /** The workflow's schedule (its `trigger.schedule` start node): a line under the name. */
   schedule?: WorkflowSchedule | null;
@@ -53,19 +52,17 @@ type WorkflowHeaderProps = {
 
 /**
  * The workflow view's header, in the Automations page's style: the
- * workflow's name, description and version on the left; the run picker,
+ * workflow's name and description on the left; the run picker,
  * Cancel (while the run is live) and the primary Run ▸ on the right. On a
  * phone the sidebar toggle leads, since the view covers the chat header's.
  * A scheduled workflow adds a line under the name: its cadence, next run (or
  * paused / finished), the last scheduled run and how it went, and Pause /
- * Resume. With `onHistory`, the `vN` badge and the ⋯ menu's "Version
- * history" open the builder's version history (as the agent page's version row opens its
+ * Resume. With `onHistory`, the ⋯ menu's "Version history" opens the builder's version history (as the agent page's version row opens its
  * History tab).
  */
 export function WorkflowHeader({
   name,
   description,
-  versionNo,
   picker,
   onCancel,
   cancelling = false,
@@ -97,26 +94,6 @@ export function WorkflowHeader({
               <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight text-foreground sm:text-xl">
                 {name}
               </h1>
-              {versionNo !== null ? (
-                onHistory ? (
-                  <button
-                    type="button"
-                    onClick={onHistory}
-                    title="Version history"
-                    aria-label={`Version ${versionNo}: open the history`}
-                    className="inline-flex flex-shrink-0 items-center gap-1 rounded-full bg-primary/[0.08] px-2 py-0.5 text-[10.5px] font-semibold tabular-nums text-primary transition-colors hover:bg-primary/[0.16] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
-                  >
-                    <History className="h-3 w-3" aria-hidden />v{versionNo}
-                  </button>
-                ) : (
-                  <span
-                    className="flex-shrink-0 rounded-full bg-primary/[0.08] px-2 py-0.5 text-[10.5px] font-semibold tabular-nums text-primary"
-                    title={`Version ${versionNo}`}
-                  >
-                    v{versionNo}
-                  </span>
-                )
-              ) : null}
             </div>
             {description ? (
               <p className="mt-0.5 line-clamp-2 text-sm text-muted-foreground">{description}</p>

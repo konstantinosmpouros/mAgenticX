@@ -10,9 +10,8 @@ something to check):
 
 1. Size: ≤ 256 KiB of JSON and ≤ 50 nodes — before anything is parsed.
 2. Shape: the Pydantic models (unknown keys refused everywhere).
-3. Names: unique node/edge/input/state names; none reserved; no node id that
-   equals a state name (LangGraph channels and nodes share a namespace);
-   reducers that fit their types; defaults that match their types.
+3. Names: unique node/edge/input names; no node id that is reserved (LangGraph
+   channels and nodes share a namespace); input defaults that match their types.
 4. Nodes: a known kind this deployment can run (``availability()`` — e.g.
    ``code`` needs the sandbox runner), a valid ``config`` for it, the kind's
    own checks.
@@ -22,8 +21,9 @@ something to check):
    several plain edges from one node start parallel paths, which must meet at
    one ``join`` (``_parallel_issues``); every node reachable from the trigger;
    no cycle except through a ``loop`` node's ``continue`` edge.
-6. References: every template and rule path names an existing input, state
-   field or node; ``assign`` writes only declared state fields.
+6. References: every template and rule path names an existing input,
+   variable (a name some ``set`` step writes — readable from every step, since
+   it may hold the previous run's kept value) or node.
 """
 from __future__ import annotations
 
@@ -149,27 +149,13 @@ def _name_issues(spec: WorkflowSpec) -> list[ValidationIssue]:
         issues.append(ValidationIssue(None, "edges", f"Edge id '{dupe}' is used more than once."))
     for dupe in _duplicates(i.name for i in spec.inputs):
         issues.append(ValidationIssue(None, "inputs", f"Input '{dupe}' is declared more than once."))
-    for dupe in _duplicates(f.name for f in spec.state):
-        issues.append(ValidationIssue(None, "state", f"State field '{dupe}' is declared more than once."))
-
-    state_names = {f.name for f in spec.state}
-    for index, field in enumerate(spec.state):
-        path = f"state[{index}]"
-        if field.name in RESERVED_NAMES:
-            issues.append(ValidationIssue(None, f"{path}.name", f"'{field.name}' is reserved."))
-        if field.reducer == "append" and field.type != "array":
-            issues.append(ValidationIssue(None, f"{path}.reducer", "The append reducer needs an array field."))
-        if field.reducer == "merge" and field.type != "object":
-            issues.append(ValidationIssue(None, f"{path}.reducer", "The merge reducer needs an object field."))
-        if field.default is not None and not type_matches(field.type, field.default):
-            issues.append(ValidationIssue(None, f"{path}.default", f"The default must be of type {field.type}."))
     for index, item in enumerate(spec.inputs):
         if item.default is not None and not type_matches(item.type, item.default):
             issues.append(ValidationIssue(None, f"inputs[{index}].default", f"The default must be of type {item.type}."))
     for index, node in enumerate(spec.nodes):
-        if node.id in RESERVED_NAMES or node.id in state_names:
+        if node.id in RESERVED_NAMES:
             issues.append(
-                ValidationIssue(node.id, f"nodes[{index}].id", f"Node id '{node.id}' clashes with a state name.")
+                ValidationIssue(node.id, f"nodes[{index}].id", f"Id '{node.id}' is reserved.")
             )
     return issues
 
@@ -462,7 +448,7 @@ def _find_cycle(
 def _reference_issues(spec: WorkflowSpec, instances: dict[str, WorkflowNode]) -> list[ValidationIssue]:
     issues: list[ValidationIssue] = []
     inputs = {i.name for i in spec.inputs}
-    fields = {f.name for f in spec.state}
+    variables = set(spec.variables())
     node_ids = {n.id for n in spec.nodes}
     index_of = {n.id: i for i, n in enumerate(spec.nodes)}
 
@@ -475,20 +461,14 @@ def _reference_issues(spec: WorkflowSpec, instances: dict[str, WorkflowNode]) ->
         for ref in refs:
             if ref.root == "input" and ref.name not in inputs:
                 issues.append(ValidationIssue(node_id, where, f"'{ref.text}' reads an undeclared input '{ref.name}'."))
-            elif ref.root == "state" and ref.name not in fields:
-                issues.append(ValidationIssue(node_id, where, f"'{ref.text}' reads an undeclared state field '{ref.name}'."))
+            elif ref.root == "state" and ref.name not in variables:
+                issues.append(ValidationIssue(node_id, where, f"'{ref.name}' is not a variable: no Set step writes it."))
             elif ref.root == "nodes" and ref.node_id not in node_ids:
                 issues.append(ValidationIssue(node_id, where, f"'{ref.text}' reads an unknown node '{ref.node_id}'."))
 
     for node_id, instance in instances.items():
         base = f"nodes[{index_of[node_id]}].config"
         check(node_id, instance.references, base)
-        check(node_id, instance.assign_references, f"{base}.assign")
-        for name in instance.config.assign:
-            if name not in fields:
-                issues.append(
-                    ValidationIssue(node_id, f"{base}.assign.{name}", f"'{name}' is not a declared state field.")
-                )
     return issues
 
 

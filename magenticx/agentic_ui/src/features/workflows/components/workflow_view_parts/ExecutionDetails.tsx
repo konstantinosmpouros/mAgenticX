@@ -24,7 +24,7 @@ type ExecutionDetailsProps = {
   execution: WorkflowExecution;
   label: string;
   kindLabel: string;
-  /** How many times this step ran in the run; "pass N" shows only above 1. */
+  /** How many times this step ran in the run; "Run N" shows only above 1. */
   passes?: number;
   onResume: (decision: WorkflowApprovalDecision, comment?: string) => Promise<void>;
   /** Hide the title row (the mobile sheet shows its own). */
@@ -75,11 +75,11 @@ function StateTab({ execution }: { execution: WorkflowExecution }) {
 }
 
 /**
- * One execution's details: its header (step, pass when it ran more than once,
+ * One execution's details: its header (step, Run N when it ran more than once,
  * status, timing, branch), its
  * error, the approval it waits on, and tabs — Input (the resolved config it
  * ran with), Output (streamed text and the output), State (what it saved:
- * its result, an llm turn, declared fields), Tool calls (the chat's tool
+ * its result, an llm turn, variables), Tool calls (the chat's tool
  * views). The chosen tab is kept when
  * another execution is selected, so stepping through a loop compares like
  * with like.
@@ -121,7 +121,7 @@ export function ExecutionDetails({
             </h3>
             {passes > 1 ? (
               <span className="rounded bg-muted/70 px-1.5 py-0.5 text-[11px] tabular-nums text-muted-foreground">
-                pass {execution.iteration}
+                Run {execution.iteration}
               </span>
             ) : null}
             <StatusChip meta={meta} />

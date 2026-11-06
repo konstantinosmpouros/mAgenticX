@@ -11,7 +11,6 @@ import type {
   WorkflowInputDef,
   WorkflowNodeDef,
   WorkflowSpec,
-  WorkflowStateFieldDef,
 } from "./workflows";
 
 // ---------- Validate (wire) ----------
@@ -28,8 +27,7 @@ export type WorkflowValidation = { ok: boolean; errors: WorkflowValidationIssue[
  * One issue as the builder shows it: on a node (the card's count, the
  * inspector's field) or on the workflow itself (`nodeId` null: the settings).
  * `field` is relative to its owner: `config.url`, `config.cases[0].name`,
- * `id`, `edges` on a node; `name`, `inputs[1].name`, `state[0].reducer` on
- * the workflow.
+ * `id`, `edges` on a node; `name`, `inputs[1].name` on the workflow.
  */
 export type WorkflowBuilderIssue = {
   id: string;
@@ -53,7 +51,10 @@ export type WorkflowFormWidget =
   | "enum"
   | "rules"
   | "cases"
+  /** A `set` step's `values`: variable name → template (`"x-widget": "assign"`). */
   | "assign"
+  /** An end step's `keep`: the variables carried to the next run (`"x-widget": "keep"`). */
+  | "keep"
   | "map"
   | "object"
   | "json"
@@ -163,13 +164,19 @@ export type WorkflowCasesChange = { rename?: [string, string]; drop?: string };
 /** A path the template helper offers, e.g. `nodes.poll.output.status`. */
 export type WorkflowTemplatePath = {
   path: string;
-  group: "input" | "state" | "node" | "output";
+  group: "input" | "state" | "node";
   /** Short note: the value's type (`text`, `number`, `list`…). */
   hint: string;
-  /** Where the value comes from, as people read it: the step's label (or id), `Run input`, `Variable`, `This step`. */
+  /** Where the value comes from, as people read it: the step's label (or id), `Run input`, `Variable`. */
   source: string;
-  /** The value's friendly name within its source: `Answer`, `Body`, `Every run`, `topic`. */
+  /** The value's friendly name within its source: `Answer`, `Body`, `Every run`, `Run 2`, `topic`. */
   label: string;
+  /**
+   * A step that runs in a loop: which of its runs the entry reads — `Last run`
+   * (`nodes.<id>.output…`) or `Runs` (`nodes.<id>.outputs[.<n>]`); the
+   * picker shows it as a sub-heading under the step.
+   */
+  section?: string;
   /** `node` entries: the step's id and kind (its icon). */
   nodeId?: string;
   kind?: string;
@@ -206,7 +213,6 @@ export type WorkflowDraftAction =
   | { type: "set-name"; value: string }
   | { type: "set-description"; value: string }
   | { type: "set-inputs"; inputs: WorkflowInputDef[] }
-  | { type: "set-state"; state: WorkflowStateFieldDef[] }
   | { type: "add-node"; node: WorkflowNodeDef }
   | {
       type: "update-node";

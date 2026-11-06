@@ -57,23 +57,22 @@ def sandbox_on(wf):
 # -- helpers -----------------------------------------------------------------------
 
 
-def _chain(*nodes: dict, state: list[dict] | None = None) -> dict:
+def _chain(*nodes: dict) -> dict:
     """manual trigger → each node in order → end."""
     all_nodes = [{"id": "start", "kind": "trigger.manual", "config": {}}, *nodes, {"id": "done", "kind": "end", "config": {}}]
     edges = [
         {"id": f"e{i}", "source": a["id"], "target": b["id"]}
         for i, (a, b) in enumerate(pairwise(all_nodes))
     ]
-    return {"version": 1, "name": "chain", "state": state or [], "nodes": all_nodes, "edges": edges}
+    return {"version": 1, "name": "chain", "nodes": all_nodes, "edges": edges}
 
 
-def _looped(body: dict, *, iterations: int, after: dict | None = None, state: list[dict] | None = None) -> dict:
+def _looped(body: dict, *, iterations: int, after: dict | None = None) -> dict:
     """trigger → loop ⟲ body; loop done → ``after`` (an end by default)."""
     after = after or {"id": "done", "kind": "end", "config": {}}
     return {
         "version": 1,
         "name": "looped",
-        "state": state or [],
         "nodes": [
             {"id": "start", "kind": "trigger.manual", "config": {}},
             {"id": "loop", "kind": "loop", "config": {"max_iterations": iterations}},
@@ -160,7 +159,6 @@ async def test_a_step_after_a_loop_reads_every_iteration(wf):
     raw = _looped(
         {"kind": "set", "config": {"values": {"n": "{{nodes.loop.output.iteration}}"}}},
         iterations=3,
-        state=[{"name": "n", "type": "number"}],
         after={"id": "done", "kind": "end", "config": {"outputs": {
             "all": "{{nodes.body.outputs}}", "second": "{{nodes.body.outputs.1.n}}", "latest": "{{nodes.body.output}}",
         }}},
@@ -188,23 +186,36 @@ def test_parse_path_reads_output_or_outputs(wf):
 
 
 def test_outputs_reference_an_unknown_node_is_refused(wf):
-    raw = _chain({"id": "s", "kind": "set", "config": {"values": {"n": "{{nodes.ghost.outputs}}"}}},
-                 state=[{"name": "n", "type": "array"}])
+    raw = _chain({"id": "s", "kind": "set", "config": {"values": {"n": "{{nodes.ghost.outputs}}"}}})
     assert "'nodes.ghost.outputs' reads an unknown node 'ghost'." in [i["message"] for i in _issues(wf, raw)]
 
 
 @pytest.mark.asyncio
-async def test_outputs_history_keeps_the_newest(wf, monkeypatch):
-    base = importlib.import_module("harness.workflows.nodes.base")
-    assert base.MAX_OUTPUT_HISTORY == 50
-    monkeypatch.setattr(base, "MAX_OUTPUT_HISTORY", 2)
+async def test_a_set_in_a_loop_keeps_every_pass(wf):
     raw = _looped(
         {"kind": "set", "config": {"values": {"n": "{{nodes.loop.output.iteration}}"}}},
-        iterations=3,
-        state=[{"name": "n", "type": "number"}],
+        iterations=20,
     )
     _, values = await _run(wf, raw)
-    assert values["nodes"]["body"]["outputs"] == [{"n": 2}, {"n": 3}]
+    assert values["nodes"]["body"]["outputs"] == [{"n": i} for i in range(1, 21)]
+    assert values["nodes"]["body"]["output"] == {"n": 20}
+    assert values["vars"] == {"n": 20}
+
+
+@pytest.mark.asyncio
+async def test_outputs_keep_every_execution_beyond_fifty(wf, monkeypatch):
+    # No count cap: the loop's iteration cap is what bounds a run. One more
+    # execution on top of 60 kept ones keeps all 61, oldest first.
+    base = importlib.import_module("harness.workflows.nodes.base")
+    monkeypatch.setattr(base, "get_stream_writer", lambda: (lambda chunk: None))
+    spec = _spec_model(wf, {"id": "body", "kind": "set", "config": {"values": {"n": 61}}})
+    node = wf.nodes.NODE_KINDS["set"](spec.node("body"), spec)
+    kept = [{"n": i} for i in range(1, 61)]
+    state = {"nodes": {"body": {"output": {"n": 60}, "outputs": kept}}, "iterations": {"body": 60}, "vars": {}}
+    update = await node(state, {"configurable": {}})
+    assert update["nodes"]["body"]["outputs"] == [*kept, {"n": 61}]
+    assert update["nodes"]["body"]["executionId"] == "body#61"
+    assert update["vars"] == {"n": 61}
 
 
 # -- reducers ----------------------------------------------------------------------
@@ -231,13 +242,13 @@ def test_conversation_reducer_appends_per_thread_and_caps(wf):
 
 
 def test_new_fixed_keys_are_reserved_and_initialised(wf):
-    assert {"history", "conversations"} <= wf.spec.RESERVED_NAMES
-    assert {"history", "conversations"} <= set(wf.state.FIXED_KEYS)
-    raw = _chain(state=[{"name": "history", "type": "array"}])
-    assert "'history' is reserved." in [i["message"] for i in _issues(wf, raw)]
+    assert {"history", "conversations", "vars"} <= wf.spec.RESERVED_NAMES
+    assert {"history", "conversations", "vars"} <= set(wf.state.FIXED_KEYS)
+    raw = _chain({"id": "history", "kind": "wait", "config": {"seconds": 1}})
+    assert "Id 'history' is reserved." in [i["message"] for i in _issues(wf, raw)]
     spec = _spec_model(wf)
     initial = wf.state.initial_state(spec, {}, {})
-    assert (initial["history"], initial["conversations"]) == ([], {})
+    assert (initial["history"], initial["conversations"], initial["vars"]) == ([], {}, {})
 
 
 # -- context: gather ---------------------------------------------------------------
@@ -359,7 +370,6 @@ def test_context_steps_must_name_other_existing_steps(wf):
     raw = _chain(
         {"id": "a", "kind": "set", "config": {"values": {"n": 1}}},
         {"id": "ask", "kind": "llm", "config": {"prompt": "x", "context": {"mode": "steps", "steps": ["a", "ghost", "ask"]}}},
-        state=[{"name": "n", "type": "number"}],
     )
     assert _issues(wf, raw) == [
         {"nodeId": "ask", "path": "nodes[2].config.context.steps", "message": "'ghost' is not a step in this workflow."},
@@ -371,7 +381,6 @@ def test_a_leftover_step_list_outside_steps_mode_is_ignored(wf):
     raw = _chain(
         {"id": "a", "kind": "set", "config": {"values": {"n": 1}}},
         {"id": "ask", "kind": "llm", "config": {"prompt": "x", "context": {"mode": "last", "steps": ["ghost"]}}},
-        state=[{"name": "n", "type": "number"}],
     )
     spec, issues = wf.validator.validate_spec(raw)
     assert spec is not None and issues == []
@@ -446,7 +455,6 @@ async def test_code_input_json_carries_the_steps(wf, monkeypatch, sandbox_on):
         {"id": "run", "kind": "code", "config": {"code": "x", "inputs": {"k": "v"},
                                                   "context": {"mode": "steps", "steps": ["a"]}}},
         {"id": "run2", "kind": "code", "config": {"code": "x", "context": {"mode": "none"}}},
-        state=[{"name": "n", "type": "number"}],
     )
     await _run(wf, raw)
     assert seen == [
@@ -541,7 +549,6 @@ async def test_llm_prompt_carries_the_context_block(wf, monkeypatch):
     raw = _chain(
         {"id": "a", "kind": "set", "config": {"values": {"n": 5}}},
         {"id": "ask", "kind": "llm", "config": {"prompt": "Use it"}},
-        state=[{"name": "n", "type": "number"}],
     )
     _, values = await _run(wf, raw)
     sent = model.calls[0][-1].content

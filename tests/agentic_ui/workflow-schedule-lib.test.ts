@@ -49,7 +49,6 @@ const scheduled = (
   name: "Digest",
   description: "",
   inputs,
-  state: [],
   nodes: [
     { id: "trigger", kind: SCHEDULE_TRIGGER_KIND, label: null, config, position: { x: 0, y: 0 } },
     { id: "end", kind: "end", label: null, config: {}, position: { x: 320, y: 0 } },

@@ -3,7 +3,7 @@
 Pins the builder contract (catalogue ``available`` / ``unavailableReason``, the
 model enum injected from the live allowlist, the ``x-widget`` form hints), the
 validator's refusals (a model outside the allowlist, json output without a
-schema, an undeclared ``set`` key, a ``code`` step while the sandbox is off),
+schema, a ``set`` key that is not a name, a ``code`` step while the sandbox is off),
 and each kind's run with its external call faked: the model through
 ``llm.make_chat_model``, the sandbox runner through an ``httpx.MockTransport``
 mounted on ``code_step.make_client``. ``code``'s script is never templated
@@ -47,13 +47,12 @@ def sandbox_on(wf):
     wf.settings.filesystem.sandbox_runner_url = RUNNER_URL
 
 
-def _spec(node: dict, *, state: list[dict] | None = None, inputs: list[dict] | None = None) -> dict:
+def _spec(node: dict, *, inputs: list[dict] | None = None) -> dict:
     """manual trigger → ``node`` → end."""
     return {
         "version": 1,
         "name": "one step",
         "inputs": inputs or [],
-        "state": state or [],
         "nodes": [
             {"id": "start", "kind": "trigger.manual", "config": {}},
             {"id": "step", **node},
@@ -145,7 +144,7 @@ def test_code_entry_follows_the_sandbox_switch(wf):
 
 def test_set_and_wait_entries(wf):
     catalog = {e["kind"]: e for e in wf.catalog.node_catalog()}
-    assert (catalog["set"]["label"], catalog["set"]["group"]) == ("Set state", "data")
+    assert (catalog["set"]["label"], catalog["set"]["group"]) == ("Set variables", "data")
     assert catalog["set"]["configSchema"]["properties"]["values"]["x-widget"] == "assign"
     assert (catalog["wait"]["label"], catalog["wait"]["group"]) == ("Wait", "flow")
     assert catalog["wait"]["configSchema"]["properties"]["seconds"]["maximum"] == 600
@@ -178,19 +177,18 @@ def test_llm_json_output_needs_an_object_schema(wf):
     assert issues == [] and spec is not None
 
 
-def test_set_keys_must_be_declared_state(wf):
-    state = [{"name": "count", "type": "number", "reducer": "overwrite"}]
-    raw = _spec({"kind": "set", "config": {"values": {"count": 1, "nope": 2}}}, state=state)
-    assert _issues(wf, raw) == [
-        {"nodeId": "step", "path": "nodes[1].config.values", "message": "'nope' is not a declared state field."}
-    ]
-    issues = _issues(wf, _spec({"kind": "set", "config": {"values": {}}}, state=state))
+def test_set_keys_are_variable_names(wf):
+    # Any identifier is a variable — nothing is declared up front.
+    spec, issues = wf.validator.validate_spec(_spec({"kind": "set", "config": {"values": {"count": 1, "any_name": 2}}}))
+    assert issues == [] and spec.variables() == ["count", "any_name"]
+    issues = _issues(wf, _spec({"kind": "set", "config": {"values": {"count": 1, "not a name": 2}}}))
+    assert len(issues) == 1 and issues[0]["path"].startswith("nodes[1].config.values")
+    issues = _issues(wf, _spec({"kind": "set", "config": {"values": {}}}))
     assert issues[0]["path"] == "nodes[1].config.values"
 
 
 def test_set_declares_its_writes(wf):
-    state = [{"name": "count", "type": "number", "reducer": "overwrite"}]
-    spec = wf.spec.WorkflowSpec.model_validate(_spec({"kind": "set", "config": {"values": {"count": 1}}}, state=state))
+    spec = wf.spec.WorkflowSpec.model_validate(_spec({"kind": "set", "config": {"values": {"count": 1}}}))
     node = importlib.import_module("harness.workflows.nodes").NODE_KINDS["set"](spec.node("step"), spec)
     assert node.writes() == ["nodes.step.output", "state.count"]
 
@@ -271,10 +269,9 @@ async def test_llm_text_streams_text_message_frames(wf, monkeypatch):
     raw = _spec(
         {"kind": "llm", "config": {
             "model": "openai:gpt-4o-mini", "system": "Be brief.", "prompt": "Greet {{input.name}}",
-            "max_output_tokens": 50, "assign": {"greeting": "{{output.text}}"},
+            "max_output_tokens": 50,
         }},
         inputs=[{"name": "name", "type": "string", "required": True}],
-        state=[{"name": "greeting", "type": "string", "reducer": "overwrite"}],
     )
     events = await _run(wf, raw, inputs={"name": "Ada"})
     labels = [e["name"] if e["type"] == "CUSTOM" else e["type"] for e in _step(events)]
@@ -301,7 +298,7 @@ async def test_llm_text_streams_text_message_frames(wf, monkeypatch):
     assert [(m["role"], m["content"]) for m in output["messages"]] == [
         ("user", human.content), ("assistant", "Hello Ada"),
     ]
-    assert events[-1]["result"]["output"] == {"greeting": "Hello Ada"}
+    assert events[-1]["result"]["output"] == {}  # no Set step: no variables
 
 
 @pytest.mark.asyncio
@@ -355,28 +352,49 @@ async def test_llm_provider_errors_are_one_safe_reason(wf, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_set_writes_state_through_the_reducers(wf):
-    state = [
-        {"name": "count", "type": "number", "reducer": "overwrite", "default": 0},
-        {"name": "log", "type": "array", "reducer": "append"},
-        {"name": "meta", "type": "object", "reducer": "merge", "default": {"a": 1}},
-    ]
+async def test_set_writes_rendered_values_of_any_type(wf):
     raw = _spec(
         {"kind": "set", "config": {"values": {"count": "{{input.n}}", "log": "saw {{input.n}}", "meta": {"b": "{{input.n}}"}}}},
-        state=state,
         inputs=[{"name": "n", "type": "number", "required": True}],
     )
     events = await _run(wf, raw, inputs={"n": 4})
     assert _output(events)["output"] == {"count": 4, "log": "saw 4", "meta": {"b": 4}}
-    assert events[-1]["result"]["output"] == {"count": 4, "log": ["saw 4"], "meta": {"a": 1, "b": 4}}
+    # An end without outputs returns every variable.
+    assert events[-1]["result"]["output"] == {"count": 4, "log": "saw 4", "meta": {"b": 4}}
 
 
 @pytest.mark.asyncio
-async def test_set_type_checks_the_rendered_values(wf):
-    state = [{"name": "count", "type": "number", "reducer": "overwrite"}]
-    events = await _run(wf, _spec({"kind": "set", "config": {"values": {"count": "many"}}}, state=state))
-    assert _output(events)["error"] == {"code": "state", "message": "State field 'count' is of type number; got str."}
-    assert events[-1]["type"] == "RUN_ERROR"
+async def test_a_write_overwrites_and_an_unwritten_variable_reads_null(wf):
+    raw = {
+        "version": 1,
+        "name": "two sets",
+        "nodes": [
+            {"id": "start", "kind": "trigger.manual", "config": {}},
+            # Reads 'count' before any Set wrote it, and 'later' that only 'b' writes.
+            {"id": "a", "kind": "set", "config": {"values": {"count": 1, "first": "{{state.count}}", "seen": "[{{state.later}}]"}}},
+            {"id": "b", "kind": "set", "config": {"values": {"count": [2], "later": "{{state.count}}"}}},
+            {"id": "done", "kind": "end", "config": {}},
+        ],
+        "edges": [
+            {"id": "e1", "source": "start", "target": "a"},
+            {"id": "e2", "source": "a", "target": "b"},
+            {"id": "e3", "source": "b", "target": "done"},
+        ],
+    }
+    events = await _run(wf, raw)
+    deltas = {e["workflow"]["nodeId"]: e["delta"] for e in events if e["type"] == "STATE_DELTA"}
+    assert deltas["start"] == []
+    assert deltas["a"] == [
+        {"op": "add", "path": "/count", "value": 1},
+        {"op": "add", "path": "/first", "value": None},
+        {"op": "add", "path": "/seen", "value": "[]"},
+    ]
+    assert deltas["b"] == [
+        {"op": "add", "path": "/count", "value": [2]},
+        {"op": "add", "path": "/later", "value": 1},
+    ]
+    # The latest write wins (no reducer, no type), every variable is in the result.
+    assert events[-1]["result"]["output"] == {"count": [2], "first": None, "seen": "[]", "later": 1}
 
 
 @pytest.mark.asyncio

@@ -28,7 +28,7 @@ from harness.workflows.nodes import WorkflowNode
 from harness.workflows.nodes.join import JoinNode
 from harness.workflows.nodes.loop import LoopNode
 from harness.workflows.spec import WorkflowSpec
-from harness.workflows.state import build_state_type
+from harness.workflows.state import WorkflowState
 from harness.workflows.validator import build_node_instances, validate_spec
 
 #: Headroom over the computed step bound (LangGraph counts supersteps).
@@ -83,7 +83,7 @@ def compile_workflow(spec: WorkflowSpec, *, checkpointer: Any) -> CompiledWorkfl
     if issues:
         raise WorkflowSpecInvalid("; ".join(issue.message for issue in issues))
     nodes = build_node_instances(spec)
-    graph = StateGraph(build_state_type(spec))
+    graph = StateGraph(WorkflowState)
     for node_id, instance in nodes.items():
         graph.add_node(node_id, _node_callable(instance))
 

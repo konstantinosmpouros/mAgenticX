@@ -13,12 +13,13 @@ import { asContext } from "./stepData";
  * A node kind's config JSON Schema (Pydantic's `model_json_schema()`, from
  * `GET /v1/workflows/catalog`) read as a form: one field per property, each
  * with the widget that edits it. The shapes the catalogue uses get their own
- * editors — rule lists (`rules`, `while`), router `cases`, the `assign` map,
- * string / scalar maps (`headers`, `query`, `args`, `outputs`), a `$ref`
- * object (`tool`) as nested fields — and anything else (`body`, `payload`, a
- * shape we don't know) falls back to a JSON editor. A property's
- * `"x-widget"` hint (`code`, `json`, `assign`, `context`, `thread`; on the
- * property or inside an optional's `anyOf` branch) picks its editor outright.
+ * editors — rule lists (`rules`, `while`), router `cases`, string / scalar
+ * maps (`headers`, `query`, `args`, `outputs`), a `$ref` object (`tool`) as
+ * nested fields — and anything else (`body`, `payload`, a shape we don't
+ * know) falls back to a JSON editor. A property's `"x-widget"` hint (`code`,
+ * `json`, `assign` — a Set step's variable → template map —, `keep` — an End
+ * step's variables for the next run —, `context`, `thread`; on the property
+ * or inside an optional's `anyOf` branch) picks its editor outright.
  * Pure: no React.
  */
 
@@ -109,7 +110,7 @@ function mapValueKind(additional: unknown): WorkflowMapValueKind {
 }
 
 /** The `"x-widget"` hints a catalogue schema may carry on a property. */
-const X_WIDGETS = new Set(["code", "json", "assign", "context", "thread"]);
+const X_WIDGETS = new Set(["code", "json", "assign", "keep", "context", "thread"]);
 
 /**
  * An optional property (`x: T | None`) as Pydantic writes it — `anyOf: [T,
@@ -191,6 +192,10 @@ function fieldFor(key: string, raw: unknown, root: Schema, required: boolean): W
         pattern: str(schema.pattern) || undefined,
       };
     }
+    if (hint === "keep") {
+      // Variable names, never templates.
+      return { ...base, widget: "keep", templated: false, maxItems: num(schema.maxItems) };
+    }
     return {
       ...base,
       widget: "assign",
@@ -198,9 +203,6 @@ function fieldFor(key: string, raw: unknown, root: Schema, required: boolean): W
       maxProperties: num(schema.maxProperties),
       minProperties: num(schema.minProperties),
     };
-  }
-  if (key === "assign") {
-    return { ...base, widget: "assign", templated: true, maxProperties: num(schema.maxProperties) };
   }
   if (type === "array") {
     const items = resolveRef(schema.items, root);
@@ -256,17 +258,11 @@ function fieldFor(key: string, raw: unknown, root: Schema, required: boolean): W
   return base;
 }
 
-/**
- * A config schema's fields, in the schema's own order — except `assign`,
- * which every kind has and which goes last (it writes state after the node).
- */
+/** A config schema's fields, in the schema's own order. */
 export function fieldsFromSchema(schema: Schema, root: Schema = schema): WorkflowFormField[] {
   const properties = isRecord(schema.properties) ? schema.properties : {};
   const required = new Set(Array.isArray(schema.required) ? schema.required.map(String) : []);
-  const fields = Object.entries(properties).map(([key, raw]) =>
-    fieldFor(key, raw, root, required.has(key)),
-  );
-  return [...fields.filter((f) => f.key !== "assign"), ...fields.filter((f) => f.key === "assign")];
+  return Object.entries(properties).map(([key, raw]) => fieldFor(key, raw, root, required.has(key)));
 }
 
 export const MATCH_MODES: ReadonlyArray<{ value: WorkflowMatchMode; label: string }> = [
@@ -306,6 +302,7 @@ export const emptyCase = (name: string): WorkflowRouterCase => ({ name, mode: "a
 function initialValue(field: WorkflowFormField): unknown {
   // A copy: the schema's default object must never be shared by two nodes.
   if (field.widget === "context") return asContext(field.default);
+  if (field.widget === "keep") return [];
   if (field.hasDefault && field.default !== null) return field.default;
   switch (field.widget) {
     case "thread":
@@ -503,6 +500,15 @@ function fieldProblems(field: WorkflowFormField, value: unknown, where: string):
       }
       if (field.valueKind === "string" && Object.values(value).some((entry) => typeof entry !== "string")) {
         problems.push({ field: where, message: `Every ${label.toLowerCase()} value is text.` });
+      }
+      break;
+    }
+    case "keep": {
+      // Which names may be kept (and twice) is the spec's check (`checkSpec`); here, the shape.
+      if (!Array.isArray(value) || value.some((name) => typeof name !== "string")) {
+        problems.push({ field: where, message: `${label} must be a list of variable names.` });
+      } else if (field.maxItems !== undefined && value.length > field.maxItems) {
+        problems.push({ field: where, message: `Keep at most ${field.maxItems} variables.` });
       }
       break;
     }

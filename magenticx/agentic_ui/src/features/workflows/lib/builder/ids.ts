@@ -7,13 +7,14 @@
 export const NODE_ID_PATTERN = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
 /** An edge id. */
 export const EDGE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
-/** An input or state field name: an identifier (≤ 64). */
+/** An input or variable name: an identifier (≤ 64). */
 export const FIELD_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
 /** A branch (a router case's name): lower-case identifier (≤ 32). */
 export const BRANCH_PATTERN = /^[a-z][a-z0-9_]{0,31}$/;
-/** Names the engine keeps for itself: no input, state field or node may take one. */
+/** Names the engine keeps for itself (its state channels): no input or node may take one. */
 export const RESERVED_NAMES: ReadonlySet<string> = new Set([
   "input",
+  "vars",
   "nodes",
   "iterations",
   "trace",

@@ -1,19 +1,32 @@
 {
   "version": 1,
   "name": "Wait for a job, then ask before publishing",
-  "description": "Polls a job URL until it reports ready (at most 3 retries), then asks for approval before ending.",
+  "description": "Polls a job URL until it reports ready (at most 3 retries), notes each status in a variable, then asks for approval before ending. Keeps the last status for the next run.",
   "inputs": [
-    {"name": "job_url", "type": "string", "required": true, "description": "Status endpoint of the job"},
-    {"name": "token", "type": "string", "default": "", "description": "Bearer token sent with each poll"}
-  ],
-  "state": [
-    {"name": "attempts", "type": "number", "reducer": "overwrite", "default": 0},
-    {"name": "statuses", "type": "array", "reducer": "append"},
-    {"name": "last_status", "type": "string", "reducer": "overwrite", "persist": true},
-    {"name": "decision", "type": "string", "reducer": "overwrite", "default": "none"}
+    {
+      "name": "job_url",
+      "type": "string",
+      "required": true,
+      "description": "Status endpoint of the job"
+    },
+    {
+      "name": "token",
+      "type": "string",
+      "default": "",
+      "description": "Bearer token sent with each poll"
+    }
   ],
   "nodes": [
-    {"id": "start", "kind": "trigger.manual", "label": "Run now", "config": {}, "position": {"x": 0, "y": 0}},
+    {
+      "id": "start",
+      "kind": "trigger.manual",
+      "label": "Run now",
+      "config": {},
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
     {
       "id": "poll",
       "kind": "fetch",
@@ -21,12 +34,16 @@
       "config": {
         "method": "GET",
         "url": "{{input.job_url}}",
-        "headers": {"Authorization": "Bearer {{input.token}}"},
+        "headers": {
+          "Authorization": "Bearer {{input.token}}"
+        },
         "timeout_seconds": 10,
-        "response_type": "json",
-        "assign": {"statuses": "{{output.body.status}}", "last_status": "{{output.body.status}}"}
+        "response_type": "json"
       },
-      "position": {"x": 240, "y": 0}
+      "position": {
+        "x": 240,
+        "y": 0
+      }
     },
     {
       "id": "is_ready",
@@ -35,11 +52,22 @@
       "config": {
         "mode": "all",
         "rules": [
-          {"path": "nodes.poll.output.status", "op": "eq", "value": 200},
-          {"path": "nodes.poll.output.body.status", "op": "eq", "value": "ready"}
+          {
+            "path": "nodes.poll.output.status",
+            "op": "eq",
+            "value": 200
+          },
+          {
+            "path": "nodes.poll.output.body.status",
+            "op": "eq",
+            "value": "ready"
+          }
         ]
       },
-      "position": {"x": 480, "y": 0}
+      "position": {
+        "x": 480,
+        "y": 0
+      }
     },
     {
       "id": "retry",
@@ -47,10 +75,18 @@
       "label": "Retry",
       "config": {
         "max_iterations": 3,
-        "while": [{"path": "nodes.poll.output.body.status", "op": "ne", "value": "failed"}],
-        "assign": {"attempts": "{{output.iteration}}"}
+        "while": [
+          {
+            "path": "nodes.poll.output.body.status",
+            "op": "ne",
+            "value": "failed"
+          }
+        ]
       },
-      "position": {"x": 480, "y": 200}
+      "position": {
+        "x": 480,
+        "y": 200
+      }
     },
     {
       "id": "approve",
@@ -58,10 +94,15 @@
       "label": "Publish?",
       "config": {
         "message": "The job is ready. Publish its result?",
-        "payload": {"job": "{{input.job_url}}", "result": "{{nodes.poll.output.body}}"},
-        "assign": {"decision": "{{output.decision}}"}
+        "payload": {
+          "job": "{{input.job_url}}",
+          "result": "{{nodes.poll.output.body}}"
+        }
       },
-      "position": {"x": 720, "y": 0}
+      "position": {
+        "x": 720,
+        "y": 0
+      }
     },
     {
       "id": "finish",
@@ -70,22 +111,103 @@
       "config": {
         "outputs": {
           "status": "{{state.last_status}}",
-          "attempts": "{{state.attempts}}",
-          "history": "{{state.statuses}}",
+          "polls": "{{nodes.track.outputs}}",
           "decision": "{{state.decision}}"
+        },
+        "keep": [
+          "last_status"
+        ]
+      },
+      "position": {
+        "x": 960,
+        "y": 100
+      }
+    },
+    {
+      "id": "track",
+      "kind": "set",
+      "label": "Note the status",
+      "config": {
+        "values": {
+          "last_status": "{{nodes.poll.output.body.status}}"
         }
       },
-      "position": {"x": 960, "y": 100}
+      "position": {
+        "x": 240,
+        "y": 200
+      }
+    },
+    {
+      "id": "decide",
+      "kind": "set",
+      "label": "Note the decision",
+      "config": {
+        "values": {
+          "decision": "{{nodes.approve.output.decision}}"
+        }
+      },
+      "position": {
+        "x": 840,
+        "y": 0
+      }
     }
   ],
   "edges": [
-    {"id": "e1", "source": "start", "target": "poll"},
-    {"id": "e2", "source": "poll", "target": "is_ready"},
-    {"id": "e3", "source": "is_ready", "target": "approve", "branch": "true"},
-    {"id": "e4", "source": "is_ready", "target": "retry", "branch": "false"},
-    {"id": "e5", "source": "retry", "target": "poll", "branch": "continue"},
-    {"id": "e6", "source": "retry", "target": "finish", "branch": "done"},
-    {"id": "e7", "source": "approve", "target": "finish", "branch": "approved"},
-    {"id": "e8", "source": "approve", "target": "finish", "branch": "rejected"}
+    {
+      "id": "e1",
+      "source": "start",
+      "target": "poll"
+    },
+    {
+      "id": "e2",
+      "source": "poll",
+      "target": "track"
+    },
+    {
+      "id": "e2b",
+      "source": "track",
+      "target": "is_ready"
+    },
+    {
+      "id": "e3",
+      "source": "is_ready",
+      "target": "approve",
+      "branch": "true"
+    },
+    {
+      "id": "e4",
+      "source": "is_ready",
+      "target": "retry",
+      "branch": "false"
+    },
+    {
+      "id": "e5",
+      "source": "retry",
+      "target": "poll",
+      "branch": "continue"
+    },
+    {
+      "id": "e6",
+      "source": "retry",
+      "target": "finish",
+      "branch": "done"
+    },
+    {
+      "id": "e7",
+      "source": "approve",
+      "target": "decide",
+      "branch": "approved"
+    },
+    {
+      "id": "e8",
+      "source": "approve",
+      "target": "decide",
+      "branch": "rejected"
+    },
+    {
+      "id": "e9",
+      "source": "decide",
+      "target": "finish"
+    }
   ]
 }

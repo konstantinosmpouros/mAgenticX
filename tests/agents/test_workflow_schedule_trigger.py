@@ -146,7 +146,7 @@ def test_catalog_exposes_the_schedule_trigger(wf):
     assert entry["isTrigger"] is True and entry["group"] == "trigger" and entry["branches"] == []
     schema = entry["configSchema"]
     assert set(schema["properties"]) == {
-        "assign", "schedule_kind", "schedule_spec", "timezone", "enabled",
+        "schedule_kind", "schedule_spec", "timezone", "enabled",
     }
     assert schema["properties"]["schedule_kind"]["enum"] == ["one_off", "interval", "cron"]
     assert set(schema["required"]) == {"schedule_kind", "schedule_spec"}

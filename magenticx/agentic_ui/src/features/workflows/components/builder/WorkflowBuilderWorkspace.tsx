@@ -799,31 +799,6 @@ export function WorkflowBuilderWorkspace({
               nameMissing && "border-destructive/50 bg-destructive/[0.04] placeholder:text-destructive/70",
             )}
           />
-          {version !== null ? (
-            savedId ? (
-              <button
-                type="button"
-                onClick={() => (historyOpen ? closeDrawer() : openHistory())}
-                aria-pressed={historyOpen}
-                aria-label={`Version ${version}: open the history`}
-                title="Version history"
-                data-testid="workflow-version-badge"
-                className={cn(
-                  "hidden flex-shrink-0 items-center gap-1 rounded-full bg-primary/[0.08] px-2 py-0.5 text-[10.5px] font-semibold tabular-nums text-primary transition-colors hover:bg-primary/[0.16] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 sm:inline-flex",
-                  historyOpen && "bg-primary/[0.16] ring-1 ring-primary/30",
-                )}
-              >
-                <History className="h-3 w-3" aria-hidden />v{version}
-              </button>
-            ) : (
-              <span
-                className="hidden flex-shrink-0 rounded-full bg-primary/[0.08] px-2 py-0.5 text-[10.5px] font-semibold tabular-nums text-primary sm:inline"
-                title={`Saved as version ${version}`}
-              >
-                v{version}
-              </span>
-            )
-          ) : null}
           <AnimatePresence initial={false}>
             {dirty ? (
               <motion.span

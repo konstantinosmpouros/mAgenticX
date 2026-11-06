@@ -97,7 +97,7 @@ function AddedRemoved({ added, removed }: { added: WorkflowChangeItem[]; removed
   );
 }
 
-/** Inputs or variables: added / removed chips, then each changed one before → after. */
+/** Inputs: added / removed chips, then each changed one before → after. */
 function NamedList({ title, diff }: { title: string; diff: WorkflowListDiff }) {
   if (!diff.added.length && !diff.removed.length && !diff.changed.length) return null;
   return (
@@ -127,7 +127,7 @@ function NamedList({ title, diff }: { title: string; diff: WorkflowListDiff }) {
 }
 
 export function WorkflowVersionChanges({ comparison }: { comparison: WorkflowComparison }) {
-  const { fields, steps, connections, inputs, variables } = comparison;
+  const { fields, steps, connections, inputs } = comparison;
   const stepLists = steps.added.length || steps.removed.length;
   const hasSteps = stepLists || steps.renamed.length || steps.changed.length;
   return (
@@ -199,7 +199,6 @@ export function WorkflowVersionChanges({ comparison }: { comparison: WorkflowCom
       ) : null}
 
       <NamedList title="Inputs" diff={inputs} />
-      <NamedList title="Variables" diff={variables} />
 
       {steps.moved.length ? (
         <p className="flex items-start gap-2 px-1 text-xs text-muted-foreground">

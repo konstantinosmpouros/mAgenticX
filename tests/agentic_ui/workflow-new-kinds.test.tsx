@@ -11,7 +11,8 @@ import { defaultConfig, fieldsFromSchema } from "@/features/workflows/lib/builde
 import { checkSpec, kindFields } from "@/features/workflows/lib/builder/validate";
 import { templatePaths } from "@/features/workflows/lib/builder/templates";
 import { reduceRunEvents } from "@/features/workflows/lib/runReducer";
-import { WorkflowCatalogSchema } from "@/shared/lib/schemas";
+import { WorkflowCatalogSchema, WorkflowSchema } from "@/shared/lib/schemas";
+import { WorkflowSettings } from "@/features/workflows/components/builder/builder_parts/WorkflowSettings";
 import { TooltipProvider } from "@/shared/ui/tooltip";
 import type { WorkflowNodeKindInfo, WorkflowRunEvent, WorkflowSpec } from "@/shared/lib/types";
 
@@ -20,7 +21,8 @@ import type { WorkflowNodeKindInfo, WorkflowRunEvent, WorkflowSpec } from "@/sha
  * `code` — and the catalogue's `available` / `unavailableReason`: each kind's
  * look and blurb, an unavailable kind disabled in the palette and flagged by
  * the checks, the llm / set checks, the forms the `"x-widget"` hints pick
- * (code editor, JSON schema editor, state-write map), and an llm step's
+ * (code editor, JSON schema editor, a Set step's variables, an End step's
+ * variables to keep), and an llm step's
  * streamed text in the run's details.
  */
 
@@ -38,11 +40,10 @@ const withoutSandbox = WorkflowCatalogSchema.parse(
   ),
 ) as WorkflowNodeKindInfo[];
 
-const spec = (nodes: WorkflowSpec["nodes"], state: WorkflowSpec["state"] = []): WorkflowSpec => ({
+const spec = (nodes: WorkflowSpec["nodes"]): WorkflowSpec => ({
   version: 1,
   name: "New kinds",
   inputs: [],
-  state,
   nodes: [
     { id: "start", kind: "trigger.manual", config: {}, position: { x: 0, y: 0 } },
     ...nodes,
@@ -126,7 +127,7 @@ describe("palette", () => {
     expect(within(screen.getByRole("region", { name: "For developers" })).getByRole("button", { name: "Add Code" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Add Code" }));
     expect(onAdd).toHaveBeenCalledWith("code");
-    expect(screen.getByRole("button", { name: "Add Set state" })).toHaveTextContent("Save values into variables");
+    expect(screen.getByRole("button", { name: "Add Set variables" })).toHaveTextContent("Save values into variables");
   });
 
   it("shows an unavailable kind disabled: not draggable, a click adds nothing", () => {
@@ -163,12 +164,14 @@ describe("client checks", () => {
     expect(ask({ output: "text" })).toEqual([["config.prompt", "Prompt is required."]]);
   });
 
-  it("lets set write declared state fields only, and at least one", () => {
-    const state: WorkflowSpec["state"] = [{ name: "count", type: "number", reducer: "overwrite" }];
+  it("lets set create any variable by name, and at least one", () => {
     const put = (values: Record<string, unknown>) =>
-      issuesOn(checkSpec(spec([node("put", "set", { values })], state), catalog), "put");
-    expect(put({ count: "{{state.count}}" })).toEqual([]);
-    expect(put({ count: "1", total: "2" })).toEqual([["config.values", "'total' is not a variable. Add it in Settings › Variables."]]);
+      issuesOn(checkSpec(spec([node("put", "set", { values })]), catalog), "put");
+    // Writing a name makes it a variable: it may read itself (its value so far).
+    expect(put({ count: "{{state.count}}", total: "2" })).toEqual([]);
+    expect(put({ "my count": "1" })).toEqual([
+      ["config.values", "'my count': letters, digits and _ only, not starting with a digit."],
+    ]);
     expect(put({})).toEqual([["config.values", "Add at least 1 entry."]]);
   });
 
@@ -178,7 +181,7 @@ describe("client checks", () => {
       catalog,
     );
     expect(issuesOn(issues, "calc")).toEqual([
-      ["config.inputs", "'state.missing' reads a variable that doesn't exist: 'missing'."],
+      ["config.inputs", "'missing' is not a variable: no Set step writes it."],
     ]);
   });
 
@@ -190,18 +193,17 @@ describe("client checks", () => {
 });
 
 describe("x-widget forms", () => {
-  const renderForm = (kind: string, config: Record<string, unknown>, stateNames: string[] = []) =>
+  const renderForm = (kind: string, config: Record<string, unknown>, workflow?: WorkflowSpec, onChange = vi.fn()) =>
     render(
       <SchemaForm
         nodeId="n1"
         fields={kindFields(info(kind))}
         config={config}
-        onChange={vi.fn()}
+        onChange={onChange}
         issues={[]}
         paths={[{ path: "input.topic", group: "input", hint: "string", source: "Run input", label: "topic" }]}
-        assignPaths={[]}
         barePaths={[]}
-        stateNames={stateNames}
+        spec={workflow}
       />,
     );
 
@@ -216,8 +218,8 @@ describe("x-widget forms", () => {
       json_schema: "json",
       max_output_tokens: "number",
       timeout_seconds: "number",
-      assign: "assign",
     });
+    expect(widgets("llm")).not.toHaveProperty("assign");
     expect(widgets("code")).toMatchObject({ code: "code", inputs: "map", timeout_seconds: "number" });
     expect(widgets("set")).toMatchObject({ values: "assign" });
     // A hint only inside the anyOf branch counts too.
@@ -241,9 +243,7 @@ describe("x-widget forms", () => {
         onChange={onChange}
         issues={[]}
         paths={[{ path: "input.topic", group: "input", hint: "string", source: "Run input", label: "topic" }]}
-        assignPaths={[]}
         barePaths={[]}
-        stateNames={[]}
       />,
     );
     const code = screen.getByLabelText(/^Code/) as HTMLTextAreaElement;
@@ -281,10 +281,56 @@ describe("x-widget forms", () => {
     expect(model).toBeInTheDocument();
   });
 
-  it("edits set's values with the state-write editor", () => {
-    renderForm("set", { values: { count: "1" } }, ["count", "total"]);
+  it("edits set's values by free name, suggesting the other Set steps' variables", () => {
+    const workflow = spec([
+      node("n1", "set", { values: { count: "1" } }),
+      node("other", "set", { values: { total: "2", count: "3" } }),
+    ]);
+    const onChange = vi.fn();
+    const { container } = renderForm("set", { values: { count: "1" } }, workflow, onChange);
     expect(screen.getByText("Values")).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "Add variable" })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "Add variable" })).toHaveLength(1);
+    expect(screen.queryByText(/Declare variables/)).toBeNull();
+    const name = screen.getByLabelText("Entry 1 name") as HTMLInputElement;
+    expect(name.tagName).toBe("INPUT");
+    // Suggestions: the other step's names not already used here.
+    const list = container.querySelector(`datalist#${name.getAttribute("list")}`);
+    expect([...(list?.querySelectorAll("option") ?? [])].map((option) => option.getAttribute("value"))).toEqual(["total"]);
+    fireEvent.change(name, { target: { value: "tone" } });
+    expect(onChange.mock.lastCall?.[0]).toEqual({ values: { tone: "1" } });
+  });
+
+  it("flags a name typed twice in set's values (only the first is saved)", () => {
+    const onChange = vi.fn();
+    renderForm("set", { values: { count: "1" } }, undefined, onChange);
+    fireEvent.click(screen.getByRole("button", { name: "Add variable" }));
+    fireEvent.change(screen.getByLabelText("Entry 2 name"), { target: { value: "count" } });
+    expect(screen.getByLabelText("Entry 2 name")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText("Used above: not saved.")).toBeInTheDocument();
+    expect(onChange.mock.lastCall?.[0]).toEqual({ values: { count: "1" } });
+  });
+
+  it("picks the End step's variables to keep for the next run", () => {
+    const workflow = spec([node("tally", "set", { values: { tone: "x", count: "1" } })]);
+    const onChange = vi.fn();
+    renderForm("end", { keep: ["count", "gone"] }, workflow, onChange);
+    expect(screen.getByText("Keep for the next run")).toBeInTheDocument();
+    expect(screen.getByText("These variables start the next run with this run's values.")).toBeInTheDocument();
+    const list = screen.getByRole("list", { name: "Variables to keep" });
+    const boxes = within(list).getAllByRole("checkbox");
+    expect(boxes.map((box) => (box as HTMLInputElement).checked)).toEqual([false, true, true]);
+    // A kept name no Set step writes is flagged, so it can be unticked.
+    expect(within(list).getByText("No Set step writes it.")).toBeInTheDocument();
+    fireEvent.click(within(list).getByRole("checkbox", { name: /tone/ }));
+    expect(onChange.mock.lastCall?.[0]).toEqual({ keep: ["count", "gone", "tone"] });
+    fireEvent.click(within(list).getByRole("checkbox", { name: /gone/ }));
+    expect(onChange.mock.lastCall?.[0]).toEqual({ keep: ["count"] });
+  });
+
+  it("says how to get variables when the End step has none to keep", () => {
+    renderForm("end", {}, spec([]));
+    expect(screen.getByText("Add a Set step to create variables.")).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).toBeNull();
   });
 });
 
@@ -318,5 +364,31 @@ describe("llm run text", () => {
     render(<ExecutionDetails execution={execution!} label="Ask" kindLabel="LLM" onResume={vi.fn()} />);
     const panel = screen.getByRole("tabpanel");
     expect(within(panel).getByRole("region", { name: "Streamed text" })).toHaveTextContent("The answer is 42.");
+  });
+});
+
+describe("implicit variables", () => {
+  it("shows Settings with inputs and no Variables section", () => {
+    render(<WorkflowSettings spec={spec([])} dispatch={vi.fn()} issues={[]} />);
+    expect(screen.getByText("Inputs")).toBeInTheDocument();
+    expect(screen.queryByText(/^Variables/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add variable" })).toBeNull();
+  });
+
+  it("reads a stored spec without its old state and assign, and does not throw on them", () => {
+    const parsed = WorkflowSchema.parse({
+      id: "wf-1",
+      name: "Old",
+      spec: {
+        version: 1,
+        name: "Old",
+        inputs: [],
+        state: [{ name: "x", type: "number", reducer: "append" }],
+        nodes: [{ id: "start", kind: "trigger.manual", config: { assign: { x: "1" } }, position: { x: 0, y: 0 } }],
+        edges: [],
+      },
+    });
+    expect(parsed.spec).not.toHaveProperty("state");
+    expect(parsed.spec?.nodes[0].config).toEqual({});
   });
 });

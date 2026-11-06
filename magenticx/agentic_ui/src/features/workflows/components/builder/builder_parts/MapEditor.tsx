@@ -3,7 +3,7 @@ import { Plus, Trash2 } from "lucide-react";
 
 import type { WorkflowMapValueKind, WorkflowTemplatePath } from "@/shared/lib/types";
 import { ICON_BUTTON, INPUT_SM, SMALL_BUTTON } from "@/features/workflows/lib/builder/consts";
-import { ChoiceSelect, LooseValueField } from "./Controls";
+import { LooseValueField } from "./Controls";
 import { EmptyNote } from "./FieldShell";
 import { TemplateField } from "./TemplateField";
 
@@ -15,11 +15,13 @@ const rowsOf = (value: unknown): Row[] =>
     : [];
 
 /**
- * A name → value map: `headers`, `query`, `args`, `outputs`, and `assign`
- * (where the names are the declared state fields, picked from a list). Rows
- * keep their order and an unfinished row (no name yet) stays on screen
- * without being written. Values are templated text, or — for `scalar` / `any`
- * maps — JSON-ish text (`200`, `true`, `{"a": 1}`).
+ * A name → value map: `headers`, `query`, `args`, `outputs`, and a Set step's
+ * `values` (variable name → template, with the names other Set steps use
+ * offered as suggestions). Rows keep their order and an unfinished row (no
+ * name yet) stays on screen without being written; a name typed twice is
+ * flagged on its row (only the first is written). Values are templated
+ * text, or — for `scalar` / `any` maps — JSON-ish text (`200`, `true`,
+ * `{"a": 1}`).
  */
 export function MapEditor({
   id,
@@ -27,7 +29,7 @@ export function MapEditor({
   onChange,
   paths,
   valueKind = "any",
-  keyOptions,
+  keySuggestions,
   keyPlaceholder = "name",
   valuePlaceholder = "value or {{…}}",
   addLabel = "Add entry",
@@ -39,8 +41,8 @@ export function MapEditor({
   onChange: (value: Record<string, unknown>) => void;
   paths: readonly WorkflowTemplatePath[];
   valueKind?: WorkflowMapValueKind;
-  /** The names allowed (assign: the state fields); a free text name otherwise. */
-  keyOptions?: readonly string[];
+  /** Names offered while typing one (a Set step: the variables other Set steps write); any name may be typed. */
+  keySuggestions?: readonly string[];
   keyPlaceholder?: string;
   valuePlaceholder?: string;
   addLabel?: string;
@@ -66,33 +68,45 @@ export function MapEditor({
   };
   const update = (index: number, patch: Partial<Row>) =>
     commit(rows.map((row, at) => (at === index ? { ...row, ...patch } : row)));
-  const free = keyOptions?.filter((name) => !rows.some((row) => row.key === name)) ?? [];
+  // The names not yet used here; the suggestions list is shared by every row of this map.
+  const reactId = React.useId();
+  const suggestionsId = keySuggestions?.length ? `${id ?? reactId}-names` : undefined;
+  const suggested = keySuggestions?.filter((name) => !rows.some((row) => row.key.trim() === name)) ?? [];
+  // A name an earlier row already has: it is not written, so say so on its row.
+  const repeated = rows.map(
+    (row, index) => Boolean(row.key.trim()) && rows.slice(0, index).some((other) => other.key.trim() === row.key.trim()),
+  );
 
   return (
     <div id={id} className="space-y-2" tabIndex={-1}>
+      {suggestionsId ? (
+        <datalist id={suggestionsId}>
+          {suggested.map((name) => (
+            <option key={name} value={name} />
+          ))}
+        </datalist>
+      ) : null}
       {rows.length ? (
         rows.map((row, index) => (
           <div key={`row-${index}`} className="flex items-start gap-1.5">
             <div className="w-[38%] flex-shrink-0">
-              {keyOptions ? (
-                <ChoiceSelect
-                  value={row.key}
-                  options={[...(row.key ? [row.key] : []), ...free].map((name) => ({ value: name, label: name }))}
-                  onChange={(key) => update(index, { key })}
-                  small
-                  ariaLabel={`Entry ${index + 1} name`}
-                  placeholder="Variable"
-                />
-              ) : (
-                <input
-                  value={row.key}
-                  onChange={(event) => update(index, { key: event.target.value })}
-                  placeholder={keyPlaceholder}
-                  aria-label={`Entry ${index + 1} name`}
-                  spellCheck={false}
-                  className={`${INPUT_SM} font-mono`}
-                />
-              )}
+              <input
+                value={row.key}
+                onChange={(event) => update(index, { key: event.target.value })}
+                placeholder={keyPlaceholder}
+                aria-label={`Entry ${index + 1} name`}
+                aria-invalid={repeated[index] || undefined}
+                aria-describedby={repeated[index] ? `${id ?? reactId}-repeat-${index}` : undefined}
+                list={suggestionsId}
+                spellCheck={false}
+                autoComplete="off"
+                className={`${INPUT_SM} font-mono`}
+              />
+              {repeated[index] ? (
+                <p id={`${id ?? reactId}-repeat-${index}`} className="mt-0.5 text-[11px] leading-snug text-destructive">
+                  Used above: not saved.
+                </p>
+              ) : null}
             </div>
             {valueKind === "string" ? (
               <TemplateField
@@ -129,8 +143,8 @@ export function MapEditor({
       <button
         type="button"
         className={SMALL_BUTTON}
-        disabled={(max !== undefined && rows.length >= max) || (keyOptions !== undefined && free.length === 0)}
-        onClick={() => commit([...rows, { key: keyOptions ? (free[0] ?? "") : "", value: valueKind === "string" ? "" : null }])}
+        disabled={max !== undefined && rows.length >= max}
+        onClick={() => commit([...rows, { key: "", value: valueKind === "string" ? "" : null }])}
       >
         <Plus className="h-3.5 w-3.5" aria-hidden />
         {addLabel}

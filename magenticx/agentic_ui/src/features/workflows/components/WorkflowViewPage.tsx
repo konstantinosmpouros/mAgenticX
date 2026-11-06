@@ -230,7 +230,6 @@ export function WorkflowViewPage({
         <WorkflowHeader
           name={name}
           description={spec?.description || workflow.description}
-          versionNo={workflow.latestVersionNo}
           picker={
             runs.length ? (
               <RunPicker
@@ -336,7 +335,7 @@ export function WorkflowViewPage({
             <SheetTitle className="sr-only">
               {selectedRow
                 ? selectedRow.passes > 1
-                  ? `${selectedRow.label} · pass ${selectedRow.execution.iteration}`
+                  ? `${selectedRow.label} · Run ${selectedRow.execution.iteration}`
                   : selectedRow.label
                 : "Step details"}
             </SheetTitle>

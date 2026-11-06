@@ -23,14 +23,17 @@ import { CODE_CONTEXT_KEY } from "./consts";
 import { configProblems, fieldsFromSchema } from "./schemaForm";
 import { asContext } from "./stepData";
 import { matchesType } from "./values";
+import { variableNames } from "./variables";
 
 /**
  * The builder's own checks, run on every change: a mirror of the engine's
  * validator (`docs/flows/workflows.md` § Phase 4) for everything it can see
  * without the server — the name, one trigger, ids, each node's config against
  * its kind's schema (the schedule trigger's against the engine's own rules),
- * the edges and branches, loops, reachability, cycles, inputs and state, and
- * template paths that name nothing. The server's validate (debounced, and on
+ * the edges and branches, loops, reachability, cycles, inputs, the variables
+ * Set steps write and End steps keep, and template paths that name nothing
+ * (`state.<name>` names a variable some Set step writes; `nodes.<id>.outputs.<n>`
+ * reads one run of a step). The server's validate (debounced, and on
  * save) has the last word; its issues are mapped onto the same nodes and
  * fields by `placeServerIssues`.
  */
@@ -74,7 +77,6 @@ function referencedPaths(config: Record<string, unknown>): Array<{ path: string;
       for (const [childKey, child] of Object.entries(value)) walk(child, childKey, field);
     }
   };
-  // `assign` values may read the node's own `output`; everything else may not.
   for (const [key, value] of Object.entries(config)) walk(value, key, `config.${key}`);
   return found.filter((entry) => Boolean(entry.path));
 }
@@ -102,7 +104,6 @@ export function checkSpec(
   if (spec.nodes.length > MAX_NODES) add(null, "nodes", `A workflow has at most ${MAX_NODES} steps.`);
   if (spec.edges.length > MAX_EDGES) add(null, "edges", `A workflow has at most ${MAX_EDGES} connections.`);
   if (spec.inputs.length > MAX_FIELDS) add(null, "inputs", `At most ${MAX_FIELDS} inputs.`);
-  if (spec.state.length > MAX_FIELDS) add(null, "state", `At most ${MAX_FIELDS} variables.`);
 
   const inputNames = new Set<string>();
   spec.inputs.forEach((input, index) => {
@@ -119,21 +120,9 @@ export function checkSpec(
     }
   });
 
-  const stateNames = new Set<string>();
-  spec.state.forEach((field, index) => {
-    const name = field.name.trim();
-    const at = `state[${index}]`;
-    if (!name) add(null, `${at}.name`, "A variable needs a name.");
-    else if (!FIELD_NAME_PATTERN.test(name)) add(null, `${at}.name`, `'${name}': letters, digits and _ only, not starting with a digit.`);
-    else if (RESERVED_NAMES.has(name)) add(null, `${at}.name`, `'${name}' is reserved.`);
-    else if (stateNames.has(name)) add(null, `${at}.name`, `Variable '${name}' is declared twice.`);
-    stateNames.add(name);
-    if (field.reducer === "append" && field.type !== "array") add(null, `${at}.reducer`, "Append needs an array field.");
-    if (field.reducer === "merge" && field.type !== "object") add(null, `${at}.reducer`, "Merge needs an object field.");
-    if (field.default !== undefined && field.default !== null && !matchesType(field.type, field.default)) {
-      add(null, `${at}.default`, `The default must be of type ${field.type}.`);
-    }
-  });
+  // The variables: every name a Set step writes (nothing is declared).
+  const variables = new Set(variableNames(spec));
+  const notVariable = (name: string) => `'${name}' is not a variable: no Set step writes it.`;
 
   // ---- nodes ----
   const ids = new Set<string>();
@@ -141,9 +130,7 @@ export function checkSpec(
   for (const node of spec.nodes) {
     if (!NODE_ID_PATTERN.test(node.id)) add(node.id, "id", "Start the id with a letter; then letters, digits, _ or -.");
     else if (ids.has(node.id)) add(node.id, "id", `Id '${node.id}' is used by another step.`);
-    else if (RESERVED_NAMES.has(node.id) || stateNames.has(node.id)) {
-      add(node.id, "id", `Id '${node.id}' clashes with a state name.`);
-    }
+    else if (RESERVED_NAMES.has(node.id)) add(node.id, "id", `Id '${node.id}' is reserved.`);
     ids.add(node.id);
     if ((node.label ?? "").length > 120) add(node.id, "label", "The label is at most 120 characters.");
     const info = kindInfoOf(catalog, node.kind);
@@ -157,24 +144,33 @@ export function checkSpec(
       }
       // The schedule trigger's config is checked as the engine checks it (its
       // schema alone can't say "exactly the kind's one spec field" or read
-      // the static inputs against the declared ones); its `assign` as any.
+      // the static inputs against the declared ones).
       const problems =
         node.kind === SCHEDULE_TRIGGER_KIND
-          ? [
-              ...scheduleConfigProblems(node.config, spec.inputs),
-              ...configProblems(kindFields(info).filter((field) => field.key === "assign"), node.config),
-            ]
+          ? scheduleConfigProblems(node.config, spec.inputs)
           : configProblems(kindFields(info), node.config);
       for (const problem of problems) add(node.id, problem.field, problem.message);
-      // Every state-write map — `assign`, and a field the schema marks as one
-      // (`"x-widget": "assign"`, the set step's `values`) — writes declared
-      // state fields only.
-      const writeKeys = new Set(["assign", ...kindFields(info).filter((f) => f.widget === "assign").map((f) => f.key)]);
-      for (const key of writeKeys) {
-        const writes = node.config[key];
+      // A Set step's variable map (`"x-widget": "assign"`): each name is one a
+      // template reads as `state.<name>`, so an identifier.
+      for (const field of kindFields(info).filter((entry) => entry.widget === "assign")) {
+        const writes = node.config[field.key];
         if (!writes || typeof writes !== "object" || Array.isArray(writes)) continue;
         for (const name of Object.keys(writes)) {
-          if (!stateNames.has(name)) add(node.id, `config.${key}`, `'${name}' is not a variable. Add it in Settings › Variables.`);
+          if (!FIELD_NAME_PATTERN.test(name)) {
+            add(node.id, `config.${field.key}`, `'${name}': letters, digits and _ only, not starting with a digit.`);
+          }
+        }
+      }
+      // An End step's `keep` (`"x-widget": "keep"`): variables, each once.
+      for (const field of kindFields(info).filter((entry) => entry.widget === "keep")) {
+        const keep = node.config[field.key];
+        if (!Array.isArray(keep)) continue;
+        const seen = new Set<string>();
+        for (const name of keep) {
+          if (typeof name !== "string") continue;
+          if (!variables.has(name)) add(node.id, `config.${field.key}`, notVariable(name));
+          else if (seen.has(name)) add(node.id, `config.${field.key}`, `'${name}' is kept more than once.`);
+          seen.add(name);
         }
       }
       // The llm step's JSON mode needs the shape it asks the model for.
@@ -231,8 +227,8 @@ export function checkSpec(
       const [root, name] = path.split(".");
       if (root === "input" && name && !inputNames.has(name)) {
         add(node.id, field, `'${path}' reads an undeclared input '${name}'.`);
-      } else if (root === "state" && name && !stateNames.has(name)) {
-        add(node.id, field, `'${path}' reads a variable that doesn't exist: '${name}'.`);
+      } else if (root === "state" && name && !variables.has(name)) {
+        add(node.id, field, notVariable(name));
       } else if (root === "nodes" && name && !spec.nodes.some((other) => other.id === name)) {
         add(node.id, field, `'${path}' reads an unknown step '${name}'.`);
       }

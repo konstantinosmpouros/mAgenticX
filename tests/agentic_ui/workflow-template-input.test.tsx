@@ -37,17 +37,17 @@ const node = (id: string, kind: string, config: Record<string, unknown> = {}, la
   ...(label ? { label } : {}),
 });
 
-/** start → fetch ("Fetch page") → ask (llm) → done, with an input and a variable. */
+/** start → fetch ("Fetch page") → ask (llm) → done, with an input and a variable (`facts`, written by a Set step off to the side). */
 const linear = (askConfig: Record<string, unknown> = { prompt: "hi" }): WorkflowSpec => ({
   version: 1,
   name: "Linear",
   inputs: [{ name: "topic", type: "string", required: true }] as WorkflowSpec["inputs"],
-  state: [{ name: "facts", type: "array", reducer: "append" }] as WorkflowSpec["state"],
   nodes: [
     node("start", "trigger.manual"),
     node("fetch", "fetch", { url: "https://example.com" }, "Fetch page"),
     node("ask", "llm", askConfig, "Ask AI"),
     node("done", "end"),
+    node("note", "set", { values: { facts: "{{nodes.fetch.output.body}}" } }),
   ],
   edges: [
     { id: "e1", source: "start", target: "fetch" },
@@ -61,7 +61,6 @@ const looped = (): WorkflowSpec => ({
   version: 1,
   name: "Looped",
   inputs: [],
-  state: [],
   nodes: [
     node("start", "trigger.manual"),
     node("loop", "loop", { max_iterations: 3 }),
@@ -105,9 +104,9 @@ describe("template paths", () => {
     expect(label("nodes.ghost.output", paths)).toBe("invalid:nodes.ghost.output");
     expect(label("output.text", paths)).toBe("invalid:output.text");
     expect(label("input.nope", paths)).toBe("invalid:input.nope");
-    // Assign reads its own result: "This step".
-    const own = templatePaths(linear(), "ask", { inAssign: true });
-    expect(label("output.text", own)).toBe("This step › Answer");
+    expect(label("state.nope", paths)).toBe("invalid:state.nope");
+    // A variable reads anywhere, even in a step before the Set that writes it.
+    expect(label("state.facts", templatePaths(linear(), "fetch"))).toBe("Variable › facts");
   });
 
   it("offers an llm step's answer first and its conversation only under More", () => {
@@ -143,11 +142,14 @@ describe("template paths", () => {
     expect([...new Set(sources)]).toEqual(["ask", "fetch", "start"]);
   });
 
-  it("offers Every run for a step inside a loop, to the steps after it", () => {
+  it("offers Every run and Run N for a step inside a loop, to the steps after it", () => {
     const after = templatePaths(looped(), "after");
     expect(after.find((entry) => entry.path === "nodes.fetch.outputs")).toMatchObject({ label: "Every run", hint: "list" });
+    expect(after.find((entry) => entry.path === "nodes.fetch.outputs.1")).toMatchObject({ label: "Run 2", section: "Runs" });
     expect(label("nodes.fetch.outputs", after)).toBe("Fetch page › Every run");
-    expect(label("nodes.fetch.outputs.1.body", after)).toBe("Fetch page › Every run › Run 2 › body");
+    expect(label("nodes.fetch.outputs.1", after)).toBe("Fetch page › Run 2");
+    expect(label("nodes.fetch.outputs.1.body", after)).toBe("Fetch page › Run 2 › body");
+    expect(label("nodes.fetch.outputs.6", after)).toBe("Fetch page › Run 7");
     // A step outside any loop has no list of runs.
     expect(templatePaths(linear(), "done").some((entry) => entry.path.endsWith(".outputs"))).toBe(false);
   });
@@ -300,14 +302,18 @@ describe("data from earlier steps in a field", () => {
     expect(onConfig.mock.lastCall?.[0]).toMatchObject({ url: "https://example.com/{{nodes.ask.output.text}}" });
   });
 
-  it("leaves out Advanced on a trigger: nothing there is worth saving", () => {
+  it("leaves out Advanced on a trigger", () => {
     renderInspector(linear(), "start");
     expect(screen.queryByRole("button", { name: /^Advanced/ })).toBeNull();
   });
 
-  it("keeps Advanced on a step that has a result to save", () => {
+  it("keeps Advanced (the internal id only) on a step others read by id", () => {
     renderInspector(linear(), "fetch");
-    expect(screen.getByRole("button", { name: /^Advanced · Save to a variable/ })).toBeInTheDocument();
+    const advanced = screen.getByRole("button", { name: /^Advanced/ });
+    expect(advanced).toHaveAccessibleName(/^Advanced$/);
+    fireEvent.click(advanced);
+    expect(screen.getByText("fetch")).toBeInTheDocument();
+    expect(screen.queryByText(/Save to a variable/)).toBeNull();
   });
 
   it("hides it on an end step too", () => {
@@ -315,9 +321,23 @@ describe("data from earlier steps in a field", () => {
     expect(screen.queryByRole("button", { name: /^Advanced/ })).toBeNull();
   });
 
-  it("offers Every run after a loop", () => {
-    renderInspector(looped(), "after");
+  it("offers a looped step run by run after a loop, and finds a later run by search", () => {
+    const onConfig = renderInspector(looped(), "after");
     fireEvent.click(screen.getAllByRole("button", { name: "Insert a value from the run" })[0]);
-    expect(within(screen.getByRole("group", { name: "Fetch page" })).getByText("Every run")).toBeInTheDocument();
+    const fetch = within(screen.getByRole("group", { name: "Fetch page" }));
+    expect(fetch.getByText("Last run")).toBeInTheDocument();
+    expect(fetch.getByText("Runs")).toBeInTheDocument();
+    expect(fetch.getByText("Every run")).toBeInTheDocument();
+    expect(fetch.getByText("Run 5")).toBeInTheDocument();
+    expect(fetch.queryByText("Run 7")).toBeNull();
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search data" }), { target: { value: "run 7" } });
+    fireEvent.click(within(screen.getByRole("group", { name: "Fetch page" })).getByTitle("nodes.fetch.outputs.6"));
+    expect(JSON.stringify(onConfig.mock.lastCall?.[0])).toContain("{{nodes.fetch.outputs.6}}");
+  });
+
+  it("lists every variable in the picker, even one written after this step", () => {
+    renderInspector(linear(), "fetch");
+    fireEvent.click(screen.getAllByRole("button", { name: "Insert a value from the run" })[0]);
+    expect(within(screen.getByRole("group", { name: "Variables" })).getByText("facts")).toBeInTheDocument();
   });
 });

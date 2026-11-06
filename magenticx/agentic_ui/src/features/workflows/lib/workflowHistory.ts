@@ -3,7 +3,6 @@ import type {
   WorkflowInputDef,
   WorkflowNodeDef,
   WorkflowSpec,
-  WorkflowStateFieldDef,
   WorkflowVersionSummary,
 } from "@/shared/lib/types";
 import type { GraphVersion } from "@/shared/lib/versionHistory";
@@ -19,8 +18,9 @@ import { humanizeKind, nodeLabel } from "@/features/workflows/lib/kinds";
  * description; steps added, removed, renamed (a new name or a new id for the
  * same step) and changed (which settings, before → after); connections added
  * and removed (named by their steps, a renamed step's connections followed
- * through the rename); inputs and variables added, removed and changed; and
- * steps only moved on the canvas.
+ * through the rename); inputs added, removed and changed; and steps only
+ * moved on the canvas. (Variables are the names Set steps write: a change
+ * to them is a Set step's change.)
  */
 
 /** One item of a list change, keyed for comparison and labelled for display. */
@@ -60,7 +60,6 @@ export type WorkflowComparison = {
   };
   connections: { added: WorkflowChangeItem[]; removed: WorkflowChangeItem[] };
   inputs: WorkflowListDiff;
-  variables: WorkflowListDiff;
 };
 
 /** How long a setting's value may print before it is cut. */
@@ -141,22 +140,12 @@ function connectionItem(
   };
 }
 
-/** What an input's or variable's definition says, as one readable line. */
+/** What an input's definition says, as one readable line. */
 const describeInput = (input: WorkflowInputDef): string =>
   [
     input.type,
     input.required ? "required" : null,
     input.default !== undefined && input.default !== "" ? `default ${previewValue(input.default)}` : null,
-  ]
-    .filter(Boolean)
-    .join(", ");
-
-const describeVariable = (field: WorkflowStateFieldDef): string =>
-  [
-    field.type,
-    field.reducer !== "overwrite" ? field.reducer : null,
-    field.default !== undefined && field.default !== "" ? `starts at ${previewValue(field.default)}` : null,
-    field.persist ? "kept between runs" : null,
   ]
     .filter(Boolean)
     .join(", ");
@@ -258,7 +247,6 @@ export function compareWorkflowSpecs(before: WorkflowSpec, after: WorkflowSpec):
     steps,
     connections,
     inputs: namedListDiff(before.inputs, after.inputs, describeInput),
-    variables: namedListDiff(before.state, after.state, describeVariable),
   };
 }
 
@@ -272,8 +260,7 @@ export const isEmptyWorkflowComparison = (c: WorkflowComparison): boolean =>
   !c.steps.renamed.length &&
   !c.steps.moved.length &&
   listEmpty(c.connections) &&
-  listEmpty(c.inputs) &&
-  listEmpty(c.variables);
+  listEmpty(c.inputs);
 
 /** Only steps moved on the canvas: the workflow itself runs the same. */
 export const isLayoutOnlyComparison = (c: WorkflowComparison): boolean =>

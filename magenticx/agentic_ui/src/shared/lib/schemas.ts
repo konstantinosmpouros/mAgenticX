@@ -1102,7 +1102,6 @@ export const SlashCommandListSchema = z
 // ---------------------------------------------------------------------------
 const WORKFLOW_RUN_STATUSES = ["queued", "running", "waiting", "succeeded", "failed", "cancelled"] as const;
 const WORKFLOW_FIELD_TYPES = ["string", "number", "boolean", "object", "array"] as const;
-const WORKFLOW_REDUCERS = ["overwrite", "append", "merge"] as const;
 
 const wfRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
@@ -1130,20 +1129,16 @@ const toWorkflowSpec = (raw: unknown) => {
       ...("default" in input ? { default: input.default } : {}),
       ...(typeof input.description === "string" ? { description: input.description } : {}),
     })),
-    state: wfRecords(spec.state).map((field) => ({
-      name: wfString(field.name),
-      type: wfFieldType(field.type),
-      reducer: wfOneOf(WORKFLOW_REDUCERS, field.reducer, "overwrite"),
-      ...("default" in field ? { default: field.default } : {}),
-      ...(typeof field.persist === "boolean" ? { persist: field.persist } : {}),
-    })),
+    // No `state` (variables are the names Set steps write) and no node `assign`:
+    // a spec stored before that still reads, without them.
     nodes: wfRecords(spec.nodes).map((node) => {
       const position = wfRecord(node.position);
+      const { assign: _assign, ...config } = wfRecord(node.config);
       return {
         id: wfString(node.id),
         kind: wfString(node.kind),
         label: wfNullableString(node.label),
-        config: wfRecord(node.config),
+        config,
         position: {
           x: typeof position.x === "number" ? position.x : 0,
           y: typeof position.y === "number" ? position.y : 0,

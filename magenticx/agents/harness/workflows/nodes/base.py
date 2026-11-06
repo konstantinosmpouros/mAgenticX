@@ -3,7 +3,7 @@
 A node kind is a class: catalogue metadata (``kind``, ``label``, ``group``,
 ``description``), a Pydantic ``Config`` (its JSON Schema is the builder's form),
 the branch names it can produce, and one coroutine, :meth:`run`. Everything
-else — templating, typing the resolved config, counting executions, state
+else — templating, typing the resolved config, counting executions, variable
 writes and the AG-UI stream — is done here, by :meth:`__call__`, which is what
 the compiler registers as the LangGraph node. Subclasses never emit the
 bracket events themselves, so no kind can forget one or get the order wrong.
@@ -14,7 +14,8 @@ Every execution streams, in this order (all carrying the run envelope)::
     CUSTOM workflow.node_input   {config: <resolved config>|null, iteration}
     … the node's own events (tool calls, text — via ctx.emitter) …
     CUSTOM workflow.node_output  {output, branch, durationMs, error: null}
-    STATE_DELTA                  (JSON Patch of the node's state writes)
+    STATE_DELTA                  (JSON Patch of the node's variable writes —
+                                  ``[]`` for every kind but ``set``)
     STEP_FINISHED
 
 A failure still closes its bracket — ``node_output`` with ``error`` and
@@ -35,65 +36,55 @@ from typing import Any, ClassVar
 from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_stream_writer
 from langgraph.errors import GraphBubbleUp, GraphInterrupt
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
 from core.logging import get_logger
 from harness.workflows.errors import NodeExecutionError, TemplateError, WorkflowNodeError
 from harness.workflows.events import APPROVAL_INTERRUPT_SOURCE, WorkflowEmitter, WorkflowEnvelope
-from harness.workflows.spec import NodeSpec, StateFieldSpec, WorkflowSpec
-from harness.workflows.state import check_state_write, declared_values, state_patch
-from harness.workflows.templating import (
-    ASSIGN_ROOTS,
-    BASE_ROOTS,
-    Reference,
-    find_references,
-    render,
-)
+from harness.workflows.spec import NodeSpec, WorkflowSpec
+from harness.workflows.state import variable_values, variables_patch
+from harness.workflows.templating import BASE_ROOTS, Reference, find_references, render
 
 logger = get_logger(__name__)
 
-MAX_ASSIGNMENTS = 32
-#: Newest executions kept in ``nodes.<id>.outputs``. A loop is capped at 20
-#: iterations, so this keeps every iteration of a looped step while bounding a
-#: nested loop's growth.
-MAX_OUTPUT_HISTORY = 50
 #: Engine-owned state keys a node may write through ``NodeResult.engine_update``.
-#: Declared fields go through ``state_update``; nothing else is writable.
+#: Variables go through ``vars_update``; nothing else is writable.
 ENGINE_UPDATE_KEYS = frozenset({"conversations"})
 
 
 class NodeConfig(BaseModel):
-    """Fields every node kind's config has.
+    """The base of every node kind's config: unknown keys are refused.
 
-    ``assign`` is how any node writes declared state: ``{field: template}``,
-    rendered after the node ran, so its values may read the node's own result
-    as ``{{output.<path>}}`` besides ``input`` / ``state`` / ``nodes``.
+    There are no common fields. A node's result is always in state as
+    ``nodes.<id>.output``; variables are written only by ``set`` steps.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    assign: dict[str, Any] = Field(
-        default_factory=dict,
-        max_length=MAX_ASSIGNMENTS,
-        description="State fields to write after the node runs: {field: value}. "
-        "Values are templates and may read {{output.<path>}}.",
-    )
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_legacy_assign(cls, data: Any) -> Any:
+        # Specs saved before variables were implicit carry an ``assign`` block
+        # on any node; it is no longer read (``WorkflowSpec`` drops it too).
+        if isinstance(data, dict) and "assign" in data:
+            data = {key: value for key, value in data.items() if key != "assign"}
+        return data
 
 
 @dataclass
 class NodeResult:
     """What :meth:`WorkflowNode.run` returns.
 
-    ``output`` becomes ``nodes.<id>.output``; ``state_update`` writes declared
-    fields (through their reducers, like ``assign``); ``branch`` picks the
+    ``output`` becomes ``nodes.<id>.output``; ``vars_update`` overwrites the
+    variables it names (only ``set`` returns one); ``branch`` picks the
     outgoing edge of a branching kind. ``engine_update`` writes engine-owned
     keys (only :data:`ENGINE_UPDATE_KEYS` — ``llm``'s conversation turn) through
-    their own reducers; it is not a declared-state write, so it is neither
-    type-checked against the spec nor part of ``STATE_DELTA``.
+    their own reducers; it is not a variable write, so it is not part of
+    ``STATE_DELTA``.
     """
 
     output: Any = None
-    state_update: dict[str, Any] = field(default_factory=dict)
+    vars_update: dict[str, Any] = field(default_factory=dict)
     branch: str | None = None
     engine_update: dict[str, Any] = field(default_factory=dict)
 
@@ -181,7 +172,6 @@ class WorkflowNode(ABC):
         self.node = node
         self.spec = spec
         self.config = self.Config.model_validate(node.config)
-        self.fields: dict[str, StateFieldSpec] = spec.state_fields()
 
     @property
     def id(self) -> str:
@@ -195,13 +185,9 @@ class WorkflowNode(ABC):
         return self.branches
 
     def config_template(self) -> dict[str, Any]:
-        """The config as rendered before :meth:`run` — everything but ``assign``
-        and the kind's :attr:`literal_fields`."""
-        return {
-            key: value
-            for key, value in self.node.config.items()
-            if key != "assign" and key not in self.literal_fields
-        }
+        """The config as rendered before :meth:`run` — everything but the kind's
+        :attr:`literal_fields`."""
+        return {key: value for key, value in self.node.config.items() if key not in self.literal_fields}
 
     def config_literals(self) -> dict[str, Any]:
         """The :attr:`literal_fields` the config sets, as written (never rendered)."""
@@ -217,22 +203,17 @@ class WorkflowNode(ABC):
         refs += [find_references("{{" + path + "}}", roots=BASE_ROOTS)[0] for path in self.rule_paths()]
         return refs
 
-    def assign_references(self) -> list[Reference]:
-        """Paths the ``assign`` block reads (``output`` allowed)."""
-        return find_references(self.config.assign, roots=ASSIGN_ROOTS)
-
     def extra_reads(self) -> list[str]:
         """Paths the kind reads outside its templates (``llm`` / ``code`` context steps)."""
         return []
 
     def reads(self) -> list[str]:
-        """Declared reads: the paths this node depends on (templates, rules, assign, context)."""
-        refs = [*self.references(), *(r for r in self.assign_references() if r.root != "output")]
-        return sorted({ref.text for ref in refs} | set(self.extra_reads()))
+        """Declared reads: the paths this node depends on (templates, rules, context)."""
+        return sorted({ref.text for ref in self.references()} | set(self.extra_reads()))
 
     def writes(self) -> list[str]:
-        """Declared writes: its own output and every state field it assigns."""
-        return [f"nodes.{self.id}.output", *(f"state.{name}" for name in self.config.assign)]
+        """Declared writes: its own output (``set`` adds the variables it writes)."""
+        return [f"nodes.{self.id}.output"]
 
     def validate_semantics(self, ctx: ValidationContext) -> list[tuple[str, str]]:
         """Kind-specific checks beyond the config schema: ``(config path, message)``."""
@@ -323,7 +304,7 @@ class WorkflowNode(ABC):
         """The template roots for this run's current state."""
         return {
             "input": state.get("input") or {},
-            "state": declared_values(state, self.spec),
+            "state": variable_values(state, self.spec),
             "nodes": state.get("nodes") or {},
         }
 
@@ -355,7 +336,7 @@ class WorkflowNode(ABC):
             rendered = {**rendered, **self.config_literals()}
             emitter.node_input(config=self.input_view(rendered), iteration=iteration, writer=writer)
             input_sent = True
-            typed = self.Config.model_validate({**rendered, "assign": self.config.assign})
+            typed = self.Config.model_validate(rendered)
             ctx = NodeContext(
                 node_id=self.id,
                 execution_id=execution_id,
@@ -372,7 +353,8 @@ class WorkflowNode(ABC):
                 raise NodeExecutionError("Wrote an engine key it may not write.", code="internal")
             if self.branch_names() and result.branch not in self.branch_names():
                 raise NodeExecutionError(f"Produced an unknown branch '{result.branch}'.", code="branch")
-            updates = self._state_writes(result, scope)
+            if result.vars_update and not set(result.vars_update) <= set(self.spec.variables()):
+                raise NodeExecutionError("Wrote a name that is not a variable.", code="internal")
             emitter.node_output(
                 output=result.output,
                 branch=result.branch,
@@ -380,7 +362,7 @@ class WorkflowNode(ABC):
                 error=None,
                 writer=writer,
             )
-            emitter.state_delta(state_patch(updates, self.fields), writer)
+            emitter.state_delta(variables_patch(result.vars_update), writer)
             emitter.step_finished(self.id, writer)
         except GraphBubbleUp as exc:
             # Not a failure: LangGraph control flow. An interrupt pauses the run
@@ -415,10 +397,11 @@ class WorkflowNode(ABC):
 
         # Built from the current record: a step sits on one path only (the
         # validator keeps parallel paths disjoint), so nothing else writes this
-        # node's record concurrently. ``.get(...) or``
-        # because a checkpoint from before ``outputs`` existed lacks it.
+        # node's record concurrently. ``.get(...) or`` because a checkpoint from
+        # before ``outputs`` existed lacks it. Every execution is kept: only a
+        # loop runs a step again, and its iteration cap bounds how often.
         previous = (state.get("nodes") or {}).get(self.id) or {}
-        outputs = [*(previous.get("outputs") or []), self.history_entry(result.output)][-MAX_OUTPUT_HISTORY:]
+        outputs = [*(previous.get("outputs") or []), self.history_entry(result.output)]
         return {
             "nodes": {
                 self.id: {
@@ -432,21 +415,8 @@ class WorkflowNode(ABC):
             "trace": {"loops": self.next_loops(loops, result, execution_id), "last": execution_id},
             "history": [{"node": self.id, "executionId": execution_id}],
             **result.engine_update,
-            **updates,
+            **({"vars": dict(result.vars_update)} if result.vars_update else {}),
         }
-
-    def _state_writes(self, result: NodeResult, scope: Mapping[str, Any]) -> dict[str, Any]:
-        """The node's own state writes plus its rendered ``assign``, type-checked."""
-        updates = dict(result.state_update)
-        if self.config.assign:
-            assign_scope = {**scope, "output": result.output}
-            updates.update(render(self.config.assign, assign_scope, roots=ASSIGN_ROOTS))
-        for name, value in updates.items():
-            declared = self.fields.get(name)
-            if declared is None:
-                raise NodeExecutionError(f"'{name}' is not a declared state field.", code="state")
-            check_state_write(declared, value)
-        return updates
 
     def _emit_interrupts(
         self, exc: GraphInterrupt, emitter: WorkflowEmitter, run: RunInfo, execution_id: str, writer: Any
@@ -492,7 +462,6 @@ def _describe(exc: Exception) -> dict[str, str]:
 
 __all__ = [
     "ENGINE_UPDATE_KEYS",
-    "MAX_OUTPUT_HISTORY",
     "NodeConfig",
     "NodeContext",
     "NodeResult",

@@ -92,7 +92,6 @@ const spec = (name: string, extra = false): WorkflowSpec => ({
   name,
   description: "",
   inputs: [],
-  state: [],
   nodes: [
     { id: "start", kind: "trigger.manual", label: null, config: {}, position: { x: 0, y: 0 } },
     ...(extra
@@ -188,13 +187,14 @@ beforeEach(() => {
 });
 
 describe("workflow builder History panel", () => {
-  it("opens from the version badge and lists the versions newest first, loading nothing before", async () => {
+  it("opens from the ⋯ menu only (no version badge) and lists the versions newest first, loading nothing before", async () => {
     renderAt("/workflows/wf-9/edit");
-    const badge = await screen.findByTestId("workflow-version-badge");
-    expect(badge).toHaveTextContent("v3");
+    await screen.findByLabelText("Workflow name");
+    expect(screen.queryByTestId("workflow-version-badge")).toBeNull();
     expect(api.listWorkflowVersions).not.toHaveBeenCalled();
 
-    fireEvent.click(badge);
+    fireEvent.keyDown(screen.getByRole("button", { name: "More actions" }), { key: "Enter" });
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Version history/ }));
     await waitFor(() => expect(api.listWorkflowVersions).toHaveBeenCalledWith("u1", "wf-9"));
     expect(within(drawer()).getByText("History")).toBeInTheDocument();
     const list = await within(drawer()).findByRole("list", { name: "Versions" });
@@ -266,7 +266,6 @@ describe("workflow builder History panel", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Discard changes and restore" }));
     await waitFor(() => expect(api.restoreWorkflowVersion).toHaveBeenCalledWith("u1", "wf-9", 1));
     await waitFor(() => expect(screen.getByLabelText("Workflow name")).toHaveValue("Nightly"));
-    expect(screen.getByTestId("workflow-version-badge")).toHaveTextContent("v4");
     // The list is read again from the top.
     await waitFor(() => expect(api.listWorkflowVersions).toHaveBeenCalledTimes(2));
   });
@@ -290,27 +289,26 @@ describe("workflow builder History panel", () => {
     const alert = await within(drawer()).findByRole("alert");
     expect(alert).toHaveTextContent("Version 2 could not be restored");
     expect(alert).toHaveTextContent("poll: Unknown input nope.");
-    expect(screen.getByTestId("workflow-version-badge")).toHaveTextContent("v3");
   });
 });
 
 describe("the workflow view header", () => {
-  it("opens the history from its badge and from its ⋯ menu", async () => {
+  it("opens the history from its ⋯ menu, with no version badge", async () => {
     const onHistory = vi.fn();
     render(
       <SidebarProvider defaultOpen>
-        <WorkflowHeader name="Nightly" description={null} versionNo={3} onRun={vi.fn()} onHistory={onHistory} />
+        <WorkflowHeader name="Nightly" description={null} onRun={vi.fn()} onHistory={onHistory} />
       </SidebarProvider>,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Version 3: open the history" }));
+    expect(screen.queryByText("v3")).toBeNull();
     fireEvent.keyDown(screen.getByRole("button", { name: "More actions" }), { key: "Enter" });
     fireEvent.click(await screen.findByRole("menuitem", { name: /Version history/ }));
-    expect(onHistory).toHaveBeenCalledTimes(2);
+    expect(onHistory).toHaveBeenCalledTimes(1);
   });
 
   it("offers Version history in the builder's ⋯ menu", async () => {
     renderAt("/workflows/wf-9/edit");
-    await screen.findByTestId("workflow-version-badge");
+    await screen.findByLabelText("Workflow name");
     fireEvent.keyDown(screen.getByRole("button", { name: "More actions" }), { key: "Enter" });
     fireEvent.click(await screen.findByRole("menuitem", { name: /Version history/ }));
     await within(drawer()).findByRole("list", { name: "Versions" });

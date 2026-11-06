@@ -8,7 +8,7 @@ import type {
   WorkflowSpec,
 } from "@/shared/lib/types";
 import { kindMeta, humanizeKind } from "@/features/workflows/lib/kinds";
-import { INPUT, NO_ASSIGN_KINDS } from "@/features/workflows/lib/builder/consts";
+import { INPUT, NO_ADVANCED_KINDS } from "@/features/workflows/lib/builder/consts";
 import { fieldDomId, slugFromLabel } from "@/features/workflows/lib/builder/ids";
 import { SCHEDULE_TRIGGER_KIND } from "@/features/workflows/lib/builder/schedule";
 import { templatePaths } from "@/features/workflows/lib/builder/templates";
@@ -22,14 +22,13 @@ import { SchemaForm } from "./SchemaForm";
  * (generated from the kind's schema), and its node-level issues
  * (connections, references) on top. The id is never typed: it follows the
  * label when the label is committed (blur, Enter), through the same rename
- * that moves edges and references; it and `assign` (saving to a variable)
- * sit in a folded "Advanced" at the end. A schedule trigger gets its own editor in
- * place of the generic form (its `assign` still from the schema). How a
- * workflow starts is the trigger step on the canvas: another start is another
- * trigger from the palette. Data from earlier steps comes in through each
- * field's own `{ }` picker. Triggers and the kinds in `NO_ASSIGN_KINDS` have
- * nothing worth saving, so their Advanced fold is left out (unless it holds
- * a saved value or an id issue to deal with).
+ * that moves edges and references; it sits in a folded "Advanced" at the
+ * end. A schedule trigger gets its own editor in place of the generic form.
+ * How a workflow starts is the trigger step on the canvas: another start is
+ * another trigger from the palette. Data from earlier steps comes in through
+ * each field's own `{ }` picker; variables are written by Set steps. Triggers
+ * and the kinds in `NO_ADVANCED_KINDS` leave the Advanced fold out (unless
+ * there is an id issue to deal with).
  */
 export function NodeInspector({
   node,
@@ -53,39 +52,20 @@ export function NodeInspector({
   const Glyph = meta.icon;
   const fields = React.useMemo(() => (info ? kindFields(info) : []), [info]);
   const paths = React.useMemo(() => templatePaths(spec, node.id), [spec, node.id]);
-  const assignPaths = React.useMemo(
-    () => templatePaths(spec, node.id, { inAssign: true }),
-    [spec, node.id],
-  );
   const isTrigger = info?.isTrigger ?? node.kind.startsWith("trigger.");
   const taken = React.useMemo(
-    () =>
-      new Set([
-        ...spec.nodes.map((other) => other.id).filter((id) => id !== node.id),
-        ...spec.state.map((f) => f.name),
-      ]),
-    [spec.nodes, spec.state, node.id],
+    () => new Set(spec.nodes.map((other) => other.id).filter((id) => id !== node.id)),
+    [spec.nodes, node.id],
   );
   const general = issues
     .filter((issue) => !issueIsOn(issue, "config") || issue.field === "config")
     .filter((issue) => issue.field !== "id" && issue.field !== "label");
   const labelId = fieldDomId(node.id, "label");
   const isSchedule = node.kind === SCHEDULE_TRIGGER_KIND;
-  // The schedule trigger's own editor covers everything but `assign`.
-  const formFields = isSchedule ? fields.filter((field) => field.key === "assign") : fields;
-  const mainFields = formFields.filter((field) => field.key !== "assign");
+  // The schedule trigger's own editor covers its whole config.
+  const mainFields = isSchedule ? [] : fields;
   const idIssues = issues.filter((i) => i.field === "id");
-  const advancedIssues = [
-    ...idIssues,
-    ...issues.filter((issue) => issueIsOn(issue, "config.assign")),
-  ];
-  const assign = node.config.assign;
-  const hasAssign = Boolean(assign && typeof assign === "object" && Object.keys(assign).length);
-  const nothingToSave = isTrigger || NO_ASSIGN_KINDS.has(node.kind);
-  const assignFields = formFields.filter(
-    (field) => field.key === "assign" && (!nothingToSave || hasAssign),
-  );
-  const showAdvanced = !nothingToSave || hasAssign || advancedIssues.length > 0;
+  const showAdvanced = !(isTrigger || NO_ADVANCED_KINDS.has(node.kind)) || idIssues.length > 0;
   // The label as it was when the field took focus: the id follows only a label that changed.
   const labelAtFocus = React.useRef<string | null>(null);
   const commitLabel = () => {
@@ -95,17 +75,6 @@ export function NodeInspector({
     if (before === null || before === label) return;
     const derived = slugFromLabel(label, node.kind, taken);
     if (derived !== node.id) onRename(derived);
-  };
-  const formProps = {
-    nodeId: node.id,
-    config: node.config,
-    onChange: onConfig,
-    issues,
-    paths,
-    assignPaths,
-    barePaths: paths,
-    stateNames: spec.state.map((field) => field.name).filter(Boolean),
-    spec,
   };
 
   return (
@@ -177,7 +146,16 @@ export function NodeInspector({
 
       {info ? (
         mainFields.length ? (
-          <SchemaForm {...formProps} fields={mainFields} />
+          <SchemaForm
+            nodeId={node.id}
+            fields={mainFields}
+            config={node.config}
+            onChange={onConfig}
+            issues={issues}
+            paths={paths}
+            barePaths={paths}
+            spec={spec}
+          />
         ) : null
       ) : isSchedule ? null : (
         <p className="text-xs text-muted-foreground">
@@ -188,9 +166,9 @@ export function NodeInspector({
       {showAdvanced ? (
         <Disclosure
           id={fieldDomId(node.id, "advanced")}
-          title={assignFields.length ? "Advanced · Save to a variable" : "Advanced"}
-          defaultOpen={hasAssign || advancedIssues.length > 0}
-          issueCount={advancedIssues.filter((issue) => issue.severity === "error").length}
+          title="Advanced"
+          defaultOpen={idIssues.length > 0}
+          issueCount={idIssues.filter((issue) => issue.severity === "error").length}
         >
           <div id={fieldDomId(node.id, "id")} tabIndex={-1}>
             <p className="text-xs text-muted-foreground">
@@ -201,7 +179,6 @@ export function NodeInspector({
             </p>
             <FieldIssues issues={idIssues} />
           </div>
-          {info && assignFields.length ? <SchemaForm {...formProps} fields={assignFields} /> : null}
         </Disclosure>
       ) : null}
     </div>

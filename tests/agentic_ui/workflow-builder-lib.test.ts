@@ -7,7 +7,12 @@ import { flowToSpec, layoutSpec, specToFlow } from "@/features/workflows/lib/bui
 import { canConnect, findCycle } from "@/features/workflows/lib/builder/graph";
 import { newEdgeId, newNodeId, nodeIdProblem } from "@/features/workflows/lib/builder/ids";
 import { configProblems, defaultConfig, fieldsFromSchema } from "@/features/workflows/lib/builder/schemaForm";
-import { renameNodeReferences, templatePaths } from "@/features/workflows/lib/builder/templates";
+import {
+  describeTemplateRef,
+  renameNodeReferences,
+  runSearchEntries,
+  templatePaths,
+} from "@/features/workflows/lib/builder/templates";
 import { checkSpec, placeServerIssues } from "@/features/workflows/lib/builder/validate";
 import { formatLoose, parseLoose, parseTyped } from "@/features/workflows/lib/builder/values";
 import { paletteGroups } from "@/features/workflows/lib/builder/palette";
@@ -24,7 +29,8 @@ import { NODE_CARD, nodeCardHeight, nodeBranches } from "@/features/workflows/li
  * edge per branch, loops, reachability, cycles only through `continue`);
  * the instant connect check; every step-1 kind's schema becomes the right
  * widgets and a valid starting config; router cases are branches/handles and
- * follow renames; templates offer upstream outputs only.
+ * follow renames; templates offer upstream outputs only, every variable (the
+ * names Set steps write) and a looped step run by run.
  */
 
 const catalog = catalogJson as unknown as WorkflowNodeKindInfo[];
@@ -36,7 +42,6 @@ const example = (): WorkflowSpec => ({
   name: "Poll a job",
   description: "",
   inputs: [{ name: "job_url", type: "string", required: true, default: null, description: "" }],
-  state: [{ name: "attempts", type: "number", reducer: "overwrite", default: 0, persist: false }],
   nodes: [
     { id: "start", kind: "trigger.manual", label: null, config: {}, position: { x: 0, y: 0 } },
     { id: "poll", kind: "fetch", label: "Poll", config: { url: "{{input.job_url}}" }, position: { x: 352, y: 0 } },
@@ -228,17 +233,17 @@ describe("client validation", () => {
       node.id === "poll"
         ? { ...node, config: { url: "{{input.missing}}", timeout_seconds: 99 } }
         : node.id === "retry"
-          ? { ...node, config: { max_iterations: 50, assign: { nope: "{{output.iteration}}" } } }
-          : node,
+          ? { ...node, config: { max_iterations: 50 } }
+          : node.id === "ok"
+            ? { ...node, config: { message: "Seen {{state.nope}} times?" } }
+            : node,
     );
-    spec.state.push({ name: "list", type: "string", reducer: "append", default: null, persist: false });
     const found = errors(spec);
     const on = (nodeId: string | null, field: string) => found.filter((i) => i.nodeId === nodeId && i.field === field);
     expect(on("poll", "config.timeout_seconds")[0]?.message).toBe("Timeout seconds is at most 30.");
     expect(on("poll", "config.url")[0]?.message).toMatch(/undeclared input 'missing'/);
     expect(on("retry", "config.max_iterations")[0]?.message).toBe("Max iterations is at most 20.");
-    expect(on("retry", "config.assign")[0]?.message).toBe("'nope' is not a variable. Add it in Settings › Variables.");
-    expect(on(null, "state[1].reducer")[0]?.message).toBe("Append needs an array field.");
+    expect(on("ok", "config.message")[0]?.message).toBe("'nope' is not a variable: no Set step writes it.");
   });
 
   it("places the server's index-based issues on nodes and fields", () => {
@@ -301,9 +306,9 @@ describe("schema → form, per step-1 kind", () => {
   const widgets = (name: string) =>
     Object.fromEntries(fieldsFromSchema(kind(name).configSchema).map((field) => [field.key, field.widget]));
 
-  it("reads every kind's fields with the right widgets (assign last)", () => {
-    expect(widgets("trigger.manual")).toEqual({ assign: "assign" });
-    expect(widgets("tool")).toEqual({ tool: "object", args: "map", timeout_seconds: "number", assign: "assign" });
+  it("reads every kind's fields with the right widgets (no `assign` anywhere)", () => {
+    expect(widgets("trigger.manual")).toEqual({});
+    expect(widgets("tool")).toEqual({ tool: "object", args: "map", timeout_seconds: "number" });
     expect(widgets("fetch")).toEqual({
       method: "enum",
       url: "text",
@@ -312,13 +317,14 @@ describe("schema → form, per step-1 kind", () => {
       body: "json",
       timeout_seconds: "number",
       response_type: "enum",
-      assign: "assign",
     });
-    expect(widgets("condition")).toEqual({ mode: "enum", rules: "rules", assign: "assign" });
-    expect(widgets("router")).toEqual({ cases: "cases", assign: "assign" });
-    expect(widgets("loop")).toEqual({ max_iterations: "number", mode: "enum", while: "rules", assign: "assign" });
-    expect(widgets("approval")).toEqual({ message: "textarea", payload: "json", assign: "assign" });
-    expect(widgets("end")).toEqual({ outputs: "map", assign: "assign" });
+    expect(widgets("condition")).toEqual({ mode: "enum", rules: "rules" });
+    expect(widgets("router")).toEqual({ cases: "cases" });
+    expect(widgets("loop")).toEqual({ max_iterations: "number", mode: "enum", while: "rules" });
+    expect(widgets("approval")).toEqual({ message: "textarea", payload: "json" });
+    expect(widgets("set")).toEqual({ values: "assign" });
+    expect(widgets("end")).toEqual({ outputs: "map", keep: "keep" });
+    expect(kind("set").label).toBe("Set variables");
   });
 
   it("keeps the details the controls need", () => {
@@ -484,8 +490,11 @@ describe("draft, ids, templates and values", () => {
     expect(nodeIdProblem("poll_2", new Set(["poll"]))).toBeNull();
   });
 
-  it("offers inputs, state and upstream outputs only", () => {
-    const paths = templatePaths(example(), "done").map((entry) => entry.path);
+  it("offers inputs, every variable and upstream outputs only", () => {
+    const spec = example();
+    // A Set step after the condition: its variable is readable everywhere, even before it.
+    spec.nodes.push({ id: "count", kind: "set", label: null, config: { values: { attempts: "1" } }, position: { x: 0, y: 0 } });
+    const paths = templatePaths(spec, "done").map((entry) => entry.path);
     expect(paths).toContain("input.job_url");
     expect(paths).toContain("state.attempts");
     expect(paths).toContain("nodes.poll.output.status");
@@ -493,7 +502,9 @@ describe("draft, ids, templates and values", () => {
     expect(paths).toContain("nodes.start.output");
     expect(paths).not.toContain("nodes.start.output.job_url");
     expect(paths).not.toContain("nodes.finish.output");
-    expect(templatePaths(example(), "poll", { inAssign: true }).map((e) => e.path)).toContain("output.body");
+    expect(paths.some((path) => path.startsWith("output"))).toBe(false);
+    const variable = templatePaths(spec, "start").find((entry) => entry.path === "state.attempts");
+    expect(variable).toMatchObject({ group: "state", source: "Variable", label: "attempts" });
   });
 
   it("reads loose values and typed defaults", () => {
@@ -548,5 +559,112 @@ describe("parallel paths", () => {
       ["nodes.all.output.b", "Path B"],
       ["nodes.all.output", "Whole result"],
     ]);
+  });
+});
+
+describe("variables and loop runs", () => {
+  /** example() with a Set step in the loop and an End step that keeps its variable. */
+  const withVariables = (): WorkflowSpec => {
+    const spec = example();
+    spec.nodes = spec.nodes.map((node) =>
+      node.id === "finish" ? { ...node, config: { keep: ["tries"] } } : node,
+    );
+    spec.nodes.push({ id: "tally", kind: "set", label: "Tally", config: { values: { tries: "{{nodes.retry.output.iteration}}" } }, position: { x: 0, y: 320 } });
+    spec.edges = spec.edges
+      .filter((edge) => edge.id !== "e6")
+      .concat(
+        { id: "e8", source: "retry", target: "tally", branch: "done" },
+        { id: "e9", source: "tally", target: "finish", branch: null },
+      );
+    return spec;
+  };
+
+  it("offers a looped step run by run: Last run, Every run, Run 1..5", () => {
+    const entries = templatePaths(example(), "finish");
+    const poll = entries.filter((entry) => entry.nodeId === "poll");
+    expect(poll.find((entry) => entry.path === "nodes.poll.output.status")?.section).toBe("Last run");
+    expect(poll.find((entry) => entry.path === "nodes.poll.outputs")).toMatchObject({ label: "Every run", section: "Runs" });
+    expect(poll.filter((entry) => /\.outputs\.\d+$/.test(entry.path)).map((entry) => [entry.path, entry.label])).toEqual([
+      ["nodes.poll.outputs.0", "Run 1"],
+      ["nodes.poll.outputs.1", "Run 2"],
+      ["nodes.poll.outputs.2", "Run 3"],
+      ["nodes.poll.outputs.3", "Run 4"],
+      ["nodes.poll.outputs.4", "Run 5"],
+    ]);
+    // Inside the loop body too.
+    expect(templatePaths(example(), "done").map((entry) => entry.path)).toContain("nodes.poll.outputs.0");
+    // A step outside any loop is offered once, with no runs.
+    expect(entries.some((entry) => entry.path.startsWith("nodes.start.outputs"))).toBe(false);
+    expect(entries.find((entry) => entry.path === "nodes.start.output")?.section).toBeUndefined();
+  });
+
+  it("finds any run by search: 'run 7' offers Run 7 (outputs.6) under each looped step", () => {
+    const entries = templatePaths(example(), "finish");
+    const found = runSearchEntries(entries, "run 7");
+    expect(found.map((entry) => [entry.path, entry.label, entry.source])).toEqual(
+      expect.arrayContaining([["nodes.poll.outputs.6", "Run 7", "Poll"]]),
+    );
+    expect(found.every((entry) => entry.path.endsWith(".outputs.6"))).toBe(true);
+    // An offered run is not repeated; anything else is no run search.
+    expect(runSearchEntries(entries, "Run 2")).toEqual([]);
+    expect(runSearchEntries(entries, "body")).toEqual([]);
+    expect(runSearchEntries(entries, "run 0")).toEqual([]);
+  });
+
+  it("labels a run's chip as the run: Poll › Run 2, and deeper paths below it", () => {
+    const entries = templatePaths(example(), "finish");
+    expect(describeTemplateRef("nodes.poll.outputs.1", entries)).toEqual({ source: "Poll", label: "Run 2", valid: true });
+    expect(describeTemplateRef("nodes.poll.outputs.1.body", entries)).toEqual({ source: "Poll", label: "Run 2 › body", valid: true });
+    expect(describeTemplateRef("nodes.poll.outputs.6", entries)).toEqual({ source: "Poll", label: "Run 7", valid: true });
+    expect(describeTemplateRef("nodes.poll.outputs", entries)).toEqual({ source: "Poll", label: "Every run", valid: true });
+    expect(describeTemplateRef("state.ghost", entries).valid).toBe(false);
+  });
+
+  it("accepts outputs.<n> references and reads variables from every Set step", () => {
+    const spec = withVariables();
+    spec.nodes = spec.nodes.map((node) =>
+      node.id === "ok" ? { ...node, config: { message: "Run 3 said {{nodes.poll.outputs.2.body}} after {{state.tries}}" } } : node,
+    );
+    expect(errors(spec)).toEqual([]);
+  });
+
+  it("checks Set names, kept variables and unknown variables", () => {
+    const spec = withVariables();
+    spec.nodes = spec.nodes.map((node) =>
+      node.id === "tally"
+        ? { ...node, config: { values: { tries: "1", "2bad": "x", "my name": "y" } } }
+        : node.id === "finish"
+          ? { ...node, config: { keep: ["tries", "ghost", "tries"] } }
+          : node,
+    );
+    const found = errors(spec);
+    const on = (nodeId: string, field: string) => found.filter((i) => i.nodeId === nodeId && i.field === field).map((i) => i.message);
+    expect(on("tally", "config.values")).toEqual([
+      "'2bad': letters, digits and _ only, not starting with a digit.",
+      "'my name': letters, digits and _ only, not starting with a digit.",
+    ]);
+    expect(on("finish", "config.keep")).toEqual([
+      "'ghost' is not a variable: no Set step writes it.",
+      "'tries' is kept more than once.",
+    ]);
+  });
+
+  it("lets a variable share a step's name (variables live under state.*), but no step take 'vars'", () => {
+    const spec = withVariables();
+    spec.nodes = spec.nodes.map((node) => (node.id === "tally" ? { ...node, config: { values: { poll: "1" } } } : node));
+    expect(errors(spec).filter((issue) => issue.field === "id")).toEqual([]);
+    expect(nodeIdProblem("vars", new Set())).toBe("'vars' is reserved.");
+  });
+
+  it("reads the End step's keep as its own widget, and never sends state or assign", () => {
+    const keep = fieldsFromSchema(kind("end").configSchema).find((field) => field.key === "keep")!;
+    expect(keep).toMatchObject({ widget: "keep", templated: false, default: [] });
+    expect(configProblems([keep], { keep: [1] })[0]?.message).toBe("Keep must be a list of variable names.");
+    const legacy = { ...example(), state: [{ name: "x" }] } as WorkflowSpec;
+    legacy.nodes = legacy.nodes.map((node) => (node.id === "poll" ? { ...node, config: { ...node.config, assign: { x: "1" } } } : node));
+    const sent = normalizeSpec(legacy);
+    expect("state" in sent).toBe(false);
+    expect(sent.nodes.find((node) => node.id === "poll")?.config).toEqual({ url: "{{input.job_url}}" });
+    expect(newWorkflowSpec()).not.toHaveProperty("state");
   });
 });

@@ -7,23 +7,15 @@
 
 // ---------- Spec (as stored; the builder edits it in step 3) ----------
 
-export type WorkflowStateFieldType = "string" | "number" | "boolean" | "object" | "array";
-export type WorkflowReducer = "overwrite" | "append" | "merge";
+/** The value types a run input may have. */
+export type WorkflowValueType = "string" | "number" | "boolean" | "object" | "array";
 
 export type WorkflowInputDef = {
   name: string;
-  type: WorkflowStateFieldType;
+  type: WorkflowValueType;
   required?: boolean;
   default?: unknown;
   description?: string;
-};
-
-export type WorkflowStateFieldDef = {
-  name: string;
-  type: WorkflowStateFieldType;
-  reducer: WorkflowReducer;
-  default?: unknown;
-  persist?: boolean;
 };
 
 export type WorkflowNodeDef = {
@@ -48,7 +40,10 @@ export type WorkflowSpec = {
   name: string;
   description?: string;
   inputs: WorkflowInputDef[];
-  state: WorkflowStateFieldDef[];
+  /**
+   * No declared state: the variables are the names `set` steps write
+   * (`config.values` keys), read as `{{state.<name>}}`.
+   */
   nodes: WorkflowNodeDef[];
   edges: WorkflowEdgeDef[];
 };
@@ -292,9 +287,9 @@ export type WorkflowStatePatchOp = { op: string; path: string; value: unknown; h
 
 /** One thing an execution saved to the run's state, as the State tab lists it. */
 export type WorkflowStateWrite = {
-  /** Its result, an llm conversation turn, or a declared field. */
+  /** Its result, an llm conversation turn, or a variable. */
   kind: "output" | "conversation" | "field";
-  /** Short verb: Saved, Added, Set, Appended, Removed. */
+  /** Short verb: Saved, Added, Set. */
   action: string;
   /** Where it landed, as a template path (`nodes.fetch.output`, `state.count`). */
   path: string;

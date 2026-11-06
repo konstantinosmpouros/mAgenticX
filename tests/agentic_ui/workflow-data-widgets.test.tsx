@@ -52,7 +52,6 @@ function graph(overrides: Record<string, Record<string, unknown>> = {}, extraEdg
     version: 1,
     name: "Data",
     inputs: [],
-    state: [],
     nodes,
     edges: [
       ...ids.slice(0, -1).map((source, index) => ({ id: `e${index}`, source, target: ids[index + 1] })),
@@ -73,9 +72,7 @@ function renderForm(spec: WorkflowSpec, nodeId: string, onChange = vi.fn()) {
       onChange={onChange}
       issues={[]}
       paths={[]}
-      assignPaths={[]}
       barePaths={[]}
-      stateNames={[]}
       spec={spec}
     />,
   );

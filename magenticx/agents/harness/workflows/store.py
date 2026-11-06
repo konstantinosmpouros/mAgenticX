@@ -12,8 +12,9 @@ the code reads is asserted in ``_DDL``.
   changes nothing adds no version. History is never rewritten: restoring an
   old version appends a new one with the old spec (``restored_from`` names
   the version it came from).
-* ``workflow_persisted_state`` — the ``persist: true`` state fields, carried
-  from one completed run to the next.
+* ``workflow_persisted_state`` — the variables an ``end`` step keeps
+  (``keep``), carried from one completed run to the next (``field`` is the
+  variable name).
 
 Every read and write is scoped by ``owner_user_id``: a workflow that is not the
 caller's is indistinguishable from one that does not exist (the router's 404).
@@ -80,7 +81,7 @@ _COMMENTS = [
     "COMMENT ON TABLE workflow_versions IS "
     "'Immutable WorkflowSpec snapshots; a run pins one (workflow_id, version_no).'",
     "COMMENT ON TABLE workflow_persisted_state IS "
-    "'State fields declared persist: true, carried from one completed run to the next.'",
+    "'Workflow variables an end step keeps, carried from one completed run to the next (field = variable name).'",
 ]
 
 _SUMMARY_COLUMNS = "id, owner_user_id, name, description, latest_version_no, created_at, updated_at"
@@ -273,17 +274,19 @@ class WorkflowStore:
 
     # -- persisted state ---------------------------------------------------
     async def load_persisted(self, owner_user_id: str, workflow_id: str) -> dict[str, Any]:
-        """The ``persist: true`` values the last completed run left."""
+        """The kept variable values the last completed runs left."""
         async with self._pool.connection() as conn:
             cur = await conn.execute(
                 "SELECT field, value FROM workflow_persisted_state WHERE workflow_id = %s AND owner_user_id = %s",
                 (workflow_id, owner_user_id),
             )
             rows = await cur.fetchall()
-        return {row["field"]: _json(row["value"]) for row in rows}
+        # `value` is jsonb, decoded by psycopg: a kept string arrives as a
+        # plain str, which `_json` would wrongly parse a second time.
+        return {row["field"]: row["value"] for row in rows}
 
     async def save_persisted(self, owner_user_id: str, workflow_id: str, values: dict[str, Any]) -> None:
-        """Upsert the persisted fields of a completed run, in one transaction."""
+        """Upsert the kept variables of a completed run, in one transaction."""
         if not values:
             return
         async with self._pool.connection() as conn, conn.transaction():

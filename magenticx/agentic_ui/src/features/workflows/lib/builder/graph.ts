@@ -23,6 +23,8 @@ export const LLM_KIND = "llm";
 export const CODE_KIND = "code";
 /** "Wait for all": where parallel paths meet; its output is keyed by each path's last step. */
 export const JOIN_KIND = "join";
+/** "Set variables": its `values` keys are the workflow's variables. */
+export const SET_KIND = "set";
 /** The branch of a loop that may lead back into the loop's body (the back-edge). */
 export const LOOP_CONTINUE = "continue";
 

@@ -6,8 +6,8 @@ Pins:
   paths' steps start before either finishes); paths advance in lockstep, one
   LangGraph superstep per step; the ``join`` runs once, after the last path
   arrives, with ``{<path's last step>: <its answer>}``;
-* steps on parallel paths may write state in the same superstep (``append``
-  collects from both; ``overwrite`` no longer crashes on two writes);
+* steps on parallel paths may write variables in the same superstep (two
+  writes to one name do not crash; one of them wins);
 * inside a loop the join's barrier resets every pass;
 * the validator's structure rules (straight paths, one join per fork, nothing
   else into the join, no nesting, no branching on a path, no duplicate edge);
@@ -48,12 +48,6 @@ def quick_wait(wf, monkeypatch):
     monkeypatch.setattr(wf.wait.asyncio, "sleep", short)
 
 
-STATE = [
-    {"name": "seen", "type": "array", "reducer": "append"},
-    {"name": "winner", "type": "string", "reducer": "overwrite", "default": ""},
-]
-
-
 def _node(node_id: str, kind: str, **config) -> dict:
     return {"id": node_id, "kind": kind, "config": config}
 
@@ -65,8 +59,8 @@ def _edge(source: str, target: str, branch: str | None = None) -> dict:
     return edge
 
 
-def _spec(nodes: list[dict], edges: list[dict], state: list[dict] | None = None) -> dict:
-    return {"version": 1, "name": "parallel", "state": state if state is not None else STATE, "nodes": nodes, "edges": edges}
+def _spec(nodes: list[dict], edges: list[dict]) -> dict:
+    return {"version": 1, "name": "parallel", "nodes": nodes, "edges": edges}
 
 
 def _fork_join() -> dict:
@@ -153,9 +147,8 @@ async def test_parallel_paths_run_at_once_and_join_waits_for_all(wf, quick_wait)
     assert events[-1]["type"] == "RUN_FINISHED"
 
     assert state["nodes"]["all"]["output"] == {"a_set": {"seen": "a", "winner": "a"}, "b_set": {"seen": "b", "winner": "b"}}
-    # Both paths wrote state in their own supersteps / together without a clash.
-    assert sorted(state["seen"]) == ["a", "b"]
-    assert state["winner"] in {"a", "b"}
+    # Both paths wrote the same variables in their own supersteps without a clash.
+    assert state["vars"]["seen"] in {"a", "b"} and state["vars"]["winner"] in {"a", "b"}
 
 
 @pytest.mark.asyncio
@@ -171,7 +164,7 @@ async def test_same_superstep_writes_to_one_field_do_not_crash(wf):
     )
     events, state = await _run(wf, raw)
     assert events[-1]["type"] == "RUN_FINISHED"
-    assert sorted(state["seen"]) == ["a", "b"] and state["winner"] in {"a", "b"}
+    assert state["vars"]["seen"] in {"a", "b"} and state["vars"]["winner"] in {"a", "b"}
 
 
 @pytest.mark.asyncio
@@ -207,7 +200,10 @@ async def test_the_join_resets_on_every_loop_pass(wf):
 
     started = _steps(events, "STEP_STARTED")
     assert [s for s in started if s.startswith("all#")] == ["all#1", "all#2", "all#3"]
-    assert sorted(state["seen"]) == sorted(["a", "b1", "b2"] * 3)
+    # Every pass of each Set is kept in its outputs.
+    for step in ("a", "b1", "b2"):
+        assert state["nodes"][step]["outputs"] == [{"seen": step}] * 3
+    assert state["vars"]["seen"] in {"a", "b2"}
     # The join's executions sit inside the loop's passes.
     joins = [e for e in events if e["type"] == "STEP_STARTED" and e["workflow"]["nodeId"] == "all"]
     assert [j["workflow"]["parentExecutionId"] for j in joins] == ["again#1", "again#2", "again#3"]

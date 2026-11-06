@@ -176,7 +176,7 @@ export function ExecutionTimeline({
                     </span>
                     {row.passes > 1 ? (
                       <span className="flex-shrink-0 rounded bg-muted/70 px-1.5 py-px text-[10.5px] tabular-nums text-muted-foreground">
-                        pass {execution.iteration}
+                        Run {execution.iteration}
                       </span>
                     ) : null}
                   </span>

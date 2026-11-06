@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Braces, CornerDownLeft, Search, TextCursorInput, Variable } from "lucide-react";
+import { Braces, Search, TextCursorInput, Variable } from "lucide-react";
 
 import { cn } from "@/shared/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
@@ -9,11 +9,12 @@ import { INPUT, INPUT_SM } from "@/features/workflows/lib/builder/consts";
 import {
   groupTemplatePaths,
   placeholder,
+  runSearchEntries,
   templatePathMatches,
 } from "@/features/workflows/lib/builder/templates";
 import { TemplateInput, type TemplateInputHandle } from "./TemplateInput";
 
-/** A source's small icon tile: the step's kind glyph in its accent, or the inputs / variables / this-step glyph. */
+/** A source's small icon tile: the step's kind glyph in its accent, or the inputs / variables glyph. */
 export function TemplateSourceIcon({ source, className }: { source: Pick<WorkflowTemplateSource, "group" | "kind">; className?: string }) {
   if (source.group === "node" && source.kind) {
     const meta = kindMeta(source.kind);
@@ -28,7 +29,7 @@ export function TemplateSourceIcon({ source, className }: { source: Pick<Workflo
       </span>
     );
   }
-  const Glyph = source.group === "input" ? TextCursorInput : source.group === "state" ? Variable : CornerDownLeft;
+  const Glyph = source.group === "input" ? TextCursorInput : Variable;
   return (
     <span
       className={cn("flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground", className)}
@@ -44,11 +45,12 @@ const PICK_ROW =
 
 /**
  * The template picker: a `{ }` button opening what a field may read, as
- * people name it — grouped by source (this step's result in `assign`, each
- * earlier step nearest first with its icon, the run's inputs, the
- * variables), each value with its type; the rarely wanted ones (an llm step's
- * conversation, a whole result) under "More". Search covers names and paths.
- * Picking hands the path to `onPick`.
+ * people name it — grouped by source (each earlier step nearest first with
+ * its icon, the run's inputs, the variables), each value with its type; a
+ * step that runs in a loop under "Last run" and "Runs" sub-headings (`Every
+ * run`, `Run 1`…`Run 5`; searching "run 7" offers `Run 7`); the rarely
+ * wanted ones (an llm step's conversation, a whole result) under "More".
+ * Search covers names and paths. Picking hands the path to `onPick`.
  */
 export function TemplateHelper({
   paths,
@@ -65,7 +67,7 @@ export function TemplateHelper({
   const [query, setQuery] = React.useState("");
   /** A pick moves focus into the field: the popover must not pull it back to its button. */
   const picked = React.useRef(false);
-  const shown = paths.filter((entry) => templatePathMatches(entry, query));
+  const shown = [...paths, ...runSearchEntries(paths, query)].filter((entry) => templatePathMatches(entry, query));
   const sources = groupTemplatePaths(shown.filter((entry) => !entry.more)).filter((source) => source.entries.length);
   const more = shown.filter((entry) => entry.more);
   const pick = (path: string) => {
@@ -124,11 +126,18 @@ export function TemplateHelper({
                     <TemplateSourceIcon source={source} />
                     <span className="truncate text-[12px] font-semibold text-foreground/85">{source.title}</span>
                   </p>
-                  {source.entries.map((entry) => (
-                    <button key={entry.path} type="button" title={entry.path} onClick={() => pick(entry.path)} className={PICK_ROW}>
-                      <span className="min-w-0 truncate text-[13px] text-foreground">{entry.label}</span>
-                      <span className="flex-shrink-0 text-[11px] text-muted-foreground">{entry.hint}</span>
-                    </button>
+                  {source.entries.map((entry, index) => (
+                    <React.Fragment key={entry.path}>
+                      {entry.section && entry.section !== source.entries[index - 1]?.section ? (
+                        <p className="truncate pb-0.5 pl-8 pr-2 pt-1 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                          {entry.section}
+                        </p>
+                      ) : null}
+                      <button type="button" title={entry.path} onClick={() => pick(entry.path)} className={PICK_ROW}>
+                        <span className="min-w-0 truncate text-[13px] text-foreground">{entry.label}</span>
+                        <span className="flex-shrink-0 text-[11px] text-muted-foreground">{entry.hint}</span>
+                      </button>
+                    </React.Fragment>
                   ))}
                 </div>
               ))}
@@ -156,7 +165,7 @@ export function TemplateHelper({
             <p className="px-2 py-3 text-xs leading-relaxed text-muted-foreground">
               {paths.length
                 ? "Nothing matches."
-                : "Nothing to read yet: declare inputs in the workflow's settings, or connect a step before this one."}
+                : "Nothing to read yet: declare inputs in the workflow's settings, add a Set step, or connect a step before this one."}
             </p>
           )}
         </div>

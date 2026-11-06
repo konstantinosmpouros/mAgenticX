@@ -162,7 +162,6 @@ const spec: WorkflowSpec = {
   name: "Poll and approve",
   description: "Polls an API until ready, then asks.",
   inputs: [],
-  state: [],
   nodes: [
     { id: "start", kind: "trigger.manual", label: "Start", config: {}, position: { x: 0, y: 0 } },
     { id: "loop", kind: "loop", label: "Until ready", config: {}, position: { x: 0, y: 120 } },
@@ -726,9 +725,9 @@ describe("timeline", () => {
     ]);
     expect(options[3]).toHaveAttribute("aria-selected", "true");
     expect(within(options[5]).getByText("true")).toBeInTheDocument(); // the branch check took
-    // No internal ids; "pass N" only on a step that ran more than once.
+    // No internal ids; "Run N" only on a step that ran more than once.
     expect(screen.queryByText(/#\d/)).toBeNull();
-    expect(within(options[3]).getByText("pass 2")).toBeInTheDocument();
+    expect(within(options[3]).getByText("Run 2")).toBeInTheDocument();
     expect(within(options[0]).queryByText(/pass/)).toBeNull();
     fireEvent.click(options[4]);
     expect(onSelect).toHaveBeenCalledWith("poll#3");
@@ -767,7 +766,7 @@ describe("details panel", () => {
     input: { url: "https://api.example.test/status" },
     output: { status: 200 },
     text: "Checked the status.",
-    stateDelta: [{ op: "add", path: "/attempts/-", value: 2 }],
+    stateDelta: [{ op: "add", path: "/attempts", value: 2 }],
     toolCalls: [
       {
         toolCallId: "t1",
@@ -824,11 +823,12 @@ describe("details panel", () => {
     expect(within(panel()).getByText(/api\.example\.test/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("tab", { name: /State/ }));
-    // The engine's own write (the result) comes first, then the declared field.
+    // The engine's own write (the result) comes first, then the variable, a plain Set.
     expect(within(panel()).getByText("nodes.poll.output")).toBeInTheDocument();
-    expect(within(panel()).getByText(/run 2 in nodes\.poll\.outputs/)).toBeInTheDocument();
+    expect(within(panel()).getByText(/Run 2 \(nodes\.poll\.outputs\.1\)/)).toBeInTheDocument();
     expect(within(panel()).getByText("state.attempts")).toBeInTheDocument();
-    expect(within(panel()).getByText("Appended")).toBeInTheDocument();
+    expect(within(panel()).getByText("Set")).toBeInTheDocument();
+    expect(within(panel()).queryByText("Appended")).toBeNull();
 
     fireEvent.click(screen.getByRole("tab", { name: /Tool calls/ }));
     expect(within(panel()).getAllByRole("listitem")).toHaveLength(1);
@@ -1155,7 +1155,7 @@ describe("workflow view page", () => {
     hooks.useWorkflowRun.mockReturnValue(runState(null, emptyView));
     renderPage();
     expect(screen.getByRole("heading", { name: "Poll and approve" })).toBeInTheDocument();
-    expect(screen.getByText("v4")).toBeInTheDocument();
+    expect(screen.queryByText("v4")).toBeNull();
     expect(screen.getByText("No runs yet")).toBeInTheDocument();
     expect(hooks.useWorkflowRun).toHaveBeenLastCalledWith(null);
     fireEvent.click(screen.getByRole("button", { name: /Run it now/ }));
@@ -1176,8 +1176,8 @@ describe("workflow view page", () => {
     expect(await screen.findByTestId("workflow-node-count-poll")).toHaveTextContent("×3");
 
     // A pick stops following; the details show the picked execution.
-    fireEvent.click(screen.getByRole("option", { name: /pass 2/ }));
-    expect(screen.getByRole("region", { name: "Poll API details" })).toHaveTextContent("pass 2");
+    fireEvent.click(screen.getByRole("option", { name: /Run 2/ }));
+    expect(screen.getByRole("region", { name: "Poll API details" })).toHaveTextContent("Run 2");
 
     fireEvent.click(screen.getByRole("button", { name: /Cancel/ }));
     await waitFor(() => expect(state.cancel).toHaveBeenCalled());

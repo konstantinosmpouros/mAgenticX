@@ -9,16 +9,8 @@
     "isTrigger": true,
     "configSchema": {
       "additionalProperties": false,
-      "description": "Fields every node kind's config has.\n\n``assign`` is how any node writes declared state: ``{field: template}``,\nrendered after the node ran, so its values may read the node's own result\nas ``{{output.<path>}}`` besides ``input`` / ``state`` / ``nodes``.",
-      "properties": {
-        "assign": {
-          "additionalProperties": true,
-          "description": "State fields to write after the node runs: {field: value}. Values are templates and may read {{output.<path>}}.",
-          "maxProperties": 32,
-          "title": "Assign",
-          "type": "object"
-        }
-      },
+      "description": "Fields every node kind's config has.",
+      "properties": {},
       "title": "NodeConfig",
       "type": "object"
     },
@@ -64,13 +56,6 @@
       "additionalProperties": false,
       "description": "The tool and its arguments.",
       "properties": {
-        "assign": {
-          "additionalProperties": true,
-          "description": "State fields to write after the node runs: {field: value}. Values are templates and may read {{output.<path>}}.",
-          "maxProperties": 32,
-          "title": "Assign",
-          "type": "object"
-        },
         "tool": {
           "$ref": "#/$defs/ToolRef"
         },
@@ -109,13 +94,6 @@
       "additionalProperties": false,
       "description": "One request.",
       "properties": {
-        "assign": {
-          "additionalProperties": true,
-          "description": "State fields to write after the node runs: {field: value}. Values are templates and may read {{output.<path>}}.",
-          "maxProperties": 32,
-          "title": "Assign",
-          "type": "object"
-        },
         "method": {
           "default": "GET",
           "enum": [
@@ -248,13 +226,6 @@
       "additionalProperties": false,
       "description": "The rules and how they combine.",
       "properties": {
-        "assign": {
-          "additionalProperties": true,
-          "description": "State fields to write after the node runs: {field: value}. Values are templates and may read {{output.<path>}}.",
-          "maxProperties": 32,
-          "title": "Assign",
-          "type": "object"
-        },
         "mode": {
           "default": "all",
           "description": "all = every rule must hold; any = at least one",
@@ -374,13 +345,6 @@
       "additionalProperties": false,
       "description": "Ordered cases; the first match wins.",
       "properties": {
-        "assign": {
-          "additionalProperties": true,
-          "description": "State fields to write after the node runs: {field: value}. Values are templates and may read {{output.<path>}}.",
-          "maxProperties": 32,
-          "title": "Assign",
-          "type": "object"
-        },
         "cases": {
           "items": {
             "$ref": "#/$defs/RouterCase"
@@ -455,13 +419,6 @@
       "additionalProperties": false,
       "description": "The iteration cap and the keep-going condition.",
       "properties": {
-        "assign": {
-          "additionalProperties": true,
-          "description": "State fields to write after the node runs: {field: value}. Values are templates and may read {{output.<path>}}.",
-          "maxProperties": 32,
-          "title": "Assign",
-          "type": "object"
-        },
         "max_iterations": {
           "default": 5,
           "maximum": 20,
@@ -509,13 +466,6 @@
       "additionalProperties": false,
       "description": "What the person is asked, and what they see alongside it.",
       "properties": {
-        "assign": {
-          "additionalProperties": true,
-          "description": "State fields to write after the node runs: {field: value}. Values are templates and may read {{output.<path>}}.",
-          "maxProperties": 32,
-          "title": "Assign",
-          "type": "object"
-        },
         "message": {
           "description": "The question shown to the approver",
           "maxLength": 2000,
@@ -550,19 +500,22 @@
       "additionalProperties": false,
       "description": "Which values the run returns.",
       "properties": {
-        "assign": {
-          "additionalProperties": true,
-          "description": "State fields to write after the node runs: {field: value}. Values are templates and may read {{output.<path>}}.",
-          "maxProperties": 32,
-          "title": "Assign",
-          "type": "object"
-        },
         "outputs": {
           "additionalProperties": true,
-          "description": "Result name -> value (templates allowed). Empty = the whole declared state.",
+          "description": "Result name -> value (templates allowed). Empty = every variable.",
           "maxProperties": 32,
           "title": "Outputs",
           "type": "object"
+        },
+        "keep": {
+          "default": [],
+          "description": "Variables carried to the next run.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Keep",
+          "type": "array",
+          "x-widget": "keep"
         }
       },
       "title": "EndConfig",
@@ -585,13 +538,6 @@
       "additionalProperties": false,
       "description": "One model call.",
       "properties": {
-        "assign": {
-          "additionalProperties": true,
-          "description": "State fields to write after the node runs: {field: value}. Values are templates and may read {{output.<path>}}.",
-          "maxProperties": 32,
-          "title": "Assign",
-          "type": "object"
-        },
         "model": {
           "default": "openai:gpt-4o-mini",
           "description": "The model to call.",
@@ -736,9 +682,9 @@
   },
   {
     "kind": "set",
-    "label": "Set state",
+    "label": "Set variables",
     "group": "data",
-    "description": "Render templated values and write them into declared state fields.",
+    "description": "Save values into variables; every step can read them.",
     "branches": [],
     "dynamicBranches": false,
     "isTrigger": false,
@@ -746,18 +692,11 @@
     "unavailableReason": null,
     "configSchema": {
       "additionalProperties": false,
-      "description": "Values to write.",
+      "description": "The variable writes.",
       "properties": {
-        "assign": {
-          "additionalProperties": true,
-          "description": "State fields to write after the node runs: {field: value}. Values are templates and may read {{output.<path>}}.",
-          "maxProperties": 32,
-          "title": "Assign",
-          "type": "object"
-        },
         "values": {
           "additionalProperties": true,
-          "description": "State field → value; values are templates.",
+          "description": "Variables to save: {name: value}. Values are templates. Every step can read a variable as {{state.<name>}}.",
           "maxProperties": 32,
           "minProperties": 1,
           "title": "Values",
@@ -786,13 +725,6 @@
       "additionalProperties": false,
       "description": "A pause.",
       "properties": {
-        "assign": {
-          "additionalProperties": true,
-          "description": "State fields to write after the node runs: {field: value}. Values are templates and may read {{output.<path>}}.",
-          "maxProperties": 32,
-          "title": "Assign",
-          "type": "object"
-        },
         "seconds": {
           "maximum": 600,
           "minimum": 1,
@@ -819,16 +751,8 @@
     "unavailableReason": null,
     "configSchema": {
       "additionalProperties": false,
-      "description": "Fields every node kind's config has.\n\n``assign`` is how any node writes declared state: ``{field: template}``,\nrendered after the node ran, so its values may read the node's own result\nas ``{{output.<path>}}`` besides ``input`` / ``state`` / ``nodes``.",
-      "properties": {
-        "assign": {
-          "additionalProperties": true,
-          "description": "State fields to write after the node runs: {field: value}. Values are templates and may read {{output.<path>}}.",
-          "maxProperties": 32,
-          "title": "Assign",
-          "type": "object"
-        }
-      },
+      "description": "Fields every node kind's config has.",
+      "properties": {},
       "title": "NodeConfig",
       "type": "object"
     }
@@ -847,13 +771,6 @@
       "additionalProperties": false,
       "description": "A sandboxed snippet.",
       "properties": {
-        "assign": {
-          "additionalProperties": true,
-          "description": "State fields to write after the node runs: {field: value}. Values are templates and may read {{output.<path>}}.",
-          "maxProperties": 32,
-          "title": "Assign",
-          "type": "object"
-        },
         "code": {
           "description": "Python source. Read `inputs`; set `result`.",
           "maxLength": 16000,

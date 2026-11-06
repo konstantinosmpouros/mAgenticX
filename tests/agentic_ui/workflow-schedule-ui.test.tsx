@@ -453,7 +453,6 @@ describe("pause / resume on the workflow card and the view header", () => {
           <WorkflowHeader
             name="Digest"
             description={null}
-            versionNo={2}
             onRun={vi.fn()}
             schedule={value}
             now={now.getTime()}

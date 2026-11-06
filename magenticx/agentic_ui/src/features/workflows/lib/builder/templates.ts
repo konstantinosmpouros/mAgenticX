@@ -7,16 +7,18 @@ import type {
   WorkflowTemplateSource,
 } from "@/shared/lib/types";
 import { JOIN_KIND, LLM_KIND, loopBodyNodes, upstreamDistances } from "./graph";
+import { variableNames } from "./variables";
 
 /**
  * What a templated field may read, and how a template reads to a person.
  * Templates stay the storage format — the engine's roots only
  * (`docs/flows/workflows.md` § Templating): `input.<name>`, `state.<name>`,
- * `nodes.<id>.output[.<path>]`, `nodes.<id>.outputs[.<i>[.<path>]]` (every
- * execution's output of a step that runs in a loop), and `output[.<path>]`
- * inside `assign` (the node's own result). Each offered path carries a
- * friendly name (`Fetch page › Body`) so the builder never has to show the
- * raw path to someone who is not a developer.
+ * `nodes.<id>.output[.<path>]` (its latest execution) and
+ * `nodes.<id>.outputs[.<n>[.<path>]]` (every execution's output, oldest
+ * first — what a step that runs in a loop offers as `Every run` and
+ * `Run 1`, `Run 2`, …). Each offered path carries a friendly name
+ * (`Fetch page › Body`, `Fetch page › Run 2`) so the builder never has to
+ * show the raw path to someone who is not a developer.
  */
 
 type OutputField = { key: string; label: string; hint: string; more?: boolean };
@@ -53,7 +55,21 @@ const OUTPUT_FIELDS: Record<string, OutputField[]> = {
 
 const SOURCE_INPUT = "Run input";
 const SOURCE_STATE = "Variable";
-const SOURCE_SELF = "This step";
+
+/** A looped step's sub-headings in the picker: its latest execution, then its runs one by one. */
+const SECTION_LAST = "Last run";
+const SECTION_RUNS = "Runs";
+
+/** How many single runs (`Run 1`…) a looped step offers up front; search reaches any other (`run 7`). */
+const OFFERED_RUNS = 5;
+
+/** The friendly name of `nodes.<id>.outputs.<index>` (0-based): `Run <index + 1>`. */
+const runLabel = (index: number): string => `Run ${index + 1}`;
+
+/** One run of a looped step, as a picker entry (`nodes.fetch.outputs.1` → `Run 2`). */
+function runEntry(every: WorkflowTemplatePath, index: number): WorkflowTemplatePath {
+  return { ...every, path: `${every.path}.${index}`, label: runLabel(index), hint: "object", section: SECTION_RUNS };
+}
 
 /** A JSON schema's top-level properties; the schema may be stored as text. */
 function schemaProperties(schema: unknown): Array<{ name: string; title?: string; type?: string }> {
@@ -117,7 +133,7 @@ function joinFields(node: WorkflowNodeDef, spec: WorkflowSpec): OutputField[] {
     });
 }
 
-/** A node's known output paths below `prefix` (`nodes.poll.output` or `output`), the whole result last. */
+/** A node's known output paths below `prefix` (`nodes.poll.output`), the whole result last. */
 function outputEntries(
   node: WorkflowNodeDef,
   prefix: string,
@@ -153,22 +169,18 @@ function outputEntries(
 }
 
 /**
- * The paths a field of `nodeId` may use, each with its friendly name: this
- * step's own result (`assign` only), then the steps before it nearest first
- * (a step that runs in a loop also offers `Every run`), the run's inputs and
- * the variables.
+ * The paths a field of `nodeId` may use, each with its friendly name: the
+ * steps before it nearest first, the run's inputs and every variable of the
+ * workflow (a variable is readable anywhere: before its Set step runs it
+ * holds `null`, or the value kept from the previous run). A step that runs
+ * in a loop (`loopBodyNodes`) is offered run by run: its fields as the
+ * `Last run`, then `Every run` (`nodes.<id>.outputs`) and `Run 1`…`Run 5`
+ * (`nodes.<id>.outputs.<n>`) — for the steps in its loop and the steps
+ * after it alike.
  */
-export function templatePaths(
-  spec: WorkflowSpec,
-  nodeId: string | null,
-  options: { inAssign?: boolean } = {},
-): WorkflowTemplatePath[] {
+export function templatePaths(spec: WorkflowSpec, nodeId: string | null): WorkflowTemplatePath[] {
   const paths: WorkflowTemplatePath[] = [];
   if (nodeId) {
-    if (options.inAssign) {
-      const self = spec.nodes.find((node) => node.id === nodeId);
-      if (self) paths.push(...outputEntries(self, "output", { group: "output", source: SOURCE_SELF }, spec));
-    }
     const distances = upstreamDistances(nodeId, spec.edges);
     const looped = loopBodyNodes(spec);
     const order = new Map(spec.nodes.map((node, index) => [node.id, index]));
@@ -181,16 +193,22 @@ export function templatePaths(
     for (const node of before) {
       const base = { group: "node" as const, source: node.label?.trim() || node.id, nodeId: node.id, kind: node.kind };
       const entries = outputEntries(node, `nodes.${node.id}.output`, base, spec);
-      if (looped.has(node.id)) {
-        // Ahead of the whole result: every execution's output, which the steps after the loop need.
-        entries.splice(entries.length - 1, 0, {
-          ...base,
-          path: `nodes.${node.id}.outputs`,
-          label: "Every run",
-          hint: "list",
-        });
+      if (!looped.has(node.id)) {
+        paths.push(...entries);
+        continue;
       }
-      paths.push(...entries);
+      const every: WorkflowTemplatePath = {
+        ...base,
+        path: `nodes.${node.id}.outputs`,
+        label: "Every run",
+        hint: "list",
+        section: SECTION_RUNS,
+      };
+      paths.push(
+        ...entries.map((entry) => (entry.more ? entry : { ...entry, section: SECTION_LAST })),
+        every,
+        ...Array.from({ length: OFFERED_RUNS }, (_, index) => runEntry(every, index)),
+      );
     }
   }
   for (const input of spec.inputs) {
@@ -198,22 +216,38 @@ export function templatePaths(
       paths.push({ path: `input.${input.name}`, group: "input", hint: input.type, source: SOURCE_INPUT, label: input.name });
     }
   }
-  for (const field of spec.state) {
-    if (field.name) {
-      paths.push({ path: `state.${field.name}`, group: "state", hint: field.type, source: SOURCE_STATE, label: field.name });
-    }
+  for (const name of variableNames(spec)) {
+    paths.push({ path: `state.${name}`, group: "state", hint: "any", source: SOURCE_STATE, label: name });
   }
   return paths;
 }
 
+/** A search for one run: `run 7`, `Run 12`. */
+const RUN_QUERY = /^\s*run\s*(\d{1,4})\s*$/i;
+
+/**
+ * The single runs a search asks for beyond the ones offered up front:
+ * `run 7` adds `Run 7` (`nodes.<id>.outputs.6`) under every looped step of
+ * `paths` that does not list it yet.
+ */
+export function runSearchEntries(paths: readonly WorkflowTemplatePath[], query: string): WorkflowTemplatePath[] {
+  const match = RUN_QUERY.exec(query);
+  const run = match ? Number(match[1]) : 0;
+  if (run < 1) return [];
+  const listed = new Set(paths.map((entry) => entry.path));
+  return paths
+    .filter((entry) => entry.group === "node" && entry.path.endsWith(".outputs"))
+    .map((every) => runEntry(every, run - 1))
+    .filter((entry) => !listed.has(entry.path));
+}
+
 const GROUP_TITLES: Record<WorkflowTemplatePath["group"], string> = {
-  output: "This step's result",
   node: "",
   input: "Run inputs",
   state: "Variables",
 };
 
-/** `paths` by source, in the order offered: this step, each earlier step, run inputs, variables. */
+/** `paths` by source, in the order offered: each earlier step, run inputs, variables. */
 export function groupTemplatePaths(paths: readonly WorkflowTemplatePath[]): WorkflowTemplateSource[] {
   const sources = new Map<string, WorkflowTemplateSource>();
   for (const entry of paths) {
@@ -235,11 +269,11 @@ export function groupTemplatePaths(paths: readonly WorkflowTemplatePath[]): Work
   return [...sources.values()];
 }
 
-/** Whether `entry` matches a search over its name, its source and its path. */
+/** Whether `entry` matches a search over its name, its run (`Last run`), its source and its path. */
 export function templatePathMatches(entry: WorkflowTemplatePath, query: string): boolean {
   const needle = query.trim().toLowerCase();
   if (!needle) return true;
-  return [entry.label, entry.source, entry.path].some((text) => text.toLowerCase().includes(needle));
+  return [entry.label, entry.section ?? "", entry.source, entry.path].some((text) => text.toLowerCase().includes(needle));
 }
 
 /** A `{{path}}` placeholder, whitespace inside the braces allowed (the engine trims it). */
@@ -259,13 +293,14 @@ export function parseTemplate(value: string): WorkflowTemplateSegment[] {
   return segments;
 }
 
-/** The output roots (`nodes.x.output`, `output`): a path below one reads by its tail alone. */
-const isOutputRoot = (path: string): boolean => path === "output" || path.endsWith(".output");
+/** The output root (`nodes.x.output`): a path below it reads by its tail alone. */
+const isOutputRoot = (path: string): boolean => path.endsWith(".output");
 
 /**
  * How a placeholder's path reads in a field, given what the field may read:
- * the offered entry it is (`Fetch page › Body`) or lies below
- * (`Fetch page › Body › items`, `Fetch page › Every run › Run 2 › text`).
+ * the offered entry it is (`Fetch page › Body`, `Fetch page › Run 2`) or lies
+ * below (`Fetch page › Body › items`, `Fetch page › Run 2 › body`; a run
+ * past the offered ones reads `Fetch page › Run 7`, never `Every run › …`).
  * A path whose root or source the field cannot read is invalid.
  */
 export function describeTemplateRef(path: string, paths: readonly WorkflowTemplatePath[]): WorkflowTemplateRefLabel {
@@ -279,7 +314,10 @@ export function describeTemplateRef(path: string, paths: readonly WorkflowTempla
   if (!target || !best) return { source: "", label: target || path, valid: false };
   if (target === best.path) return { source: best.source, label: best.label, valid: true };
   const tail = target.slice(best.path.length + 1).split(".");
-  if (best.path.endsWith(".outputs") && /^\d+$/.test(tail[0])) tail[0] = `Run ${Number(tail[0]) + 1}`;
+  if (best.path.endsWith(".outputs") && /^\d+$/.test(tail[0])) {
+    // One run of a looped step: the run is named in place of `Every run`.
+    return { source: best.source, label: [runLabel(Number(tail[0])), ...tail.slice(1)].join(" › "), valid: true };
+  }
   const label = isOutputRoot(best.path) ? tail.join(" › ") : [best.label, ...tail].join(" › ");
   return { source: best.source, label, valid: true };
 }

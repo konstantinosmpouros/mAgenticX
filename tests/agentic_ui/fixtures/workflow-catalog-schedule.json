@@ -66,13 +66,6 @@
     "additionalProperties": false,
     "description": "When the workflow runs on its own.",
     "properties": {
-      "assign": {
-        "additionalProperties": true,
-        "description": "State fields to write after the node runs: {field: value}. Values are templates and may read {{output.<path>}}.",
-        "maxProperties": 32,
-        "title": "Assign",
-        "type": "object"
-      },
       "schedule_kind": {
         "description": "one_off, interval or cron.",
         "enum": [

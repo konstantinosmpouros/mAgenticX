@@ -1113,7 +1113,7 @@ Workflow definitions (plan 38), created by `WorkflowStore.setup()` (`harness/wor
 | `workflow_persisted_state` | `(workflow_id, field)` | `owner_user_id`, `value` jsonb, `updated_at`. FK → `workflow_definitions` CASCADE; index on `owner_user_id` |
 
 - **Versions.** Create writes the draft and version 1 in one transaction. A save locks the definition row (`FOR UPDATE`), compares the canonical JSON of the new spec with the latest version and adds `latest + 1` only when it changed.
-- **Persisted state** is upserted only when a run completes (`persist: true` fields).
+- **Persisted state** holds workflow variables an `end` step keeps (`keep`; `field` = the variable name), upserted only when a run completes, for the `end` step(s) that ran.
 - **Lifetime.** Deleting a workflow cascades to its versions and state; account deletion (`purge_user`) deletes all three by owner. Run history is in `chat_db.workflow_runs`.
 
 ### Export paging index (`0028`)

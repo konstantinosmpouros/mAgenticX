@@ -94,7 +94,7 @@ class WorkflowEmitter(AGUIEmitter):
         return self._emit(StepFinishedEvent(type=EventType.STEP_FINISHED, step_name=step_name), writer)
 
     def state_delta(self, patch: list[dict[str, Any]], writer: Any = None) -> bytes | None:
-        """A JSON Patch (RFC 6902) against the run's declared-state document."""
+        """A JSON Patch (RFC 6902) against the run's variables document (``{name: value}``)."""
         return self._emit(StateDeltaEvent(type=EventType.STATE_DELTA, delta=patch), writer)
 
     # ---------- Node bracket ----------

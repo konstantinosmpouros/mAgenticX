@@ -211,6 +211,22 @@ async def test_one_version_carries_its_whole_spec(client, internal_headers, wf, 
 
 
 @pytest.mark.asyncio
+async def test_a_legacy_spec_comes_back_normalized(client, internal_headers, wf, store):
+    # Stored by an older engine: declared state (persist) and an assign block.
+    legacy = _normalized(wf, _example())
+    legacy["state"] = [{"name": "last_status", "type": "string", "reducer": "overwrite", "persist": True}]
+    legacy["nodes"][1]["config"]["assign"] = {"last_status": "{{output.body.status}}"}
+    store.seed(WORKFLOW_ID, "u1", [legacy])
+    expected = _normalized(wf, legacy)
+    assert "state" not in expected and "assign" not in expected["nodes"][1]["config"]
+
+    body = (await client.get(f"/workflows/u1/{WORKFLOW_ID}", headers=internal_headers)).json()
+    assert body["spec"] == expected and body["draft"] == expected
+    body = (await client.get(f"/workflows/u1/{WORKFLOW_ID}/versions/1", headers=internal_headers)).json()
+    assert body["spec"] == expected
+
+
+@pytest.mark.asyncio
 async def test_restore_appends_a_new_version_and_never_rewrites_history(client, internal_headers, wf, store):
     versions = _three_versions(wf)
     store.seed(WORKFLOW_ID, "u1", versions)
@@ -313,3 +329,12 @@ async def test_store_history_against_postgres(pg_store, wf):
     assert (await pg_store.get_version_detail("u1", workflow_id, 1))["spec"] == versions[0]
     # The same spec again adds nothing.
     assert await pg_store.update("u1", workflow_id, versions[0], restored_from=1) == 4
+
+
+@pytest.mark.asyncio
+async def test_kept_values_round_trip_through_postgres(pg_store, wf):
+    """jsonb comes back decoded: a kept string must not be parsed a second time."""
+    workflow_id = await pg_store.create("u1", _example())
+    kept = {"last_status": "healthy", "checks": 2, "last_rates": {"USD": 1.1}, "seen": ["a", "b"], "none": None}
+    await pg_store.save_persisted("u1", workflow_id, kept)
+    assert await pg_store.load_persisted("u1", workflow_id) == kept

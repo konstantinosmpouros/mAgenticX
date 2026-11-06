@@ -26,6 +26,7 @@ from harness.workflows.runner import (
     RunTrigger,
     prepare_run,
 )
+from harness.workflows.spec import normalize_spec
 from harness.workflows.store import WorkflowStore
 from harness.workflows.validator import ValidationIssue, validate_spec
 from schema.workflows import MAX_INPUT_BYTES, WorkflowRunRequest
@@ -63,10 +64,12 @@ async def list_workflows(owner_user_id: str, *, limit: int, offset: int) -> list
 
 
 async def get_workflow(owner_user_id: str, workflow_id: str) -> dict[str, Any]:
+    """One workflow with its draft and newest version's spec, both normalized
+    (a spec saved by an older engine comes back in today's shape)."""
     row = await workflow_store().get(owner_user_id, workflow_id)
     if row is None:
         raise WorkflowNotFound(workflow_id)
-    return row
+    return {**row, "draft": normalize_spec(row["draft"]), "spec": normalize_spec(row["spec"])}
 
 
 async def create_workflow(owner_user_id: str, raw: Any) -> tuple[dict[str, Any] | None, list[ValidationIssue]]:
@@ -111,7 +114,7 @@ async def get_workflow_version(owner_user_id: str, workflow_id: str, version_no:
     row = await workflow_store().get_version_detail(owner_user_id, workflow_id, version_no)
     if row is None:
         raise WorkflowNotFound(workflow_id)
-    return row
+    return {**row, "spec": normalize_spec(row["spec"])}
 
 
 async def restore_workflow_version(

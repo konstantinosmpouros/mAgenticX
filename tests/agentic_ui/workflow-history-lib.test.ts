@@ -25,7 +25,6 @@ const base = (): WorkflowSpec => ({
   name: "Poller",
   description: "Polls a job",
   inputs: [{ name: "job_url", type: "string", required: true }],
-  state: [{ name: "attempts", type: "number", reducer: "overwrite", default: 0 }],
   nodes: [
     { id: "start", kind: "trigger.manual", label: "Run now", config: {}, position: { x: 0, y: 0 } },
     {
@@ -125,17 +124,14 @@ describe("compareWorkflowSpecs", () => {
     expect(c.connections.removed).toEqual([expect.objectContaining({ label: "Poll the job → done" })]);
   });
 
-  it("reports inputs and variables added, removed and changed", () => {
+  it("reports inputs added, removed and changed", () => {
     const after = base();
     after.inputs = [{ name: "job_url", type: "string" }, { name: "token", type: "string", default: "" }];
-    after.state = [{ name: "statuses", type: "array", reducer: "append" }];
     const c = compareWorkflowSpecs(base(), after);
     expect(c.inputs.added.map((i) => i.label)).toEqual(["token"]);
     expect(c.inputs.changed).toEqual([
       { key: "job_url", label: "job_url", before: "string, required", after: "string" },
     ]);
-    expect(c.variables.added.map((v) => v.label)).toEqual(["statuses"]);
-    expect(c.variables.removed.map((v) => v.label)).toEqual(["attempts"]);
   });
 
   it("tells a version that only moved steps apart from one that changed the workflow", () => {

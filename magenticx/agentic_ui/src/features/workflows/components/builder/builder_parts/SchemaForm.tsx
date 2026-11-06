@@ -12,6 +12,7 @@ import { INPUT } from "@/features/workflows/lib/builder/consts";
 import { fieldDomId } from "@/features/workflows/lib/builder/ids";
 import { asCases, asRules } from "@/features/workflows/lib/builder/schemaForm";
 import { issueIsOn } from "@/features/workflows/lib/builder/validate";
+import { variableNames } from "@/features/workflows/lib/builder/variables";
 import { CasesEditor } from "./CasesEditor";
 import { CodeField } from "./CodeField";
 import { ContextField } from "./ContextField";
@@ -19,6 +20,7 @@ import { ChoiceSelect, LooseValueField } from "./Controls";
 import { ConversationField } from "./ConversationField";
 import { Field, Toggle } from "./FieldShell";
 import { JsonField } from "./JsonField";
+import { KeepField } from "./KeepField";
 import { MapEditor } from "./MapEditor";
 import { RulesEditor } from "./RulesEditor";
 import { SchemaBuilderField } from "./SchemaBuilderField";
@@ -84,10 +86,10 @@ const rangeHint = (field: WorkflowFormField): string | null => {
  * A node's config form, generated from its kind's JSON Schema
  * (`lib/builder/schemaForm`): text, numbers with their range, on/off,
  * choices, nested objects (`tool`), maps (`headers`, `args`, `outputs`),
- * `assign` (state field → template), rule lists and router cases, source
- * code (a monospace editor, never templated), and a JSON editor for
- * anything else. Templated text gets the `{ }` helper; issues sit
- * under the field they name.
+ * a Set step's variables (name → template), an End step's variables to
+ * keep for the next run, rule lists and router cases, source code (a
+ * monospace editor, never templated), and a JSON editor for anything else.
+ * Templated text gets the `{ }` helper; issues sit under the field they name.
  */
 export function SchemaForm({
   nodeId,
@@ -96,9 +98,7 @@ export function SchemaForm({
   onChange,
   issues,
   paths,
-  assignPaths,
   barePaths,
-  stateNames,
   spec,
   prefix = "config",
 }: {
@@ -109,12 +109,9 @@ export function SchemaForm({
   issues: readonly WorkflowBuilderIssue[];
   /** What templated fields may read. */
   paths: readonly WorkflowTemplatePath[];
-  /** …and `assign` values (this step's own `output` too). */
-  assignPaths: readonly WorkflowTemplatePath[];
   /** Rule paths: the same, without braces. */
   barePaths: readonly WorkflowTemplatePath[];
-  stateNames: readonly string[];
-  /** The workflow: what "Data from earlier steps" and "Conversation" offer and preview. */
+  /** The workflow: what "Data from earlier steps", "Conversation" and the variable fields offer and preview. */
   spec?: WorkflowSpec;
   prefix?: string;
 }) {
@@ -265,9 +262,7 @@ export function SchemaForm({
                   onChange={(next) => set(field.key, next)}
                   issues={issues}
                   paths={paths}
-                  assignPaths={assignPaths}
                   barePaths={barePaths}
-                  stateNames={stateNames}
                   spec={spec}
                   prefix={where}
                 />
@@ -305,55 +300,38 @@ export function SchemaForm({
               </Field>
             );
           case "assign":
-            // A state-write map the schema names itself (`"x-widget": "assign"`,
-            // the set step's `values`): the same editor, under its own label;
-            // its values are the step's input, so they can't read its output.
-            if (field.key !== "assign") {
-              return (
-                <Field
-                  key={field.key}
-                  label={field.label}
-                  required={field.required}
-                  hint={
-                    stateNames.length
-                      ? hint ?? "Variable → value; values may use {{…}} placeholders."
-                      : "Declare variables in the workflow's settings (click the empty canvas) to set them here."
-                  }
-                  issues={own}
-                >
-                  <MapEditor
-                    id={id}
-                    value={value}
-                    onChange={(next) => set(field.key, Object.keys(next).length || field.required ? next : undefined)}
-                    paths={paths}
-                    keyOptions={stateNames}
-                    addLabel="Add variable"
-                    emptyText="No variables set."
-                    max={field.maxProperties}
-                  />
-                </Field>
-              );
-            }
+            // A Set step's variables (`"x-widget": "assign"`): any name, the
+            // ones other Set steps write offered while typing.
             return (
-              <Field
-                key={field.key}
-                label="Save to a variable"
-                hint={
-                  stateNames.length
-                    ? "After this step runs, save values to variables. Values may read {{output.…}}, this step's result."
-                    : "Declare variables in the workflow's settings (click the empty canvas) to save to them here."
-                }
-                issues={own}
-              >
+              <Field key={field.key} label={field.label} required={field.required} hint={hint} issues={own}>
                 <MapEditor
                   id={id}
                   value={value}
-                  onChange={(next) => set(field.key, Object.keys(next).length ? next : undefined)}
-                  paths={assignPaths}
-                  keyOptions={stateNames}
+                  onChange={(next) => set(field.key, Object.keys(next).length || field.required ? next : undefined)}
+                  paths={paths}
+                  keySuggestions={spec ? variableNames(spec, nodeId) : []}
+                  keyPlaceholder="variable"
                   addLabel="Add variable"
-                  emptyText="Nothing saved."
+                  emptyText="No variables set."
                   max={field.maxProperties}
+                />
+              </Field>
+            );
+          case "keep":
+            return (
+              <Field
+                key={field.key}
+                label="Keep for the next run"
+                hint="These variables start the next run with this run's values."
+                issues={own}
+                issuesId={issuesId}
+              >
+                <KeepField
+                  id={id}
+                  value={value}
+                  onChange={(next) => set(field.key, next.length ? next : undefined)}
+                  variables={spec ? variableNames(spec) : []}
+                  describedBy={direct.length ? issuesId : undefined}
                 />
               </Field>
             );

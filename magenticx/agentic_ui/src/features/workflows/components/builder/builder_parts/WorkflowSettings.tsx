@@ -6,14 +6,14 @@ import { INPUT } from "@/features/workflows/lib/builder/consts";
 import { fieldDomId } from "@/features/workflows/lib/builder/ids";
 import { SCHEDULE_TRIGGER_KIND } from "@/features/workflows/lib/builder/schedule";
 import { issueIsOn } from "@/features/workflows/lib/builder/validate";
-import { Disclosure, Field, FieldIssues, SectionHeading } from "./FieldShell";
-import { InputsEditor, StateFieldsEditor } from "./FieldListEditors";
+import { Field, FieldIssues, SectionHeading } from "./FieldShell";
+import { InputsEditor } from "./FieldListEditors";
 
 /**
  * The inspector with nothing picked: the workflow itself — its name and
- * description, the run's inputs and its variables (declared state, folded
- * away while there are none: most workflows never need one) — and the issues that
- * belong to no one step (one trigger, an End step).
+ * description and the run's inputs — and the issues that belong to no one
+ * step (one trigger, an End step). Variables are not declared here: a Set
+ * step creates one by writing it.
  */
 export function WorkflowSettings({
   spec,
@@ -28,7 +28,7 @@ export function WorkflowSettings({
   const nameId = fieldDomId(null, "name");
   const descriptionId = fieldDomId(null, "description");
   const general = issues.filter(
-    (issue) => !["name", "description"].includes(issue.field) && !issueIsOn(issue, "inputs") && !issueIsOn(issue, "state"),
+    (issue) => !["name", "description"].includes(issue.field) && !issueIsOn(issue, "inputs"),
   );
   const scheduled = spec.nodes.some((node) => node.kind === SCHEDULE_TRIGGER_KIND);
   return (
@@ -91,23 +91,6 @@ export function WorkflowSettings({
           issues={issues}
         />
       </section>
-
-      <Disclosure
-        id={fieldDomId(null, "state")}
-        title={spec.state.length ? `Variables (${spec.state.length})` : "Variables"}
-        description="Steps' results already reach later steps. Variables are only for collecting values across loop runs or keeping them between runs."
-        defaultOpen={spec.state.length > 0 || issues.some((issue) => issueIsOn(issue, "state"))}
-        issueCount={issues.filter((issue) => issueIsOn(issue, "state") && issue.severity === "error").length}
-      >
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          Set them with a step&apos;s &ldquo;Save to a variable&rdquo; (under Advanced).
-        </p>
-        <StateFieldsEditor
-          state={spec.state}
-          onChange={(state) => dispatch({ type: "set-state", state }, { coalesce: "state" })}
-          issues={issues}
-        />
-      </Disclosure>
     </div>
   );
 }

@@ -17,7 +17,6 @@ const spec: WorkflowSpec = {
   name: "W",
   description: "",
   inputs: [],
-  state: [],
   nodes: [{ id: "trigger", kind: "trigger.manual", label: null, config: {}, position: { x: 0, y: 0 } }],
   edges: [],
 };

@@ -156,21 +156,19 @@ export function Toggle({
 }
 
 /**
- * A quiet fold for settings most steps never need (a step's "Advanced", the
- * workflow's variables): a header button with a chevron, the count of
- * issues inside when folded (so a problem is never hidden silently).
+ * A quiet fold for settings most steps never need (a step's "Advanced"): a
+ * header button with a chevron, the count of issues inside when folded (so a
+ * problem is never hidden silently).
  */
 export function Disclosure({
   id,
   title,
-  description,
   defaultOpen = false,
   issueCount = 0,
   children,
 }: {
   id: string;
   title: ReactNode;
-  description?: ReactNode;
   defaultOpen?: boolean;
   /** Issues inside, shown on the header while it is folded. */
   issueCount?: number;
@@ -195,10 +193,7 @@ export function Disclosure({
           )}
           aria-hidden
         />
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-[13px] font-semibold text-foreground">{title}</span>
-          {description ? <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">{description}</span> : null}
-        </span>
+        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-foreground">{title}</span>
         {!open && issueCount ? (
           <span className="flex flex-shrink-0 items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] font-medium text-destructive">
             <AlertCircle className="h-3 w-3" aria-hidden />

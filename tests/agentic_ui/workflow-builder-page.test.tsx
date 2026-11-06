@@ -284,7 +284,7 @@ describe("workflow builder page", () => {
     await waitFor(() => expect(api.updateWorkflow).toHaveBeenCalledTimes(1));
     expect(api.updateWorkflow.mock.calls[0][1]).toBe("wf-9");
     expect((api.updateWorkflow.mock.calls[0][2] as WorkflowSpec).nodes[1].label).toBe("Poll");
-    expect(await screen.findByText("v2")).toBeInTheDocument();
+    expect(screen.queryByText("v2")).toBeNull();
   });
 
   it("moves the pick to a step added after another, once (no bounce back to the old pick)", async () => {
@@ -357,7 +357,6 @@ describe("workflow builder page", () => {
       name: "Nightly",
       description: "",
       inputs: [],
-      state: [],
       nodes: [
         { id: "start", kind: "trigger.manual", label: null, config: {}, position: { x: 0, y: 0 } },
       ],
@@ -367,7 +366,7 @@ describe("workflow builder page", () => {
     renderAt("/workflows/wf-9/edit");
     await canvas();
     expect(screen.getByLabelText("Workflow name")).toHaveValue("Nightly");
-    expect(screen.getByText("v3")).toBeInTheDocument();
+    expect(screen.queryByText("v3")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Run" }));
     expect(spies.onOpenView).toHaveBeenCalledWith("wf-9");

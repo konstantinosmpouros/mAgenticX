@@ -5,7 +5,8 @@
  *
  * Purely a convenience: every access is wrapped, and a browser that blocks
  * storage (private mode, a full quota, a policy) simply gets no restore
- * banner. A stored entry is checked for shape before it is offered.
+ * banner. A stored entry is checked for shape before it is offered (one kept
+ * before variables became implicit still is; its declared `state` is dropped).
  */
 import type { WorkflowSpec } from "@/shared/lib/types";
 
@@ -21,7 +22,6 @@ const looksLikeSpec = (value: unknown): value is WorkflowSpec => {
     spec.version === 1 &&
     typeof spec.name === "string" &&
     Array.isArray(spec.inputs) &&
-    Array.isArray(spec.state) &&
     Array.isArray(spec.nodes) &&
     Array.isArray(spec.edges)
   );
@@ -33,7 +33,8 @@ export function readWorkflowDraft(key: string): StoredWorkflowDraft | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as { savedAt?: unknown; spec?: unknown };
     if (typeof parsed?.savedAt !== "number" || !looksLikeSpec(parsed.spec)) return null;
-    return { savedAt: parsed.savedAt, spec: parsed.spec };
+    const { state: _state, ...spec } = parsed.spec as WorkflowSpec & { state?: unknown };
+    return { savedAt: parsed.savedAt, spec };
   } catch {
     return null;
   }

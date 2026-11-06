@@ -1,8 +1,8 @@
 """Workflow engine — compile and run, end to end, over an in-memory checkpointer.
 
-Runs the hand-written example (manual → fetch → condition → loop back /
-approval → end) with a mocked HTTP endpoint and pins what the bridge and the
-replaying UI depend on:
+Runs the hand-written example (manual → fetch → set → condition → loop back /
+approval → set → end) with a mocked HTTP endpoint and pins what the bridge and
+the replaying UI depend on:
 
 * the per-node bracket order (STEP_STARTED → node_input → own events →
   node_output → STATE_DELTA → STEP_FINISHED) and the run-level frames;
@@ -12,7 +12,8 @@ replaying UI depend on:
 * the approval pause (``HITL_INTERRUPT`` ends the leg — no ``RUN_FINISHED``,
   no ``RUN_ERROR``) and the resume on the same thread;
 * keep-alive comments while a node is busy, and a closed stream stopping the run;
-* persisted state written only on completion; failures closing their bracket.
+* kept variables saved only on completion and loaded into the next run;
+  failures closing their bracket.
 """
 from __future__ import annotations
 
@@ -142,9 +143,9 @@ async def test_example_runs_loops_pauses_and_resumes(wf, monkeypatch):
 
     # Every node execution, in order: executionId counts each node's runs.
     assert _executions(events) == [
-        "start#1", "poll#1", "is_ready#1", "retry#1",
-        "poll#2", "is_ready#2", "retry#2",
-        "poll#3", "is_ready#3", "approve#1",
+        "start#1", "poll#1", "track#1", "is_ready#1", "retry#1",
+        "poll#2", "track#2", "is_ready#2", "retry#2",
+        "poll#3", "track#3", "is_ready#3", "approve#1",
     ]
     assert calls["n"] == 3
 
@@ -167,9 +168,9 @@ async def test_example_runs_loops_pauses_and_resumes(wf, monkeypatch):
     assert output["output"]["body"] == {"status": "ready"} and output["error"] is None and output["branch"] is None
     assert isinstance(output["durationMs"], int)
     assert _by_execution(events, "is_ready#3")[2]["value"]["branch"] == "true"
-    # STATE_DELTA mirrors the reducers: statuses appends, last_status replaces.
-    assert _by_execution(events, "poll#2")[3]["delta"] == [
-        {"op": "add", "path": "/statuses/-", "value": "pending"},
+    # STATE_DELTA carries the variable writes: only a Set step writes any.
+    assert _by_execution(events, "poll#2")[3]["delta"] == []
+    assert _by_execution(events, "track#2")[3]["delta"] == [
         {"op": "add", "path": "/last_status", "value": "pending"},
     ]
 
@@ -189,7 +190,7 @@ async def test_example_runs_loops_pauses_and_resumes(wf, monkeypatch):
     resume = wf.runner.ResumeDecision("approve", "ship it")
     events = await _run(wf, compiled, run_id="run-1b", resume=resume, store=store)
     assert events[1]["value"]["resumed"] is True
-    assert _executions(events) == ["approve#1", "finish#1"]
+    assert _executions(events) == ["approve#1", "decide#1", "finish#1"]
     assert [_label(e) for e in _by_execution(events, "approve#1")] == BRACKET
     approve_out = _by_execution(events, "approve#1")[2]["value"]
     assert approve_out["output"] == {"decision": "approve", "comment": "ship it"} and approve_out["branch"] == "approved"
@@ -197,7 +198,12 @@ async def test_example_runs_loops_pauses_and_resumes(wf, monkeypatch):
     assert events[-1]["type"] == "RUN_FINISHED"
     assert events[-1]["result"] == {
         "status": "completed",
-        "output": {"status": "ready", "attempts": 2, "history": ["pending", "pending", "ready"], "decision": "approve"},
+        "output": {
+            "status": "ready",
+            # A Set inside the loop keeps every pass in its outputs.
+            "polls": [{"last_status": "pending"}, {"last_status": "pending"}, {"last_status": "ready"}],
+            "decision": "approve",
+        },
     }
     assert store.saves == [{"last_status": "ready"}]
 
@@ -221,7 +227,10 @@ async def test_the_loop_is_bounded(wf, monkeypatch):
     assert _by_execution(events, "retry#4")[2]["value"]["branch"] == "done"
     assert calls["n"] == 4  # max_iterations = 3 → the body runs 1 + 3 times
     assert _executions(events)[-1] == "finish#1"
-    assert events[-1]["result"]["output"]["attempts"] == 4
+    output = events[-1]["result"]["output"]
+    assert len(output["polls"]) == 4
+    # No Set wrote 'decision' on this path: it reads null.
+    assert output["decision"] is None
     # 'done' popped the loop: the end node is outside any iteration.
     assert _by_execution(events, "finish#1")[0]["workflow"]["parentExecutionId"] is None
 
@@ -264,17 +273,63 @@ async def test_a_template_that_does_not_resolve_fails_the_node_by_name(wf, monke
     assert "input.job_url.deeper" in poll[2]["value"]["error"]["message"]
 
 
+def _peeking(raw: dict) -> dict:
+    """The example with ``track`` also noting what the variables held before it wrote."""
+    track = next(n for n in raw["nodes"] if n["id"] == "track")
+    track["config"]["values"].update({"before": "{{state.last_status}}", "decision_before": "{{state.decision}}"})
+    return raw
+
+
 @pytest.mark.asyncio
-async def test_persisted_state_is_loaded_into_the_next_run(wf, monkeypatch):
+async def test_kept_variables_are_loaded_into_the_next_run(wf, monkeypatch):
     _mock_job(wf, monkeypatch, ["failed"])
-    raw = json.loads(EXAMPLE.read_text(encoding="utf-8"))
-    # Read the persisted field before anything overwrites it.
-    raw["nodes"][0]["config"] = {"assign": {"decision": "{{state.last_status}}"}}
+    raw = _peeking(json.loads(EXAMPLE.read_text(encoding="utf-8")))
+    # 'ignored' is no variable of this workflow: it never reaches the run.
     store = FakeStore({"last_status": "from-before", "ignored": 1})
     events = await _run(wf, _compiled(wf, raw), store=store)
-    start = _by_execution(events, "start#1")
-    assert start[3]["delta"] == [{"op": "add", "path": "/decision", "value": "from-before"}]
+    track = _by_execution(events, "track#1")
+    assert track[2]["value"]["output"] == {
+        "last_status": "failed", "before": "from-before", "decision_before": None,
+    }
     assert store.saves == [{"last_status": "failed"}]
+
+
+@pytest.mark.asyncio
+async def test_carry_over_across_two_runs_keeps_only_the_kept_names(wf, monkeypatch):
+    _mock_job(wf, monkeypatch, ["ready"])
+    compiled = _compiled(wf, _peeking(json.loads(EXAMPLE.read_text(encoding="utf-8"))))
+    store = FakeStore()
+    first = await _run(wf, compiled, thread="first", store=store)
+    assert _by_execution(first, "track#1")[2]["value"]["output"]["before"] is None  # nothing kept yet
+    first = await _run(wf, compiled, thread="first", resume=wf.runner.ResumeDecision("approve"), store=store)
+    assert first[-1]["result"]["output"]["decision"] == "approve"
+    assert store.saves == [{"last_status": "ready"}]  # 'decision' is not kept
+
+    second = await _run(wf, compiled, thread="second", run_id="run-2", store=store)
+    peek = _by_execution(second, "track#1")[2]["value"]["output"]
+    assert peek["before"] == "ready"  # the kept value
+    assert peek["decision_before"] is None  # unkept: starts unwritten
+
+
+@pytest.mark.asyncio
+async def test_a_failed_run_keeps_nothing(wf, monkeypatch):
+    async def private(host, port):
+        return ["10.0.0.5"]
+
+    monkeypatch.setattr(wf.ssrf, "resolve_host", private)
+    store = FakeStore({"last_status": "old"})
+    events = await _run(wf, _compiled(wf), store=store)
+    assert events[-1]["type"] == "RUN_ERROR"
+    assert store.saves == [] and store.persisted == {"last_status": "old"}
+
+
+def test_kept_values_are_those_of_the_end_steps_that_ran(wf):
+    spec = wf.spec.WorkflowSpec.model_validate(json.loads(EXAMPLE.read_text(encoding="utf-8")))
+    values = {"vars": {"last_status": "x", "decision": "y"}, "nodes": {"finish": {}}}
+    assert wf.runner.kept_values(spec, values) == {"last_status": "x"}
+    assert wf.runner.kept_values(spec, {"vars": {"last_status": "x"}, "nodes": {}}) == {}
+    # Kept but never written: saved as null.
+    assert wf.runner.kept_values(spec, {"vars": {}, "nodes": {"finish": {}}}) == {"last_status": None}
 
 
 @pytest.mark.asyncio
@@ -348,7 +403,7 @@ async def test_closing_the_stream_stops_the_graph(wf, monkeypatch):
 
 def test_recursion_limit_is_bounded_by_the_loops(wf):
     compiled = _compiled(wf)
-    assert compiled.recursion_limit == 6 * (1 + 3) + 10
+    assert compiled.recursion_limit == 8 * (1 + 3) + 10
 
 
 def test_compiled_graphs_are_cached_per_version_and_checkpointer(wf):

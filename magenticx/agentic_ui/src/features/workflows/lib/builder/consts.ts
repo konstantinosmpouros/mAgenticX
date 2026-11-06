@@ -83,15 +83,8 @@ export const INSPECTOR_DRAWER_WIDTH = 420;
 /** The drag type a palette item carries onto the canvas; its value is the kind. */
 export const PALETTE_DRAG_TYPE = "application/x-magenticx-workflow-kind";
 
-/** The value types an input or state field may have. */
+/** The value types a run input may have. */
 export const VALUE_TYPES = ["string", "number", "boolean", "object", "array"] as const;
-export const REDUCERS = ["overwrite", "append", "merge"] as const;
-
-export const REDUCER_HINTS: Record<(typeof REDUCERS)[number], string> = {
-  overwrite: "Each write replaces the value.",
-  append: "Each write adds to the list (array fields).",
-  merge: "Each write merges its keys in (object fields).",
-};
 
 /** The schedule trigger's kind tabs, in the order people reach for them. */
 export const SCHEDULE_KIND_TABS: ReadonlyArray<{ id: ScheduleKind; label: string; icon: LucideIcon }> = [
@@ -169,9 +162,9 @@ export const TEMPLATE_CHIP_SOURCE = "min-w-0 max-w-[7rem] flex-shrink truncate t
 export const TEMPLATE_CHIP_SEP = "flex-shrink-0 text-primary/40";
 
 /**
- * Kinds whose "Save to a variable" is hidden: a trigger's inputs read as
- * `input.*`, a join's or set's result as `nodes.<id>.output`, a set step
- * already writes variables, and wait / end have nothing worth saving.
- * A value saved before (an import) still shows, so it can be removed.
+ * Kinds whose inspector leaves out the folded "Advanced" (the internal id),
+ * as triggers do: their result is rarely read by id — a join's or set's is
+ * reached through the picker, wait / end have none worth reading. An id
+ * issue still shows it, so the problem can be seen.
  */
-export const NO_ASSIGN_KINDS: ReadonlySet<string> = new Set(["join", "set", "wait", "end"]);
+export const NO_ADVANCED_KINDS: ReadonlySet<string> = new Set(["join", "set", "wait", "end"]);

@@ -5,7 +5,7 @@ that already said 200:
 
 1. :func:`prepare_run` checks everything that can be refused up front — the
    inputs against the spec (a fresh run), or that the thread is paused on an
-   approval (a resume) — and loads the persisted state.
+   approval (a resume) — and loads the variables the previous run kept.
 2. :meth:`PreparedRun.stream` runs the graph and yields frames::
 
        RUN_STARTED                      (envelope: run-level)
@@ -25,8 +25,11 @@ fetch or tool. The graph runs in its own task: when the client disconnects,
 Starlette cancels this generator and the ``finally`` cancels the graph task —
 a closed connection stops the run.
 
-Persisted state (``persist: true`` fields) is written only when a run
-completes — a failed or paused run leaves the previous values in place.
+Carry-over between runs: when a run completes, the current value of every
+variable named in the ``keep`` of an ``end`` step that ran in it is saved
+(union when several ran); the next fresh run starts with those values (see
+:func:`~harness.workflows.state.initial_state`). A failed or paused run saves
+nothing, so the previous values stay in place.
 """
 from __future__ import annotations
 
@@ -43,6 +46,7 @@ from harness.workflows.compiler import CompiledWorkflow
 from harness.workflows.errors import WorkflowNodeError
 from harness.workflows.events import WorkflowEmitter, WorkflowEnvelope
 from harness.workflows.nodes.approval import APPROVAL_INTERRUPT_TYPE
+from harness.workflows.spec import END_KIND, WorkflowSpec
 from harness.workflows.state import coerce_inputs, initial_state
 
 logger = get_logger(__name__)
@@ -175,10 +179,25 @@ class PreparedRun:
                 await asyncio.wait({task}, timeout=_CANCEL_GRACE_SECONDS)
 
     async def _persist(self, values: Mapping[str, Any]) -> None:
-        """Write the ``persist: true`` fields of a completed run."""
-        persisted = {f.name: values.get(f.name) for f in self.compiled.spec.state if f.persist}
-        if persisted and self.store is not None:
-            await self.store.save_persisted(self.owner_user_id, self.workflow_id, persisted)
+        """Save the variables the completed run's ``end`` step(s) keep."""
+        kept = kept_values(self.compiled.spec, values)
+        if kept and self.store is not None:
+            await self.store.save_persisted(self.owner_user_id, self.workflow_id, kept)
+
+
+def kept_values(spec: WorkflowSpec, values: Mapping[str, Any]) -> dict[str, Any]:
+    """``{name: current value}`` for every variable kept by an ``end`` step that
+    ran in this run (each run has its own thread, so a node record in
+    ``nodes`` means it ran in this run). A kept variable never written is
+    saved as ``null`` — the next run starts with exactly what this one ended on.
+    """
+    records = values.get("nodes") or {}
+    current = values.get("vars") or {}
+    names: dict[str, None] = {}
+    for node in spec.nodes:
+        if node.kind == END_KIND and node.id in records:
+            names.update(dict.fromkeys(node.config.get("keep") or []))
+    return {name: current.get(name) for name in names}
 
 
 def _final_output(values: Mapping[str, Any]) -> Any:
@@ -251,7 +270,7 @@ async def prepare_run(
         if errors:
             raise RunRefused(422, "The run inputs are invalid.", errors)
         persisted: dict[str, Any] = {}
-        if store is not None and any(f.persist for f in compiled.spec.state):
+        if store is not None and compiled.spec.kept_variables():
             persisted = await store.load_persisted(owner_user_id, workflow_id)
         stream_input = initial_state(compiled.spec, values, persisted)
     return PreparedRun(
@@ -274,5 +293,6 @@ __all__ = [
     "ResumeDecision",
     "RunRefused",
     "RunTrigger",
+    "kept_values",
     "prepare_run",
 ]

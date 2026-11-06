@@ -18,11 +18,11 @@ Rules:
 * A path that does not resolve is a :class:`TemplateError` naming the path;
   the node wrapper reports it against the node.
 
-Roots: ``input`` (run inputs), ``state`` (declared state fields), ``nodes``
+Roots: ``input`` (run inputs), ``state`` (the workflow's variables — every
+name a ``set`` step writes; one not written yet is ``null``) and ``nodes``
 (``nodes.<id>.output…`` — each node's latest output; ``nodes.<id>.outputs…`` —
 the list of its outputs from every execution this run, oldest first, so a step
-after a loop can read each iteration of a step inside it) and, only inside a
-node's ``assign`` block, ``output`` (the node's own fresh output).
+after a loop can read each iteration of a step inside it).
 """
 from __future__ import annotations
 
@@ -43,7 +43,6 @@ MAX_SEGMENTS = 16
 BASE_ROOTS = ("input", "state", "nodes")
 #: What a ``nodes.<id>`` path may read: the latest output, or every execution's.
 NODE_DATA_KEYS = ("output", "outputs")
-ASSIGN_ROOTS = (*BASE_ROOTS, "output")
 
 
 @dataclass(frozen=True)
@@ -181,7 +180,6 @@ def render(value: Any, scope: Mapping[str, Any], *, roots: Iterable[str] = BASE_
 
 
 __all__ = [
-    "ASSIGN_ROOTS",
     "BASE_ROOTS",
     "NODE_DATA_KEYS",
     "PLACEHOLDER",

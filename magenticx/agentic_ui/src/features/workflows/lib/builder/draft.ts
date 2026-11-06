@@ -28,7 +28,7 @@ export const SNAP_GRID: [number, number] = [16, 16];
  * first step is the trigger they pick from the palette.
  */
 export function newWorkflowSpec(): WorkflowSpec {
-  return { version: 1, name: "", description: "", inputs: [], state: [], nodes: [], edges: [] };
+  return { version: 1, name: "", description: "", inputs: [], nodes: [], edges: [] };
 }
 
 /**
@@ -69,8 +69,6 @@ export function draftReducer(spec: WorkflowSpec, action: WorkflowDraftAction): W
       return { ...spec, description: action.value };
     case "set-inputs":
       return { ...spec, inputs: action.inputs };
-    case "set-state":
-      return { ...spec, state: action.state };
     case "add-node":
       if (spec.nodes.some((node) => node.id === action.node.id)) return spec;
       return { ...spec, nodes: [...spec.nodes, action.node] };
@@ -159,7 +157,9 @@ export function draftReducer(spec: WorkflowSpec, action: WorkflowDraftAction): W
 /**
  * The spec as it is sent: names and labels trimmed, an empty label dropped to
  * null, and `description` always a string — what the engine stores, so the
- * builder's "unsaved" compares like with like.
+ * builder's "unsaved" compares like with like. Only the spec's own keys are
+ * sent: a draft from before variables became implicit loses its declared
+ * `state` and every node's `assign` (the engine refuses both).
  */
 export function normalizeSpec(spec: WorkflowSpec): WorkflowSpec {
   return {
@@ -167,13 +167,20 @@ export function normalizeSpec(spec: WorkflowSpec): WorkflowSpec {
     name: spec.name.trim(),
     description: (spec.description ?? "").trim(),
     inputs: spec.inputs.map((input) => ({ ...input, name: input.name.trim() })),
-    state: spec.state.map((field) => ({ ...field, name: field.name.trim() })),
     nodes: spec.nodes.map((node) => ({
       ...node,
       label: node.label?.trim() ? node.label.trim() : null,
+      config: withoutAssign(node.config),
     })),
     edges: spec.edges.map((edge) => ({ ...edge, branch: edge.branch || null })),
   };
+}
+
+/** A node config without the retired `assign` (the same object when it has none). */
+function withoutAssign(config: Record<string, unknown>): Record<string, unknown> {
+  if (!("assign" in config)) return config;
+  const { assign: _assign, ...rest } = config;
+  return rest;
 }
 
 /** Whether two specs say the same thing (key order aside). */
