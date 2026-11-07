@@ -452,6 +452,10 @@ class TaskRunner:
         })
         task.update(status="running", settled_at=None, parent_notified_at=None)
         await self.publisher.persist_events(task["task_id"])
+        # Announced like any status change: the bridge clears the settle it
+        # mirrored (and the "handled" mark a Stop left), so the card shows the
+        # task running again and its next settle wakes the orchestrator.
+        await self._publish("TASK_STATUS", task["task_id"])
         logger.info("async_task_reopened", "A settled background task was reopened", task_id=task["task_id"])
 
     async def _stop_active(self, active: _Active) -> None:

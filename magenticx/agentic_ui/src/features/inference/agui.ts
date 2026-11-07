@@ -123,6 +123,8 @@ export const TaskLaunchedPayloadSchema = z.object({
   task_id: z.string().min(1),
   name: z.string().nullish(),
   description: z.string().nullish(),
+  // "update": an `update_async_task` reached an existing task (shown as "Updated task").
+  action: z.enum(["start", "update"]).catch("start").optional(),
 });
 
 export const TaskSettledInlinePayloadSchema = z.object({

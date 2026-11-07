@@ -317,6 +317,20 @@ describe("task tree: Stop", () => {
     expect(tree.tasks.t1.status).toBe("running");
   });
 
+  it("shows a stopped task the orchestrator continued as running, not stopping", () => {
+    // The regression: the stop mark outlived the stop, so the reopened task
+    // read "Stopping…" until it finished.
+    let tree = applyTaskFrame(createTaskTree(CONV), wireTask("t1"), "TASK_STARTED", T0);
+    tree = requestTaskStop(tree, "t1", T0);
+    tree = applyTaskFrame(tree, wireTask("t1", { status: "cancelled" }), "TASK_SETTLED", T0 + 200);
+    tree = applyTaskFrame(tree, wireTask("t1", { status: "running" }), "TASK_STATUS", T0 + STOP_GRACE_MS + 1);
+    expect(taskDisplayStatus(tree, "t1")).toBe("running");
+    expect(tree.stopRequestedAt).not.toHaveProperty("t1");
+    // A later Stop works as usual.
+    tree = requestTaskStop(tree, "t1", T0 + STOP_GRACE_MS + 2);
+    expect(taskDisplayStatus(tree, "t1")).toBe("stopping");
+  });
+
   it("ignores a stop on a settled task", () => {
     const tree = applyTaskFrame(
       createTaskTree(CONV),

@@ -49,6 +49,18 @@ describe("TASK_LAUNCHED / TASK_SETTLED_INLINE in a run's stream", () => {
     ]);
   });
 
+  it("marks the block of an update to an existing task (shown as 'Updated task')", () => {
+    const timeline = foldTimeline([
+      { type: "CUSTOM", name: "TASK_LAUNCHED", value: { task_id: "t1", name: "", description: "Carry on", action: "update" } },
+      launched("t2"),
+    ]);
+    expect(timeline.blocks).toMatchObject([
+      { kind: "task_ref", taskId: "t1", action: "update" },
+      { kind: "task_ref", taskId: "t2" },
+    ]);
+    expect(timeline.blocks[1]).not.toHaveProperty("action");
+  });
+
   it("draws one block per task when a resume replays the launch", () => {
     const timeline = foldTimeline([launched("t1"), launched("t1"), launched("t2", "writer")]);
     expect(timeline.blocks.filter((block) => block.kind === "task_ref")).toHaveLength(2);

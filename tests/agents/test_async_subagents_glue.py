@@ -260,6 +260,38 @@ def test_the_other_task_tools_keep_an_ordinary_tool_card(normalizer):
     assert _kinds(ended) == ["TOOL_CALL_RESULT", "TOOL_CALL_END"]
 
 
+def test_an_update_shows_the_tasks_live_card_in_this_answer(normalizer):
+    # `update_async_task` continues (or clarifies) an existing task: the answer
+    # that sent it shows that task's card ("Updated task"), not a bare tool row,
+    # so the user sees the task working again where they asked for it.
+    norm = normalizer.AGUIStreamNormalizer(thread_id="t-update")
+    call = AIMessage(
+        content="",
+        tool_calls=[{"id": "upd-1", "name": "update_async_task",
+                     "args": {"task_id": TASK_ID, "message": "Carry on with the essay."}}],
+    )
+    started = norm.handle_chunk(("updates", {"model": {"messages": [call]}}))
+    ended = norm.handle_chunk(("messages", ToolMessage(
+        content=f"Updated async subagent. task_id: {TASK_ID}", tool_call_id="upd-1", name="update_async_task")))
+
+    assert started == []
+    assert _custom(ended, "TASK_LAUNCHED") == [
+        {"task_id": TASK_ID, "name": "", "description": "Carry on with the essay.", "action": "update"}
+    ]
+
+
+def test_a_failed_update_stays_a_visible_errored_tool_call(normalizer):
+    norm = normalizer.AGUIStreamNormalizer(thread_id="t-update-fail")
+    call = AIMessage(content="", tool_calls=[{"id": "upd-2", "name": "update_async_task",
+                                              "args": {"task_id": "nope", "message": "m"}}])
+    norm.handle_chunk(("updates", {"model": {"messages": [call]}}))
+    ended = norm.handle_chunk(("messages", ToolMessage(
+        content="Unknown task_id: nope", tool_call_id="upd-2", name="update_async_task", status="error")))
+
+    assert "TASK_LAUNCHED" not in _kinds(ended)
+    assert _kinds(ended)[:2] == ["TOOL_CALL_START", "TOOL_CALL_ARGS"]
+
+
 def test_the_blocking_task_tool_still_emits_its_subagent_events(normalizer):
     # Until cut-over the old path stays: TASK_SUBAGENT on the call,
     # SUBAGENT_COMPLETED on the result, no TASK_LAUNCHED.
@@ -638,6 +670,19 @@ def test_the_async_delegation_rules_appear_only_when_the_run_has_them(pe):
         assert verb not in off
     assert "Do not poll" in on
     assert "keep talking with the user" in on
+
+
+def test_resuming_a_task_goes_through_update_not_a_new_task(pe):
+    # "Resume it" must continue the same task (same thread, its work so far),
+    # never launch a duplicate.
+    on = pe.compose_system_prompt(
+        "x", pe.PromptContext(has_conversation=True, has_subagents=True, async_subagents=True)
+    )
+    assert "**resume, continue or restart**" in on
+    assert "Never start a new task with `start_async_task` for work an existing task" in on
+    nested = importlib.import_module("harness.prompt_engineering.prompts.capabilities_prompt")
+    assert "resume or continue a task" in nested.DELEGATING_ASYNC_SUBAGENT_PROMPT
+
 
 
 def test_the_async_rules_need_an_agent_that_can_delegate(pe):

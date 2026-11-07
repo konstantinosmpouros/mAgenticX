@@ -23,7 +23,9 @@ export function TaskRefBlockView({ block }: { block: TaskRefBlock }) {
     <div className="space-y-1.5">
       <p className="flex items-center gap-1.5 px-1 text-xs text-muted-foreground">
         <CornerDownRight className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
-        <span className="min-w-0 truncate">Started task in the background</span>
+        <span className="min-w-0 truncate">
+          {block.action === "update" ? "Updated task in the background" : "Started task in the background"}
+        </span>
       </p>
       {tasks && task ? (
         <TaskTreeCards roots={roots} tasks={tasks} />

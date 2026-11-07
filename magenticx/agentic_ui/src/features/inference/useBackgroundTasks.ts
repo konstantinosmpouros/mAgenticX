@@ -42,6 +42,7 @@ import {
   hydrateTaskTree,
   isTaskSettled,
   requestTaskStop,
+  STOP_GRACE_MS,
 } from "./taskTree";
 
 type ToastFn = (opts: {
@@ -102,6 +103,8 @@ export function useBackgroundTasks({
   const [sentDecisions, setSentDecisions] = useState<ReadonlySet<string>>(() => new Set());
   const onRunStartedRef = useRef(onRunStarted);
   const lastHydrateRef = useRef(0);
+  // Re-reads the open conversation's tree (set by the channel effect).
+  const hydrateRef = useRef<((force: boolean) => void) | null>(null);
 
   useEffect(() => {
     onRunStartedRef.current = onRunStarted;
@@ -166,6 +169,7 @@ export function useBackgroundTasks({
       onRunStartedRef.current(frame.run, { fromQueue });
     };
 
+    hydrateRef.current = hydrate;
     hydrate(true);
     void connectConversationChannel(userId, conversationId, onFrame, {
       signal: controller.signal,
@@ -180,7 +184,10 @@ export function useBackgroundTasks({
       }
     });
 
-    return () => controller.abort();
+    return () => {
+      hydrateRef.current = null;
+      controller.abort();
+    };
   }, [conversationId, setQueued, update, userId]);
 
   // ---- One socket per node that needs live events ----
@@ -250,6 +257,10 @@ export function useBackgroundTasks({
       try {
         const answer = await cancelAsyncTask(userId, taskId);
         update((state) => applyTaskFrame(state, answer, "TASK_STATUS", Date.now()));
+        // For the grace window a frame that would revive the stopped task is
+        // taken as stale. If the orchestrator really continued it meanwhile,
+        // re-reading the tree once the window closes shows it running again.
+        window.setTimeout(() => hydrateRef.current?.(true), STOP_GRACE_MS + 500);
       } catch (error) {
         update((state) => failTaskStop(state, taskId));
         toastError(toast, "Could not stop the task", error);

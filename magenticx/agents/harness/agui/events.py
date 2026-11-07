@@ -105,10 +105,14 @@ class TaskLaunchedEvent(BaseModel):
 
     ``name`` is the ``subagent_type`` the model asked for and ``description``
     the task it was given — both read off the launching tool call's args.
+    ``action`` is ``"update"`` for an ``update_async_task`` that reached an
+    existing task (a clarification, or continuing a stopped one): the same
+    live card, said as "Updated task" — the name then comes from the tree.
     """
     task_id: str
     name: str
     description: str
+    action: Literal["start", "update"] = "start"
 
 
 class TaskSettledInlineEvent(BaseModel):

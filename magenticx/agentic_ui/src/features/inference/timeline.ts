@@ -401,7 +401,7 @@ function taskEventPayload(event: RawEvent): unknown {
 function pushTaskRefBlock(session: Session, event: RawEvent): void {
   const parsed = TaskLaunchedPayloadSchema.safeParse(taskEventPayload(event));
   if (!parsed.success) return;
-  const { task_id, name, description } = parsed.data;
+  const { task_id, name, description, action } = parsed.data;
   const exists = session.state.blocks.some(
     (block) => block.kind === "task_ref" && block.taskId === task_id,
   );
@@ -415,6 +415,7 @@ function pushTaskRefBlock(session: Session, event: RawEvent): void {
     taskId: task_id,
     name: name || "sub-agent",
     ...(description ? { description } : {}),
+    ...(action === "update" ? { action } : {}),
   };
   session.state.blocks.push(block);
   session.clonedBlocks.add(session.state.blocks.length - 1);

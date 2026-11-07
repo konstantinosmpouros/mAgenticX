@@ -292,6 +292,8 @@ export type TaskRefBlock = {
   taskId: string;
   name: string;
   description?: string;
+  /** "update": the run sent a follow-up to an existing task (continued or clarified it). */
+  action?: "start" | "update";
 };
 
 /**

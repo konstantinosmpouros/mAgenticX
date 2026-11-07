@@ -359,6 +359,54 @@ async def test_a_user_stop_never_wakes_but_is_marked_handled(
     assert len(agents_service.called("POST", "/tasks/task-1/notified")) == 1
 
 
+async def test_a_task_continued_after_a_user_stop_wakes_when_it_finishes(
+    session_factory, seeded_user, seeded_agent, agents_service, launched
+):
+    # The user stops it (no wake-up, marked handled); the orchestrator continues
+    # it with update_async_task; it finishes: that new outcome must wake the
+    # orchestrator — whether the "running again" entry arrives or is missed.
+    ids = await _branchy_conversation(session_factory, seeded_user, seeded_agent)
+    conv_id = ids["conversation_id"]
+    agents_service.on("POST", "/tasks/task-1/notified", httpx.Response(204))
+    stopped_at = _now() - timedelta(seconds=60)
+
+    async def entry(event, **over):
+        await async_tasks.apply_status_entry(TaskStatusEntry.model_validate(
+            {"event": event, "task": _task(conv_id, seeded_user.id, **over)}), session_factory=session_factory)
+
+    await entry("TASK_SETTLED", status="cancelled", settled_at=stopped_at.isoformat() + "Z")
+    stop = _outbox(conv_id, seeded_user.id, status="cancelled", cancelled_by_user=True)
+    assert await handle_outbox_item(stop, session_factory) is WakeOutcome.SKIPPED
+    async with session_factory() as s:
+        assert (await s.get(ConversationTaskTable, "task-1")).notified_at is not None
+
+    # The reopen entry is missed; only the new settle arrives.
+    await entry("TASK_SETTLED", status="success", settled_at=_now().isoformat() + "Z")
+    async with session_factory() as s:
+        assert (await s.get(ConversationTaskTable, "task-1")).notified_at is None
+    assert await handle_outbox_item(_outbox(conv_id, seeded_user.id), session_factory) is WakeOutcome.WOKEN
+    assert len(launched) == 1
+
+
+async def test_a_repeated_settle_announcement_stays_handled(
+    session_factory, seeded_user, seeded_agent, agents_service
+):
+    # The agents service re-announces a stopped task's settle to book its usage:
+    # same settle time, so the user's Stop stays handled (no wake-up).
+    ids = await _branchy_conversation(session_factory, seeded_user, seeded_agent)
+    conv_id = ids["conversation_id"]
+    agents_service.on("POST", "/tasks/task-1/notified", httpx.Response(204))
+    settled = (_now() - timedelta(seconds=5)).isoformat() + "Z"
+    for _ in range(2):
+        await async_tasks.apply_status_entry(TaskStatusEntry.model_validate({"event": "TASK_SETTLED", "task": _task(
+            conv_id, seeded_user.id, status="cancelled", settled_at=settled)}), session_factory=session_factory)
+        if _ == 0:
+            await handle_outbox_item(
+                _outbox(conv_id, seeded_user.id, status="cancelled", cancelled_by_user=True), session_factory)
+    async with session_factory() as s:
+        assert (await s.get(ConversationTaskTable, "task-1")).notified_at is not None
+
+
 async def test_a_scheduled_roots_wake_up_stays_headless(
     session_factory, seeded_user, seeded_agent, agents_service, launched
 ):

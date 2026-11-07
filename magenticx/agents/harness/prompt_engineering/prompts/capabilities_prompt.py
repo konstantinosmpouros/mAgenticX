@@ -93,6 +93,12 @@ _ASYNC_SUBAGENTS = """\
   - To clarify or change what a running task should do, send it
     `update_async_task` with its task id; it carries on with your new
     instruction. To stop one, `cancel_async_task`.
+  - To **resume, continue or restart** a task — one that was stopped,
+    failed or already finished — also use `update_async_task` with its task
+    id: it picks up on the same thread with everything it has done so far.
+    Never start a new task with `start_async_task` for work an existing task
+    was doing; start a new one only when the user asks for a fresh, separate
+    task.
   - A notification is not a message from the user. Report the result in your
     own words. A task waiting for the user's approval is theirs to answer —
     you cannot approve it for them."""
@@ -127,8 +133,9 @@ and say exactly what it should return. Start independent tasks together. You
 are notified with each result when that task, and its own sub-tasks, finish —
 do not poll `check_async_task` in a loop; if you end your turn while tasks are
 still running, you are woken with their results. Send a clarification with
-`update_async_task`, and stop a task you no longer need with
-`cancel_async_task`. Only your final message goes back to the agent that
+`update_async_task` — and use it too to resume or continue a task that was
+stopped, failed or finished, rather than starting a new one for the same work —
+and stop a task you no longer need with `cancel_async_task`. Only your final message goes back to the agent that
 started you, so fold your sub-agents' findings into it — including the paths
 of any files they wrote; neither you nor they can present a file to the user."""
 

@@ -46,6 +46,7 @@ _THREAD_TASKS_LAUNCHED: dict[str, set[str]] = {}
 #: deepagents' tool that starts a background sub-agent (plan 41). Its result
 #: is the "Started task" reference block, never a tool card.
 START_ASYNC_TASK_TOOL_NAME = "start_async_task"
+UPDATE_ASYNC_TASK_TOOL_NAME = "update_async_task"
 #: ``start_async_task``'s success text, ``Launched async subagent. task_id: <id>``
 #: (deepagents 0.7.34) — the task id is the whitespace-free token after it.
 _LAUNCHED_TASK_ID_RE = re.compile(r"task_id:\s*(\S+)")
@@ -124,6 +125,8 @@ class AGUIStreamNormalizer:
         # `start_async_task` calls awaiting their result: the sub-agent type,
         # task description and raw args (for a failed launch's tool card).
         self._async_launch_calls: dict[str, dict[str, Any]] = {}
+        # `update_async_task` calls awaiting their result: it becomes an "Updated task" block.
+        self._async_update_calls: dict[str, dict[str, Any]] = {}
         # Launches already announced (TASK_LAUNCHED or a failed-launch card),
         # on this run's earlier streams too.
         self._launched_call_ids: set[str] = set(_THREAD_TASKS_LAUNCHED.get(thread_id, ()))
@@ -576,6 +579,15 @@ class AGUIStreamNormalizer:
                         self._ignored_tool_call_ids.add(tc_id)  # its ToolMessage is the launch
                         continue
 
+                    if tc_name == UPDATE_ASYNC_TASK_TOOL_NAME:
+                        # A follow-up to a background task (a clarification,
+                        # or continuing a stopped one): its result becomes the
+                        # task's live card in this answer ("Updated task").
+                        args = tc_args if isinstance(tc_args, dict) else {}
+                        self._async_update_calls.setdefault(tc_id, self._update_call(args))
+                        self._ignored_tool_call_ids.add(tc_id)
+                        continue
+
                     if tc_name == "present_artifact":
                         # An explicitly-designated deliverable → the artifact
                         # card. Emitted ONLY for the top-level orchestrator
@@ -688,6 +700,9 @@ class AGUIStreamNormalizer:
         if tool_call_id in self._async_launch_calls or getattr(msg, "name", None) == START_ASYNC_TASK_TOOL_NAME:
             self._emit_task_launched(out, msg, str(tool_call_id), ns_label)
             return
+        if tool_call_id in self._async_update_calls or getattr(msg, "name", None) == UPDATE_ASYNC_TASK_TOOL_NAME:
+            self._emit_task_launched(out, msg, str(tool_call_id), ns_label, action="update")
+            return
 
         # Ignore results for write_todos/task tool calls (because we never emitted start/args)
         if tool_call_id in self._ignored_tool_call_ids:
@@ -777,16 +792,19 @@ class AGUIStreamNormalizer:
                 calls.extend(
                     tc
                     for tc in self._iter_tool_calls(msg)
-                    if tc.get("name") in ("task", START_ASYNC_TASK_TOOL_NAME)
+                    if tc.get("name") in ("task", START_ASYNC_TASK_TOOL_NAME, UPDATE_ASYNC_TASK_TOOL_NAME)
                 )
         # A gated `start_async_task` approved on this /resume: its result must
         # still become TASK_LAUNCHED with the type and description it asked for.
         for tc in calls:
             tc_id = str(tc["id"])
-            if tc.get("name") != START_ASYNC_TASK_TOOL_NAME or tc_id in answered:
+            if tc.get("name") not in (START_ASYNC_TASK_TOOL_NAME, UPDATE_ASYNC_TASK_TOOL_NAME) or tc_id in answered:
                 continue
             args = tc.get("args") if isinstance(tc.get("args"), dict) else {}
-            self._async_launch_calls.setdefault(tc_id, self._launch_call(args))
+            if tc.get("name") == START_ASYNC_TASK_TOOL_NAME:
+                self._async_launch_calls.setdefault(tc_id, self._launch_call(args))
+            else:
+                self._async_update_calls.setdefault(tc_id, self._update_call(args))
             self._ignored_tool_call_ids.add(tc_id)
         calls = [tc for tc in calls if tc.get("name") == "task"]
         bound = set(self._namespace_task_labels.values())
@@ -816,8 +834,13 @@ class AGUIStreamNormalizer:
         }
 
 
+    @staticmethod
+    def _update_call(args: Mapping[str, Any]) -> dict[str, Any]:
+        """What the "Updated task" block needs from an `update_async_task` call's args."""
+        return {"name": "", "description": str(args.get("message") or ""), "args": dict(args)}
+
     def _emit_task_launched(
-        self, out: List[bytes], msg: Any, tool_call_id: str, ns_label: Optional[str]
+        self, out: List[bytes], msg: Any, tool_call_id: str, ns_label: Optional[str], *, action: str = "start"
     ) -> None:
         """TASK_LAUNCHED for a `start_async_task` result carrying a task id.
 
@@ -827,7 +850,8 @@ class AGUIStreamNormalizer:
         timeline rather than silently missing. Once per call, on every
         stream of the run.
         """
-        call = self._async_launch_calls.pop(tool_call_id, None) or self._launch_call({})
+        calls = self._async_update_calls if action == "update" else self._async_launch_calls
+        call = calls.pop(tool_call_id, None) or self._launch_call({})
         self._ignored_tool_call_ids.discard(tool_call_id)
         if tool_call_id in self._launched_call_ids:
             return
@@ -845,12 +869,13 @@ class AGUIStreamNormalizer:
                     task_id=match.group(1),
                     name=call["name"],
                     description=call["description"],
+                    action=action,
                     namespace=ns_label,
                 ),
             )
             return
 
-        name = START_ASYNC_TASK_TOOL_NAME
+        name = UPDATE_ASYNC_TASK_TOOL_NAME if action == "update" else START_ASYNC_TASK_TOOL_NAME
         self._push(out, self.emitter.tool_call_start(tool_call_id=tool_call_id, name=name, namespace=ns_label))
         self._push(out, self.emitter.tool_call_args(tool_call_id=tool_call_id, name=name, args=call["args"], namespace=ns_label))
         self._push(

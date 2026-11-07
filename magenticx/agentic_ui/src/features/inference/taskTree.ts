@@ -121,7 +121,16 @@ function writeTask(
   const existing = state.tasks[incoming.taskId];
   const merged = mergeTask(existing, incoming, event, state.stopRequestedAt[incoming.taskId], now);
   if (merged === existing) return state;
-  return { ...state, tasks: { ...state.tasks, [incoming.taskId]: merged } };
+  const tasks = { ...state.tasks, [incoming.taskId]: merged };
+  const revived = existing && isTaskSettled(existing.status) && !isTaskSettled(merged.status);
+  if (revived && incoming.taskId in state.stopRequestedAt) {
+    // The stop is over: the task settled, and is now running again (the
+    // orchestrator continued it). It is no longer "Stopping…".
+    const stopRequestedAt = { ...state.stopRequestedAt };
+    delete stopRequestedAt[incoming.taskId];
+    return { ...state, tasks, stopRequestedAt };
+  }
+  return { ...state, tasks };
 }
 
 /**

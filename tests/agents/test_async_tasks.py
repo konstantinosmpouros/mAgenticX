@@ -917,6 +917,14 @@ async def test_restart_errors_the_task_and_an_update_reopens_it(env):
     row = env.store.tasks[task_id]
     assert row["status"] == "success" and row["settled_at"] is not None and row["error"] is None
     assert "continue where you stopped" in env.store.tasks[task_id]["result"]["content"]
+    # The reopen is announced (the bridge clears the old settle and its
+    # "handled" mark), then the new settle, then a fresh outbox entry.
+    task_events = [(e["event"], e["task"]["status"]) for e in await stream_entries(env, "tasks:status")
+                   if e["task"]["task_id"] == task_id]
+    reopened = task_events.index(("TASK_STATUS", "running"), task_events.index(("TASK_SETTLED", "error")))
+    assert ("TASK_SETTLED", "success") in task_events[reopened:]
+    outbox = await stream_entries(env, "tasks:outbox")
+    assert outbox[-1]["task_id"] == task_id and outbox[-1]["status"] == "success"
 
 
 async def test_an_approval_pauses_the_task_and_a_resume_finishes_it(env):

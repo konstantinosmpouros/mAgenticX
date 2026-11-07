@@ -328,6 +328,11 @@ async def upsert_task_mirror(db: AsyncSession, task: TaskOut) -> Optional[Conver
         # Re-opened (the orchestrator continued it): a new settle will need a
         # new wake-up, and a new events capture.
         row.notified_at = None
+    elif row.notified_at is not None and row.settled_at is not None and row.settled_at > row.notified_at:
+        # A settle newer than the last handling is a new outcome (the task was
+        # re-opened and finished again, its "running" entry missed or late):
+        # it must wake the orchestrator, not be skipped as handled.
+        row.notified_at = None
     return row
 
 

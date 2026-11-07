@@ -359,15 +359,18 @@ class AGUIEmitter:
         task_id: str,
         name: str,
         description: str,
+        action: str = "start",
         writer: Any = None,
         namespace: Optional[str] = None,
     ) -> Optional[bytes]:
-        """``start_async_task`` returned a task id: the "Started task" block."""
-        payload = TaskLaunchedEvent(task_id=task_id, name=name, description=description)
+        """``start_async_task`` (or ``update_async_task``) answered with a task
+        id: the "Started task" (or "Updated task") block."""
+        payload = TaskLaunchedEvent(task_id=task_id, name=name, description=description, action=action)
         custom_event = CustomEvent(
             type=EventType.CUSTOM,
             name=TASK_LAUNCHED_EVENT_TYPE,
-            value=payload.model_dump(),
+            # A start keeps the original three-field shape; only an update says so.
+            value=payload.model_dump(exclude_defaults=True) | {"name": name, "description": description},
         )
         return self._emit(custom_event, writer, namespace)
 
