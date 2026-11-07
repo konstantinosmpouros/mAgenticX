@@ -191,7 +191,6 @@ class DeepAgent(BaseAgent, ABC):
     # A background task's node of the tree (plan 41), set per instance by the
     # task runner; the class default keeps an ordinary run's build unchanged.
     async_task_node: Optional[TaskNode] = None
-    async_task_model: Optional[str] = None
 
 
     def __init__(self, *, config: Optional[Mapping[str, Any]] = None) -> None:
@@ -214,8 +213,6 @@ class DeepAgent(BaseAgent, ABC):
         # Set by the async task runner (plan 41): build this node of the
         # sub-agent tree instead of the main agent. None for an ordinary run.
         self.async_task_node: Optional[TaskNode] = None
-        # The model a task node resolved to, for the task's record (TaskOut).
-        self.async_task_model: Optional[str] = None
 
         # AGUI: the normalizer keys message_id / sub-agent namespaces on the
         # per-run id (run_id), falling back to the LangGraph thread_id.
@@ -876,7 +873,6 @@ class DeepAgent(BaseAgent, ABC):
             node_model = level.get("model") or node_model
             node_tools = _without_ask_user(level["tools"]) if "tools" in level else node_tools
         spec = chain[-1]
-        self.async_task_model = node_model if isinstance(node_model, str) else getattr(node_model, "model_name", None)
         gates = self._subagent_gates(node_tools, spec.get("interrupt_on"), own_gates)
         children = [child for child in (spec.get(SUBAGENTS_KEY) or []) if isinstance(child, Mapping)]
         system_prompt = str(spec.get("system_prompt") or "")

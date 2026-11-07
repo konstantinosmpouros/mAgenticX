@@ -1424,7 +1424,9 @@ export function useChatWorkspace({
         onCopy={handleCopy}
         onLike={handleLike}
         onDislike={handleDislike}
-        onReportMessage={handleReportAiMessage}
+        // No Report on a private chat's answers: reporting copies the chat to
+        // reviewers, which the private mode rules out (same as the header).
+        onReportMessage={isPrivateMode ? undefined : handleReportAiMessage}
         conversationIsReported={Boolean(currentConversation?.isReported)}
         stickyUserBarId={stickyUserBarId}
         onFlashUserActionBar={flashUserActionBar}

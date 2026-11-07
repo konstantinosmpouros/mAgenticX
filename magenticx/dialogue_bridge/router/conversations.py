@@ -603,6 +603,15 @@ async def reportConversation(
     """Create a report for a conversation, optionally scoped to a specific message."""
     set_context(user_id=user_id, conversation_id=conversation_id)
 
+    # A private chat is kept out of every listing, search and memory: copying
+    # it into a report would hand its content to reviewers, the opposite of
+    # the mode. The UI offers no Report there; this refuses a direct call too.
+    if current_conv.is_private:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A private conversation cannot be reported.",
+        )
+
     if current_conv.is_reported:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

@@ -45,7 +45,7 @@ import uuid
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import HTTPException
 from langchain_mcp_adapters.tools import load_mcp_tools
@@ -157,10 +157,18 @@ class _Active:
 
 
 class _Usage:
-    """Sums the run's ``TOKEN_USAGE`` events into ``TaskOut.usage`` keys."""
+    """Sums the run's ``TOKEN_USAGE`` events into ``TaskOut.usage`` keys.
+
+    A summary call of the task's own automatic compaction counts too: it is
+    the sub-agent's spend, exactly as it was booked for a blocking sub-agent.
+    """
 
     def __init__(self) -> None:
         self.totals: dict[str, int] = {}
+        # The model the calls actually went to, as the usage event reports it.
+        # It names the task's model for its record and its cost: the built
+        # model object does not reliably expose a plain name.
+        self.model: Optional[str] = None
 
     def _add(self, key: str, value: Any) -> None:
         if isinstance(value, (int, float)) and not isinstance(value, bool):
@@ -170,7 +178,7 @@ class _Usage:
         if event.get("type") != "CUSTOM" or event.get("name") != TOKEN_USAGE_EVENT_TYPE:
             return
         value = event.get("value")
-        if not isinstance(value, Mapping) or value.get("purpose") == "compaction":
+        if not isinstance(value, Mapping):
             return
         self._add("input_tokens", value.get("input_tokens"))
         self._add("output_tokens", value.get("output_tokens"))
@@ -182,6 +190,9 @@ class _Usage:
             self._add("reasoning_tokens", details_out.get("reasoning"))
         self._add("model_latency_ms", value.get("latency_ms"))
         self._add("calls", 1)
+        model = value.get("model")
+        if self.model is None and isinstance(model, str) and model:
+            self.model = model
 
 
 def parse_sse_frames(frame: bytes | str) -> list[dict[str, Any]]:
@@ -504,12 +515,9 @@ class TaskRunner:
             inputs = list(active.inputs)
             await self.store.update_run(active.run_id, {"status": "running", "started_at": now()})
             fresh = await self.store.get_task(task_id)
-            if fresh is not None:
-                model = getattr(agent, "async_task_model", None)
-                if model and not fresh.get("model"):
-                    await self.store.update_task(task_id, {"model": model})
-                if fresh["status"] != "running":
-                    await self._set_status(fresh, "running")
+            model_known = bool(fresh is not None and fresh.get("model"))
+            if fresh is not None and fresh["status"] != "running":
+                await self._set_status(fresh, "running")
         payload = {"messages": [_input_message(m) for m in inputs]}
         usage = _Usage()
         failed = False
@@ -521,6 +529,11 @@ class TaskRunner:
                 async for frame in agent.astream(payload, command=active.command):
                     for event in parse_sse_frames(frame):
                         usage.observe(event)
+                        if usage.model and not model_known:
+                            # Recorded before settle, so the settle's TaskOut
+                            # carries it and the bridge can price the usage.
+                            model_known = True
+                            await self.store.update_task(task_id, {"model": usage.model})
                         if event.get("type") == "RUN_ERROR":
                             failed = True
                         await self.publisher.task_event(task_id, event)

@@ -403,6 +403,36 @@ async def test_report_conversation_rejects_duplicate_reports(
     assert second_response.json()["detail"] == "Conversation has already been reported."
 
 
+async def test_a_private_conversation_cannot_be_reported(
+    client,
+    seeded_user,
+    conversation_factory,
+    db_session_factory,
+):
+    # Reporting copies the chat to reviewers; a private chat is kept out of
+    # every listing, so the bridge refuses even a direct call.
+    conversation = await conversation_factory(title="Private chat")
+    async with db_session_factory() as session:
+        row = await session.get(ConversationTable, conversation["conversation_id"])
+        row.is_private = True
+        await session.commit()
+
+    response = await client.post(
+        f"/v1/conversations/{seeded_user.id}/{conversation['conversation_id']}/report",
+        json={"reason": "Bug"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "A private conversation cannot be reported."
+    async with db_session_factory() as session:
+        assert await session.scalar(
+            select(ConversationReportTable).where(
+                ConversationReportTable.conversation_id == conversation["conversation_id"]
+            )
+        ) is None
+        assert (await session.get(ConversationTable, conversation["conversation_id"])).is_reported is False
+
+
 async def test_report_conversation_rejects_message_from_another_conversation(
     client,
     seeded_user,

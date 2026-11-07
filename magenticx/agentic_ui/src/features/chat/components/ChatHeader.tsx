@@ -118,11 +118,12 @@ export default function ChatHeader({
   // A private ("incognito") conversation is deliberately kept out of the
   // conversation list, so the actions that would publish it (Share) or manage
   // its listing (Archive / Delete) make no sense and are hidden entirely —
-  // offering Share on a private chat in particular contradicts the mode.
+  // offering Share on a private chat in particular contradicts the mode, and
+  // so does Report, which hands the chat's content to reviewers.
   const showShareAction = Boolean(onShareConversation) && !isPrivateMode;
   const showArchiveAction = !isPrivateMode;
   const showDeleteAction = !isPrivateMode;
-  const showReportAction = !isConversationReported;
+  const showReportAction = !isConversationReported && !isPrivateMode;
   const showActionsMenu = showArchiveAction || showDeleteAction || showReportAction;
 
   return (

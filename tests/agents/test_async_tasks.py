@@ -936,3 +936,23 @@ async def test_the_in_process_middleware_keeps_upstreams_tools(env):
     assert isinstance(client.http.client._transport, httpx.ASGITransport)
     with pytest.raises(ValueError):
         ours._clients.get_sync("r")
+
+
+def test_a_task_records_the_model_its_calls_went_to(agents_service):
+    # The task's model (its record, and the price of its usage in the bridge)
+    # comes from the calls' own usage events, not from the built model object.
+    runner_mod = importlib.import_module("harness.async_tasks.runner")
+    usage = runner_mod._Usage()
+    usage.observe({"type": "CUSTOM", "name": "TOKEN_USAGE",
+                   "value": {"model": "gpt-6-luna", "input_tokens": 10, "output_tokens": 2}})
+    usage.observe({"type": "CUSTOM", "name": "TOKEN_USAGE",
+                   "value": {"model": "other", "input_tokens": 5, "output_tokens": 1}})
+    assert usage.model == "gpt-6-luna"
+    assert usage.totals["input_tokens"] == 15 and usage.totals["calls"] == 2
+
+    # The task's own automatic compaction is its spend too (a blocking
+    # sub-agent's was booked the same way).
+    compaction = runner_mod._Usage()
+    compaction.observe({"type": "CUSTOM", "name": "TOKEN_USAGE",
+                        "value": {"model": "gpt-6-luna", "purpose": "compaction", "input_tokens": 9}})
+    assert compaction.totals["input_tokens"] == 9 and compaction.totals["calls"] == 1
