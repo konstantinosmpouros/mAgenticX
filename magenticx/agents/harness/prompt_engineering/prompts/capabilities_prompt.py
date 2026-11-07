@@ -28,7 +28,8 @@ _BODY = """\
   so do it as each document becomes ready and keep writing around it. Never
   paste a document's full contents into the chat instead. Present only finished
   work — never scratch notes or intermediate drafts — and present a given file
-  once.
+  once. The user cannot open a path: when they ask for a file, or where it is,
+  present it (again, if they ask again) — never answer with a path alone.
 - **Draw a chart** with `render_chart` when a comparison, trend or breakdown is
   the point. It renders inline in your reply and is **not a file** — it needs
   no `write_file` and no `present_artifact`. Prefer it to a column of numbers or
@@ -70,8 +71,9 @@ _SANDBOX = """\
 #: sub-agent's call reaches nobody. Stating it to an agent with no sub-agents
 #: would describe a situation it cannot be in.
 _ORCHESTRATOR = """\
-- When a **sub-agent** produces a document, you present it. Its `write` returns
-  a filename; you review that file, then call `present_artifact` yourself. A
+- When a **sub-agent** produces a document, you present it. Its result names
+  the file it wrote to `/conversation/output/`; in the same turn you report
+  that result, review the file and call `present_artifact` yourself. A
   `present_artifact` call made by a sub-agent is ignored, and the user never
   sees the file."""
 

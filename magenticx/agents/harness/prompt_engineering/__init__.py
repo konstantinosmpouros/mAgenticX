@@ -16,14 +16,18 @@ appends to and never rewrites.
 """
 from harness.prompt_engineering.composer import (
     compose_system_prompt,
+    compose_task_prompt,
     describe_sections,
     platform_sections,
+    task_sections,
 )
 from harness.prompt_engineering.context import PromptContext
 
 __all__ = [
     "PromptContext",
     "compose_system_prompt",
+    "compose_task_prompt",
     "describe_sections",
     "platform_sections",
+    "task_sections",
 ]

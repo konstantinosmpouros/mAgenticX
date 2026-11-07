@@ -38,7 +38,13 @@ from harness.async_tasks.specs import (
 from harness.async_tasks.token import InheritedContext, mint_launch_token
 from harness.commands import command_permissions
 from harness.personalization import build_personalization_prompt
-from harness.prompt_engineering import PromptContext, compose_system_prompt, describe_sections
+from harness.prompt_engineering import (
+    PromptContext,
+    compose_system_prompt,
+    compose_task_prompt,
+    describe_sections,
+    task_sections,
+)
 from harness.prompt_engineering.prompts.capabilities_prompt import delegating_subagent_prompt
 from harness.tools.ask_user import ASK_USER_TOOL_NAME
 from harness.tools.gates import resolve_interrupt_on, strip_reserved_names, trust_level
@@ -886,6 +892,11 @@ class DeepAgent(BaseAgent, ABC):
         if children:
             stack.append(self._task_middleware(children, parent_path=node.path, launch_token=self._launch_token()))
             system_prompt = delegating_subagent_prompt(system_prompt, async_subagents=True)
+        # The task's own platform sections: how to work with the shared files
+        # and how to narrate for its task panel (its last message stays the
+        # result handed back to its parent).
+        prompt_context = self.prompt_context(has_subagents=bool(children), async_subagents=True)
+        system_prompt = compose_task_prompt(system_prompt, prompt_context)
         stack = self._ensure_platform_middleware(ensure_planning_and_filesystem(stack, backend, permissions))
         self.summarizer = find_summarizer(stack)
         exclude_stock_summarization(node_model if isinstance(node_model, str) else "")
@@ -898,6 +909,7 @@ class DeepAgent(BaseAgent, ABC):
             depth=node.depth,
             has_children=bool(children),
             tool_count=len(node_tools),
+            sections=[name for name, _ in task_sections(prompt_context)],
         )
         return create_deep_agent(
             model=node_model,

@@ -816,6 +816,31 @@ async def test_a_user_stop_rings_the_outbox_marked_as_the_users(env):
     assert refused.value.status_code == 404
 
 
+async def test_a_task_node_is_built_with_its_own_platform_sections(env, monkeypatch):
+    # The regression: a task's prompt was its spec's instructions alone, so the
+    # narration (and file-work) rules never reached a background sub-agent.
+    deep_agent_module = importlib.import_module("harness.abstractions.deep_agent")
+    prompts: dict[str, str] = {}
+    real = deep_agent_module.create_deep_agent
+
+    def capture(*args, **kwargs):
+        prompts[kwargs.get("name") or "?"] = kwargs.get("system_prompt") or ""
+        prompts["last"] = kwargs.get("system_prompt") or ""
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(deep_agent_module, "create_deep_agent", capture)
+    await turn(env, "research and wait")
+    task_id = tasks_by_name(env)["researcher"]["task_id"]
+    await until(lambda: _status(env, task_id, "running"))
+    await until(lambda: _waiting_at("researcher"))
+    task_prompt = prompts["last"]
+    assert "## Narrate Your Work as You Go" in task_prompt
+    assert "## Work Efficiently With Files" in task_prompt
+    assert "Keep the User in the Loop" not in task_prompt
+    open_gate("researcher")
+    await settle(env)
+
+
 async def test_a_depth_three_tree_settles_bottom_up(env):
     await turn(env, "research delegate delegate")
     await settle(env)

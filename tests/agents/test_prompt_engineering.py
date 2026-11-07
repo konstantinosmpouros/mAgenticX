@@ -176,6 +176,7 @@ def test_the_sections_are_ordered_stable_first_volatile_last(pe, full):
         "personalization",
         "filesystem",
         "capabilities",
+        "efficiency",
         "progress",
         "memory",
         "temporal",
@@ -200,6 +201,39 @@ def test_the_agent_the_user_talks_to_narrates_between_tool_calls(pe, full):
 def test_a_run_without_narration_gets_no_progress_section(pe):
     out = pe.compose_system_prompt("x", pe.PromptContext(has_conversation=True))
     assert "Keep the User in the Loop" not in out
+
+
+def test_file_work_is_write_then_measure_then_edit_and_a_target_is_approximate(pe):
+    on = pe.compose_system_prompt("x", pe.PromptContext(has_conversation=True, sandbox_enabled=True))
+    assert "## Work Efficiently With Files" in on
+    assert "Never build\n  a file's content inside a shell command" in on
+    assert "within about 10%" in on
+    assert "`wc -w" in on
+    no_sandbox = pe.compose_system_prompt("x", pe.PromptContext(has_conversation=True))
+    assert "## Work Efficiently With Files" in no_sandbox and "`execute`" not in no_sandbox
+
+
+def test_a_path_is_not_a_file_the_user_can_open(pe):
+    out = pe.compose_system_prompt("x", pe.PromptContext(has_conversation=True, has_subagents=True))
+    assert "never answer with a path alone" in out
+    assert "in the same turn you report\n  that result, review the file and call `present_artifact`" in out
+
+
+def test_a_background_task_prompt_gets_only_its_own_sections(pe):
+    # A task (``narrate_as_subagent``) gets its instructions, then how to work
+    # with the shared files and how to narrate for its panel — not the main
+    # agent's workspace, platform verbs or memory.
+    task = pe.PromptContext(
+        has_conversation=True, narrate_progress=True, narrate_as_subagent=True,
+        use_memory=True, sandbox_enabled=True,
+    )
+    out = pe.compose_task_prompt("You write briefs.", task)
+    assert out.startswith("You write briefs.\n\n## Work Efficiently With Files")
+    assert "## Narrate Your Work as You Go" in out
+    for absent in ("## Your Workspace", "## What You Can Do Beyond Text", "## Your Long-Term Memory",
+                   "Keep the User in the Loop"):
+        assert absent not in out
+    assert [name for name, _ in pe.task_sections(task)] == ["efficiency", "progress"]
 
 
 def test_a_background_task_narrates_for_its_panel_and_returns_a_standalone_result(pe):
