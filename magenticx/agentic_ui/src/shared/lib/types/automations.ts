@@ -57,7 +57,6 @@ export type ScheduleFormInitial = {
   scheduleKind?: ScheduleKind | string;
   scheduleSpec?: Record<string, unknown>;
   timezone?: string | null;
-  isPrivate?: boolean;
 };
 
 /** The Automations page's status filter (its toolbar's filter menu). */

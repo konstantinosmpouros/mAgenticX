@@ -198,7 +198,7 @@ _SHARES = (
 _TASKS = (
     ScheduledTaskTable.id, ScheduledTaskTable.agent_name, ScheduledTaskTable.agent_slug,
     ScheduledTaskTable.conversation_id, ScheduledTaskTable.title, ScheduledTaskTable.prompt,
-    ScheduledTaskTable.is_private, ScheduledTaskTable.target_mode,
+    ScheduledTaskTable.target_mode,
     ScheduledTaskTable.schedule_kind, ScheduledTaskTable.schedule_spec,
     ScheduledTaskTable.timezone, ScheduledTaskTable.status, ScheduledTaskTable.next_run_at,
     ScheduledTaskTable.last_run_at, ScheduledTaskTable.last_run_status,

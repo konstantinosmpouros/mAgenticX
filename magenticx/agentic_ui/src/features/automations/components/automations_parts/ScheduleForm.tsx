@@ -3,7 +3,6 @@ import {
   Building2,
   CalendarDays,
   CircleAlert,
-  EyeOff,
   Loader2,
   MessageSquare,
   MessagesSquare,
@@ -202,7 +201,6 @@ export default function ScheduleForm({
   const [targetMode, setTargetMode] = React.useState<TaskTargetMode>(
     (init?.targetMode as TaskTargetMode) ?? "fresh",
   );
-  const [isPrivate, setIsPrivate] = React.useState(Boolean(init?.isPrivate));
   const [scheduleKind, setScheduleKind] = React.useState<ScheduleKind>(
     (init?.scheduleKind as ScheduleKind) ?? "interval",
   );
@@ -292,7 +290,6 @@ export default function ScheduleForm({
       title: title.trim() || undefined,
       targetMode,
       scheduleKind,
-      isPrivate: targetMode === "fresh" ? isPrivate : false,
     };
     if (scheduleKind === "interval") {
       payload.intervalSeconds = intervalSeconds;
@@ -581,31 +578,6 @@ export default function ScheduleForm({
             />
             {targetHint ? <p className="text-xs text-muted-foreground">{targetHint}</p> : null}
           </div>
-          {targetMode === "fresh" ? (
-            <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-border/70 bg-background/60 px-3 py-2.5 transition-colors supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))]">
-              <span className="grid h-8 w-8 flex-shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
-                <EyeOff className="h-4 w-4" aria-hidden />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-medium text-foreground">Private runs</span>
-                <span className="block text-xs text-muted-foreground">
-                  Each run opens as a private chat.
-                </span>
-              </span>
-              <input
-                type="checkbox"
-                role="switch"
-                aria-label="Private runs"
-                checked={isPrivate}
-                onChange={(e) => setIsPrivate(e.target.checked)}
-                className="peer sr-only"
-              />
-              <span
-                aria-hidden
-                className="relative h-5 w-9 flex-shrink-0 rounded-full bg-muted-foreground/30 transition-colors after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-background after:shadow after:transition-transform peer-checked:bg-primary peer-checked:after:translate-x-4 peer-focus-visible:ring-2 peer-focus-visible:ring-primary/60"
-              />
-            </label>
-          ) : null}
         </Section>
       </div>
 

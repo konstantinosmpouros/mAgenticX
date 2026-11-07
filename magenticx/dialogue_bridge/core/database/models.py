@@ -749,7 +749,6 @@ class ScheduledTaskTable(Base):
     title = Column(String, nullable=True)
     # The instruction fed to the agent on every fire (the synthetic user turn).
     prompt = Column(Text, nullable=False)
-    is_private = Column(Boolean, nullable=False, server_default="false")
 
     # 'fresh' = new conversation each fire (isolated); 'bound' = one dedicated
     # conversation, append each fire (cross-fire memory via the durable checkpointer).

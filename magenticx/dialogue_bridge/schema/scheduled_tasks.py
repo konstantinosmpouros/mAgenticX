@@ -109,7 +109,6 @@ class ScheduledTaskCreate(BaseModel):
     intervalSeconds: Optional[int] = None
     cronExpr: Optional[str] = None
     timezone: Optional[str] = None
-    isPrivate: bool = False
     maxRuns: Optional[int] = Field(None, ge=1)
     expiresAt: Optional[datetime] = None
 
@@ -147,7 +146,6 @@ class ScheduledTaskUpdate(BaseModel):
     status: Optional[Literal["active", "paused"]] = None
     agentId: Optional[str] = None
     targetMode: Optional[TaskTargetMode] = None
-    isPrivate: Optional[bool] = None
     maxRuns: Optional[int] = Field(None, ge=1)
     expiresAt: Optional[datetime] = None
     scheduleKind: Optional[ScheduleKind] = None
@@ -198,7 +196,6 @@ class ScheduledTaskOut(BaseModel):
     conversationId: Optional[str] = Field(None, validation_alias="conversation_id")
     title: Optional[str] = None
     prompt: str
-    isPrivate: bool = Field(False, validation_alias="is_private")
     targetMode: str = Field("fresh", validation_alias="target_mode")
     scheduleKind: str = Field(..., validation_alias="schedule_kind")
     scheduleSpec: dict = Field(default_factory=dict, validation_alias="schedule_spec")

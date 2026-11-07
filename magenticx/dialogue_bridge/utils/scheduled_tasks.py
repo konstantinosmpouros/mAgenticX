@@ -166,7 +166,6 @@ async def create_scheduled_task(
         target_mode=create.targetMode,
         title=create.title,
         prompt=create.prompt,
-        is_private=create.isPrivate,
         schedule_kind=create.scheduleKind,
         schedule_spec=spec,
         timezone=create.timezone,
@@ -217,8 +216,6 @@ async def update_scheduled_task(
         # Switching back to 'fresh' drops the bound pointer so each fire mints its own conversation.
         if update.targetMode == "fresh":
             task.conversation_id = None
-    if update.isPrivate is not None:
-        task.is_private = update.isPrivate
     if update.maxRuns is not None:
         task.max_runs = update.maxRuns
     if update.expiresAt is not None:
@@ -416,7 +413,6 @@ async def fire_scheduled_task(task_id: str) -> None:
             payload = InferenceStartPayload(
                 mode="new",
                 agentId=agent.id,
-                isPrivate=task.is_private,
                 title=task.title,
                 message=message,
             )

@@ -75,7 +75,6 @@ const task = (over: Partial<ScheduledTask> = {}): ScheduledTask => ({
   agentName: "Research Analyst",
   title: "Morning briefing",
   prompt: "Brief me",
-  isPrivate: false,
   targetMode: "bound",
   scheduleKind: "cron",
   scheduleSpec: { cron_expr: "0 9 * * 1-5" },
@@ -370,6 +369,15 @@ describe("AutomationsPage", () => {
     expect(handled).toHaveBeenCalledTimes(1);
   });
 
+  it("offers no private runs: an automation's answer must land where the user finds it", async () => {
+    // A private chat never shows in the sidebar; a run made while the user is
+    // away to leave them a result cannot be one.
+    renderPage({ createFromTemplateId: "weekly-report" });
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).queryByText(/Private runs/)).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("switch")).not.toBeInTheDocument();
+  });
+
   it("opens nothing for an unknown template id, and still drops it", () => {
     const handled = vi.fn();
     renderPage({ createFromTemplateId: "nope", onCreateFromTemplateHandled: handled });
@@ -472,7 +480,6 @@ describe("AutomationsPage", () => {
         targetMode: "fresh",
         scheduleKind: "interval",
         intervalSeconds: 7200,
-        isPrivate: false,
       }),
     );
   });

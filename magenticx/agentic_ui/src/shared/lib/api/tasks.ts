@@ -34,7 +34,6 @@ export async function createScheduledTask(
   if (typeof payload.intervalSeconds === "number") body.intervalSeconds = payload.intervalSeconds;
   if (payload.cronExpr) body.cronExpr = payload.cronExpr;
   if (payload.timezone) body.timezone = payload.timezone;
-  if (typeof payload.isPrivate === "boolean") body.isPrivate = payload.isPrivate;
   if (typeof payload.maxRuns === "number") body.maxRuns = payload.maxRuns;
   if (payload.expiresAt) body.expiresAt = payload.expiresAt;
 
@@ -59,7 +58,6 @@ export async function updateScheduledTask(
   if (payload.status) body.status = payload.status;
   if (payload.agentId) body.agentId = payload.agentId;
   if (payload.targetMode) body.targetMode = payload.targetMode;
-  if (typeof payload.isPrivate === "boolean") body.isPrivate = payload.isPrivate;
   if (typeof payload.maxRuns === "number") body.maxRuns = payload.maxRuns;
   if (payload.expiresAt) body.expiresAt = payload.expiresAt;
   if (payload.scheduleKind) body.scheduleKind = payload.scheduleKind;

@@ -6,7 +6,7 @@ import pydantic
 import pytest
 
 import utils.scheduled_tasks as scheduled_tasks_util
-from core.database import MessageTable, ScheduledTaskTable
+from core.database import ConversationTable, MessageTable, ScheduledTaskTable
 from schema import ScheduledTaskCreate
 from utils.scheduled_tasks import claim_due_tasks, compute_next_run_at
 
@@ -154,11 +154,15 @@ async def test_scheduled_task_crud_via_api(client, seeded_user, seeded_agent, mo
             "targetMode": "fresh",
             "scheduleKind": "interval",
             "intervalSeconds": 3600,
+            # An older client still sends it: accepted and ignored, since an
+            # automation's runs are always ordinary, visible conversations.
+            "isPrivate": True,
         },
     )
     assert create.status_code == 201
     task = create.json()
     task_id = task["id"]
+    assert "isPrivate" not in task
     assert task["status"] == "active"
     assert task["scheduleKind"] == "interval"
     assert task["targetMode"] == "fresh"
@@ -262,6 +266,9 @@ async def test_fire_creates_tagged_run(db_session_factory, seeded_user, seeded_a
         assert message is not None
         assert message.scheduled_task_id == tid
         assert message.sender == "ai"
+        # The run lands in an ordinary conversation, listed in the sidebar.
+        conversation = await session.get(ConversationTable, message.conversation_id)
+        assert conversation.is_private is False
     assert captured.get("run_id") == run_message_id
 
 

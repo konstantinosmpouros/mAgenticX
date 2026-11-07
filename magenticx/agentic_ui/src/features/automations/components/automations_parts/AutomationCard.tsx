@@ -6,7 +6,6 @@ import {
   Check,
   CircleAlert,
   Clock,
-  EyeOff,
   Loader2,
   MessageSquare,
   MessagesSquare,
@@ -214,9 +213,6 @@ export const AutomationCard = React.forwardRef<HTMLDivElement, AutomationCardPro
               >
                 {targetModeLabel(String(task.targetMode))}
               </MetaChip>
-              {task.isPrivate ? (
-                <MetaChip icon={<EyeOff className="h-3 w-3" aria-hidden />}>Private</MetaChip>
-              ) : null}
             </div>
           </div>
         </div>

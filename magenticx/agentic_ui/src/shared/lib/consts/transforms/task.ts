@@ -15,7 +15,6 @@ export const transformScheduledTask = (task: Record<string, any>): ScheduledTask
     conversationId: task.conversationId ?? task.conversation_id ?? null,
     title: task.title ?? null,
     prompt: task.prompt ?? "",
-    isPrivate: Boolean(task.isPrivate ?? task.is_private),
     targetMode: task.targetMode ?? task.target_mode ?? "fresh",
     scheduleKind: task.scheduleKind ?? task.schedule_kind ?? "interval",
     scheduleSpec: spec && typeof spec === "object" ? spec : {},

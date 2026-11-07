@@ -15,7 +15,6 @@ export type ScheduledTask = {
   conversationId?: string | null;
   title?: string | null;
   prompt: string;
-  isPrivate: boolean;
   targetMode: TaskTargetMode | string;
   scheduleKind: ScheduleKind | string;
   scheduleSpec: Record<string, any>;
@@ -47,7 +46,6 @@ export type ScheduledTaskCreatePayload = {
   intervalSeconds?: number; // interval
   cronExpr?: string; // cron
   timezone?: string; // IANA tz (cron)
-  isPrivate?: boolean;
   maxRuns?: number;
   expiresAt?: string; // ISO-8601 UTC
 };
@@ -58,7 +56,6 @@ export type ScheduledTaskUpdatePayload = {
   status?: "active" | "paused";
   agentId?: string;
   targetMode?: TaskTargetMode;
-  isPrivate?: boolean;
   maxRuns?: number;
   expiresAt?: string; // ISO-8601 UTC
   scheduleKind?: ScheduleKind;
