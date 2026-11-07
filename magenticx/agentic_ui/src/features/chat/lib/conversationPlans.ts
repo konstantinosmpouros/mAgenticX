@@ -111,18 +111,65 @@ export function buildPlanAnswer(input: PlanAnswerInput): PlanAnswer | null {
 // identity, so a long conversation rebuilds just the answer that streams.
 const answerCache = new WeakMap<FoldedPlan, { key: string; answer: PlanAnswer | null }>();
 
-/** The conversation's plans: one entry per answer that kept one. */
+/**
+ * A plan's identity: its steps' texts, in order. An update to the same plan
+ * changes only statuses (the agent's background tasks report, a wake-up ticks
+ * a step); any other change — a step added, removed, reworded or moved — makes
+ * it another plan.
+ */
+export function planIdentity(answer: Pick<PlanAnswer, "steps">): string {
+  return answer.steps.map((step) => oneLine(step.content).toLowerCase()).join("␞");
+}
+
+/**
+ * `later` as an update of `earlier`, the same plan: it keeps the question that
+ * started it (and its place in the list), takes the newer statuses, and keeps
+ * a step's duration the newer answer could not time (it finished in an
+ * earlier run).
+ */
+function asPlanUpdate(earlier: PlanAnswer, later: PlanAnswer): PlanAnswer {
+  return {
+    ...later,
+    id: earlier.id,
+    number: earlier.number,
+    question: earlier.question,
+    steps: later.steps.map((step, index) =>
+      step.state === "done" && step.durationMs === null
+        ? { ...step, durationMs: earlier.steps[index]?.durationMs ?? null }
+        : step,
+    ),
+  };
+}
+
+/**
+ * The conversation's plans. The same plan written again by a later answer (a
+ * wake-up after background tasks, a turn that carries on the work) updates its
+ * entry in place; a different plan gets an entry of its own, below. The plan
+ * updated last is the current one.
+ */
 export function buildConversationPlans(inputs: PlanAnswerInput[]): ConversationPlans {
   const answers: PlanAnswer[] = [];
+  const indexByIdentity = new Map<string, number>();
+  let currentIndex = -1;
   for (const input of inputs) {
     if (!input.plan) continue;
     const key = `${input.messageId}|${input.number}|${input.live}|${input.question}`;
     const cached = answerCache.get(input.plan);
     const answer = cached && cached.key === key ? cached.answer : buildPlanAnswer(input);
     if (!cached || cached.key !== key) answerCache.set(input.plan, { key, answer });
-    if (answer) answers.push(answer);
+    if (!answer) continue;
+    const identity = planIdentity(answer);
+    const at = indexByIdentity.get(identity);
+    if (at === undefined) {
+      indexByIdentity.set(identity, answers.length);
+      answers.push(answer);
+      currentIndex = answers.length - 1;
+    } else {
+      answers[at] = asPlanUpdate(answers[at], answer);
+      currentIndex = at;
+    }
   }
-  return answers.length ? { answers, current: answers[answers.length - 1] } : EMPTY_PLANS;
+  return answers.length ? { answers, current: answers[currentIndex] } : EMPTY_PLANS;
 }
 
 // ------------------------------------------------------
@@ -170,6 +217,9 @@ export function collectPlanAnswers(
   let question = "";
   for (const message of messages) {
     if (message.sender !== "ai") {
+      // A background task's notice is not a question the user asked: the
+      // wake-up answer after it carries on the question before it.
+      if (message.kind === "task_notification") continue;
       number += 1;
       question = message.content ?? "";
       continue;

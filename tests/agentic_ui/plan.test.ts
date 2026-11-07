@@ -284,6 +284,83 @@ describe("plans across the conversation", () => {
     expect(updated.answers[0]).toBe(live.answers[0]);
   });
 
+  describe("background tasks: one plan, updated in place", () => {
+    const steps = (s1: Status, s2: Status, s3: Status): Array<[string, Status]> => [
+      ["Wave 1: receive both source lists", s1],
+      ["Wave 2: run the analyst", s2],
+      ["Wave 3: write the brief", s3],
+    ];
+    const notice = (id: string) =>
+      message(id, "user", { content: "An async subagent task you started has an update.", kind: "task_notification" });
+
+    it("a wake-up's answer updates the plan its question started, not a new question's", () => {
+      const messages = [
+        message("u1", "user", { content: "PIPELINE TEST" }),
+        message("a1", "ai", { rawEvents: [snapshot(1_000, steps("in_progress", "pending", "pending"))] }),
+        notice("n1"),
+        message("a2", "ai", { rawEvents: [snapshot(9_000, steps("completed", "in_progress", "pending"))] }),
+      ];
+      const plans = buildConversationPlans(collectPlanAnswers(messages, { messageId: null, timeline: null }));
+
+      expect(plans.answers).toHaveLength(1);
+      expect(plans.current).toBe(plans.answers[0]);
+      expect(plans.current).toMatchObject({ number: 1, question: "PIPELINE TEST", completed: 1, total: 3 });
+    });
+
+    it("updates in place across questions asked meanwhile, and the updated plan is current", () => {
+      const messages = [
+        message("u1", "user", { content: "PIPELINE TEST" }),
+        message("a1", "ai", { rawEvents: [snapshot(1_000, steps("in_progress", "pending", "pending"))] }),
+        message("u2", "user", { content: "How is it going?" }),
+        message("a2", "ai", { rawEvents: [snapshot(2_000, [["Answer the user", "completed"]])] }),
+        notice("n1"),
+        message("a3", "ai", { rawEvents: [snapshot(9_000, steps("completed", "completed", "in_progress"))] }),
+      ];
+      const plans = buildConversationPlans(collectPlanAnswers(messages, { messageId: null, timeline: null }));
+
+      expect(plans.answers.map((answer) => [answer.number, answer.question])).toEqual([
+        [1, "PIPELINE TEST"],
+        [2, "How is it going?"],
+      ]);
+      expect(plans.current).toBe(plans.answers[0]);
+      expect(plans.current?.completed).toBe(2);
+    });
+
+    it("keeps a step's time from the run that finished it", () => {
+      const messages = [
+        message("u1", "user", { content: "PIPELINE TEST" }),
+        message("a1", "ai", {
+          rawEvents: [
+            snapshot(1_000, steps("in_progress", "pending", "pending")),
+            snapshot(5_000, steps("completed", "pending", "pending")),
+          ],
+        }),
+        notice("n1"),
+        message("a2", "ai", { rawEvents: [snapshot(9_000, steps("completed", "completed", "pending"))] }),
+      ];
+      const [only] = buildConversationPlans(collectPlanAnswers(messages, { messageId: null, timeline: null })).answers;
+
+      expect(only.steps[0].durationMs).toBe(4_000);
+    });
+
+    it("a plan with any other step — even one more — is a new plan, below", () => {
+      const messages = [
+        message("u1", "user", { content: "PIPELINE TEST" }),
+        message("a1", "ai", { rawEvents: [snapshot(1_000, steps("completed", "in_progress", "pending"))] }),
+        notice("n1"),
+        message("a2", "ai", {
+          rawEvents: [snapshot(9_000, [...steps("completed", "completed", "pending"), ["Wave 4: review", "pending"]])],
+        }),
+      ];
+      const plans = buildConversationPlans(collectPlanAnswers(messages, { messageId: null, timeline: null }));
+
+      expect(plans.answers.map((answer) => answer.total)).toEqual([3, 4]);
+      expect(plans.current).toBe(plans.answers[1]);
+      // Both belong to the user's question; the notice is not one.
+      expect(plans.answers.map((answer) => answer.number)).toEqual([1, 1]);
+    });
+  });
+
   it("reads a settled answer's plan once per event log", () => {
     const [, answer] = conversation();
     const first = foldAnswerPlan(answer);
