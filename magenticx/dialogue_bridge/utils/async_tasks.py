@@ -42,7 +42,7 @@ from core.logging import get_context, get_logger
 from core.security.internal_trust import internal_service_headers
 from core.security.tls import get_httpx_client_cert, get_httpx_verify
 from core.settings import settings
-from schema import OutboxItem, TaskOut, TaskResumeIn, TaskStatusEntry
+from schema import ActiveConversationsOut, OutboxItem, TaskOut, TaskResumeIn, TaskStatusEntry
 from utils.conversation_channel import publish_task_frame
 from utils.inference_runs import (
     append_coalesced,
@@ -239,6 +239,24 @@ async def get_owned_task(db: AsyncSession, user_id: str, task_id: str) -> Option
             )
         )
     ).scalar_one_or_none()
+
+
+#: Conversations the sidebar's task poll returns, at most.
+_ACTIVE_CONVERSATIONS_MAX = 200
+
+
+async def active_conversation_ids(db: AsyncSession, user_id: str) -> ActiveConversationsOut:
+    """The caller's conversations whose background tasks are still working.
+
+    The sidebar polls this while any row spins for tasks, so a row stops (or
+    starts) spinning without the conversation being open. A streaming answer
+    is not counted: the run manager already tracks those."""
+    rows = await db.execute(
+        select(ConversationTable.id)
+        .where(ConversationTable.user_id == user_id, ConversationTable.active_tasks_flag)
+        .limit(_ACTIVE_CONVERSATIONS_MAX)
+    )
+    return ActiveConversationsOut(conversationIds=list(rows.scalars()))
 
 
 async def list_conversation_tasks(db: AsyncSession, user_id: str, conversation_id: str, limit: int) -> list[TaskOut]:

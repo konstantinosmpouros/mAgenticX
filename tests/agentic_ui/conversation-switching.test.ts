@@ -34,6 +34,7 @@ const setup = (initialProps: Props, derived: Record<string, number> | null = { p
       useActiveRunBranchSnap({
         ...props,
         deriveBranchSelectionsForActiveRun,
+        branchSelections: {},
         setBranchSelections,
       }),
     { initialProps },

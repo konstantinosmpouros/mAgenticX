@@ -61,6 +61,9 @@ class ConversationSummary(BaseModel):
     isReported: bool = Field(False, validation_alias="is_reported")
     reportedAt: Optional[UTCDateTime] = Field(None, validation_alias="reported_at")
     activeRunId: Optional[str] = Field(None, validation_alias="active_assistant_message_id")
+    # Background sub-agent tasks still working (plan 41): the row spins like a
+    # streaming answer even after the orchestrator's own run ended.
+    hasActiveTasks: bool = Field(False, validation_alias="has_active_tasks")
     lastMessage: Optional[str] = Field(None, validation_alias="last_message_preview")
     created_at: UTCDateTime = Field(..., validation_alias="created_at")
     updated_at: UTCDateTime = Field(..., validation_alias="updated_at")
@@ -96,6 +99,10 @@ class ConversationDetail(BaseModel):
     isReported: bool = Field(False, validation_alias="is_reported")
     reportedAt: Optional[UTCDateTime] = Field(None, validation_alias="reported_at")
     activeRunId: Optional[str] = Field(None, validation_alias="active_assistant_message_id")
+    # Background sub-agent tasks still working, and the answer that started the
+    # latest of them: opening the conversation lands on that answer's branch.
+    hasActiveTasks: bool = Field(False, validation_alias="has_active_tasks")
+    activeTaskMessageId: str | None = Field(None, validation_alias="active_task_message_id")
     created_at: UTCDateTime = Field(..., validation_alias="created_at")
     updated_at: UTCDateTime = Field(..., validation_alias="updated_at")
     messages: List[MessageOut] = Field(default_factory=list)
@@ -189,3 +196,9 @@ class ConversationReportIn(BaseModel):
         self.details = resolved_details
         self.messageId = resolved_message_id
         return self
+
+
+class ActiveConversationsOut(BaseModel):
+    """The user's conversations whose background tasks are still working.
+    Polled by the sidebar to keep its spinners live."""
+    conversationIds: list[str] = Field(default_factory=list)

@@ -835,9 +835,13 @@ export default function ChatSidebar({
           )}
         </SidebarListRow>
         {!isRenaming &&
-          (conversation.isStreaming ? (
+          (conversation.isStreaming || conversation.hasActiveTasks ? (
             <SidebarMenuAction
-              aria-label="Conversation is streaming"
+              aria-label={
+                conversation.isStreaming
+                  ? "Conversation is streaming"
+                  : "Background sub-agents are working"
+              }
               onClick={(event) => event.stopPropagation()}
               onMouseDown={(event) => event.stopPropagation()}
               onPointerDown={(event) => event.stopPropagation()}

@@ -1437,6 +1437,12 @@ export const AsyncTaskListSchema = z
   );
 export type AsyncTask = z.infer<typeof AsyncTaskSchema>;
 
+/** `GET /tasks/{user}/active-conversations`: the user's conversations whose tasks still work. */
+export const TaskBusyConversationsSchema = z
+  .object({ conversationIds: z.array(z.string()).catch([]) })
+  .catch({ conversationIds: [] })
+  .transform((body) => body.conversationIds);
+
 /**
  * The one queued composer message (plan 41 §3.6). §14 leaves its shape open
  * (`{...}`); the UI reads only what the chip shows — the text, how many files

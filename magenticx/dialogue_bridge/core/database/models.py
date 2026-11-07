@@ -4,9 +4,12 @@ Every table model plus the ``upsert_user_from_identity`` helper. ``Base`` and
 ``gen_uuid`` come from ``core.database.engine``; the whole surface is re-exported
 from ``core.database`` so callers keep importing ``from core.database import ...``.
 """
-from sqlalchemy.orm import relationship
+from typing import Any
+
+from sqlalchemy.orm import column_property, relationship
 from sqlalchemy.sql import func
-from sqlalchemy import DDL, case, event, or_, select
+from sqlalchemy import DDL, and_, case, event, exists, or_, select
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import (
     BigInteger,
@@ -844,6 +847,37 @@ class ConversationTaskTable(Base):
     notified_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+# A conversation whose background tasks are still working is busy like one with
+# a streaming answer: its sidebar row spins, and opening it lands on the branch
+# of the answer that started them. Both are loaded with the conversation (one
+# indexed subquery each), so a list or a detail needs no extra round trip.
+_UNSETTLED_TASK = and_(
+    ConversationTaskTable.conversation_id == ConversationTable.id,
+    ConversationTaskTable.status.not_in(TASK_SETTLED_STATUSES),
+)
+ConversationTable.active_tasks_flag = column_property(exists().where(_UNSETTLED_TASK))
+ConversationTable.active_task_message = column_property(
+    select(ConversationTaskTable.spawned_by_message_id)
+    .where(_UNSETTLED_TASK, ConversationTaskTable.spawned_by_message_id.is_not(None))
+    .order_by(ConversationTaskTable.created_at.desc())
+    .limit(1)
+    .correlate_except(ConversationTaskTable)
+    .scalar_subquery()
+)
+
+
+def _loaded_value(obj: Any, key: str) -> Any:
+    """``key`` as last loaded, or None: never a lazy load (under asyncio that
+    raises MissingGreenlet). A conversation built in this session, or refreshed
+    without these columns, reads as having no working tasks."""
+    return sa_inspect(obj).dict.get(key)
+
+
+# What the response schemas read (``hasActiveTasks`` / ``activeTaskMessageId``).
+ConversationTable.has_active_tasks = property(lambda self: bool(_loaded_value(self, "active_tasks_flag")))
+ConversationTable.active_task_message_id = property(lambda self: _loaded_value(self, "active_task_message"))
 
 
 #: A workflow run that still holds a slot: one per (user, workflow) at a time.

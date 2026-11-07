@@ -309,6 +309,11 @@ export function rootTasksForMessage(state: AsyncTaskTreeState, messageId: string
     .sort(byStart);
 }
 
+/** Whether any task of the tree is still working (busy like a streaming answer). */
+export function hasWorkingTasks(state: AsyncTaskTreeState): boolean {
+  return Object.values(state.tasks).some((task) => !isTaskSettled(task.status));
+}
+
 /** Tasks paused on an approval, oldest first: the approval cards to show. */
 export function waitingTasks(state: AsyncTaskTreeState): AsyncTask[] {
   return Object.values(state.tasks)

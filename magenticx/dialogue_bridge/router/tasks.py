@@ -22,9 +22,10 @@ from core.auth.session import AuthUser, require_csrf_protection
 from core.database import get_db
 from core.logging import get_logger, set_context
 from core.security.rate_limit import task_mutate_rate_limit, task_read_rate_limit
-from schema import TaskOut, TaskResumeIn
+from schema import ActiveConversationsOut, TaskOut, TaskResumeIn
 from utils import validate_userId
 from utils.async_tasks import (
+    active_conversation_ids,
     cancel_task_for_user,
     list_conversation_tasks,
     resume_task_for_user,
@@ -75,6 +76,18 @@ async def deleteQueuedMessage(
     set_context(user_id=user_id, conversation_id=conversation_id)
     await cancel_queued_message(db, current_user.id, conversation_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/{user_id}/active-conversations", response_model=ActiveConversationsOut)
+async def listActiveConversations(
+    user_id: str,
+    current_user: AuthUser = Depends(validate_userId),
+    _rate_limited: None = Depends(task_read_rate_limit),
+    db: AsyncSession = Depends(get_db),
+) -> ActiveConversationsOut:
+    """The caller's conversations whose background tasks are still working."""
+    set_context(user_id=user_id)
+    return await active_conversation_ids(db, current_user.id)
 
 
 @router.post("/{user_id}/{task_id}/cancel", response_model=TaskOut)

@@ -21,6 +21,8 @@ export type ConversationSummary = {
   reportedAt?: Date | null;
   activeRunId?: string | null;
   isStreaming?: boolean;
+  /** Background sub-agent tasks still working (plan 41): busy like a streaming answer. */
+  hasActiveTasks?: boolean;
   lastMessage?: string;
   created_at: string;
   updated_at: string;
@@ -43,6 +45,10 @@ export type ConversationDetail = {
   reportedAt?: Date | null;
   activeRunId?: string | null;
   isStreaming?: boolean;
+  /** Background sub-agent tasks still working (plan 41). */
+  hasActiveTasks?: boolean;
+  /** The answer that started the latest working task: opening the conversation lands on its branch. */
+  activeTaskMessageId?: string | null;
   created_at: Date;
   updated_at: Date;
   messages: MessageOut[];

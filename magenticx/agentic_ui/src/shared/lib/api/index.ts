@@ -129,6 +129,7 @@ export { connectInferenceWebSocket } from "./inference-socket";
 
 export {
   listConversationTasks,
+  listTaskBusyConversations,
   cancelAsyncTask,
   resumeAsyncTask,
   deleteQueuedMessage,

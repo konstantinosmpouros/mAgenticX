@@ -155,6 +155,7 @@ const serializeConversationSummaries = (
     ...conversation,
     activeRunId: null,
     isStreaming: false,
+    hasActiveTasks: false,
     agent: serializeAgentForStorage(conversation.agent) ?? {
       id: "",
       name: conversation.agent.name,
@@ -174,6 +175,7 @@ const deserializeConversationSummaries = (
     ...conversation,
     activeRunId: null,
     isStreaming: false,
+    hasActiveTasks: false,
     agent: deserializeAgentFromStorage(conversation.agent),
   }));
 };

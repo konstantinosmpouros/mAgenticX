@@ -41,6 +41,7 @@ from schema.catalog import (
     ToolManifest,
 )
 from schema.conversations import (
+    ActiveConversationsOut,
     ConversationDetail,
     ConversationForkIn,
     ConversationIn,
@@ -250,6 +251,7 @@ __all__ = [
     "BlobOut",
     "CompactConversationIn",
     "CompactConversationOut",
+    "ActiveConversationsOut",
     "ConversationDetail",
     "ConversationForkIn",
     "ConversationIn",

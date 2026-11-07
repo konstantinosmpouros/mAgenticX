@@ -50,6 +50,7 @@ import {
   useUISnapshotPersistence,
 } from "@/features/auth/hooks/useSessionEffects";
 import { useActiveRunBranchSnap } from "@/features/chat/hooks/useActiveRunBranchSnap";
+import { useTaskBusySidebar } from "@/features/chat/hooks/useTaskBusySidebar";
 import { useWorkspaceStore } from "@/shared/stores/workspaceStore";
 
 // Handlers, imported from the feature that owns each one.
@@ -465,7 +466,17 @@ export function useChatWorkspace({
     currentConversation,
     activeConversationRun,
     deriveBranchSelectionsForActiveRun,
+    branchSelections,
     setBranchSelections,
+  });
+
+  useTaskBusySidebar({
+    userId,
+    conversations,
+    setConversations,
+    currentConversationId: taskConversationId,
+    setCurrentConversation,
+    taskTree,
   });
 
   const { requestPersist } = useUISnapshotPersistence({

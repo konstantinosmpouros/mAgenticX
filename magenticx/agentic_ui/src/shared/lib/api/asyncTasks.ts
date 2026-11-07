@@ -15,6 +15,7 @@ import { requestJson, requestVoid } from "../http";
 import {
   AsyncTaskListSchema,
   AsyncTaskSchema,
+  TaskBusyConversationsSchema,
   toConversationChannelFrame,
   toTaskSocketFrame,
 } from "../schemas";
@@ -39,6 +40,19 @@ export async function listConversationTasks(
       fallbackMessage: "Failed to load the background tasks",
     },
   );
+}
+
+/**
+ * The user's conversations whose background tasks are still working. The
+ * sidebar polls it while a row spins for tasks, so rows of conversations that
+ * are not open start and stop spinning on their own.
+ */
+export async function listTaskBusyConversations(userId: string, signal?: AbortSignal): Promise<string[]> {
+  return requestJson(`${TASKS_BASE_PATH}/${segment(userId)}/active-conversations`, {
+    schema: TaskBusyConversationsSchema,
+    signal,
+    fallbackMessage: "Failed to load the conversations with background tasks",
+  });
 }
 
 /** Stop a task and its whole subtree; answers the task as it now stands. */

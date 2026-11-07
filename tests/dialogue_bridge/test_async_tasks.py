@@ -53,6 +53,7 @@ from core.database import (
     MessageUsageTable,
     ScheduledTaskTable,
     UsageDailyGroupTable,
+    UserTable,
 )
 from core.settings import settings
 from schema import MessageOut, OutboxItem, TaskStatusEntry
@@ -555,6 +556,49 @@ async def test_a_queued_send_refused_for_a_transient_reason_is_put_back(
 async def _mirror(session_factory, conv_id, user_id, **over):
     await async_tasks.apply_status_entry(TaskStatusEntry.model_validate(
         {"event": "TASK_STARTED", "task": _task(conv_id, user_id, **over)}), session_factory=session_factory)
+
+
+async def test_a_conversation_with_working_tasks_reads_busy_until_they_settle(
+    client, session_factory, seeded_user, seeded_agent
+):
+    ids = await _branchy_conversation(session_factory, seeded_user, seeded_agent)
+    conv_id = ids["conversation_id"]
+    await _mirror(session_factory, conv_id, seeded_user.id, task_id="t-old", spawned_by_message_id=ids["a2"],
+                  status="success", settled_at=_now().isoformat())
+    await _mirror(session_factory, conv_id, seeded_user.id, task_id="t-live", spawned_by_message_id=ids["a2b"])
+
+    async with session_factory() as s:  # listed in the sidebar's Chats
+        row = await s.get(ConversationTable, conv_id)
+        row.is_private, row.is_archived = False, False
+        await s.commit()
+    listed = await client.get(f"/v1/conversations/{seeded_user.id}")
+    summary = next(c for c in listed.json()["items"] if c["id"] == conv_id)
+    assert summary["hasActiveTasks"] is True and summary["isStreaming"] is False
+    detail = (await client.get(f"/v1/conversations/{seeded_user.id}/{conv_id}")).json()
+    assert detail["hasActiveTasks"] is True
+    assert detail["activeTaskMessageId"] == ids["a2b"]  # the working task's answer, not the settled one's
+    active = await client.get(f"/v1/tasks/{seeded_user.id}/active-conversations")
+    assert active.status_code == 200 and active.json() == {"conversationIds": [conv_id]}
+
+    await async_tasks.apply_status_entry(TaskStatusEntry.model_validate({"event": "TASK_SETTLED", "task": _task(
+        conv_id, seeded_user.id, task_id="t-live", spawned_by_message_id=ids["a2b"], status="success",
+        settled_at=_now().isoformat())}), session_factory=session_factory)
+    detail = (await client.get(f"/v1/conversations/{seeded_user.id}/{conv_id}")).json()
+    assert detail["hasActiveTasks"] is False and detail["activeTaskMessageId"] is None
+    assert (await client.get(f"/v1/tasks/{seeded_user.id}/active-conversations")).json() == {"conversationIds": []}
+
+
+async def test_the_busy_list_is_the_callers_own(client, session_factory, seeded_user, seeded_agent):
+    async with session_factory() as s:
+        other = UserTable(username="u-other", oidc_subject="oid-other", is_active=True)
+        s.add(other)
+        await s.commit()
+    theirs = await _branchy_conversation(session_factory, other, seeded_agent)
+    await _mirror(session_factory, theirs["conversation_id"], other.id)
+    # Whatever the path says, the list is the signed-in user's.
+    for path_user in (seeded_user.id, other.id):
+        resp = await client.get(f"/v1/tasks/{path_user}/active-conversations")
+        assert resp.status_code == 200 and resp.json() == {"conversationIds": []}
 
 
 async def test_stop_proxies_to_the_agents_service_for_the_owner_only(
