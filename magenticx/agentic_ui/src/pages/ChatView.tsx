@@ -8,6 +8,7 @@ import ChatHeader from "@/features/chat/components/ChatHeader";
 import { ChatInputBar } from "@/features/chat/components/ChatInputBar";
 import { ChatDisclaimer } from "@/features/chat/components/ChatDisclaimer";
 import { HitlInputTakeover } from "@/features/chat/components/HitlInputTakeover";
+import { ComposerTaskNotices } from "@/features/chat/components/ComposerTaskNotices";
 import { AskUserTakeover } from "@/features/chat/components/AskUserTakeover";
 import { isAskUserInterrupt } from "@/features/inference";
 import { AgentMapButton } from "@/features/chat/components/agent_map/AgentMapButton";
@@ -86,6 +87,9 @@ export default function ChatView() {
     activeConversationRun,
     pendingRunInterrupts,
     resumeInferenceRunHandler,
+    queuedMessage,
+    canQueueSend,
+    handleCancelQueuedMessage,
     canShowStarterSuggestions,
     handleStarterSuggestionSelect,
     conversationContext,
@@ -267,6 +271,13 @@ export default function ChatView() {
           handlePaste={composer.handlePaste}
           handleSendMessage={handleSendMessage}
           handleStopStreaming={handleStopStreaming}
+          canQueueWhileStreaming={canQueueSend}
+          composerNotices={
+            <ComposerTaskNotices
+              queuedMessage={queuedMessage}
+              onCancelQueued={() => void handleCancelQueuedMessage()}
+            />
+          }
           isImageFile={composer.isImageFile}
           getImageUrl={composer.getImageUrl}
           handleImageClick={handleImageClick}

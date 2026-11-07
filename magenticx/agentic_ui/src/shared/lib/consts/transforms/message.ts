@@ -1,6 +1,7 @@
 import type { AttachmentOut } from "../../types/attachments";
 import type { CommandRef } from "../../types/commands";
 import type { MessageCompaction, MessageOut } from "../../types/messages";
+import { toTaskNotice } from "../../schemas";
 import { toDate, toOptionalNumber, toOptionalString } from "./base";
 
 // A manual compaction on an answer (plan 34), or null for anything that is not
@@ -95,4 +96,8 @@ export const transformMessage = (message: Record<string, any>): MessageOut => ({
   rawEvents: message.rawEvents ?? message.raw_events ?? [],
   compaction: transformCompaction(message.compaction),
   command: transformCommand(message.command),
+  // Plan 41: a wake-up input row. Whitelisted like every other field — left
+  // out, the row would render as the user's own words.
+  kind: message.kind === "task_notification" ? "task_notification" : null,
+  taskNotice: toTaskNotice(message.taskNotice ?? message.task_notice),
 });

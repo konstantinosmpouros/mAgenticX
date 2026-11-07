@@ -5,8 +5,8 @@ The agent's only view of disk is the ``CompositeBackend`` assembled in
 break silently:
 
 * a route that is *supposed* to exist actually resolves to the directory it
-  claims (a missing route degrades to the ephemeral ``StateBackend`` default and
-  every read of it returns "not found" — inert, with no error anywhere), and
+  claims (a missing route degrades to the branch scratch default and every
+  read of it returns "not found" — inert, with no error anywhere), and
 * the write-deny ladder stays scoped to mounted routes, which deepagents itself
   requires as soon as the default backend supports execution.
 """
@@ -48,7 +48,7 @@ def test_reference_route_absent_without_a_definition_dir(workspace, skills_fs):
     holds source, which must never be mountable.
 
     Absence is the whole assertion: an unrouted path falls through to the
-    ephemeral ``StateBackend`` default, which answers "not found" without any
+    branch scratch default, which answers "not found" without any
     misconfiguration being reported anywhere.
     """
     assert "/reference/" not in _backend(workspace).routes

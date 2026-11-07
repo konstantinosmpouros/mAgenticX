@@ -25,6 +25,8 @@ class attrs, which a single shared class can't carry per agent).
 """
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 from typing import Any, Mapping, Optional
 
@@ -301,6 +303,24 @@ class YamlDeepAgent(DeepAgent):
         return sa.model or self._spec.model.subagents.get(sa.name) or self._spec.model.main
 
     # ------------------------------------------------------------------
+    @property
+    def async_subagents_supported(self) -> bool:
+        """A trial's draft is in no store a task run could rebuild it from, so
+        a trial keeps blocking sub-agents (plan 41)."""
+        return not self._trial
+
+    def definition_fingerprint(self) -> str:
+        """A hash of the whole definition: the spec, the prompt it resolved to,
+        and every authored file. Any save that changes what runs changes it,
+        so a task tree stays pinned to the definition its root run used."""
+        payload = {
+            "spec": self._spec.model_dump(mode="json"),
+            "instructions": self.instructions,
+            "files": sorted(self._definition_files.items()),
+        }
+        raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+
     def register_agent(self) -> Any:
         # `self.tools` already holds the agent's declared MCP tools (filtered
         # from the live manifest by attach_tools). Add the spec's native tools;

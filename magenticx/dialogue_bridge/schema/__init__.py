@@ -77,6 +77,7 @@ from schema.messages import (
     MessageIn,
     MessageOut,
     MessageUpdate,
+    TaskNoticeOut,
 )
 from schema.compaction import (
     AgentCompactionResult,
@@ -97,6 +98,22 @@ from schema.scheduled_tasks import (
     ScheduledTaskUpdate,
     TaskStatus,
     TaskTargetMode,
+)
+from schema.tasks import (
+    AsyncTaskStatus,
+    OutboxItem,
+    QueueFrame,
+    QueuedMessageOut,
+    QueuedStartResponse,
+    RunStartedFrame,
+    TaskFrame,
+    TaskNotification,
+    TaskOut,
+    TaskResumeIn,
+    TaskStatusEntry,
+    TaskStatusEvent,
+    TaskUsage,
+    queued_message_from_column,
 )
 from schema.search import (
     WorkspaceSearchResult,
@@ -189,6 +206,21 @@ from schema.workflows import (
 )
 
 __all__ = [
+    "AsyncTaskStatus",
+    "OutboxItem",
+    "QueueFrame",
+    "QueuedMessageOut",
+    "QueuedStartResponse",
+    "RunStartedFrame",
+    "TaskFrame",
+    "TaskNoticeOut",
+    "TaskNotification",
+    "TaskOut",
+    "TaskResumeIn",
+    "TaskStatusEntry",
+    "TaskStatusEvent",
+    "TaskUsage",
+    "queued_message_from_column",
     "SCHEDULE_TRIGGER_KIND",
     "CommandInvocation",
     "CommandListResponse",

@@ -42,6 +42,14 @@ class PromptContext:
     has_subagents: bool = False
     #: ``ask_user`` is attached: an interactive run with a conversation.
     has_ask_user: bool = False
+    #: Sub-agents run as background tasks (plan 41, ``ASYNC_SUBAGENTS_ENABLED``):
+    #: delegation is ``start_async_task`` and friends, not the blocking
+    #: ``task``. Only meaningful with ``has_subagents``.
+    async_subagents: bool = False
+    #: The user follows this agent's work live in a conversation, so it should
+    #: narrate between tool calls (``progress_prompt``). Off for a background
+    #: task's run, whose text is its parent's input, not the user's chat.
+    narrate_progress: bool = False
     #: Wall-clock for the run, injected rather than read inside a prompt so the
     #: composed text is deterministic under test.
     now: Optional[datetime] = None

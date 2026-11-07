@@ -198,7 +198,7 @@ async def test_a_trial_needs_an_owner(client, internal_headers, trial):
 # /reference/
 # ---------------------------------------------------------------------------
 def _reference(agent):
-    return agent._build_composite_backend()(None).routes["/reference/"]
+    return agent._build_composite_backend().routes["/reference/"]
 
 
 async def test_a_trials_reference_reads_the_drafts_files_not_the_saved_ones(agents_service, trial):
@@ -215,7 +215,7 @@ async def test_a_trials_reference_reads_the_drafts_files_not_the_saved_ones(agen
     assert agent._has_reference
     route = _reference(agent)
     assert isinstance(route._store, agents_service.definition_store.DraftDefinitionStore)
-    result = agent._build_composite_backend()(None).read("/reference/notes.md")
+    result = agent._build_composite_backend().read("/reference/notes.md")
     assert result.error is None
     assert result.file_data["content"] == "draft notes"
 

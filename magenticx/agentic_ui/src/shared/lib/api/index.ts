@@ -118,6 +118,7 @@ export {
 
 export {
   startInference,
+  startInferenceOrQueue,
   getActiveInferenceRuns,
   cancelInferenceRun,
   resumeInferenceRun,
@@ -125,6 +126,15 @@ export {
 export type { ResumeInferenceRunBody } from "./inference";
 
 export { connectInferenceWebSocket } from "./inference-socket";
+
+export {
+  listConversationTasks,
+  cancelAsyncTask,
+  resumeAsyncTask,
+  deleteQueuedMessage,
+  connectConversationChannel,
+  connectTaskSocket,
+} from "./asyncTasks";
 
 export {
   listScheduledTasks,

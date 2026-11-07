@@ -50,6 +50,7 @@ from deepagents.backends.protocol import (
     WriteResult,
 )
 from deepagents.backends.utils import (
+    InvalidGlobPatternError,
     _get_file_type,
     _glob_search_files,
     check_empty_content,
@@ -296,11 +297,16 @@ class ConversationFilesBackend(BackendProtocol):
         except InputsUnavailable:
             return GlobResult(error=UNAVAILABLE_MESSAGE)
         by_path = {self._relative(entry.path): entry for entry in entries}
-        listing = _glob_search_files(
-            {rel: {"content": "", "modified_at": entry.modified_at} for rel, entry in by_path.items()},
-            pattern,
-            base,
-        )
+        # deepagents' shared glob contract (0.7): a bare pattern matches the
+        # basename at any depth, and a refused pattern is a result, not a raise.
+        try:
+            listing = _glob_search_files(
+                {rel: {"content": "", "modified_at": entry.modified_at} for rel, entry in by_path.items()},
+                pattern,
+                base,
+            )
+        except InvalidGlobPatternError as exc:
+            return GlobResult(error=str(exc))
         if listing == "No files found":
             return GlobResult(matches=[])
         return GlobResult(matches=[

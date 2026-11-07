@@ -31,6 +31,7 @@ export type * from "./attachments";
 export type * from "./inference";
 export type * from "./timeline";
 export type * from "./tasks";
+export type * from "./asyncTasks";
 export type * from "./schedule";
 export type * from "./automations";
 export type * from "./workflows";

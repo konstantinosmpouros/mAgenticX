@@ -3,7 +3,7 @@ import json
 import time
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, Awaitable, Callable
 from uuid import uuid4
 
 import httpx
@@ -230,7 +230,7 @@ def hitl_resolved_value(resume_payload: dict[str, Any], decision: str) -> dict[s
     return marker
 
 
-def _overall_decision(resume_payload: dict[str, Any]) -> str:
+def overall_hitl_decision(resume_payload: dict[str, Any]) -> str:
     """The scalar decision of one resume for its resolved marker.
 
     ``decisions`` (per-action list) drives the UI's per-tool approval chips for
@@ -320,7 +320,7 @@ def _merge_delta_into(last: dict[str, Any], incoming: dict[str, Any]) -> bool:
     return True
 
 
-def _truncate_tool_result(event: dict[str, Any]) -> dict[str, Any]:
+def truncate_tool_result(event: dict[str, Any]) -> dict[str, Any]:
     """Cap an oversized tool result, live and stored.
 
     Image results are exempt: the agents service already replaced the original
@@ -334,6 +334,47 @@ def _truncate_tool_result(event: dict[str, Any]) -> dict[str, Any]:
     if len(content) <= limit or "preview_base64" in content:
         return event
     return {**event, "content": content[:limit], "truncated": True}
+
+
+def append_coalesced(log: list[dict[str, Any]], event: dict[str, Any]) -> None:
+    """Append ``event`` to a stored AG-UI event log, merging consecutive deltas.
+
+    The one coalescing rule for every durable event log: a run's
+    ``messages.raw_events`` and a background task's
+    ``conversation_tasks.raw_events`` (plan 41) — so a task's drill-down
+    hydrates exactly like a run's timeline. Text and tool-argument deltas of
+    the same message / call collapse into one event (``timestampEnd`` keeps the
+    last one's time); ``SUBAGENT_EVENT`` envelopes merge one level down, on the
+    same ``task_id``. A copy is stored, never the caller's dict.
+    """
+    stored = deepcopy(event)
+    if log:
+        last = log[-1]
+        if _merge_delta_into(last, stored):
+            last["seq"] = stored.get("seq", last.get("seq"))
+            return
+        # SUBAGENT_EVENT envelopes wrap the inner delta, so the merge has
+        # to happen one level down: same task_id + mergeable inner events.
+        if (
+            last.get("type") == "CUSTOM"
+            and stored.get("type") == "CUSTOM"
+            and last.get("name") == "SUBAGENT_EVENT"
+            and stored.get("name") == "SUBAGENT_EVENT"
+        ):
+            last_value, stored_value = last.get("value"), stored.get("value")
+            if (
+                isinstance(last_value, dict)
+                and isinstance(stored_value, dict)
+                and last_value.get("task_id") == stored_value.get("task_id")
+                and isinstance(last_value.get("event"), dict)
+                and isinstance(stored_value.get("event"), dict)
+                and _merge_delta_into(last_value["event"], stored_value["event"])
+            ):
+                last["seq"] = stored.get("seq", last.get("seq"))
+                if stored.get("timestamp") is not None:
+                    last["timestampEnd"] = stored["timestamp"]
+                return
+    log.append(stored)
 
 
 class InferenceRunRuntime:
@@ -578,34 +619,7 @@ class InferenceRunRuntime:
         return max(0, round(end - start))
 
     def _append_raw(self, event: dict[str, Any]) -> None:
-        stored = deepcopy(event)
-        if self.raw_events:
-            last = self.raw_events[-1]
-            if _merge_delta_into(last, stored):
-                last["seq"] = stored.get("seq", last.get("seq"))
-                return
-            # SUBAGENT_EVENT envelopes wrap the inner delta, so the merge has
-            # to happen one level down: same task_id + mergeable inner events.
-            if (
-                last.get("type") == "CUSTOM"
-                and stored.get("type") == "CUSTOM"
-                and last.get("name") == "SUBAGENT_EVENT"
-                and stored.get("name") == "SUBAGENT_EVENT"
-            ):
-                last_value, stored_value = last.get("value"), stored.get("value")
-                if (
-                    isinstance(last_value, dict)
-                    and isinstance(stored_value, dict)
-                    and last_value.get("task_id") == stored_value.get("task_id")
-                    and isinstance(last_value.get("event"), dict)
-                    and isinstance(stored_value.get("event"), dict)
-                    and _merge_delta_into(last_value["event"], stored_value["event"])
-                ):
-                    last["seq"] = stored.get("seq", last.get("seq"))
-                    if stored.get("timestamp") is not None:
-                        last["timestampEnd"] = stored["timestamp"]
-                    return
-        self.raw_events.append(stored)
+        append_coalesced(self.raw_events, event)
 
     def apply_event(self, event: dict[str, Any]) -> dict[str, Any] | None:
         """Fold one upstream AG-UI event into the run state and return the
@@ -624,13 +638,13 @@ class InferenceRunRuntime:
         self.next_seq += 1
 
         if event_type == "TOOL_CALL_RESULT":
-            event = _truncate_tool_result(event)
+            event = truncate_tool_result(event)
         elif event_type == "CUSTOM" and event.get("name") == "SUBAGENT_EVENT":
             value = event.get("value")
             if isinstance(value, dict):
                 inner = value.get("event")
                 if isinstance(inner, dict) and inner.get("type") == "TOOL_CALL_RESULT":
-                    truncated = _truncate_tool_result(inner)
+                    truncated = truncate_tool_result(inner)
                     if truncated is not inner:
                         event = {**event, "value": {**value, "event": truncated}}
         event = {**event, "seq": self.next_seq}
@@ -708,6 +722,34 @@ class InferenceRunRuntime:
 
         self._append_raw(event)
         return event
+
+
+#: What runs after a run has ended and its terminal frame is out. Registered
+#: by the features that react to a run ending (plan 41: the composer's queued
+#: message and the background-task wake-up safety net, utils/task_wakeups.py)
+#: — a registry rather than an import, because those modules start runs
+#: through this one.
+RunFinishedHook = Callable[[str, Callable[[], AsyncSession]], Awaitable[None]]
+_run_finished_hooks: list[RunFinishedHook] = []
+
+
+def register_run_finished_hook(hook: RunFinishedHook) -> None:
+    """Call ``hook(run_id, session_factory)`` after every run's terminal frame.
+
+    ``session_factory`` is this module's ``SessionLocal`` as it is at call
+    time, so the hook reads the database the run was written to. A hook must
+    not raise; one that does is logged and the others still run.
+    """
+    if hook not in _run_finished_hooks:
+        _run_finished_hooks.append(hook)
+
+
+async def _run_finished(run_id: str) -> None:
+    for hook in list(_run_finished_hooks):
+        try:
+            await hook(run_id, SessionLocal)
+        except Exception:
+            logger.error("run_finished_hook_failed", "A run-finished hook failed", exc_info=True, run_id=run_id)
 
 
 class InferenceRunManager:
@@ -1180,7 +1222,7 @@ class InferenceRunManager:
                         marker = runtime.apply_event({
                             "type": "CUSTOM",
                             "name": "BRIDGE_HITL_RESOLVED",
-                            "value": hitl_resolved_value(resume_payload, _overall_decision(resume_payload)),
+                            "value": hitl_resolved_value(resume_payload, overall_hitl_decision(resume_payload)),
                             "timestamp": int(time.time() * 1000),
                         })
                         if marker is not None:
@@ -1448,6 +1490,9 @@ class InferenceRunManager:
                     exc_info=True,
                     run_id=run_id,
                 )
+            # The conversation's slot is free and observers have the final
+            # state: now its queued message, or a pending wake-up, may start.
+            await _run_finished(run_id)
 
 
 inference_run_manager = InferenceRunManager()

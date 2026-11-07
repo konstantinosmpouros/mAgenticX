@@ -28,6 +28,10 @@ class Availability(str, Enum):
     SEARCH_PAST_CONVS = "search_past_convs"
     CONVERSATION = "conversation"
     SANDBOX = "sandbox"
+    #: The async task tools (plan 41): only where async sub-agents are on.
+    ASYNC_SUBAGENTS = "async_subagents"
+    #: The blocking ``task`` tool: only while async sub-agents are off.
+    SYNC_SUBAGENTS = "sync_subagents"
 
 
 _UNAVAILABLE_REASON: dict[Availability, str] = {
@@ -35,6 +39,8 @@ _UNAVAILABLE_REASON: dict[Availability, str] = {
     Availability.SEARCH_PAST_CONVS: "Past-conversation search is off in Personalization.",
     Availability.CONVERSATION: "Needs a conversation.",
     Availability.SANDBOX: "Sandboxed execution is disabled on this deployment.",
+    Availability.ASYNC_SUBAGENTS: "Background sub-agents are off on this deployment.",
+    Availability.SYNC_SUBAGENTS: "Replaced by start_async_task: sub-agents run in the background.",
 }
 
 
@@ -53,6 +59,26 @@ class BuiltinTool:
     gateable: bool = True
     availability: Availability = Availability.ALWAYS
 
+
+#: deepagents' tool that starts a background sub-agent (plan 41). It owns the
+#: delegation gate ``task`` had.
+START_ASYNC_TASK_TOOL_NAME = "start_async_task"
+
+#: Gate keys that are one gate under two names: ``task`` (blocking delegation)
+#: and ``start_async_task`` (its async successor) both mean "ask before
+#: delegating". The bridge migrated stored preferences ``task`` ->
+#: ``start_async_task`` and stored agent definitions may still say ``task``, so
+#: whichever spelling a layer uses must gate whichever tool the run has —
+#: ``task`` while ``ASYNC_SUBAGENTS_ENABLED`` is off, ``start_async_task`` once
+#: it is on. Symmetric on purpose (see ``gates.with_gate_aliases``).
+GATE_ALIASES: dict[str, str] = {
+    "task": START_ASYNC_TASK_TOOL_NAME,
+    START_ASYNC_TASK_TOOL_NAME: "task",
+}
+
+#: Deprecated gate keys an agent definition may still use, and the key they are
+#: rewritten to on load (``AgentSpec``). Accepted for one release after plan 41.
+DEPRECATED_GATE_KEYS: dict[str, str] = {"task": START_ASYNC_TASK_TOOL_NAME}
 
 #: deepagents' sandbox tool. Named once so the approval merge can force its
 #: gate by name (``gates.resolve_interrupt_on``) and validation can refuse a
@@ -76,7 +102,47 @@ BUILTIN_TOOLS: tuple[BuiltinTool, ...] = (
         locked=True,
         availability=Availability.SANDBOX,
     ),
-    BuiltinTool("task", "Delegation", "Delegate to a sub-agent.", hitl_default=True),
+    BuiltinTool(
+        "task",
+        "Delegation",
+        "Delegate to a sub-agent.",
+        hitl_default=True,
+        availability=Availability.SYNC_SUBAGENTS,
+    ),
+    # deepagents' async sub-agent tools (plan 41). Starting a task takes over
+    # `task`'s gate; following one up is driven by the user through the
+    # orchestrator, so those are not gated by default.
+    BuiltinTool(
+        START_ASYNC_TASK_TOOL_NAME,
+        "Delegation",
+        "Start a sub-agent in the background; it returns at once.",
+        hitl_default=True,
+        availability=Availability.ASYNC_SUBAGENTS,
+    ),
+    BuiltinTool(
+        "check_async_task",
+        "Delegation",
+        "Check a background sub-agent's status and result.",
+        availability=Availability.ASYNC_SUBAGENTS,
+    ),
+    BuiltinTool(
+        "update_async_task",
+        "Delegation",
+        "Send a background sub-agent a follow-up instruction.",
+        availability=Availability.ASYNC_SUBAGENTS,
+    ),
+    BuiltinTool(
+        "cancel_async_task",
+        "Delegation",
+        "Stop a background sub-agent.",
+        availability=Availability.ASYNC_SUBAGENTS,
+    ),
+    BuiltinTool(
+        "list_async_tasks",
+        "Delegation",
+        "List the background sub-agents and their status.",
+        availability=Availability.ASYNC_SUBAGENTS,
+    ),
     BuiltinTool("remember", "Memory", availability=Availability.USE_MEMORY),
     BuiltinTool("forget", "Memory", hitl_default=True, availability=Availability.USE_MEMORY),
     BuiltinTool(
@@ -113,14 +179,41 @@ def locked_gates() -> dict[str, bool]:
 MAIN_ONLY_TOOLS: frozenset[str] = frozenset({"ask_user"})
 
 
-def builtin_tool_catalog(*, sandbox_enabled: bool = False) -> list[dict[str, Any]]:
+def _deployment_has(tool: BuiltinTool, *, sandbox_enabled: bool, async_subagents: bool) -> bool:
+    """Whether this deployment can give any run ``tool`` at all."""
+    if tool.availability is Availability.SANDBOX:
+        return sandbox_enabled
+    if tool.availability is Availability.ASYNC_SUBAGENTS:
+        return async_subagents
+    if tool.availability is Availability.SYNC_SUBAGENTS:
+        return not async_subagents
+    return True
+
+
+def replaced_by_delegation_mode(tool: BuiltinTool, *, async_subagents: bool) -> bool:
+    """Whether ``tool`` belongs to the delegation mode this deployment does not
+    run: ``task`` while async sub-agents are on, the five async task tools while
+    they are off. Such a tool is not "unavailable for this run" — no run here
+    can have it — so the tool lists leave it out rather than greying it."""
+    if tool.availability is Availability.SYNC_SUBAGENTS:
+        return async_subagents
+    if tool.availability is Availability.ASYNC_SUBAGENTS:
+        return not async_subagents
+    return False
+
+
+def builtin_tool_catalog(
+    *, sandbox_enabled: bool = False, async_subagents: bool = False
+) -> list[dict[str, Any]]:
     """Every prebuilt tool as the agent builder lists it (``GET /builtin-tools``):
     what it does, its group, and how its approval behaves.
 
     A sandbox-only tool (``execute``) is listed only where sandboxed execution
-    is active, so the builder never offers a gate for a tool no run can have.
-    It stays in :data:`BUILTIN_BY_NAME` either way — that roster is also the
-    reserved-name list MCP tools are filtered against."""
+    is active, and the delegation tools only in the mode the deployment runs —
+    ``task`` while async sub-agents are off, the five async task tools once
+    they are on — so the builder never offers a gate for a tool no run can
+    have. They all stay in :data:`BUILTIN_BY_NAME` either way — that roster is
+    also the reserved-name list MCP tools are filtered against."""
     return [
         {
             "name": t.name,
@@ -132,7 +225,7 @@ def builtin_tool_catalog(*, sandbox_enabled: bool = False) -> list[dict[str, Any
             "mainOnly": t.name in MAIN_ONLY_TOOLS,
         }
         for t in BUILTIN_TOOLS
-        if sandbox_enabled or t.availability is not Availability.SANDBOX
+        if _deployment_has(t, sandbox_enabled=sandbox_enabled, async_subagents=async_subagents)
     ]
 
 
@@ -148,14 +241,20 @@ def resolve_availability(
     search_past_convs: bool,
     has_conversation: bool,
     sandbox_enabled: bool,
+    async_subagents: bool = False,
 ) -> tuple[bool, str | None]:
-    """Whether this run actually has ``tool``, and why not when it does not."""
+    """Whether this run actually has ``tool``, and why not when it does not.
+
+    ``async_subagents`` defaults to off — today's blocking ``task`` — until the
+    caller reads the deployment flag (plan 41)."""
     present = {
         Availability.ALWAYS: True,
         Availability.USE_MEMORY: use_memory,
         Availability.SEARCH_PAST_CONVS: search_past_convs,
         Availability.CONVERSATION: has_conversation,
         Availability.SANDBOX: sandbox_enabled,
+        Availability.ASYNC_SUBAGENTS: async_subagents,
+        Availability.SYNC_SUBAGENTS: not async_subagents,
     }[tool.availability]
     return present, None if present else _UNAVAILABLE_REASON[tool.availability]
 
@@ -166,8 +265,12 @@ __all__ = [
     "MAIN_ONLY_TOOLS",
     "Availability",
     "BuiltinTool",
+    "DEPRECATED_GATE_KEYS",
     "EXECUTE_TOOL_NAME",
+    "GATE_ALIASES",
+    "START_ASYNC_TASK_TOOL_NAME",
     "builtin_hitl_defaults",
+    "replaced_by_delegation_mode",
     "builtin_tool_catalog",
     "is_builtin",
     "locked_gates",

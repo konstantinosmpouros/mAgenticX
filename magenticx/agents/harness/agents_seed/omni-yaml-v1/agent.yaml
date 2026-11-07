@@ -38,4 +38,4 @@ hitl:                # HITL_GATED_TOOLS — approval before these run
   write_file: true
   edit_file: true
   execute: true
-  task: true
+  start_async_task: true   # gates `task` too while async sub-agents are off

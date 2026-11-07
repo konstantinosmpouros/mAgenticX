@@ -87,6 +87,8 @@ os.environ.setdefault("WORKFLOW_READ_RATE_LIMIT_MAX_ATTEMPTS", "1000000")
 os.environ.setdefault("WORKFLOW_MUTATE_RATE_LIMIT_MAX_ATTEMPTS", "1000000")
 os.environ.setdefault("WORKFLOW_BUILDER_RATE_LIMIT_MAX_ATTEMPTS", "1000000")
 os.environ.setdefault("WORKFLOW_RUN_RATE_LIMIT_MAX_ATTEMPTS", "1000000")
+os.environ.setdefault("TASK_READ_RATE_LIMIT_MAX_ATTEMPTS", "1000000")
+os.environ.setdefault("TASK_MUTATE_RATE_LIMIT_MAX_ATTEMPTS", "1000000")
 
 from main import app as bridge_app
 
@@ -110,6 +112,8 @@ from utils.compaction_lock import compaction_locks
 from utils.event_log import event_log as run_event_log
 from utils.trial_drafts import trial_drafts
 from utils.workflow_runs import workflow_event_log
+from utils.conversation_channel import conversation_channel
+from utils.task_streams import task_streams
 
 # Every raw-Redis singleton the app holds. Left alone, each would dial the real
 # (absent) server on first use: the logout denylist and revocation checks run
@@ -118,8 +122,10 @@ from utils.workflow_runs import workflow_event_log
 # still swap their own in (test_event_log, test_multi_account).
 _REDIS_HOLDERS = (
     logout_denylist, session_revocation, refresh_guard, parked_sessions, compaction_locks, run_event_log, trial_drafts,
-    workflow_event_log,
+    workflow_event_log, conversation_channel, task_streams,
 )
+# Holders with a second pool for blocking stream reads.
+_REDIS_READERS = (run_event_log, workflow_event_log, conversation_channel, task_streams)
 import router.auth as auth_router_module
 from core.auth.providers import AuthIdentity
 from core.auth.session import require_csrf_protection
@@ -149,17 +155,17 @@ async def _in_process_redis():
     await _app_redis.flushall()
     for holder in _REDIS_HOLDERS:
         holder._client = _app_redis
-    # The event log's second pool, for its blocking live-tail reads.
-    run_event_log._reader = _app_redis
-    workflow_event_log._reader = _app_redis
+    # The event logs' second pools, for their blocking live-tail reads.
+    for holder in _REDIS_READERS:
+        holder._reader = _app_redis
     oidc_module._redis = _app_redis
     yield
     # The event log's second pool, for its blocking live-tail reads.
     run_event_log._reader = _app_redis
     for holder in _REDIS_HOLDERS:
         holder._client = None
-    run_event_log._reader = None
-    workflow_event_log._reader = None
+    for holder in _REDIS_READERS:
+        holder._reader = None
     oidc_module._redis = None
 
     run_event_log._reader = None

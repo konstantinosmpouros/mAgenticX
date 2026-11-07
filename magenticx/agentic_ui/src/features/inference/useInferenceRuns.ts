@@ -12,6 +12,7 @@ import {
   getActiveInferenceRuns,
   resumeInferenceRun,
   startInference,
+  startInferenceOrQueue,
   type ResumeInferenceRunBody,
 } from "@/shared/lib/api";
 import { toastError } from "@/shared/lib/toast";
@@ -39,6 +40,7 @@ import type {
   ConversationSummary,
   InferenceRun,
   InferenceRunEvent,
+  InferenceStartOutcome,
   InferenceStartRequest,
   InferenceStartResponse,
   MessageOut,
@@ -430,12 +432,13 @@ export function useInferenceRuns({
     };
   }, [userId]);
 
-  const beginRun = useCallback(
-    async (request: InferenceStartRequest): Promise<InferenceStartResponse> => {
-      if (!userId) {
-        throw new Error("Not authenticated.");
-      }
-      const response = await startInference(userId, request);
+  /**
+   * Take a started run into the views: the sidebar row, the open conversation
+   * (the server detail replaces the optimistic one), the run itself, and its
+   * observer. Shared by a plain start and a queue-aware start that started.
+   */
+  const adoptStartResponse = useCallback(
+    (response: InferenceStartResponse) => {
       setConversations((prev) => {
         // A private conversation must never enter the sidebar list. Every bridge
         // listing endpoint filters `is_private`, so a row inserted here is a
@@ -468,9 +471,53 @@ export function useInferenceRuns({
         summary: response.summary,
       });
       observeRun(response.run);
+    },
+    [applyRunEvent, observeRun, setConversations, setCurrentConversation],
+  );
+
+  const beginRun = useCallback(
+    async (request: InferenceStartRequest): Promise<InferenceStartResponse> => {
+      if (!userId) {
+        throw new Error("Not authenticated.");
+      }
+      const response = await startInference(userId, request);
+      adoptStartResponse(response);
       return response;
     },
-    [applyRunEvent, observeRun, setConversations, setCurrentConversation, userId],
+    [adoptStartResponse, userId],
+  );
+
+  /**
+   * Send while the conversation may have a run going (plan 41 §3.6): the
+   * bridge either starts the run (taken in exactly like `beginRun`) or holds
+   * the message as the conversation's one queued message.
+   */
+  const beginOrQueueRun = useCallback(
+    async (request: InferenceStartRequest): Promise<InferenceStartOutcome> => {
+      if (!userId) {
+        throw new Error("Not authenticated.");
+      }
+      const outcome = await startInferenceOrQueue(userId, request);
+      if (!outcome.queued) adoptStartResponse(outcome.response);
+      return outcome;
+    },
+    [adoptStartResponse, userId],
+  );
+
+  /**
+   * Follow a run this client did not start — a wake-up run reporting a
+   * background task's result, the queued message going out, a scheduled run —
+   * announced by the conversation channel's `run_started` frame. It is taken in
+   * exactly like a run the client started: its snapshot paints it, and the run
+   * socket follows it.
+   */
+  const attachRun = useCallback(
+    (run: InferenceRun) => {
+      if (!userId || !run.id || controllersRef.current[run.id]) return;
+      applyRunEvent({ type: "snapshot", run });
+      observeRun(run);
+    },
+    [applyRunEvent, observeRun, userId],
   );
 
   const stopRun = useCallback(
@@ -582,6 +629,8 @@ export function useInferenceRuns({
   return {
     runsByConversation,
     beginRun,
+    beginOrQueueRun,
+    attachRun,
     stopRun,
     resumeRun,
     isDecisionInFlight,

@@ -691,6 +691,81 @@ class BridgeSettings(BaseSettings):
         return f"{self.base_url.rstrip('/')}{self.conversations_path}"
 
 
+class RedisSettings(BaseSettings):
+    """The Redis this service writes its background-task streams to (plan 41).
+
+    Mirrors the bridge's ``RedisSettings``: the same ``REDIS_URL`` and the same
+    file-backed ``REDIS_PASSWORD`` secret. ``rediss://`` (Dennis) verifies the
+    server against the internal CA; plain ``redis://`` is local dev. The client
+    is opened only when async sub-agents are on, so a deployment with the flag
+    off never connects.
+    """
+    model_config = _BASE_MODEL_CONFIG
+
+    url: str = Field("redis://redis:6379/0", validation_alias="REDIS_URL")
+    password: SecretStr = Field(default_factory=lambda: SecretStr(""))
+
+    @field_validator("password", mode="before")
+    @classmethod
+    def _load_password(cls, value: object) -> object:
+        if isinstance(value, SecretStr) and value.get_secret_value():
+            return value
+        if isinstance(value, str) and value:
+            return value
+        resolved = _resolve_file_backed_secret("REDIS_PASSWORD")
+        return resolved if resolved else ""
+
+
+class AsyncTasksSettings(BaseSettings):
+    """Async sub-agents (plan 41): every sub-agent runs as a background task.
+
+    ``enabled`` is on by default: every sub-agent is an async background task.
+    It is not set in any compose file. ``ASYNC_SUBAGENTS_ENABLED=false`` remains
+    only as an emergency switch back to the blocking ``task`` tool until the
+    cut-over removes that path. The caps fail closed: a refused start is a tool
+    error the model reads, never a hang.
+    """
+    model_config = _BASE_MODEL_CONFIG
+
+    enabled: bool = Field(True, validation_alias="ASYNC_SUBAGENTS_ENABLED")
+    # Concurrent unsettled tasks (pending, running, waiting on children) per user.
+    max_active_per_user: int = Field(16, ge=1, le=1000, validation_alias="ASYNC_TASKS_MAX_ACTIVE_PER_USER")
+    # Unsettled children one parent (the orchestrator's branch, or a task) may have.
+    max_children_per_task: int = Field(8, ge=1, le=100, validation_alias="ASYNC_TASKS_MAX_CHILDREN_PER_TASK")
+    # The watchdog: one run longer than this is stopped and the task errors.
+    run_timeout_seconds: int = Field(1800, ge=10, le=86400, validation_alias="ASYNC_TASKS_RUN_TIMEOUT_SECONDS")
+    # Runs one task may have in all (start, updates, resumes, wake-ups).
+    max_runs_per_task: int = Field(50, ge=1, le=1000, validation_alias="ASYNC_TASKS_MAX_RUNS_PER_TASK")
+    # Lifetime of a task-launch token. A token is minted when an agent is built
+    # (per request / per task run), so it must outlive the longest run.
+    launch_token_ttl_seconds: int = Field(7200, ge=60, le=86400, validation_alias="ASYNC_TASKS_LAUNCH_TOKEN_TTL_SECONDS")
+    # The HMAC key of the launch token. Empty = derived from TRUSTED_PROXY_SECRET
+    # with a domain label (stable across replicas, never the raw secret).
+    launch_secret: SecretStr = Field(default_factory=lambda: SecretStr(""))
+    # The Agent Protocol base URL the middleware is given. Requests never leave
+    # the process (an in-process ASGI transport serves them), so this is only a
+    # name; it is what makes deepagents treat the sub-agent as remote (no
+    # forwarded context, no parent wake-up of its own).
+    self_url: str = Field("http://agents.internal", validation_alias="ASYNC_TASKS_SELF_URL")
+    # task:{id}:events — entries kept (approximate), and seconds kept after settle.
+    events_maxlen: int = Field(20000, ge=100, validation_alias="ASYNC_TASKS_EVENTS_MAXLEN")
+    events_ttl_seconds: int = Field(3600, ge=60, validation_alias="ASYNC_TASKS_EVENTS_TTL_SECONDS")
+    # tasks:status / tasks:outbox — entries kept (approximate).
+    streams_maxlen: int = Field(10000, ge=100, validation_alias="ASYNC_TASKS_STREAMS_MAXLEN")
+    # Characters of a result kept as TaskOut.result_preview (§14.1 caps it at 2000).
+    result_preview_chars: int = Field(2000, ge=100, le=2000, validation_alias="ASYNC_TASKS_RESULT_PREVIEW_CHARS")
+
+    @field_validator("launch_secret", mode="before")
+    @classmethod
+    def _load_launch_secret(cls, value: object) -> object:
+        if isinstance(value, SecretStr) and value.get_secret_value():
+            return value
+        if isinstance(value, str) and value:
+            return value
+        resolved = _resolve_file_backed_secret("ASYNC_TASKS_LAUNCH_SECRET")
+        return resolved or ""
+
+
 # ---------------------------------------------------------------------------
 # Top-level settings
 # ---------------------------------------------------------------------------
@@ -719,6 +794,8 @@ class Settings(BaseSettings):
     summarization: SummarizationSettings = Field(default_factory=SummarizationSettings)
     rate_limit_retry: RateLimitRetrySettings = Field(default_factory=RateLimitRetrySettings)
     agui: AguiSettings = Field(default_factory=AguiSettings)
+    redis: RedisSettings = Field(default_factory=RedisSettings)
+    async_tasks: AsyncTasksSettings = Field(default_factory=AsyncTasksSettings)
 
     @model_validator(mode="after")
     def _require_proxy_secret(self) -> "Settings":

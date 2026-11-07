@@ -1,8 +1,9 @@
 """The deep agents' summarizer: when the conversation is compacted, and how that is reported.
 
 deepagents keeps a compaction as one private key in the branch's checkpoint,
-``_summarization_event`` = ``{cutoff_index, summary_message, file_path}``; every
-later model call sees ``summary + messages[cutoff:]``. This module tunes when it
+``_summarization_event`` = ``{cutoff_index, cutoff_message_id, summary_message,
+file_path, created_at_index}``; every later model call sees ``summary +
+messages[cutoff:]``. This module tunes when it
 fires on its own, where every compaction cuts (the latest question, plan 34),
 and stamps an automatic compaction on the reply that follows it, so the AG-UI
 normalizer can show it in the conversation.
@@ -14,6 +15,7 @@ from deepagents._models import resolve_model
 from deepagents.middleware.summarization import SummarizationMiddleware
 from langchain.agents.middleware.types import ExtendedModelResponse
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
+from langgraph.config import get_config
 
 from core.settings import settings
 from core.logging import get_logger
@@ -28,6 +30,11 @@ _STOCK_SUMMARIZATION_NAME = "SummarizationMiddleware"
 
 #: The private state key deepagents stores a compaction under.
 EVENT_KEY = "_summarization_event"
+
+#: The private state key deepagents 0.7 records the offloaded-history file's
+#: id under (``/conversation_history/<id>.md``). Ours is the branch thread id
+#: (see ``ConfigurableSummarizationMiddleware._get_session_id``).
+SESSION_ID_KEY = "_summarization_session_id"
 
 #: Key on ``AIMessage.response_metadata`` the normalizer reads: set on the reply
 #: of the model call an automatic compaction ran in front of.
@@ -133,7 +140,24 @@ class ConfigurableSummarizationMiddleware(SummarizationMiddleware):
         self.keep_spec = keep
 
     def _determine_cutoff_index(self, messages: list[AnyMessage]) -> int:
+        """Cut at the latest question (plan 34) instead of keeping a share of the window."""
         return summary_cutoff(messages)
+
+    def _get_session_id(self, state: Any) -> str:
+        """Name the offloaded-history file after the branch thread, as deepagents 0.6.x did.
+
+        0.7 names it by an id it keeps in the state, but a fork copies the
+        state to the new branch's thread, so both branches would append to one
+        file. The thread id is per branch; deepagents' own id is the fallback
+        outside a run.
+        """
+        try:
+            thread_id = (get_config().get("configurable") or {}).get("thread_id")
+        except RuntimeError:
+            thread_id = None
+        if thread_id is not None:
+            return str(thread_id)
+        return super()._get_session_id(state)
 
     async def awrap_model_call(self, request: Any, handler: Callable[[Any], Awaitable[Any]]) -> Any:
         state = request.state or {}

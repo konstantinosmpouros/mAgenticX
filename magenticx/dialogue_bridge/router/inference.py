@@ -1,6 +1,6 @@
 import asyncio
 
-from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, WebSocket, WebSocketDisconnect, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from core.logging import get_logger, set_context
 
@@ -11,6 +11,7 @@ from schema import (
     InferenceStartResponse,
     InferenceRunOut,
     InferenceRunResumeIn,
+    QueuedStartResponse,
 )
 from core.auth.session import AuthUser, authenticate_websocket_user, require_csrf_protection
 from core.security.rate_limit import allow_ws_connect, inference_rate_limit
@@ -28,6 +29,7 @@ from utils.inference_runs import (
     SNAPSHOT_SEQ_SENTINEL,
 )
 from utils.hitl_decisions import ResumeOutcome
+from utils.composer_queue import queue_if_busy
 from utils.inference_start import start_inference_flow
 
 
@@ -47,12 +49,13 @@ router = APIRouter()
 
 @router.post(
     "/runs/{user_id}/start",
-    response_model=InferenceStartResponse,
+    response_model=InferenceStartResponse | QueuedStartResponse,
     status_code=status.HTTP_201_CREATED,
 )
 async def startInferenceFlow(
     user_id: str,
     payload: InferenceStartPayload,
+    response: Response,
     current_user: AuthUser = Depends(validate_userId),
     _: None = Depends(require_csrf_protection),
     # Per-user run-start ceiling.
@@ -60,19 +63,28 @@ async def startInferenceFlow(
     # so it must only ever count requests that user actually made.
     _rate_limited: None = Depends(inference_rate_limit),
     db: AsyncSession = Depends(get_db),
-) -> InferenceStartResponse:
-    """Persist the user-side action, create the AI placeholder, and launch a backend-owned run."""
+) -> InferenceStartResponse | QueuedStartResponse:
+    """Persist the user-side action, create the AI placeholder, and launch a backend-owned run.
+
+    With ``queue_if_busy`` on a ``send`` to a conversation that has an active
+    run, the message is queued instead (202, plan 41 §3.6) and sent when that
+    run ends; without it, that case stays a 409.
+    """
     set_context(user_id=user_id, conversation_id=payload.conversationId)
-    response = await start_inference_flow(db=db, user=current_user, payload=payload)
+    queued = await queue_if_busy(db, current_user, payload)
+    if queued is not None:
+        response.status_code = status.HTTP_202_ACCEPTED
+        return queued
+    started = await start_inference_flow(db=db, user=current_user, payload=payload)
     try:
-        inference_run_manager.launch(response.run.id)
+        inference_run_manager.launch(started.run.id)
     except Exception as exc:
-        await mark_run_launch_failed(response.run.id)
+        await mark_run_launch_failed(started.run.id)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Inference run could not be launched.",
         ) from exc
-    return response
+    return started
 
 
 @router.get("/runs/{user_id}", response_model=list[InferenceRunOut])

@@ -5,14 +5,19 @@ deepagents exposes its built-in ``execute`` tool exactly when the composite
 (``deepagents.middleware.filesystem.supports_execution``). This class is that
 backend, and the only one in the service: ``build_workspace_backend`` mints it
 when ``settings.filesystem.sandbox_execution_active`` (the flag AND a runner
-URL), and ``StateBackend`` otherwise.
+URL), and the plain ``BranchScratchBackend`` otherwise.
 
 What it does, and what it deliberately does not:
 
-* **File operations are unchanged.** It *is* a ``StateBackend`` — the scratch
-  default every deep agent already had — so ``ls``/``read_file``/``write_file``
-  on paths outside the mounted routes behave exactly as before. Only
-  ``execute`` / ``aexecute`` / ``id`` are new.
+* **File operations are the workspace default's.** It *is* a
+  :class:`~harness.filesystem.scratch_backend.BranchScratchBackend` — the
+  branch scratch store every deep agent's default route uses (plan 41 §3.7) —
+  so ``ls``/``read_file``/``write_file`` on paths outside the mounted routes
+  read and write the same shared rows whether execution is on or off, and the
+  orchestrator and its async tasks see one another's files. Only
+  ``execute`` / ``aexecute`` / ``id`` are new. The scratch files do not travel
+  into the box: the runner's contract takes ``input/`` and ``output/`` only,
+  so a command works on ``/conversation/`` (below), exactly as before.
 * **``execute`` never runs anything here.** It is one ``POST /v1/exec`` to the
   runner over mTLS with the trusted-proxy header — the same two controls as
   every internal hop. The agents container still has no Docker socket and no
@@ -44,6 +49,7 @@ and a returned file is accepted only as a normalised path under
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
 import hashlib
@@ -51,7 +57,6 @@ import re
 from typing import Any, Literal
 
 import httpx
-from deepagents.backends import StateBackend
 from deepagents.backends.protocol import ExecuteResponse, SandboxBackendProtocol
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -62,6 +67,8 @@ from core.settings import settings
 from harness.conversation_files import ConversationFiles, ConversationFilesBackend, InputsUnavailable
 from harness.conversation_files import paths as conv_paths
 from harness.filesystem.layout import safe_segment
+from harness.filesystem.scratch_backend import BranchScratchBackend
+from harness.filesystem.scratch_store import BranchScratchStore
 
 logger = get_logger(__name__)
 
@@ -192,10 +199,10 @@ def format_result(result: _ExecResult, notes: list[str] | None = None) -> Execut
     return ExecuteResponse(output=output, exit_code=result.exit_code, truncated=truncated)
 
 
-class RemoteSandboxBackend(StateBackend, SandboxBackendProtocol):
-    """``StateBackend`` file operations + ``execute`` in the sandbox runner.
+class RemoteSandboxBackend(BranchScratchBackend, SandboxBackendProtocol):
+    """Branch-scratch file operations + ``execute`` in the sandbox runner.
 
-    Bound to one run's identity; a fresh instance is minted per tool call by
+    Bound to one run's identity; one instance is minted per agent build by
     the workspace factory, which is cheap — nothing here opens a connection or
     reads a file until ``execute`` is called.
 
@@ -204,6 +211,10 @@ class RemoteSandboxBackend(StateBackend, SandboxBackendProtocol):
     output/ travel with each call and returned outputs are written back. The
     workspace always passes both; leaving them out sends no files (and is what
     the sync path does when there is no service loop to bridge onto).
+
+    ``scratch_store`` / ``branch_thread_id`` / ``loop`` are the default
+    route's, passed through to :class:`BranchScratchBackend` — the workspace
+    hands both backends the same store, so either sees the other's writes.
 
     ``transport`` / ``async_transport`` exist for tests (an ``httpx``
     ``MockTransport``); production passes neither and gets the internal TLS
@@ -218,14 +229,28 @@ class RemoteSandboxBackend(StateBackend, SandboxBackendProtocol):
         conversation_id: str,
         files: ConversationFiles | None = None,
         conversation_mount: ConversationFilesBackend | None = None,
+        scratch_store: BranchScratchStore | None = None,
+        branch_thread_id: str | None = None,
+        loop: asyncio.AbstractEventLoop | None = None,
         runner_url: str | None = None,
         transport: httpx.BaseTransport | None = None,
         async_transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
-        super().__init__()
-        self._user_id = _checked_id("user id", user_id)
-        self._agent_slug = _checked_id("agent slug", agent_slug)
-        self._conversation_id = _checked_id("conversation id", conversation_id)
+        # Identity first: a bad id fails the build before anything is bound.
+        checked_user = _checked_id("user id", user_id)
+        checked_agent = _checked_id("agent slug", agent_slug)
+        checked_conversation = _checked_id("conversation id", conversation_id)
+        super().__init__(
+            store=scratch_store if scratch_store is not None else BranchScratchStore(),
+            user_id=checked_user,
+            conversation_id=checked_conversation,
+            agent_slug=checked_agent,
+            branch_thread_id=branch_thread_id,
+            loop=loop,
+        )
+        self._user_id = checked_user
+        self._agent_slug = checked_agent
+        self._conversation_id = checked_conversation
         if (files is None) != (conversation_mount is None):
             raise ValueError("RemoteSandboxBackend needs both the conversation files and their mount, or neither.")
         if files is not None and (

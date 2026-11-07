@@ -63,6 +63,7 @@ from core.database import (
     ConversationReportTable,
     ConversationShareTable,
     ConversationTable,
+    ConversationTaskTable,
     MessageTable,
     MessageUsageTable,
     ScheduledTaskTable,
@@ -141,6 +142,19 @@ _MESSAGES = (
     MessageTable.cost_micros, MessageTable.unpriced_calls, MessageTable.truncated_calls,
     MessageTable.first_token_ms, MessageTable.ttft_ms, MessageTable.ttft_calls, MessageTable.gen_ms,
     MessageTable.gen_output_tokens,
+    # Plan 41: a background task's notice row and what it reported.
+    MessageTable.kind, MessageTable.task_notice,
+)
+# Background sub-agent tasks (plan 41): the mirror of each task, without its
+# event log (as messages are exported without theirs) — what it was asked,
+# by which answer, how it ended and what it spent.
+_CONVERSATION_TASKS = (
+    ConversationTaskTable.task_id, ConversationTaskTable.conversation_id,
+    ConversationTaskTable.parent_task_id, ConversationTaskTable.spawned_by_message_id,
+    ConversationTaskTable.depth, ConversationTaskTable.name, ConversationTaskTable.subagent_path,
+    ConversationTaskTable.description, ConversationTaskTable.model, ConversationTaskTable.status,
+    ConversationTaskTable.result_preview, ConversationTaskTable.error, ConversationTaskTable.usage,
+    ConversationTaskTable.started_at, ConversationTaskTable.settled_at,
 )
 # Where each answer's tokens went (plan 33): main agent vs each sub-agent, by model.
 _MESSAGE_USAGE = (
@@ -570,6 +584,14 @@ async def _all_messages(user_id: str) -> AsyncIterator[dict]:
             yield row
 
 
+async def _all_conversation_tasks(user_id: str) -> AsyncIterator[dict]:
+    # Per conversation, on ix_conversation_tasks_conversation_id, like messages.
+    async for conversation_id in _conversation_ids(user_id):
+        base = select(*_CONVERSATION_TASKS).where(ConversationTaskTable.conversation_id == conversation_id)
+        async for row in _pages(_by_id(base, ConversationTaskTable.task_id), lambda r: (r["task_id"],)):
+            yield row
+
+
 async def _all_message_usage(user_id: str) -> AsyncIterator[dict]:
     # Per conversation, like messages: each page is a small range on
     # ix_message_usage_conversation_id rather than a sort over every row the
@@ -650,6 +672,7 @@ moment it was created. All times are UTC.
 | `conversations/conversations.ndjson` | One conversation per line |
 | `conversations/messages.ndjson` | One message per line, with its `conversation_id` |
 | `conversations/message_usage.ndjson` | Where each answer's tokens went: the main agent and each sub-agent, by model |
+| `conversations/tasks.ndjson` | Background sub-agent tasks your conversations ran: what each was asked, how it ended and what it spent |
 | `conversations/tool_usage.ndjson` | How often each answer's tools ran, failed and took, by agent and tool (never their input or output) |
 | `conversations/attachments.ndjson` | One attachment per line; `archive_path` is where its file is in this archive (empty in a text-only export) |
 | `conversations/reports.ndjson` | Conversations you reported |
@@ -830,6 +853,7 @@ async def stream_export(user_id: str, *, include_attachments: bool, claim: Expor
             _ndjson(zs, em, "conversations/messages.ndjson", _all_messages(user_id)),
             _ndjson(zs, em, "conversations/message_usage.ndjson", _all_message_usage(user_id)),
             _ndjson(zs, em, "conversations/tool_usage.ndjson", _all_tool_usage(user_id)),
+            _ndjson(zs, em, "conversations/tasks.ndjson", _all_conversation_tasks(user_id)),
             _ndjson(zs, em, "conversations/attachments.ndjson", _all_attachments(user_id, include_attachments)),
             _ndjson(zs, em, "conversations/reports.ndjson",
                     _pages(_by_id(select(*_REPORTS).where(ConversationReportTable.user_id == user_id),

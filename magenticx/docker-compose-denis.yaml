@@ -119,6 +119,14 @@ services:
       - AGENT_RUNTIME_DATABASE_PASSWORD_FILE=/run/secrets/postgres_password
       - LANGGRAPH_STRICT_MSGPACK=true
       - LANGGRAPH_AES_KEY_FILE=/run/secrets/agent_runtime_aes_key
+      # Async sub-agents (plan 41, on by default): every sub-agent runs as a
+      # background task and the agents service writes its live events, status
+      # changes and "finished" doorbell to the stack's Redis, which the bridge
+      # reads. Same TLS (verified against INTERNAL_CA_CERT_PATH) and password
+      # secret as the bridge. Emergency switch back to blocking sub-agents:
+      # `- ASYNC_SUBAGENTS_ENABLED=false` and release.
+      - REDIS_URL=rediss://redis:6379/0
+      - REDIS_PASSWORD_FILE=/run/secrets/redis_password
       - LOG_FORMAT=json
       - LOG_REDACTION_SECRET_FILE=/run/secrets/log_redaction_secret
     secrets:
@@ -127,9 +135,11 @@ services:
       - postgres_password
       - agent_runtime_aes_key
       - log_redaction_secret
+      - redis_password
     depends_on:
       - rag_service
       - chat_postgres
+      - redis
     restart: unless-stopped
     deploy:
       update_config:

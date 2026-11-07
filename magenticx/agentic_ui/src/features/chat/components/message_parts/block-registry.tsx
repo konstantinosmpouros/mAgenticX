@@ -8,6 +8,8 @@ import type {
   MessageOut,
   SubagentBlock,
   SubagentRunStatus,
+  TaskRefBlock,
+  TaskSettledBlock,
   ThinkingBlock,
   TimelineBlock,
   TimelineTerminalStatus,
@@ -18,6 +20,8 @@ import { CompactionDivider } from "./CompactionDivider";
 import { ContentBlockView } from "./Content";
 import { CoTBlock } from "./CoTBlock";
 import { SubagentTreeCard } from "./SubagentTreeCard";
+import { TaskRefBlockView } from "./TaskRefBlockView";
+import { TaskSettledMarker } from "./TaskSettledMarker";
 
 // Cross-block state the sequencer computes and threads to each object. The
 // data model deliberately doesn't carry these — they depend on a block's
@@ -99,6 +103,10 @@ export const BLOCK_REGISTRY: Record<
       onOpen={ctx.onOpenSubagent}
     />
   ),
+  // Async tasks (plan 41): the launch point, live from the conversation's task
+  // tree, and the inline marker of a result pulled into this run.
+  task_ref: (block) => <TaskRefBlockView block={block as TaskRefBlock} />,
+  task_settled: (block) => <TaskSettledMarker block={block as TaskSettledBlock} />,
   thinking: (block, ctx) => (
     <CoTBlock
       block={block as ThinkingBlock}

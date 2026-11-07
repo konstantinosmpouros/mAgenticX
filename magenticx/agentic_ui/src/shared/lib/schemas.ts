@@ -1344,3 +1344,229 @@ export const toWorkflowRunStreamFrame = (raw: unknown) => {
   }
   return null;
 };
+
+// ---------------------------------------------------------------------------
+// Async sub-agent tasks (plan 41 §14) — every sub-agent runs as a background
+// task with its own lifecycle, outliving the run that started it. The bridge
+// sends these over REST (`GET …/tasks`, cancel, resume) and over two sockets:
+// the conversation channel (tree changes, runs the client did not start, the
+// composer queue) and one socket per task (that node's live AG-UI events).
+// Read leniently and in either casing — the bridge's DTOs mix snake_case and
+// camelCase — and `.transform`, so every output key stays required.
+// ---------------------------------------------------------------------------
+export const ASYNC_TASK_STATUSES = [
+  "pending",
+  "running",
+  "waiting_children",
+  "waiting",
+  "success",
+  "error",
+  "cancelled",
+] as const;
+export type AsyncTaskStatus = (typeof ASYNC_TASK_STATUSES)[number];
+/** The three statuses a task can rest in; anything else is still working. */
+export const SETTLED_ASYNC_TASK_STATUSES: readonly AsyncTaskStatus[] = [
+  "success",
+  "error",
+  "cancelled",
+];
+export const ASYNC_TASK_FRAME_EVENTS = ["TASK_STARTED", "TASK_STATUS", "TASK_SETTLED"] as const;
+export type AsyncTaskFrameEvent = (typeof ASYNC_TASK_FRAME_EVENTS)[number];
+
+// The first of `keys` the object carries (snake first, camel second).
+const atField = (raw: Record<string, unknown>, ...keys: string[]): unknown => {
+  for (const key of keys) {
+    if (raw[key] !== undefined && raw[key] !== null) return raw[key];
+  }
+  return undefined;
+};
+// An ISO timestamp (or epoch ms) as epoch ms; null when absent or unparseable.
+const atEpochMs = (value: unknown): number | null => {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string" || !value) return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+const atCount = (value: unknown): number =>
+  typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+// The bridge caps `result_preview` at 2000 characters (§14.1); the UI holds the
+// same bound so an over-long body never reaches the DOM whole.
+const RESULT_PREVIEW_MAX = 2000;
+
+const toAsyncTask = (raw: Record<string, unknown>) => {
+  const usage = wfRecord(raw.usage);
+  const preview = wfNullableString(atField(raw, "result_preview", "resultPreview"));
+  const depth = atField(raw, "depth");
+  return {
+    taskId: wfString(atField(raw, "task_id", "taskId")),
+    conversationId: wfString(atField(raw, "conversation_id", "conversationId")),
+    parentTaskId: wfNullableString(atField(raw, "parent_task_id", "parentTaskId")),
+    rootRunId: wfString(atField(raw, "root_run_id", "rootRunId")),
+    branchThreadId: wfString(atField(raw, "branch_thread_id", "branchThreadId")),
+    spawnedByMessageId: wfNullableString(
+      atField(raw, "spawned_by_message_id", "spawnedByMessageId"),
+    ),
+    depth: typeof depth === "number" && Number.isInteger(depth) && depth > 0 ? depth : 1,
+    name: wfString(raw.name, "sub-agent") || "sub-agent",
+    subagentPath: wfString(atField(raw, "subagent_path", "subagentPath")),
+    description: wfString(raw.description),
+    model: wfNullableString(raw.model),
+    // An unknown status reads as working, never as settled: a task the UI
+    // wrongly believed finished would lose its Stop button.
+    status: wfOneOf(ASYNC_TASK_STATUSES, raw.status, "running"),
+    resultPreview: preview ? preview.slice(0, RESULT_PREVIEW_MAX) : null,
+    error: wfNullableString(raw.error),
+    usage: {
+      inputTokens: atCount(atField(usage, "input_tokens", "inputTokens")),
+      outputTokens: atCount(atField(usage, "output_tokens", "outputTokens")),
+    },
+    startedAt: atEpochMs(atField(raw, "started_at", "startedAt")),
+    settledAt: atEpochMs(atField(raw, "settled_at", "settledAt")),
+  };
+};
+/** One `TaskOut` (cancel / resume answers). */
+export const AsyncTaskSchema = z.record(z.unknown()).transform(toAsyncTask);
+/** `GET …/tasks`: the conversation's tree, flat; rows without an id are dropped. */
+export const AsyncTaskListSchema = z
+  .array(z.unknown())
+  .catch([])
+  .transform((rows) =>
+    wfRecords(rows)
+      .map(toAsyncTask)
+      .filter((task) => task.taskId),
+  );
+export type AsyncTask = z.infer<typeof AsyncTaskSchema>;
+
+/**
+ * The one queued composer message (plan 41 §3.6). §14 leaves its shape open
+ * (`{...}`); the UI reads only what the chip shows — the text, how many files
+ * ride with it, its slash command — and tolerates anything else.
+ */
+const toQueuedMessageFields = (raw: Record<string, unknown>) => ({
+  id: wfNullableString(raw.id),
+  content: wfString(raw.content),
+  attachmentCount: Array.isArray(raw.attachments) ? raw.attachments.length : 0,
+  commandName: wfNullableString(wfRecord(raw.command).name),
+  queuedAt: atEpochMs(atField(raw, "queued_at", "queuedAt", "created_at", "createdAt")),
+});
+export const toQueuedMessage = (raw: unknown) =>
+  raw && typeof raw === "object" && !Array.isArray(raw)
+    ? toQueuedMessageFields(raw as Record<string, unknown>)
+    : null;
+export type QueuedMessage = NonNullable<ReturnType<typeof toQueuedMessage>>;
+
+/**
+ * `POST /runs/{user}/start` with `queue_if_busy`: either a started run (the
+ * usual body, mapped by the api layer) or the 202 `{queued, queued_message}`.
+ */
+export const InferenceStartOrQueueSchema = z.record(z.unknown()).transform((raw) =>
+  raw.queued === true
+    ? {
+        queued: true as const,
+        queuedMessage: toQueuedMessage(atField(raw, "queued_message", "queuedMessage")),
+      }
+    : { queued: false as const, body: raw },
+);
+
+/**
+ * `messages.task_notice` (plan 41 §14.4): what the notice row of a wake-up
+ * says — which task, how it ended, how long it took. Null for anything else.
+ */
+export const toTaskNotice = (raw: unknown) => {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const record = raw as Record<string, unknown>;
+  const taskId = wfString(atField(record, "task_id", "taskId"));
+  if (!taskId) return null;
+  const duration = atField(record, "duration_ms", "durationMs");
+  return {
+    taskId,
+    name: wfString(record.name, "sub-agent") || "sub-agent",
+    status: wfOneOf(ASYNC_TASK_STATUSES, record.status, "success"),
+    durationMs: typeof duration === "number" && duration >= 0 ? duration : null,
+  };
+};
+export type TaskNotice = NonNullable<ReturnType<typeof toTaskNotice>>;
+
+/**
+ * One frame of the conversation channel, or null for anything unrecognised.
+ * A `run_started` run stays a raw record here: it is a `RunOut`, mapped by the
+ * same transform as every other run (in the api layer — this module imports
+ * nothing app-level).
+ */
+export const toConversationChannelFrame = (raw: unknown) => {
+  const frame = wfRecord(raw);
+  if (frame.type === "task") {
+    const task = toAsyncTask(wfRecord(frame.task));
+    if (!task.taskId) return null;
+    return {
+      type: "task" as const,
+      event: wfOneOf(ASYNC_TASK_FRAME_EVENTS, frame.event, "TASK_STATUS"),
+      task,
+    };
+  }
+  if (frame.type === "run_started") {
+    const run = wfRecord(frame.run);
+    if (typeof run.id !== "string" || !run.id) return null;
+    // Extension to §14.4: whether this run is the queued message going out, so
+    // the queued chip can clear on it. Optional — the `queue: null` frame
+    // clears the chip either way.
+    const fromQueue = frame.from_queue === true || frame.fromQueue === true;
+    return { type: "run_started" as const, run, fromQueue };
+  }
+  if (frame.type === "queue") {
+    return {
+      type: "queue" as const,
+      queuedMessage: toQueuedMessage(atField(frame, "queued_message", "queuedMessage")),
+    };
+  }
+  return null;
+};
+
+/**
+ * One frame of a task's own socket (the drill-down), or null. `snapshot` may
+ * carry the task and its event log so far; `event` carries one AG-UI event,
+ * exactly as the normalizer emits it for a top-level run, with the stream id
+ * the client resumes from.
+ */
+export const toTaskSocketFrame = (raw: unknown) => {
+  const frame = wfRecord(raw);
+  const embeddedTask = () => {
+    const task = toAsyncTask(wfRecord(frame.task));
+    return task.taskId ? task : null;
+  };
+  if (frame.type === "snapshot") {
+    // `events` is the whole log so far when present (a settled task, read from
+    // the mirror). A live task's snapshot may carry only the task, its events
+    // following as `event` frames: null then, so the node is not wiped on a
+    // reconnect that resumes after `since`.
+    const events = atField(frame, "events", "raw_events", "rawEvents");
+    return {
+      type: "snapshot" as const,
+      task: embeddedTask(),
+      events: Array.isArray(events)
+        ? wfRecords(events).filter((event) => typeof event.type === "string")
+        : null,
+    };
+  }
+  if (frame.type === "event") {
+    const event = wfRecord(frame.event);
+    if (typeof event.type !== "string") return null;
+    const seq = frame.seq;
+    return {
+      type: "event" as const,
+      seq: typeof seq === "string" || typeof seq === "number" ? String(seq) : null,
+      event,
+    };
+  }
+  if (frame.type === "terminal") {
+    return {
+      type: "terminal" as const,
+      status: ASYNC_TASK_STATUSES.includes(frame.status as AsyncTaskStatus)
+        ? (frame.status as AsyncTaskStatus)
+        : null,
+      task: embeddedTask(),
+    };
+  }
+  return null;
+};
+export type TaskSocketFrame = NonNullable<ReturnType<typeof toTaskSocketFrame>>;

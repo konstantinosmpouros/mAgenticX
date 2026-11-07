@@ -77,9 +77,25 @@ async def test_a_fork_gets_the_files(client, internal_headers, files):
     assert await files.read("u1", "fork", "/conversation/output/report.md") == b"# Q3"
 
 
+class _ConversationRows:
+    """The branch scratch and background-task stores, as far as a reap sees them."""
+
+    reaped: list = []
+
+    def __init__(self, _pool):
+        pass
+
+    async def delete_conversation(self, user_id, conversation_id):
+        type(self).reaped.append((user_id, conversation_id))
+        return ["task-1"]
+
+
 async def test_a_reap_drops_the_threads_and_every_file(client, internal_headers, files, agents_service, monkeypatch):
     checkpointer = _Checkpointer()
     monkeypatch.setattr(agents_service.conversation_files_utils, "get_checkpointer", lambda: checkpointer)
+    _ConversationRows.reaped = []
+    monkeypatch.setattr(agents_service.conversation_files_utils, "BranchScratchStore", _ConversationRows)
+    monkeypatch.setattr(agents_service.conversation_files_utils, "AsyncTaskStore", _ConversationRows)
     await files.create("u1", "c1", "/conversation/output/a.md", b"a", agent_slug="omni")
     await files.create("u1", "c1", "/conversation_history/t1.md", b"h", agent_slug="nova")
 
@@ -87,8 +103,10 @@ async def test_a_reap_drops_the_threads_and_every_file(client, internal_headers,
                                  headers=internal_headers)
 
     assert response.status_code == 204
-    assert checkpointer.deleted == ["t1", "t2"]
+    # The bridge's threads, then the conversation's background-task threads.
+    assert checkpointer.deleted == ["t1", "t2", "task-1"]
     assert files.rows == {} and files.blobs == {}
+    assert _ConversationRows.reaped == [("u1", "c1"), ("u1", "c1")]
 
 
 async def test_an_unfinished_reap_answers_503_so_the_bridge_retries(client, internal_headers, files,

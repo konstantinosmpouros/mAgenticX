@@ -27,6 +27,7 @@ from harness.conversation_files import ConversationFileStore
 from harness.skill_registry.store import SkillStore
 from harness.memory.store import AgentMemoryStore
 from harness.workflows.store import WorkflowStore
+from harness.filesystem import BranchScratchStore
 
 logger = get_logger(__name__)
 
@@ -141,6 +142,9 @@ async def init_durable_checkpointer(app: FastAPI) -> None:
         # Workflow definitions, versions and persisted state: compiled and run
         # here, so — the same rule again — stored here.
         await WorkflowStore(pool).setup()
+        # The branch scratch store (plan 41 §3.7): the default `/` route, shared
+        # by the orchestrator and every background task of its branch.
+        await BranchScratchStore(pool).setup()
 
     serde = None
     aes_key = cfg.aes_key.get_secret_value()

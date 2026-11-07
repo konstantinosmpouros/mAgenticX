@@ -48,6 +48,12 @@ from harness.agui.events import (
     # Automatic context compaction
     CONTEXT_COMPACTION_EVENT_TYPE,
     ContextCompactionEvent,
+
+    # Async sub-agent tasks (plan 41)
+    TASK_LAUNCHED_EVENT_TYPE,
+    TaskLaunchedEvent,
+    TASK_SETTLED_INLINE_EVENT_TYPE,
+    TaskSettledInlineEvent,
 )
 from ag_ui.core import (
     EventType,
@@ -341,6 +347,45 @@ class AGUIEmitter:
         custom_event = CustomEvent(
             type=EventType.CUSTOM,
             name=SUBAGENT_COMPLETED_EVENT_TYPE,
+            value=payload.model_dump(),
+        )
+        return self._emit(custom_event, writer, namespace)
+
+
+    # ---------- Async sub-agent tasks (plan 41) ----------
+    def task_launched(
+        self,
+        *,
+        task_id: str,
+        name: str,
+        description: str,
+        writer: Any = None,
+        namespace: Optional[str] = None,
+    ) -> Optional[bytes]:
+        """``start_async_task`` returned a task id: the "Started task" block."""
+        payload = TaskLaunchedEvent(task_id=task_id, name=name, description=description)
+        custom_event = CustomEvent(
+            type=EventType.CUSTOM,
+            name=TASK_LAUNCHED_EVENT_TYPE,
+            value=payload.model_dump(),
+        )
+        return self._emit(custom_event, writer, namespace)
+
+
+    def task_settled_inline(
+        self,
+        *,
+        task_id: str,
+        name: str,
+        status: str,
+        writer: Any = None,
+        namespace: Optional[str] = None,
+    ) -> Optional[bytes]:
+        """A task's result was pulled into this busy run: the inline marker."""
+        payload = TaskSettledInlineEvent(task_id=task_id, name=name, status=status)
+        custom_event = CustomEvent(
+            type=EventType.CUSTOM,
+            name=TASK_SETTLED_INLINE_EVENT_TYPE,
             value=payload.model_dump(),
         )
         return self._emit(custom_event, writer, namespace)

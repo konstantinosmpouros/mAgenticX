@@ -49,6 +49,7 @@ from core.database import (
 from core.logging import get_logger
 from core.settings import settings
 from schema import (
+    InferenceRunOut,
     InferenceStartPayload,
     MessageIn,
     ScheduledTaskCreate,
@@ -57,6 +58,7 @@ from schema import (
 )
 from utils.account_status import open_deletion_exists_for
 from utils.agents import get_agent_by_id, get_usable_agent
+from utils.conversation_channel import publish_run_started
 from utils.inference_runs import ACTIVE_RUN_STATUSES, inference_run_manager
 from utils.inference_start import start_inference_flow
 
@@ -352,7 +354,7 @@ async def _load_owned_conversation(
 async def fire_scheduled_task(task_id: str) -> None:
     """Fire one already-claimed task: build the start payload, run it through the
     normal inference pipeline tagged with the task id, then launch it detached."""
-    run_id: str | None = None
+    run: InferenceRunOut | None = None
     async with SessionLocal() as db:
         task = await db.get(ScheduledTaskTable, task_id)
         if task is None:
@@ -438,19 +440,22 @@ async def fire_scheduled_task(task_id: str) -> None:
                 await db.commit()
             return
 
-        run_id = response.run.id
+        run = response.run
         task = await db.get(ScheduledTaskTable, task_id)
         if task is None:
             return
         if target_mode == "bound" and not has_bound_conversation:
             task.conversation_id = response.run.conversationId
-        task.last_run_message_id = run_id
+        task.last_run_message_id = run.id
         task.last_run_status = "running"
         task.last_error = None
         await db.commit()
 
-    if run_id is not None:
-        inference_run_manager.launch(run_id)
+    if run is not None:
+        inference_run_manager.launch(run.id)
+        # Nobody's client started it: an open conversation attaches through
+        # its channel (plan 41 §14.4).
+        await publish_run_started(run)
 
 
 async def reap_timed_out_fires() -> None:

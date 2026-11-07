@@ -46,6 +46,7 @@ from core.database import (
     ConversationReportTable,
     ConversationShareTable,
     ConversationTable,
+    ConversationTaskTable,
     MessageEmbeddingTable,
     MessageTable,
     MessageUsageTable,
@@ -78,19 +79,22 @@ _AGENTS_BASE_URL = settings.upstream.agents_service_url.rstrip("/")
 _LEASE = timedelta(minutes=15)
 
 STEP_SESSIONS = "sessions"
+STEP_AGENT_TASKS = "agent_tasks"
 STEP_AGENT_THREADS = "agent_threads"
 STEP_AGENT_RUNTIME = "agent_runtime"
 STEP_CONVERSATIONS = "conversations"
 STEP_WORKFLOW_RUNS = "workflow_runs"
 STEP_USER = "user"
-#: The purge order. Threads need the messages and workflow runs (they name the
-#: threads), so they go before both; the agents service's data goes before
+#: The purge order. Background tasks are stopped first (plan 41), so none is
+#: still writing while the rest goes. Threads need the messages, workflow runs
+#: and mirrored tasks (they name the threads), so they go before them; the agents service's data goes before
 #: chat_db's so a failure there never leaves chat_db already emptied; the user
 #: row goes last — until then the user still exists for every retry. A
 #: deletion recorded before ``workflow_runs`` existed resumes by step name, so
 #: it simply runs the new step too.
 STEPS = (
-    STEP_SESSIONS, STEP_AGENT_THREADS, STEP_AGENT_RUNTIME, STEP_WORKFLOW_RUNS, STEP_CONVERSATIONS, STEP_USER,
+    STEP_SESSIONS, STEP_AGENT_TASKS, STEP_AGENT_THREADS, STEP_AGENT_RUNTIME, STEP_WORKFLOW_RUNS,
+    STEP_CONVERSATIONS, STEP_USER,
 )
 
 _AGENT_COUNT_KEYS = (
@@ -350,6 +354,26 @@ async def _step_sessions(user_id: str, deletion_id: str, counts: dict[str, Any])
             await revoke_all_sessions(session, user_id)
 
 
+async def _step_agent_tasks(user_id: str, deletion_id: str, counts: dict[str, Any]) -> None:
+    """Stop every background task of the user (plan 41, ``POST /tasks/cancel-scope``).
+
+    A 404 is an agents service without the task API: there is nothing to stop.
+    The tasks' rows and checkpoints go with the agent-runtime and thread steps.
+    """
+    async with _agents_client() as client:
+        resp = await client.post(
+            f"{_AGENTS_BASE_URL}/tasks/cancel-scope", json={"user_id": user_id}, headers=internal_service_headers(None)
+        )
+    if resp.status_code == 404:
+        return
+    resp.raise_for_status()
+    body = resp.json()
+    cancelled = body.get("cancelled", 0) if isinstance(body, dict) else 0
+    counts["agent_tasks_cancelled"] = counts.get("agent_tasks_cancelled", 0) + (
+        cancelled if isinstance(cancelled, int) else 0
+    )
+
+
 async def _step_agent_threads(user_id: str, deletion_id: str, counts: dict[str, Any]) -> None:
     """Send the user's checkpoint thread ids to the agents service, in batches.
 
@@ -385,6 +409,16 @@ async def _step_agent_threads(user_id: str, deletion_id: str, counts: dict[str, 
                                 MessageTable.checkpoint_thread_id.is_not(None),
                             )
                             .distinct()
+                        )
+                    ).scalars()
+                )
+                # A background task's checkpoint thread is its task id (plan 41).
+                thread_ids.extend(
+                    (
+                        await session.execute(
+                            select(ConversationTaskTable.task_id).where(
+                                ConversationTaskTable.conversation_id.in_(conversation_ids)
+                            )
                         )
                     ).scalars()
                 )
@@ -490,6 +524,10 @@ async def _delete_conversation_batch(conversation_ids: list[str], deletion_id: s
 
     # 3. What hangs off the conversation itself, then the conversations.
     async with SessionLocal() as session:
+        tasks = await session.execute(
+            delete(ConversationTaskTable).where(ConversationTaskTable.conversation_id.in_(conversation_ids))
+        )
+        counts["conversation_tasks"] = counts.get("conversation_tasks", 0) + (tasks.rowcount or 0)
         await session.execute(delete(ConversationReportTable).where(ConversationReportTable.conversation_id.in_(conversation_ids)))
         await session.execute(delete(ConversationShareTable).where(ConversationShareTable.conversation_id.in_(conversation_ids)))
         removed = await session.execute(delete(ConversationTable).where(ConversationTable.id.in_(conversation_ids)))
@@ -589,6 +627,9 @@ async def _step_user(user_id: str, deletion_id: str, counts: dict[str, Any]) -> 
             (UserPreferencesTable, UserPreferencesTable.user_id),
             (UserAgentToolPrefTable, UserAgentToolPrefTable.user_id),
             (ScheduledTaskTable, ScheduledTaskTable.user_id),
+            # Mirrored background tasks (plan 41) go with their conversations;
+            # this catches any written after that step ran.
+            (ConversationTaskTable, ConversationTaskTable.user_id),
             # Workflow schedules (plan 38 §3.9) cascade with the user too;
             # deleted explicitly like every other table here.
             (WorkflowScheduleTable, WorkflowScheduleTable.user_id),
@@ -614,6 +655,7 @@ async def _step_user(user_id: str, deletion_id: str, counts: dict[str, Any]) -> 
 
 _STEP_FUNCS: dict[str, Callable[[str, str, dict[str, Any]], Awaitable[None]]] = {
     STEP_SESSIONS: _step_sessions,
+    STEP_AGENT_TASKS: _step_agent_tasks,
     STEP_AGENT_THREADS: _step_agent_threads,
     STEP_AGENT_RUNTIME: _step_agent_runtime,
     STEP_CONVERSATIONS: _step_conversations,

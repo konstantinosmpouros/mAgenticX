@@ -10,11 +10,12 @@
 import type {
   InferenceRun,
   InferenceRunEvent,
+  InferenceStartOutcome,
   InferenceStartRequest,
   InferenceStartResponse,
 } from "../types";
 import { requestJson } from "../http";
-import { WireObjectArraySchema, WireObjectSchema } from "../schemas";
+import { InferenceStartOrQueueSchema, WireObjectArraySchema, WireObjectSchema } from "../schemas";
 import {
   transformConversationDetail,
   transformConversationSummary,
@@ -35,10 +36,9 @@ export const transformInferenceRunEvent = (event: Record<string, any>): Inferenc
   events: Array.isArray(event.events) ? event.events : undefined,
 });
 
-export async function startInference(
-  userId: string,
-  payload: InferenceStartRequest,
-): Promise<InferenceStartResponse> {
+// The start request's wire body: only the fields the caller set. Shared by a
+// plain start and a start that may be queued (`startInferenceOrQueue`).
+const toStartBody = (payload: InferenceStartRequest): Record<string, unknown> => {
   const body: Record<string, unknown> = {
     mode: payload.mode,
   };
@@ -52,15 +52,45 @@ export async function startInference(
   if (payload.targetMessageId) body.targetMessageId = payload.targetMessageId;
   if (payload.messagePath?.length) body.messagePath = payload.messagePath;
   if (payload.message) body.message = payload.message;
+  return body;
+};
 
+export async function startInference(
+  userId: string,
+  payload: InferenceStartRequest,
+): Promise<InferenceStartResponse> {
   const data = await requestJson(`${INFERENCE_BASE_PATH}/runs/${userId}/start`, {
     method: "POST",
     csrf: true,
-    body,
+    body: toStartBody(payload),
     schema: WireObjectSchema,
     fallbackMessage: "Failed to start inference",
   });
   return toInferenceStartResponse(data);
+}
+
+/**
+ * Send in a conversation that may have a run going (plan 41 §3.6). With
+ * `queue_if_busy` the bridge does not answer 409 when the conversation is
+ * busy: it keeps the message as the conversation's one queued message (a
+ * second send replaces it) and answers 202 `{queued, queued_message}`. When
+ * the conversation is free it starts the run as usual.
+ */
+export async function startInferenceOrQueue(
+  userId: string,
+  payload: InferenceStartRequest,
+): Promise<InferenceStartOutcome> {
+  const data = await requestJson(`${INFERENCE_BASE_PATH}/runs/${userId}/start`, {
+    method: "POST",
+    csrf: true,
+    // The key as §14.4 names it; the rest of the body keeps its camelCase.
+    body: { ...toStartBody(payload), queue_if_busy: true },
+    schema: InferenceStartOrQueueSchema,
+    fallbackMessage: "Failed to send the message",
+  });
+  return data.queued
+    ? { queued: true, queuedMessage: data.queuedMessage }
+    : { queued: false, response: toInferenceStartResponse(data.body) };
 }
 
 // Folder-internal: the wire→app coercion of a run start's answer, shared with
@@ -114,6 +144,17 @@ export type ResumeInferenceRunBody = {
   decisions?: ResumeActionDecision[];
 };
 
+// Folder-internal: the resume body's wire shape, shared with a waiting task's
+// resume (`./asyncTasks`) — §14.4 has it answer "as today's run resume".
+export const toResumeWireBody = (body: ResumeInferenceRunBody): Record<string, unknown> => ({
+  interruptId: body.interruptId,
+  threadId: body.threadId,
+  decision: body.decision,
+  reason: body.reason ?? null,
+  value: body.value ?? null,
+  decisions: body.decisions ?? null,
+});
+
 export async function resumeInferenceRun(
   userId: string,
   runId: string,
@@ -122,14 +163,7 @@ export async function resumeInferenceRun(
   const data = await requestJson(`${INFERENCE_BASE_PATH}/runs/${userId}/${runId}/resume`, {
     method: "POST",
     csrf: true,
-    body: {
-      interruptId: body.interruptId,
-      threadId: body.threadId,
-      decision: body.decision,
-      reason: body.reason ?? null,
-      value: body.value ?? null,
-      decisions: body.decisions ?? null,
-    },
+    body: toResumeWireBody(body),
     schema: WireObjectSchema,
     fallbackMessage: "Failed to resume inference run",
   });

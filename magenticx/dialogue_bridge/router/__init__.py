@@ -17,6 +17,8 @@ from router.voice import router as voice_router
 from router.skills import router as skills_router
 from router.memories import router as memories_router
 from router.scheduled_tasks import router as scheduled_tasks_router
+from router.tasks import conversation_router as conversation_tasks_router
+from router.tasks import router as tasks_router
 from router.usage import router as usage_router
 from router.workflows import router as workflows_router
 from router.workflows import runs_router as workflow_runs_router
@@ -28,6 +30,7 @@ __all__ = [
     "attachments_router",
     "auth_router",
     "catalog_router",
+    "conversation_tasks_router",
     "conversations_router",
     "account_router",
     "commands_router",
@@ -42,6 +45,7 @@ __all__ = [
     "search_router",
     "shared_conv_router",
     "skills_router",
+    "tasks_router",
     "speech_router",
     "usage_router",
     "user_agents_router",

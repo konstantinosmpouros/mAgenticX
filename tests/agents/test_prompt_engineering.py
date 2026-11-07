@@ -35,6 +35,7 @@ def full(pe):
         sandbox_enabled=True,
         has_subagents=True,
         has_ask_user=True,
+        narrate_progress=True,
         now=datetime(2026, 9, 15, 17, 23, tzinfo=timezone.utc),
         personalization="## How To Talk To This User\n\nBe brief.",
     )
@@ -175,6 +176,7 @@ def test_the_sections_are_ordered_stable_first_volatile_last(pe, full):
         "personalization",
         "filesystem",
         "capabilities",
+        "progress",
         "memory",
         "temporal",
     ]
@@ -182,6 +184,45 @@ def test_the_sections_are_ordered_stable_first_volatile_last(pe, full):
     out = pe.compose_system_prompt("x", full)
     assert out.index("## Your Workspace") < out.index("## Right Now")
     assert out.index("## Your Long-Term Memory") < out.index("## Right Now")
+
+
+# ---------------------------------------------------------------------------
+# Working out loud
+# ---------------------------------------------------------------------------
+def test_the_agent_the_user_talks_to_narrates_between_tool_calls(pe, full):
+    out = pe.compose_system_prompt("x", full)
+    assert "## Keep the User in the Loop While You Work" in out
+    assert "Before you delegate" in out
+    # Stable: it sits in the cached prefix, above the clock.
+    assert out.index("## Keep the User in the Loop While You Work") < out.index("## Right Now")
+
+
+def test_a_run_without_narration_gets_no_progress_section(pe):
+    out = pe.compose_system_prompt("x", pe.PromptContext(has_conversation=True))
+    assert "Keep the User in the Loop" not in out
+
+
+def test_every_conversation_run_narrates_but_a_background_task_does_not(agents_service):
+    deep_agent = importlib.import_module("harness.abstractions.deep_agent")
+    personalization_mod = importlib.import_module("harness.personalization.personalization")
+
+    class _Probe:
+        """The handful of attributes ``prompt_context`` reads."""
+        use_memory = False
+        interactive = True
+        personalization = personalization_mod.Personalization()
+        _has_reference = False
+        _has_default_skills = False
+
+        def __init__(self, context, async_task_id=None):
+            self.context = context
+            self.async_task_id = async_task_id
+
+    build = deep_agent.DeepAgent.prompt_context
+    chat = {"user_id": "u", "conversation_id": "c"}
+    assert build(_Probe(chat)).narrate_progress is True
+    assert build(_Probe(chat, async_task_id="t")).narrate_progress is False
+    assert build(_Probe({})).narrate_progress is False
 
 
 def test_an_inactive_section_is_absent_from_the_description(pe):

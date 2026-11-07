@@ -1202,6 +1202,61 @@ class RateLimitSettings(BaseSettings):
     user_max_calls: int = Field(300, validation_alias="USER_RATE_LIMIT_MAX_CALLS")
     user_window_seconds: int = Field(60, validation_alias="USER_RATE_LIMIT_WINDOW_SECONDS")
     inference_max_active_runs: int = Field(5, validation_alias="INFERENCE_MAX_ACTIVE_RUNS_PER_USER")
+    # Background tasks (plan 41): reading a conversation's task tree, and
+    # stopping / answering a task or cancelling the queued message.
+    task_read_max_attempts: int = Field(120, validation_alias="TASK_READ_RATE_LIMIT_MAX_ATTEMPTS")
+    task_read_window_seconds: int = Field(60, validation_alias="TASK_READ_RATE_LIMIT_WINDOW_SECONDS")
+    task_mutate_max_attempts: int = Field(30, validation_alias="TASK_MUTATE_RATE_LIMIT_MAX_ATTEMPTS")
+    task_mutate_window_seconds: int = Field(60, validation_alias="TASK_MUTATE_RATE_LIMIT_WINDOW_SECONDS")
+
+
+class AsyncTaskSettings(BaseSettings):
+    """Background sub-agent tasks (plan 41): the bridge's half.
+
+    The agents service runs the tasks; the bridge mirrors them for the UI,
+    relays their events, wakes the orchestrator when a depth-1 task's subtree
+    settles, and sends the composer's queued message when a run ends. These
+    knobs bound how much of that one process does at once.
+    """
+    model_config = _BASE_MODEL_CONFIG
+
+    # Kill switch for the Redis consumers and the reconcile loop (the routes
+    # and the mirror stay). Off = no wake-ups, no live task frames.
+    enabled: bool = Field(True, validation_alias="ASYNC_TASKS_BRIDGE_ENABLED")
+    # This process's name in the `bridge` consumer group. Empty = the host name,
+    # so a rolling deploy's overlapping replicas never share pending entries.
+    consumer_name: str = Field("", validation_alias="ASYNC_TASKS_CONSUMER_NAME")
+    # How long one XREADGROUP blocks, and how many entries it takes.
+    read_block_ms: int = Field(5000, ge=100, le=60000, validation_alias="ASYNC_TASKS_READ_BLOCK_MS")
+    read_count: int = Field(50, ge=1, le=1000, validation_alias="ASYNC_TASKS_READ_COUNT")
+    # An entry another consumer left pending this long is taken over (a dead
+    # replica's entries after a deploy).
+    claim_idle_ms: int = Field(60000, ge=1000, validation_alias="ASYNC_TASKS_CLAIM_IDLE_MS")
+    # The reconcile loop: unnotified outbox rows from the agents service, and
+    # queued composer messages whose run ended without sending them.
+    reconcile_interval_seconds: int = Field(60, ge=5, le=3600, validation_alias="ASYNC_TASKS_RECONCILE_INTERVAL_SECONDS")
+    unnotified_limit: int = Field(100, ge=1, le=1000, validation_alias="ASYNC_TASKS_UNNOTIFIED_LIMIT")
+    # A queued message older than this with no active run is sent by the loop
+    # (the run-end hook normally sends it at once; this is the safety net).
+    queue_sweep_after_seconds: int = Field(15, ge=1, le=3600, validation_alias="ASYNC_TASKS_QUEUE_SWEEP_AFTER_SECONDS")
+    # A wake-up refused with 429 (the user's active-run cap) is retried this
+    # many times, waiting base * 2^n seconds; then the reconcile loop owns it.
+    wake_retry_attempts: int = Field(3, ge=0, le=10, validation_alias="ASYNC_TASKS_WAKE_RETRY_ATTEMPTS")
+    wake_retry_base_seconds: float = Field(2.0, ge=0.0, le=60.0, validation_alias="ASYNC_TASKS_WAKE_RETRY_BASE_SECONDS")
+    # Wake-ups handled at once by the outbox consumer.
+    wake_concurrency: int = Field(4, ge=1, le=64, validation_alias="ASYNC_TASKS_WAKE_CONCURRENCY")
+    # Events kept in conversation_tasks.raw_events per task (after coalescing);
+    # past it the oldest are dropped behind one truncation marker.
+    raw_events_max: int = Field(5000, ge=100, le=100000, validation_alias="ASYNC_TASKS_RAW_EVENTS_MAX")
+    # The per-conversation channel (a Redis stream): entries kept, and how long
+    # an idle channel lives before Redis drops it.
+    channel_maxlen: int = Field(500, ge=10, le=100000, validation_alias="ASYNC_TASKS_CHANNEL_MAXLEN")
+    channel_ttl_seconds: int = Field(86400, ge=60, validation_alias="ASYNC_TASKS_CHANNEL_TTL_SECONDS")
+    # The task drill-down socket checks for a settled task this often while
+    # its event stream is quiet.
+    task_ws_block_ms: int = Field(5000, ge=100, le=60000, validation_alias="ASYNC_TASKS_TASK_WS_BLOCK_MS")
+    # Tasks one GET /conversations/.../tasks returns at most.
+    list_limit_max: int = Field(500, ge=1, le=5000, validation_alias="ASYNC_TASKS_LIST_LIMIT_MAX")
 
 
 class SchedulerSettings(BaseSettings):
@@ -1326,6 +1381,7 @@ class Settings(BaseSettings):
     redis: RedisSettings = Field(default_factory=RedisSettings)
     rate_limit: RateLimitSettings = Field(default_factory=RateLimitSettings)
     scheduler: SchedulerSettings = Field(default_factory=SchedulerSettings)
+    async_tasks: AsyncTaskSettings = Field(default_factory=AsyncTaskSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
     cors: CorsSettings = Field(default_factory=CorsSettings)
 

@@ -20,8 +20,10 @@ HITL_GATED_TOOLS: dict[str, bool] = {
     # Code execution — arbitrary shell / python is always user-approved.
     "execute": True,
     # Subagent delegation — researcher / writer hand-offs require approval so
-    # the user can see the prompt before a model spends tokens on it.
-    "task": True,
+    # the user can see the prompt before a model spends tokens on it. One gate
+    # under both names (harness.tools.gates.with_gate_aliases): it gates the
+    # blocking `task` while async sub-agents are off, `start_async_task` once on.
+    "start_async_task": True,
 }
 
 

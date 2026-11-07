@@ -24,7 +24,6 @@ from deepagents import FilesystemPermission
 from deepagents.backends import (
     CompositeBackend,
     FilesystemBackend,
-    StateBackend,
     StoreBackend,
 )
 from deepagents.backends.protocol import SandboxBackendProtocol
@@ -38,6 +37,8 @@ from harness.conversation_files.paths import (
     CONVERSATION_ROOT,
     LARGE_TOOL_RESULTS_ROOT,
 )
+from harness.filesystem.scratch_backend import BranchScratchBackend
+from harness.filesystem.scratch_store import BranchScratchStore
 from harness.memory import AgentMemoryStore, get_memory_pool
 # Bound as a module, resolved at call time: the skill store imports
 # `harness.filesystem` (for the legacy catalogue path) while this package is
@@ -108,12 +109,13 @@ def build_workspace_backend(
     reference_files: Mapping[str, str] | None = None,
     default_skills_dir: Path | None = None,
     declared_skills: Sequence[str] = (),
+    branch_thread_id: str | None = None,
 ) -> Callable[[Any], CompositeBackend]:
-    """Return a factory minting a fresh ``CompositeBackend`` per tool call.
+    """Return a factory minting this run's ``CompositeBackend``.
 
-    The deepagents library accepts ``backend=callable(ToolRuntime) -> Backend``
-    and invokes it on every tool call so ``StateBackend`` can bind to the live
-    runtime. Nothing here is a directory a run can write to:
+    deepagents 0.7 takes a backend instance, not a factory, so the deep agent
+    calls this factory once per build; the runtime argument is unused.
+    Nothing here is a directory a run can write to:
 
         /memories/              → agent_runtime rows        (AGENTS.md + entries/)
         /skills/                → agent_runtime rows        (user-enabled skills)
@@ -123,8 +125,16 @@ def build_workspace_backend(
         /conversation_history/  → agent_runtime rows        (offloaded history)
         /default_skills/        → image folder OR agent_runtime rows (read-only, optional)
         /reference/             → image folder OR agent_runtime rows OR a draft (read-only, optional)
-        default                 → StateBackend()            (ephemeral scratch)
-                                  or RemoteSandboxBackend   (the same + `execute`, when sandbox execution is active)
+        default                 → agent_runtime rows        (the branch scratch store, plan 41)
+                                  via BranchScratchBackend, or RemoteSandboxBackend
+                                  (the same + `execute`, when sandbox execution is active)
+
+    The default route is shared by a whole branch, not one thread: rows are
+    keyed by ``(conversation_id, branch_thread_id)``, so the orchestrator and
+    every async task of its tree read and write the same files, live.
+    ``branch_thread_id`` is :func:`~harness.filesystem.scratch_backend.resolve_branch_thread_id`
+    of the run (its context's ``branch_thread_id``, else its ``thread_id``);
+    left out, it is resolved per call from the live LangGraph config.
 
     Per-conversation isolation: ``files`` is bound to one conversation, so
     files written in one chat are not visible from the next. Every agent of
@@ -161,16 +171,16 @@ def build_workspace_backend(
     def factory(rt: Any) -> CompositeBackend:
         # Sandbox-execution kill switch (fail-closed). deepagents exposes its
         # `execute` tool exactly when the composite DEFAULT backend implements
-        # SandboxBackendProtocol — StateBackend does not, LocalShellBackend
-        # (host-shell execution!) does. While sandbox execution is disabled,
+        # SandboxBackendProtocol — BranchScratchBackend does not,
+        # LocalShellBackend (host-shell execution!) does. While sandbox execution is disabled,
         # refuse to mint a sandbox-capable default so a future refactor
         # swapping this class can never silently open a code-execution path.
         # Raising here fails the tool call (and the run) rather than degrading
         # open.
         #
         # When execution IS active (the flag AND a runner URL, plan 11) the
-        # default is the runner-backed sandbox on purpose: same StateBackend
-        # file operations, plus `execute` bound to this run's identity. It has
+        # default is the runner-backed sandbox on purpose: the same branch
+        # scratch file operations, plus `execute` bound to this run's identity. It has
         # no fallback — a runner outage is an error result, never a quiet
         # switch to some other default.
         sandbox_active = settings.filesystem.sandbox_execution_active
@@ -179,16 +189,24 @@ def build_workspace_backend(
         # conversation's input/ + output/ and writes returned outputs through
         # it, the same path the agent's own file tools take.
         conversation_mount = ConversationFilesBackend(files, CONVERSATION_ROOT, loop=loop)
+        # The default route: this branch's scratch rows. Scoped to the same
+        # (user, conversation) as `/conversation/`; minting it does no I/O.
+        scratch = {
+            "user_id": user_id,
+            "agent_slug": agent_slug,
+            "conversation_id": files.conversation_id,
+            "branch_thread_id": branch_thread_id,
+            "loop": loop,
+        }
         default_backend = (
             RemoteSandboxBackend(
-                user_id=user_id,
-                agent_slug=agent_slug,
-                conversation_id=files.conversation_id,
+                **scratch,
+                scratch_store=BranchScratchStore(),
                 files=files,
                 conversation_mount=conversation_mount,
             )
             if sandbox_active
-            else StateBackend()
+            else BranchScratchBackend(**scratch, store=BranchScratchStore())
         )
         if not sandbox_active and isinstance(default_backend, SandboxBackendProtocol):
             raise RuntimeError(
@@ -203,7 +221,7 @@ def build_workspace_backend(
                 store=AgentMemoryStore(get_memory_pool()),
                 # Per-(user, agent): the namespace is what stops one agent's
                 # accumulated memory reaching another's context. Safe to close
-                # over the identity — a fresh backend is minted per tool call
+                # over the identity — the backend is minted per agent build
                 # from this run's own factory.
                 namespace=lambda _rt: (user_id, agent_slug),
             )

@@ -23,9 +23,9 @@ import re
 from collections.abc import Iterator
 from typing import Callable, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from harness.tools.builtins import locked_gates
+from harness.tools.builtins import DEPRECATED_GATE_KEYS, locked_gates
 
 
 # Kebab-case: lowercase alnum groups joined by single hyphens. Doubles as a
@@ -161,8 +161,27 @@ class AgentSpec(BaseModel):
     # Skills enabled by default; refs into the global registry or the user pool.
     skills: list[str] = Field(default_factory=list)
     subagents: list[SubAgentSpec] = Field(default_factory=list)
-    # Tools gated behind human approval, e.g. {"write_file": true, "task": true}.
+    # Tools gated behind human approval, e.g. {"write_file": true, "start_async_task": true}.
     hitl: dict[str, bool] = Field(default_factory=dict)
+
+    @field_validator("hitl", mode="after")
+    @classmethod
+    def _rename_deprecated_gate_keys(cls, hitl: dict[str, bool]) -> dict[str, bool]:
+        """Read ``hitl.task`` as ``hitl.start_async_task`` (plan 41 §4).
+
+        Stored definitions written before async sub-agents still say ``task``;
+        the alias is accepted for one release and normalised on load, so
+        everything downstream (validation, the run, a re-save) sees only the
+        new key. A definition stating both keeps the new key's value. The run
+        still gates the blocking ``task`` tool while async sub-agents are off:
+        the approval merge treats the two names as one gate
+        (``harness.tools.gates.with_gate_aliases``).
+        """
+        out = {key: value for key, value in hitl.items() if key not in DEPRECATED_GATE_KEYS}
+        for old, new in DEPRECATED_GATE_KEYS.items():
+            if old in hitl:
+                out.setdefault(new, hitl[old])
+        return out
 
     @model_validator(mode="after")
     def _validate_slug(self) -> "AgentSpec":

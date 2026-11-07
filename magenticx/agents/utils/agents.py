@@ -20,6 +20,7 @@ It mutates ``AGENT_REGISTRY`` **in place** so modules that did
 """
 import inspect
 from pathlib import Path
+from collections.abc import AsyncIterator
 from typing import Any, Dict, Optional, Set
 
 import yaml
@@ -297,6 +298,42 @@ async def resolve_agent_definition(
     if owner_user_id:
         return await _load_user_agent(owner_user_id, slug)
     return AGENT_REGISTRY.get(slug)
+
+
+async def definition_candidates(
+    slug: str, owner_user_id: str | None = None
+) -> AsyncIterator[AgentDefinition]:
+    """The definitions a pinned task tree may have been started on (plan 41).
+
+    The current definition first; then, for a user-authored agent, every kept
+    version, newest first — fetched only when the caller asks for the next
+    one, so the common case (the agent was not edited mid-task) costs one
+    lookup. The task runner builds each candidate and keeps the first whose
+    fingerprint is the task's pinned ``definition_version``; none matching
+    fails the run closed rather than running a different agent.
+    """
+    current = await resolve_agent_definition(slug, owner_user_id)
+    if current is not None:
+        yield current
+    if not owner_user_id:
+        return
+    store = _definition_store()
+    for meta in await store.list_versions(owner_user_id, slug):
+        version = await store.get_version(owner_user_id, slug, int(meta["version_no"]))
+        if version is None:
+            continue
+        try:
+            spec = AgentSpec.model_validate(version.get("spec") or {})
+        except ValueError:
+            logger.warning(
+                "agent_version_invalid",
+                "Skipping a stored agent version that no longer validates",
+                agent_slug=slug,
+                version_no=meta["version_no"],
+            )
+            continue
+        files = {path: content for path, (content, _enc) in (version.get("files") or {}).items()}
+        yield _user_definition(spec, owner_user_id, files)
 
 
 def refresh_registry() -> Dict[str, AgentDefinition]:

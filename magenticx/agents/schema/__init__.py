@@ -1,12 +1,24 @@
 """Request/response schemas for the agents service.
 
-One module per concept/router — inference, embeddings, generation, voice,
+One module per concept/router — agent_protocol, async_tasks, inference, embeddings, generation, voice,
 catalog, commands, skills, user_agents, memories, agent_tools, conversation_files, workflows. Re-exported so callers
 keep the stable ``from schema import ...`` import surface regardless of which
 module a DTO lives in.
 """
 from schema.account import PurgeThreadsRequest, PurgeThreadsResponse, PurgeUserResponse
+from schema.agent_protocol import RunCreateIn, RunOut, ThreadCreateIn, ThreadOut
 from schema.agent_tools import AgentToolRow, AgentToolsResponse
+from schema.async_tasks import (
+    OutboxItem,
+    TaskCancelIn,
+    TaskCancelScopeIn,
+    TaskCancelScopeOut,
+    TaskNotification,
+    TaskOut,
+    TaskResumeIn,
+    TaskUsage,
+    TaskUserIn,
+)
 from schema.catalog import AgentDefinition, AgentManifest, AgentModelOption, BuiltinToolInfo, ToolManifest
 from schema.commands import CommandListResponse, CommandOut
 from schema.conversation_files import (
@@ -78,6 +90,19 @@ from schema.workflows import (
 )
 
 __all__ = [
+    "OutboxItem",
+    "RunCreateIn",
+    "RunOut",
+    "TaskCancelIn",
+    "TaskCancelScopeIn",
+    "TaskCancelScopeOut",
+    "TaskNotification",
+    "TaskOut",
+    "TaskResumeIn",
+    "TaskUsage",
+    "TaskUserIn",
+    "ThreadCreateIn",
+    "ThreadOut",
     "CommandListResponse",
     "CommandOut",
     "PurgeThreadsRequest",

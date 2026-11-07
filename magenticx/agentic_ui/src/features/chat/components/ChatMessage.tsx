@@ -8,6 +8,7 @@ import { AIActionBar, UserActionBar } from "./message_parts/ActionBars";
 import { MessageAttachments } from "./message_parts/MessageAttachments";
 import { MessageContent } from "./message_parts/Content";
 import { PlanSidePanel, SubagentsSidePanel } from "./message_parts/RunSidePanels";
+import { MessageTaskTree } from "./message_parts/MessageTaskTree";
 import { AgentRunTimeline } from "./AgentRunTimeline";
 import { useRunTimeline } from "@/features/inference";
 import { ShimmeringText } from "@/shared/ui/shadcn-io/shimmering-text";
@@ -210,6 +211,10 @@ export function ChatMessage({
               onPreviewAttachment={onPreviewAttachment}
             />
           ) : null}
+
+          {/* The background tasks this answer started (plan 41), live for as
+              long as they run — whatever the chat has done since. */}
+          {isAi ? <MessageTaskTree message={message} timeline={timeline ?? null} /> : null}
 
           <div className="text-sm">
             {isUser ? (

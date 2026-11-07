@@ -74,6 +74,18 @@ type ChatInputBarProps = {
   handlePaste: React.ClipboardEventHandler<HTMLTextAreaElement>;
   handleSendMessage: () => void;
   handleStopStreaming?: () => void;
+  /**
+   * While a run streams, a typed message is queued instead of refused (plan 41
+   * §3.6): Enter and the send button submit the draft, which the send flow
+   * holds as the conversation's one queued message. With no draft the button
+   * stays Stop.
+   */
+  canQueueWhileStreaming?: boolean;
+  /**
+   * Compact lines just above the composer — the queued message's chip and a
+   * background task's approval prompt (plan 41).
+   */
+  composerNotices?: React.ReactNode;
 
   // Helpers/refs you already have
   isImageFile: (f: any) => boolean;
@@ -158,6 +170,8 @@ export function ChatInputBar(props: ChatInputBarProps) {
     handlePaste,
     handleSendMessage,
     handleStopStreaming,
+    canQueueWhileStreaming = false,
+    composerNotices = null,
     isImageFile,
     getImageUrl,
     handleImageClick,
@@ -235,6 +249,8 @@ export function ChatInputBar(props: ChatInputBarProps) {
     ? `Message ${agentDisplayName}...`
     : "Type a message...";
   const hasDraft = Boolean(currentMessage.trim() || attachments.length > 0);
+  // A draft typed while the run streams is queued, not refused (plan 41).
+  const queueOnSend = Boolean(isStreaming && canQueueWhileStreaming && hasDraft);
   // A draft whose command is an action (`/rename …`) runs it instead of sending.
   const submitDraft = () => {
     if (slash?.submitAction()) return;
@@ -824,6 +840,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
                   <AnimatePresence>
                     {slash?.open ? <SlashCommandMenu key="slash-menu" slash={slash} /> : null}
                   </AnimatePresence>
+                  {composerNotices}
                   {/* Floating Input Container: the shell carries the focus,
                       busy and private states for the moving light
                       (styles/composer.css). */}
@@ -945,9 +962,8 @@ export function ChatInputBar(props: ChatInputBarProps) {
                               const shouldSubmit =
                                 e.key === "Enter" &&
                                 !e.shiftKey &&
-                                !thinkingActive &&
-                                !isStreaming &&
-                                hasDraft;
+                                hasDraft &&
+                                ((!thinkingActive && !isStreaming) || queueOnSend);
                               if (shouldSubmit) {
                                 e.preventDefault();
                                 submitDraft();
@@ -1044,8 +1060,19 @@ export function ChatInputBar(props: ChatInputBarProps) {
                                   className="shadow-elegant active:scale-110 hover:opacity-90 transition-smooth"
                                   color="hsl(var(--primary))"
                                   thickness={2}
+                                  aria-label={
+                                    queueOnSend
+                                      ? "Queue message"
+                                      : isStreaming
+                                        ? "Stop"
+                                        : !hasDraft
+                                          ? "Voice mode"
+                                          : "Send message"
+                                  }
                                   onClick={() => {
-                                    if (isStreaming) {
+                                    if (queueOnSend) {
+                                      submitDraft();
+                                    } else if (isStreaming) {
                                       handleStopStreaming?.();
                                     } else if (!hasDraft) {
                                       onVoiceMode?.();
@@ -1059,7 +1086,9 @@ export function ChatInputBar(props: ChatInputBarProps) {
                                     (!isStreaming && !!thinkingActive)
                                   }
                                 >
-                                  {isStreaming ? (
+                                  {queueOnSend ? (
+                                    <HiArrowUp size={18} />
+                                  ) : isStreaming ? (
                                     <FaStop size={18} />
                                   ) : !hasDraft ? (
                                     <PiWaveformBold size={22} />

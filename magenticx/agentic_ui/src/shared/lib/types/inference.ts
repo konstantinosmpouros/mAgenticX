@@ -4,6 +4,7 @@
 import type { ConversationDetail, ConversationSummary } from "./conversations";
 import type { MessageIn, MessageOut } from "./messages";
 import type { RunTimeline } from "./timeline";
+import type { QueuedMessage } from "../schemas";
 
 export type InferenceRunStatus =
   "queued" | "running" | "cancelling" | "completed" | "cancelled" | "failed";
@@ -78,6 +79,14 @@ export type InferenceStartResponse = {
   run: InferenceRun;
   message: MessageOut;
 };
+
+/**
+ * A send that may be queued (plan 41 §3.6): the run started, or — the
+ * conversation had a run going — the message is held as its one queued message.
+ */
+export type InferenceStartOutcome =
+  | { queued: false; response: InferenceStartResponse }
+  | { queued: true; queuedMessage: QueuedMessage | null };
 
 // Wire frames from the inference run stream. "snapshot" carries the full
 // state (terminal runs: DB-built run+message; in-flight runs: run.rawEvents

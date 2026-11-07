@@ -1,6 +1,6 @@
 """Message DTOs: output shape, create input, streaming-placeholder update."""
 from typing import List, Literal, Optional
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 from core.settings import settings
 from schema.attachments import AttachmentIn, AttachmentOut
 from schema.base import Senders, UTCDateTime
@@ -32,6 +32,21 @@ class MessageCompactionOut(BaseModel):
     latencyMs: int = Field(0, validation_alias="latency_ms")
     compactedAt: UTCDateTime = Field(..., validation_alias="compacted_at")
     undoneAt: Optional[UTCDateTime] = Field(None, validation_alias="undone_at")
+
+
+class TaskNoticeOut(BaseModel):
+    """``MessageOut.task_notice`` (plan 41 §14.4): what the UI's compact
+    notice row for a background task shows.
+
+    The stored record also keeps the notification's ``agent_kwargs`` for the
+    agents service; only these four keys ever leave the bridge.
+    """
+    model_config = ConfigDict(extra="ignore")
+
+    task_id: str
+    name: str
+    status: str
+    duration_ms: Optional[int] = None
 
 
 class MessageOut(BaseModel):
@@ -83,6 +98,25 @@ class MessageOut(BaseModel):
     # The slash command this user message ran (plan 35), e.g. {"name": "explain"};
     # the bubble shows it as a chip in front of the content.
     command: Optional[CommandInvocation] = None
+    # A background-task notification row (plan 41): ``kind`` is
+    # "task_notification" (sender stays "user" — it is the orchestrator's
+    # input), rendered as a compact notice, never as the user's words. Both
+    # null on every ordinary message. snake_case: the §14.4 contract.
+    kind: Optional[Literal["task_notification"]] = None
+    task_notice: Optional[TaskNoticeOut] = None
+
+    @field_validator("task_notice", mode="before")
+    @classmethod
+    def _notice_or_none(cls, v):
+        # An unreadable stored notice must not fail the whole conversation.
+        if isinstance(v, TaskNoticeOut):
+            return v
+        if not isinstance(v, dict) or not v:
+            return None
+        try:
+            return TaskNoticeOut.model_validate(v)
+        except ValidationError:
+            return None
 
     @field_validator("rawEvents", mode="before")
     @classmethod

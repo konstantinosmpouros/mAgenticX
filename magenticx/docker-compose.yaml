@@ -84,6 +84,10 @@ services:
       # The runner's wall clock is 300 s at most; this client waits a little longer.
       - SANDBOX_EXECUTION_ENABLED=${SANDBOX_EXECUTION_ENABLED:-true}
       - SANDBOX_RUNNER_URL=${SANDBOX_RUNNER_URL:-}
+      # Async sub-agents (plan 41, on by default in core/settings.py): the agents
+      # service writes the task streams the bridge reads to the same Redis.
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-magenticx-dev-redis}
     volumes:
       # The agents filesystem's global plane (agent definitions + skills
       # catalogue). See harness/filesystem/layout.py.

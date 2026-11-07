@@ -343,6 +343,11 @@ export type SubagentCardProps = {
    * one tree. `active` lights the child's elbow while it works.
    */
   nested?: { key: string; active: boolean; node: React.ReactNode }[];
+  /**
+   * A control at the right end of the card's row, outside its toggle button
+   * (a button may not sit inside a button) — an async task's Stop (plan 41).
+   */
+  trailing?: React.ReactNode;
 };
 
 /**
@@ -359,6 +364,7 @@ export function SubagentCard({
   defaultCollapsedSections = false,
   onOpen,
   nested,
+  trailing,
 }: SubagentCardProps) {
   const transcript = getSubagentTranscript(subagent);
   const title = getSubagentTitle(subagent, index);
@@ -370,7 +376,11 @@ export function SubagentCard({
   const meta = status ? STATUS_META[status] : null;
   const active = status === "running";
   const settled = status === "done" || status === "failed" || status === "cancelled";
-  const duration = settled ? formatSubagentDuration(subagent.startedAt, subagent.endedAt) : null;
+  // An async task words its own time (live while it works); a blocking
+  // sub-agent shows its duration once settled.
+  const duration =
+    subagent.elapsedLabel ??
+    (settled ? formatSubagentDuration(subagent.startedAt, subagent.endedAt) : null);
   const showType = Boolean(subagent.type && normalizeName(subagent.type) !== normalizeName(title));
   const [expanded, setCardExpanded] = React.useState(false);
   const cardExpanded = expanded && !onOpen;
@@ -421,73 +431,92 @@ export function SubagentCard({
         )}
       >
         <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-primary/[0.05] to-transparent" />
-        <button
-          type="button"
-          onClick={onOpen ?? (() => setCardExpanded((current) => !current))}
-          aria-expanded={onOpen ? undefined : cardExpanded}
-          aria-label={`${onOpen ? "Open " : ""}${title}${meta ? `, ${meta.label}` : ""}`}
-          className="relative flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
-        >
-          <span
+        <div className="relative flex min-w-0 items-center">
+          <button
+            type="button"
+            onClick={onOpen ?? (() => setCardExpanded((current) => !current))}
+            aria-expanded={onOpen ? undefined : cardExpanded}
+            aria-label={`${onOpen ? "Open " : ""}${title}${meta ? `, ${meta.label}` : ""}`}
             className={cn(
-              "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full",
-              active
-                ? "bg-[hsl(var(--subagent-active)/0.12)] text-[hsl(var(--subagent-active))]"
-                : "bg-primary/[0.1] text-primary",
+              "relative flex min-w-0 flex-1 items-center gap-2.5 py-2.5 pl-3.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+              trailing ? "pr-1.5" : "pr-3.5",
             )}
           >
-            <Bot className="h-4 w-4" aria-hidden="true" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="flex min-w-0 items-center gap-2">
-              <span className="min-w-0 truncate text-[13.5px] font-semibold text-foreground">
-                {title}
+            <span
+              className={cn(
+                "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full",
+                active
+                  ? "bg-[hsl(var(--subagent-active)/0.12)] text-[hsl(var(--subagent-active))]"
+                  : "bg-primary/[0.1] text-primary",
+              )}
+            >
+              <Bot className="h-4 w-4" aria-hidden="true" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="min-w-0 truncate text-[13.5px] font-semibold text-foreground">
+                  {title}
+                </span>
+                {showType ? (
+                  <span className="hidden flex-shrink-0 rounded-full bg-primary/[0.08] px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.16em] text-primary sm:inline">
+                    {subagent.type}
+                  </span>
+                ) : null}
+                {subagent.model ? (
+                  <span
+                    className="hidden min-w-0 max-w-[9rem] truncate rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground md:inline"
+                    title={subagent.model}
+                  >
+                    {subagent.model}
+                  </span>
+                ) : null}
               </span>
-              {showType ? (
-                <span className="hidden flex-shrink-0 rounded-full bg-primary/[0.08] px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.16em] text-primary sm:inline">
-                  {subagent.type}
+              {!cardExpanded ? (
+                <span className="block truncate text-[12px] leading-[1.15rem] text-muted-foreground">
+                  {promptText}
                 </span>
               ) : null}
             </span>
-            {!cardExpanded ? (
-              <span className="block truncate text-[12px] leading-[1.15rem] text-muted-foreground">
-                {promptText}
+            {hasTools ? (
+              <span
+                className="hidden flex-shrink-0 items-center gap-1 text-xs text-muted-foreground sm:flex"
+                title={`${tools.length} tool call${tools.length === 1 ? "" : "s"}`}
+              >
+                <Wrench className="h-3 w-3" aria-hidden="true" />
+                {tools.length}
               </span>
             ) : null}
-          </span>
-          {hasTools ? (
-            <span
-              className="hidden flex-shrink-0 items-center gap-1 text-xs text-muted-foreground sm:flex"
-              title={`${tools.length} tool call${tools.length === 1 ? "" : "s"}`}
-            >
-              <Wrench className="h-3 w-3" aria-hidden="true" />
-              {tools.length}
-            </span>
-          ) : null}
-          {duration ? (
-            <span className="hidden flex-shrink-0 text-xs tabular-nums text-muted-foreground sm:inline">
-              {duration}
-            </span>
-          ) : null}
-          {meta ? (
-            <span
+            {subagent.usageLabel ? (
+              <span className="hidden flex-shrink-0 whitespace-nowrap text-xs tabular-nums text-muted-foreground lg:inline">
+                {subagent.usageLabel}
+              </span>
+            ) : null}
+            {duration ? (
+              <span className="hidden flex-shrink-0 text-xs tabular-nums text-muted-foreground sm:inline">
+                {duration}
+              </span>
+            ) : null}
+            {meta ? (
+              <span
+                className={cn(
+                  "flex flex-shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium",
+                  meta.chip,
+                )}
+              >
+                {meta.icon}
+                {meta.label}
+              </span>
+            ) : null}
+            <ChevronRight
+              aria-hidden="true"
               className={cn(
-                "flex flex-shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium",
-                meta.chip,
+                "h-4 w-4 flex-shrink-0 text-muted-foreground transition-transform",
+                cardExpanded && "rotate-90",
               )}
-            >
-              {meta.icon}
-              {meta.label}
-            </span>
-          ) : null}
-          <ChevronRight
-            aria-hidden="true"
-            className={cn(
-              "h-4 w-4 flex-shrink-0 text-muted-foreground transition-transform",
-              cardExpanded && "rotate-90",
-            )}
-          />
-        </button>
+            />
+          </button>
+          {trailing ? <div className="flex flex-shrink-0 items-center pr-2">{trailing}</div> : null}
+        </div>
 
         <SmoothCollapse open={cardExpanded}>
           <div className="relative flex flex-col gap-6 border-t border-border/60 px-4 pb-5 pt-3 sm:px-5">

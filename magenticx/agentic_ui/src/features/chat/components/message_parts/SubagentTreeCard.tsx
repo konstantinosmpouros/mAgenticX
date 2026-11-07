@@ -1,5 +1,6 @@
+import type { ReactNode } from "react";
 import { subagentBlockToItem } from "@/features/inference";
-import type { SubagentBlock, SubagentRunStatus } from "@/shared/lib/types";
+import type { SubagentBlock, SubagentItem, SubagentRunStatus } from "@/shared/lib/types";
 import { SubagentCard } from "./SubagentContainer";
 
 export type SubagentTreeCardProps = {
@@ -12,6 +13,13 @@ export type SubagentTreeCardProps = {
   /** Opens a sub-agent elsewhere (the agent map) instead of expanding it. */
   onOpen?: (block: SubagentBlock) => void;
   defaultCollapsedSections?: boolean;
+  /**
+   * A card's view model, when it carries more than its fold — an async task's
+   * model, usage and elapsed time (plan 41). Defaults to the fold's.
+   */
+  itemOf?: (block: SubagentBlock) => SubagentItem;
+  /** A control at the right of a card's row (an async task's Stop). */
+  trailingOf?: (block: SubagentBlock) => ReactNode;
 };
 
 /**
@@ -28,15 +36,18 @@ export function SubagentTreeCard({
   statusOf,
   onOpen,
   defaultCollapsedSections,
+  itemOf,
+  trailingOf,
 }: SubagentTreeCardProps) {
   const children = childrenOf(block).filter((child) => statusOf(child) !== null);
   return (
     <SubagentCard
-      subagent={subagentBlockToItem(block)}
+      subagent={itemOf ? itemOf(block) : subagentBlockToItem(block)}
       index={index}
       status={statusOf(block)}
       onOpen={onOpen ? () => onOpen(block) : undefined}
       defaultCollapsedSections={defaultCollapsedSections}
+      trailing={trailingOf?.(block)}
       nested={children.map((child, childIndex) => ({
         key: child.id,
         active: statusOf(child) === "running",
@@ -48,6 +59,8 @@ export function SubagentTreeCard({
             statusOf={statusOf}
             onOpen={onOpen}
             defaultCollapsedSections={defaultCollapsedSections}
+            itemOf={itemOf}
+            trailingOf={trailingOf}
           />
         ),
       }))}

@@ -568,6 +568,7 @@ harness/prompt_engineering/
 └── prompts/
     ├── filesystem_prompt.py     which mounts exist, which refuse writes
     ├── capabilities_prompt.py   view_image / present_artifact / render_chart / ask_user
+    ├── progress_prompt.py       short updates to the user between tool calls
     ├── memory_prompt.py         /memories/, remember, forget, past-conv search
     └── temporal_prompt.py       today's date and time
 ```
@@ -578,11 +579,14 @@ Order is fixed in the composer, not at call sites:
 2. personalization
 3. the workspace
 4. the platform verbs
-5. long-term memory
-6. the current date and time
+5. working out loud — short updates between tool calls, for the agent the
+   user talks to in a conversation (`narrate_progress`; off for a background
+   task's run)
+6. long-term memory
+7. the current date and time
 
-**Stable first, volatile last.** Sections 1–5 are fixed for a given agent and
-run, so a provider can cache that prompt prefix; section 6 changes every
+**Stable first, volatile last.** Sections 1–6 are fixed for a given agent and
+run, so a provider can cache that prompt prefix; section 7 changes every
 minute. Putting the clock any earlier would invalidate the cache on every
 request — which is also why the stamp has no seconds.
 

@@ -42,6 +42,14 @@ CLAIMS = ("1", "2", "3")
 # Scripted run: orchestrator → 3 researchers in parallel → each delegates to a
 # fact-checker through the gated `task` tool, so three gates pause at once.
 # ---------------------------------------------------------------------------
+
+@pytest.fixture(autouse=True)
+def _blocking_subagents(agents_service):
+    """This module tests the blocking ``task`` path, which async sub-agents
+    (plan 41, on by default) replace; it stays for trials, pre-compiled
+    sub-agents and the ``ASYNC_SUBAGENTS_ENABLED=false`` switch."""
+    agents_service.settings_module.settings.async_tasks.enabled = False
+
 def _task(call_id: str, subagent: str, description: str) -> dict:
     return {"id": call_id, "name": "task", "args": {"subagent_type": subagent, "description": description}}
 
@@ -236,7 +244,8 @@ def test_one_at_a_time_each_decision_reaches_its_own_interrupt(agents_service, s
         assert await run.leg(run.command(**_approve(ids["3"]))) == []
 
     asyncio.run(go())
-    assert verdicts == {"call-c2": "skip claim 2"}
+    # langchain 1.4 words a rejection with a reason as below.
+    assert verdicts == {"call-c2": "User rejected the tool call for `task` with reason: skip claim 2"}
 
 
 def test_a_decision_for_an_interrupt_that_is_not_pending_is_refused(agents_service, scripted):

@@ -20,6 +20,7 @@ from core.database import (
 )
 from schema import (
     CommandInvocation,
+    TaskNoticeOut,
     ConversationShareListItem,
     MessageIn,
 )
@@ -120,6 +121,21 @@ def _snapshot_command(item: dict) -> dict | None:
         return None
 
 
+def _snapshot_task_notice(item: dict) -> dict | None:
+    """A shared background-task notice (plan 41), revalidated, or ``None``.
+
+    Only the four public keys survive: the notification's agent kwargs are
+    never in a snapshot, so the continued copy's notice is plain history.
+    """
+    raw = item.get("taskNotice")
+    if item.get("kind") != "task_notification" or item.get("sender") != "user" or not isinstance(raw, dict):
+        return None
+    try:
+        return TaskNoticeOut.model_validate(raw).model_dump()
+    except ValidationError:
+        return None
+
+
 async def create_conversation_from_share_record(
     *,
     db: AsyncSession,
@@ -194,6 +210,9 @@ async def create_conversation_from_share_record(
             # Only a well-formed {"name"} survives the import — the snapshot came
             # from the owner's rows, but the import trusts nothing it carries.
             command=_snapshot_command(item),
+            # A task notice stays a notice in the copy, never the user's words.
+            kind="task_notification" if _snapshot_task_notice(item) is not None else None,
+            task_notice=_snapshot_task_notice(item),
             created_at=created_at,
             updated_at=updated_at,
         )

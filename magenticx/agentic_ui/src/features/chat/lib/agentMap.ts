@@ -4,6 +4,7 @@ import {
   resolveSubagentParents,
   subagentRunStatus,
 } from "@/features/inference/timeline";
+import type { TaskCardTree } from "@/features/chat/lib/taskTreeAdapter";
 import type {
   ContentBlock,
   MessageOut,
@@ -200,13 +201,75 @@ function buildAnswer(input: AgentMapAnswerInput): AgentMapAnswer | null {
   return answer;
 }
 
-/** The conversation's agent map: one entry per answer that used sub-agents. */
-export function buildAgentMap(inputs: AgentMapAnswerInput[]): AgentMap {
+/**
+ * An answer's background tasks (plan 41) as map nodes. Async sub-agents live in
+ * the conversation's task tree, not in the answer's own timeline, so they are
+ * walked from the tree (`buildTaskCardTree`) at every depth.
+ */
+export function taskAgentNodes(messageId: string, cards: TaskCardTree): AgentMapNode[] {
+  const toNode = (block: SubagentBlock, depth: number): AgentMapNode => {
+    const status = cards.statusOf(block);
+    const settled = status !== null && SETTLED.has(status);
+    const { startedAt, endedAt } = block;
+    return {
+      id: `${messageId}/${block.taskId}`,
+      taskId: block.taskId,
+      messageId,
+      title: block.label || block.type || "Sub-agent",
+      type: block.type,
+      task: oneLine(block.description || block.prompt),
+      status,
+      startedAt,
+      endedAt,
+      durationMs:
+        settled &&
+        typeof startedAt === "number" &&
+        typeof endedAt === "number" &&
+        endedAt >= startedAt
+          ? endedAt - startedAt
+          : null,
+      toolCount: countTools(block),
+      depth,
+      block,
+      children: cards.childrenOf(block).map((child) => toNode(child, depth + 1)),
+    };
+  };
+  return cards.roots.map((block) => toNode(block, 1));
+}
+
+/** An answer with its background-task nodes added after its own sub-agents. */
+function withTaskNodes(
+  input: AgentMapAnswerInput,
+  base: AgentMapAnswer | null,
+  taskNodes: AgentMapNode[],
+): AgentMapAnswer | null {
+  if (!taskNodes.length) return base;
+  const nodes = [...(base?.nodes ?? []), ...taskNodes];
+  const all = flattenAgentNodes(nodes);
+  return {
+    id: input.messageId,
+    number: input.number,
+    question: oneLine(input.question),
+    live: input.live,
+    subagentCount: all.length,
+    runningCount: all.filter((node) => node.status === "running").length,
+    nodes,
+  };
+}
+
+/**
+ * The conversation's agent map: one entry per answer that used sub-agents.
+ * `taskNodesFor` adds the background tasks an answer launched (plan 41).
+ */
+export function buildAgentMap(
+  inputs: AgentMapAnswerInput[],
+  taskNodesFor?: (messageId: string) => AgentMapNode[],
+): AgentMap {
   const answers: AgentMapAnswer[] = [];
   let subagentCount = 0;
   let runningCount = 0;
   for (const input of inputs) {
-    const answer = buildAnswer(input);
+    const answer = withTaskNodes(input, buildAnswer(input), taskNodesFor?.(input.messageId) ?? []);
     if (!answer) continue;
     answers.push(answer);
     subagentCount += answer.subagentCount;

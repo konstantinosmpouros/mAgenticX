@@ -16,6 +16,9 @@ CHECKPOINT_COMMITTED_EVENT_TYPE = "CHECKPOINT_COMMITTED"
 PRESENT_ARTIFACT_EVENT_TYPE = "PRESENT_ARTIFACT"
 RENDER_CHART_EVENT_TYPE = "RENDER_CHART"
 CONTEXT_COMPACTION_EVENT_TYPE = "CONTEXT_COMPACTION"
+# Async sub-agents (plan 41 §14.4), inside a run's own stream.
+TASK_LAUNCHED_EVENT_TYPE = "TASK_LAUNCHED"
+TASK_SETTLED_INLINE_EVENT_TYPE = "TASK_SETTLED_INLINE"
 
 
 # ------------------------------------------------------------------
@@ -88,6 +91,37 @@ class SubAgentCompletedEvent(BaseModel):
     namespace: list[str] | None = None
     started_at: int | None = None
     ended_at: int | None = None
+
+
+# ------------------------------------------------------------------
+# Async sub-agent task events (plan 41)
+# ------------------------------------------------------------------
+class TaskLaunchedEvent(BaseModel):
+    """This run started a background task: ``start_async_task`` returned its id.
+
+    The UI folds it into the "Started task" reference block, linked to the
+    task's node in the conversation's task tree. It carries no status: the
+    task outlives this run, and its life arrives on the conversation channel.
+
+    ``name`` is the ``subagent_type`` the model asked for and ``description``
+    the task it was given — both read off the launching tool call's args.
+    """
+    task_id: str
+    name: str
+    description: str
+
+
+class TaskSettledInlineEvent(BaseModel):
+    """A task's result was pulled into this busy run instead of waking it.
+
+    deepagents' pull path adds a notification message to the running agent's
+    state before its next model call; this event is how the run's timeline
+    shows that moment ("researcher finished"). Only settled outcomes are
+    announced — a task that paused for approval is not finished.
+    """
+    task_id: str
+    name: str
+    status: Literal["success", "error", "cancelled"]
 
 
 # ------------------------------------------------------------------

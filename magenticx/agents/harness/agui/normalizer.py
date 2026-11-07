@@ -1,6 +1,8 @@
 import json
 import mimetypes
+import re
 import time
+from collections.abc import Mapping
 from typing import Any, List, Optional, Tuple, Dict
 
 from pydantic import ValidationError
@@ -36,6 +38,33 @@ _THREAD_TASK_STARTED_AT: dict[str, dict[str, int]] = {}
 # a finished sub-agent's result streams again; without this it would be
 # announced twice, the second time with the resume's ``ended_at``.
 _THREAD_TASK_COMPLETED: dict[str, set[str]] = {}
+# `start_async_task` calls whose TASK_LAUNCHED this run already sent, same
+# lifecycle and for the same reason: a resume replays the saved writes of a
+# tools step, so a launch's ToolMessage can stream a second time.
+_THREAD_TASKS_LAUNCHED: dict[str, set[str]] = {}
+
+#: deepagents' tool that starts a background sub-agent (plan 41). Its result
+#: is the "Started task" reference block, never a tool card.
+START_ASYNC_TASK_TOOL_NAME = "start_async_task"
+#: ``start_async_task``'s success text, ``Launched async subagent. task_id: <id>``
+#: (deepagents 0.7.34) — the task id is the whitespace-free token after it.
+_LAUNCHED_TASK_ID_RE = re.compile(r"task_id:\s*(\S+)")
+#: How deepagents labels a task notification it adds to a running agent's
+#: state (``langchain_core.messages.add_notification_metadata``): the source
+#: in ``additional_kwargs["lc_source"]``, the ``TaskEvent`` in ``lc_data``.
+#: ``deepagents_notification`` is the deprecated key carrying the same event.
+_NOTIFICATION_SOURCE = "async_subagent"
+_NOTIFICATION_DATA_KEY = "lc_data"
+_NOTIFICATION_LEGACY_KEY = "deepagents_notification"
+#: deepagents' notification status -> the settled ``TaskStatus`` the UI shows.
+#: ``timeout`` is a failed run in our vocabulary (§14.1 has no timeout); a
+#: ``waiting`` task paused for approval and has not finished, so it is absent.
+_SETTLED_INLINE_STATUS: dict[str, str] = {
+    "success": "success",
+    "error": "error",
+    "timeout": "error",
+    "cancelled": "cancelled",
+}
 
 
 def release_namespace_bindings(thread_id: str) -> None:
@@ -44,6 +73,7 @@ def release_namespace_bindings(thread_id: str) -> None:
         _THREAD_NAMESPACE_BINDINGS.pop(thread_id, None)
         _THREAD_TASK_STARTED_AT.pop(thread_id, None)
         _THREAD_TASK_COMPLETED.pop(thread_id, None)
+        _THREAD_TASKS_LAUNCHED.pop(thread_id, None)
 
 
 def _now_ms() -> int:
@@ -63,6 +93,10 @@ class AGUIStreamNormalizer:
         - __interrupt__ => only HITL event (priority)
         - write_todos   => only plan_snapshot (dedupe)
         - task tool     => only subagent event (dedupe)
+        - start_async_task => TASK_LAUNCHED on its result (a failed launch
+                          shows as an errored tool call)
+        - task notification pulled into the run => TASK_SETTLED_INLINE
+                          (never rendered as user text)
         - ask_user      => nothing (its interrupt is the HITL event)
         - other tools   => full lifecycle start/args/result/end
     """
@@ -85,6 +119,16 @@ class AGUIStreamNormalizer:
         # SUBAGENT_COMPLETED sent — on this run's earlier streams too.
         self._completed_subagent_task_ids: set[str] = set(_THREAD_TASK_COMPLETED.get(thread_id, ()))
         self._last_plan_fingerprint: Optional[str] = None
+
+        # --- async sub-agent tasks (plan 41) ---
+        # `start_async_task` calls awaiting their result: the sub-agent type,
+        # task description and raw args (for a failed launch's tool card).
+        self._async_launch_calls: dict[str, dict[str, Any]] = {}
+        # Launches already announced (TASK_LAUNCHED or a failed-launch card),
+        # on this run's earlier streams too.
+        self._launched_call_ids: set[str] = set(_THREAD_TASKS_LAUNCHED.get(thread_id, ()))
+        # (task_id, run_id, status) of every TASK_SETTLED_INLINE sent.
+        self._settled_inline_keys: set[tuple[str, str, str]] = set()
 
         # --- automatic compaction (plan 34) ---
         # Open between the summary call's first tokens and the reply of the
@@ -381,7 +425,7 @@ class AGUIStreamNormalizer:
 
         # Walk node updates
         for node_name, node_update in payload.items():
-            # Sub-agent startup marker. deepagents 0.6.10 emits this stamped with
+            # Sub-agent startup marker. deepagents (0.6.10, still 0.7.34) emits this stamped with
             # the subagent's namespace right after its `task` call is approved,
             # but with a null body — so we bind on the namespace + pending-task
             # order, NOT on message content. This is the only deterministic link
@@ -422,7 +466,11 @@ class AGUIStreamNormalizer:
                     self._emit_tool_message_result(out, msg, ns_label)
                     continue
 
+                # A task notification deepagents pulled into this run is a
+                # HumanMessage the user never typed: never rendered as text,
+                # announced as the inline "finished" marker instead.
                 if msg_kind != "ai":
+                    self._emit_task_settled_inline(out, msg, node_name, ns_label)
                     continue
 
                 # If updates stream contains final AI content:
@@ -510,6 +558,15 @@ class AGUIStreamNormalizer:
                             }
                             self._pending_task_callers[tc_id] = namespace or None
                         self._ignored_tool_call_ids.add(tc_id)  # ignore ToolMessage if it appears later
+                        continue
+
+                    if tc_name == START_ASYNC_TASK_TOOL_NAME:
+                        # A background task: its result becomes TASK_LAUNCHED
+                        # (the "Started task" block), so no tool card opens
+                        # now. Remember what was asked for that event.
+                        args = tc_args if isinstance(tc_args, dict) else {}
+                        self._async_launch_calls.setdefault(tc_id, self._launch_call(args))
+                        self._ignored_tool_call_ids.add(tc_id)  # its ToolMessage is the launch
                         continue
 
                     if tc_name == "present_artifact":
@@ -620,6 +677,11 @@ class AGUIStreamNormalizer:
                 self._push(out, self._subagent_completed(str(tool_call_id), is_error, ns_label))
             return
 
+        # A `start_async_task` result: the task was launched (or failed to).
+        if tool_call_id in self._async_launch_calls or getattr(msg, "name", None) == START_ASYNC_TASK_TOOL_NAME:
+            self._emit_task_launched(out, msg, str(tool_call_id), ns_label)
+            return
+
         # Ignore results for write_todos/task tool calls (because we never emitted start/args)
         if tool_call_id in self._ignored_tool_call_ids:
             self._ignored_tool_call_ids.discard(tool_call_id)
@@ -705,7 +767,21 @@ class AGUIStreamNormalizer:
                 if tool_call_id:
                     answered.add(str(tool_call_id))
             elif kind == "ai":
-                calls.extend(tc for tc in self._iter_tool_calls(msg) if tc.get("name") == "task")
+                calls.extend(
+                    tc
+                    for tc in self._iter_tool_calls(msg)
+                    if tc.get("name") in ("task", START_ASYNC_TASK_TOOL_NAME)
+                )
+        # A gated `start_async_task` approved on this /resume: its result must
+        # still become TASK_LAUNCHED with the type and description it asked for.
+        for tc in calls:
+            tc_id = str(tc["id"])
+            if tc.get("name") != START_ASYNC_TASK_TOOL_NAME or tc_id in answered:
+                continue
+            args = tc.get("args") if isinstance(tc.get("args"), dict) else {}
+            self._async_launch_calls.setdefault(tc_id, self._launch_call(args))
+            self._ignored_tool_call_ids.add(tc_id)
+        calls = [tc for tc in calls if tc.get("name") == "task"]
         bound = set(self._namespace_task_labels.values())
         for tc in calls:
             tc_id = str(tc["id"])
@@ -720,6 +796,130 @@ class AGUIStreamNormalizer:
                 "description": str(args.get("description", "")),
                 "subagent_type": str(args.get("subagent_type", "")),
             }
+
+
+    # ----------------------- async sub-agent tasks -----------------------
+    @staticmethod
+    def _launch_call(args: Mapping[str, Any]) -> dict[str, Any]:
+        """What TASK_LAUNCHED needs from a `start_async_task` call's args."""
+        return {
+            "name": str(args.get("subagent_type") or ""),
+            "description": str(args.get("description") or ""),
+            "args": dict(args),
+        }
+
+
+    def _emit_task_launched(
+        self, out: List[bytes], msg: Any, tool_call_id: str, ns_label: Optional[str]
+    ) -> None:
+        """TASK_LAUNCHED for a `start_async_task` result carrying a task id.
+
+        A launch that failed (an error result, an unknown sub-agent type, a
+        refused start) carries no task id: it is shown as the ordinary tool
+        call it was, ending in error, so the failure is visible in the
+        timeline rather than silently missing. Once per call, on every
+        stream of the run.
+        """
+        call = self._async_launch_calls.pop(tool_call_id, None) or self._launch_call({})
+        self._ignored_tool_call_ids.discard(tool_call_id)
+        if tool_call_id in self._launched_call_ids:
+            return
+        self._launched_call_ids.add(tool_call_id)
+        if self.thread_id:
+            _THREAD_TASKS_LAUNCHED.setdefault(self.thread_id, set()).add(tool_call_id)
+
+        is_error = getattr(msg, "status", None) == "error"
+        match = None if is_error else _LAUNCHED_TASK_ID_RE.search(self._extract_text_delta(msg))
+        self._end_thinking_if_needed(out, ns_label)
+        if match:
+            self._push(
+                out,
+                self.emitter.task_launched(
+                    task_id=match.group(1),
+                    name=call["name"],
+                    description=call["description"],
+                    namespace=ns_label,
+                ),
+            )
+            return
+
+        name = START_ASYNC_TASK_TOOL_NAME
+        self._push(out, self.emitter.tool_call_start(tool_call_id=tool_call_id, name=name, namespace=ns_label))
+        self._push(out, self.emitter.tool_call_args(tool_call_id=tool_call_id, name=name, args=call["args"], namespace=ns_label))
+        self._push(
+            out,
+            self.emitter.tool_call_result(
+                tool_call_id=tool_call_id,
+                thread_id=self.thread_id,
+                output=getattr(msg, "content", ""),
+                namespace=ns_label,
+                error=True,
+            ),
+        )
+        self._push(out, self.emitter.tool_call_end(tool_call_id=tool_call_id, namespace=ns_label))
+        self._push(out, self._tool_usage(msg, tool_call_id, ns_label))
+        self._finished_tool_call_ids.add(tool_call_id)
+
+
+    @staticmethod
+    def _notification_event(msg: Any) -> Optional[Mapping[str, Any]]:
+        """The ``TaskEvent`` a deepagents task notification carries, else None.
+
+        Reads the message as deepagents writes it: a dict (``role: user``) on
+        the pull path, or a message object. ``lc_source``/``lc_data`` first,
+        the deprecated ``deepagents_notification`` key as the fallback —
+        exactly the order deepagents itself reads them in.
+        """
+        kwargs = msg.get("additional_kwargs") if isinstance(msg, Mapping) else getattr(msg, "additional_kwargs", None)
+        if not isinstance(kwargs, Mapping):
+            return None
+        event = kwargs.get(_NOTIFICATION_DATA_KEY) if kwargs.get("lc_source") == _NOTIFICATION_SOURCE else None
+        if not isinstance(event, Mapping):
+            event = kwargs.get(_NOTIFICATION_LEGACY_KEY)
+        return event if isinstance(event, Mapping) else None
+
+
+    def _emit_task_settled_inline(
+        self, out: List[bytes], msg: Any, node_name: Any, ns_label: Optional[str]
+    ) -> None:
+        """TASK_SETTLED_INLINE for a task notification pulled into this run.
+
+        deepagents' ``AsyncSubAgentMiddleware`` pulls a settled task's outcome
+        into a running agent's state (``before_agent`` / ``before_model`` /
+        ``after_model``) as a new notification message. Two cases say nothing:
+
+        * a status that is not settled (``waiting`` paused for approval);
+        * the run's own input re-labelled by ``before_agent`` — a wake-up run
+          whose notification a later follow-up superseded. That message is
+          already in state (it has an id; a freshly pulled one is a bare dict
+          without one), and the bridge shows a wake-up's notice row itself.
+
+        Once per (task, run, status) per stream.
+        """
+        event = self._notification_event(msg)
+        if event is None:
+            return
+        status = _SETTLED_INLINE_STATUS.get(str(event.get("status") or ""))
+        task_id = str(event.get("task_id") or "")
+        if status is None or not task_id:
+            return
+        msg_id = msg.get("id") if isinstance(msg, Mapping) else getattr(msg, "id", None)
+        if isinstance(node_name, str) and node_name.endswith(".before_agent") and msg_id:
+            return
+        key = (task_id, str(event.get("run_id") or ""), status)
+        if key in self._settled_inline_keys:
+            return
+        self._settled_inline_keys.add(key)
+        self._end_thinking_if_needed(out, ns_label)
+        self._push(
+            out,
+            self.emitter.task_settled_inline(
+                task_id=task_id,
+                name=str(event.get("agent_name") or ""),
+                status=status,
+                namespace=ns_label,
+            ),
+        )
 
 
     def _tool_usage(self, msg: Any, tool_call_id: str, ns_label: str | None) -> bytes | None:

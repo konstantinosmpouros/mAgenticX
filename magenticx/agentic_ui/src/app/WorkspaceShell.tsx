@@ -12,7 +12,7 @@ import AttachmentPreviewPanel from "@/features/attachments/components/Attachment
 import ChatSidebar from "@/features/chat/components/ChatSidebar";
 import { useSidebarInteractionEffect } from "@/features/chat/hooks/useChatEffects";
 import { useChatKeyboardShortcuts } from "@/features/chat/hooks/useKeyboardShortcuts";
-import { HitlProvider } from "@/features/inference";
+import { BackgroundTasksContext, HitlProvider } from "@/features/inference";
 import ReportConversationDialog from "@/features/reporting/components/ReportPanel";
 import SearchPanel from "@/features/search/components/SearchPanel";
 import EditProfileDialog from "@/features/settings/components/EditProfileDialog";
@@ -109,6 +109,7 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
     closeSearchPanel,
     handleSearchResultSelect,
     resumeInferenceRunHandler,
+    backgroundTasksContext,
     isDecisionInFlight,
     activeProfileTab,
     handleSetActiveProfileTab,
@@ -309,6 +310,8 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
           <div aria-hidden="true" className="private-card-glow" />
           <TooltipProvider>
             <HitlProvider value={{ resumeRun: resumeInferenceRunHandler, isDecisionInFlight }}>
+              {/* The open conversation's background task tree (plan 41). */}
+              <BackgroundTasksContext.Provider value={backgroundTasksContext}>
               {/* Fills the card on desktop (md:h-full) and the screen on mobile;
                   the overlays mounted here stay inside the card's rounded edge. */}
               <div
@@ -464,6 +467,7 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
                   onClose={handleCloseImagePreview}
                 />
               </div>
+              </BackgroundTasksContext.Provider>
             </HitlProvider>
           </TooltipProvider>
         </SidebarInset>

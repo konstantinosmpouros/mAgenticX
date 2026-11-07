@@ -37,6 +37,7 @@ from harness.agui.usage_callback import UsageMetricsCallback
 from harness.checkpointer.fork import STATE_WRITER_NODE
 from harness.middlewares import (
     EVENT_KEY,
+    SESSION_ID_KEY,
     ConfigurableSummarizationMiddleware,
     summary_cutoff,
     tokens_freed,
@@ -88,24 +89,26 @@ def _head_id(checkpoint_tuple: Any) -> Optional[str]:
     return (checkpoint_tuple.config.get("configurable") or {}).get("checkpoint_id")
 
 
-async def read_state(graph: Any, cfg: dict[str, Any]) -> tuple[Optional[str], list[AnyMessage], Any]:
-    """The checkpoint id, full message history and compaction at ``cfg``.
+async def read_state(graph: Any, cfg: dict[str, Any]) -> tuple[Optional[str], list[AnyMessage], Any, dict[str, Any]]:
+    """The checkpoint id, full message history, compaction and state values at ``cfg``.
 
     Through ``aget_state``, which replays delta channels into the full history
     (a raw checkpoint of a deep agent carries only the latest message delta).
     The compaction is a plain channel; it is read from the raw checkpoint when
-    the snapshot does not surface it.
+    the snapshot does not surface it. The values are returned too, so the
+    caller can read the other private summarizer keys (the history file's
+    session id) without a second read.
     """
     snapshot = await graph.aget_state(cfg)
     if snapshot is None:
-        return None, [], None
+        return None, [], None, {}
     values = snapshot.values or {}
     event = values.get(EVENT_KEY)
     if event is None:
         saved = await graph.checkpointer.aget_tuple(cfg)
         event = (saved.checkpoint.get("channel_values") or {}).get(EVENT_KEY) if saved is not None else None
     head = (snapshot.config.get("configurable") or {}).get("checkpoint_id") if snapshot.config else None
-    return head, list(values.get("messages") or []), event
+    return head, list(values.get("messages") or []), event, dict(values)
 
 
 def _context_before(effective: list[AnyMessage], counter: Any) -> int:
@@ -155,17 +158,23 @@ def _sum_usage(calls: list[tuple[dict[str, Any], str, dict[str, Any]]]) -> tuple
     return usage, model
 
 
-async def _write_event(graph: Any, cfg: dict[str, Any], event: Any) -> str:
+async def _write_event(graph: Any, cfg: dict[str, Any], event: Any, session_id: Optional[str] = None) -> str:
     """Write the compaction key as the next checkpoint; return its id.
+
+    ``session_id`` (when given) is written alongside, as deepagents' own
+    summarizer does, so later compactions append to the same history file.
 
     LangGraph attributes the write to the node that last wrote the thread, which
     leaves nothing pending after a finished turn. Should it ever be ambiguous,
     the model node — the one that writes the key in a real run — is used.
     """
+    update: dict[str, Any] = {EVENT_KEY: event}
+    if session_id:
+        update[SESSION_ID_KEY] = session_id
     try:
-        written = await graph.aupdate_state(cfg, {EVENT_KEY: event})
+        written = await graph.aupdate_state(cfg, update)
     except InvalidUpdateError:
-        written = await graph.aupdate_state(cfg, {EVENT_KEY: event}, as_node=STATE_WRITER_NODE)
+        written = await graph.aupdate_state(cfg, update, as_node=STATE_WRITER_NODE)
     return str(written["configurable"]["checkpoint_id"])
 
 
@@ -184,7 +193,7 @@ async def compact_thread(
     trace on the thread.
     """
     cfg: dict[str, Any] = {"configurable": {"thread_id": thread_id}}
-    head, messages, previous = await read_state(graph, cfg)
+    head, messages, previous, values = await read_state(graph, cfg)
     if head != expected_checkpoint_id:
         raise CompactionConflict()
 
@@ -200,23 +209,37 @@ async def compact_thread(
     to_summarize, _kept = summarizer._partition_messages(effective, cutoff)
 
     usage_callback = UsageMetricsCallback()
-    # Outside a graph run there is no runnable config. deepagents names the
-    # offloaded history file after the config's thread, and LangChain merges a
+    # Outside a graph run there is no runnable config. LangChain merges a
     # context-var config's callbacks into the summary call — that is how the
     # call's tokens are measured.
     token = var_child_runnable_config.set(
         {"configurable": {"thread_id": thread_id}, "callbacks": [usage_callback]}
     )
+    # The history file's id, resolved as in an automatic compaction: the
+    # branch thread, read from the context-var config set just above.
+    session_id = summarizer._get_session_id(values)
     try:
-        # Our workspace factory takes no part of the runtime for the history
-        # route (a plain directory), so no ToolRuntime is needed to resolve it.
-        backend = summarizer._backend(None) if callable(summarizer._backend) else summarizer._backend
-        # The same two steps deepagents' own summarizer runs (pinned 0.6.10):
-        # offload the full history and write the summary, concurrently.
+        backend = summarizer._backend
+        # The same steps deepagents' own summarizer runs (pinned 0.7.34): move
+        # inline media to the backend first, then offload the full history and
+        # write the summary, concurrently.
+        offloaded, _failed_media = await summarizer._aoffload_inline_media(backend, to_summarize)
         file_path, summary = await asyncio.gather(
-            summarizer._aoffload_to_backend(backend, to_summarize),
-            summarizer._acreate_summary(to_summarize),
+            summarizer._aoffload_to_backend(backend, offloaded, session_id),
+            summarizer._acreate_summary(offloaded),
         )
+    except Exception as exc:
+        # langchain >= 1.4 raises the summary model's own error (after its
+        # retries) where 1.3 answered with an "Error generating summary" text.
+        # Providers raise their own types (auth, rate limit, bad request…), so
+        # any failure is the same outcome: no summary, nothing written.
+        logger.warning(
+            "manual_compaction_summary_failed",
+            "The compaction summary call failed",
+            thread_id=thread_id,
+            error_type=type(exc).__name__,
+        )
+        raise CompactionFailed() from exc
     finally:
         var_child_runnable_config.reset(token)
     if not summary or summary.strip().startswith(_NOT_A_SUMMARY):
@@ -224,14 +247,20 @@ async def compact_thread(
         raise CompactionFailed()
 
     summary_message = summarizer._build_new_messages_with_path(summary, file_path)[0]
+    state_cutoff = summarizer._compute_state_cutoff(previous, cutoff, messages)
+    # The event's shape as deepagents writes it: the cutoff message's id keeps
+    # the cut right if earlier messages are ever removed, and
+    # ``created_at_index`` marks which kept messages predate the summary.
     event = {
-        "cutoff_index": summarizer._compute_state_cutoff(previous, cutoff),
+        "cutoff_index": state_cutoff,
+        "cutoff_message_id": messages[state_cutoff].id if 0 <= state_cutoff < len(messages) else None,
         "summary_message": summary_message,
         "file_path": file_path,
+        "created_at_index": len(messages),
     }
     if _head_id(await graph.checkpointer.aget_tuple(cfg)) != expected_checkpoint_id:
         raise CompactionConflict()
-    checkpoint_id = await _write_event(graph, cfg, event)
+    checkpoint_id = await _write_event(graph, cfg, event, session_id)
 
     before = _context_before(effective, summarizer.token_counter)
     freed = min(tokens_freed(summarizer.token_counter, to_summarize, summary_message), before)
@@ -263,5 +292,5 @@ async def undo_compaction(*, graph: Any, thread_id: str, expected_checkpoint_id:
     head = await graph.checkpointer.aget_tuple(cfg)
     if _head_id(head) != expected_checkpoint_id or head.parent_config is None:
         raise CompactionConflict()
-    _parent_id, _messages, previous = await read_state(graph, head.parent_config)
+    _parent_id, _messages, previous, _values = await read_state(graph, head.parent_config)
     return await _write_event(graph, cfg, previous)

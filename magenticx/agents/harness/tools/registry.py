@@ -58,6 +58,10 @@ class NativeToolContext:
     # Someone is there to answer: a chat turn. A scheduled task's run is not
     # (nobody would ever resume it), so it never gets `ask_user`.
     interactive: bool = True
+    # The background task this run is (plan 41), or None for a chat turn. A
+    # task never asks the user anything: only the orchestrator may pause on a
+    # question, so ``ask_user`` is not even attached to a task run.
+    async_task_id: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -218,7 +222,9 @@ register_native_tool(
         # The call is itself the human-in-the-loop pause, so it is never gated
         # (see `BuiltinTool.gateable`). It needs someone to answer: a
         # conversation, and a run the user is actually watching.
-        builder=lambda ctx: build_ask_user_tool() if ctx.conversation_id and ctx.interactive else None,
+        builder=lambda ctx: (
+            build_ask_user_tool() if ctx.conversation_id and ctx.interactive and not ctx.async_task_id else None
+        ),
     )
 )
 

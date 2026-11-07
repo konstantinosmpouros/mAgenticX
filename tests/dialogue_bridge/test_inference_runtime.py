@@ -808,9 +808,9 @@ async def test_fail_stale_queued_runs_skips_recent(session_factory, seeded_user,
 
 
 def _truncate(event):
-    from utils.inference_runs import _truncate_tool_result
+    from utils.inference_runs import truncate_tool_result
 
-    return _truncate_tool_result(event)
+    return truncate_tool_result(event)
 
 
 def test_an_oversized_text_result_is_still_cut():

@@ -15,6 +15,8 @@ then turns into the result the model reads (:func:`format_reply`).
 Main agent only. deepagents hands the general-purpose sub-agent the parent's full
 tool list, so the tool refuses when it runs inside a sub-agent instead of
 pausing a run on a question the orchestrator never saw (:func:`in_subagent`).
+That covers an async sub-agent too (plan 41): it runs top-level on a thread of
+its own, so it is recognised by the task marker the runner puts in its context.
 """
 from __future__ import annotations
 
@@ -23,6 +25,7 @@ from typing import Any
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import StructuredTool
+from langgraph._internal._constants import CONFIG_KEY_RUNTIME
 from langgraph.types import interrupt
 
 from core.logging import get_logger
@@ -31,6 +34,10 @@ from harness.tools.ask_user.schema import AskUserInput
 logger = get_logger(__name__)
 
 ASK_USER_TOOL_NAME = "ask_user"
+
+#: The run-context key the async TaskRunner sets (non-empty) on every task run
+#: (plan 41 §3.3). Its presence is what makes a top-level run a sub-agent.
+ASYNC_TASK_CONTEXT_KEY = "async_task_id"
 
 #: A free-text answer is the user's own writing; this only keeps a pasted
 #: document from flooding the model's context.
@@ -150,18 +157,54 @@ def format_reply(questions: list[Mapping[str, Any]], reply: Any) -> str:
     return "\n".join(lines)
 
 
-def in_subagent(config: Mapping[str, Any] | None) -> bool:
+def is_async_task_context(context: Any) -> bool:
+    """Whether a run context belongs to an async sub-agent task (plan 41).
+
+    The TaskRunner sets ``async_task_id`` on every task run's context; the run
+    context may be a mapping or an object with attributes, depending on the
+    ``context_schema`` it was built with.
+    """
+    if isinstance(context, Mapping):
+        marker = context.get(ASYNC_TASK_CONTEXT_KEY)
+    else:
+        marker = getattr(context, ASYNC_TASK_CONTEXT_KEY, None)
+    return isinstance(marker, str) and bool(marker.strip())
+
+
+def _runtime_context(config: Mapping[str, Any]) -> Any:
+    """The LangGraph run context this call runs with, or None.
+
+    LangGraph keeps the run's ``Runtime`` in ``configurable`` (what
+    ``langgraph.runtime.get_runtime`` reads); its ``context`` is what the run
+    was started with.
+    """
+    runtime = (config.get("configurable") or {}).get(CONFIG_KEY_RUNTIME)
+    return getattr(runtime, "context", None)
+
+
+def in_subagent(config: Mapping[str, Any] | None, *, context: Any = None) -> bool:
     """Whether this tool call runs inside a sub-agent.
 
-    LangGraph runs a tool as a task in its agent's ``tools`` node, and deepagents
-    runs a sub-agent inside the parent's ``task`` tool — so a main-agent tool's
-    checkpoint namespace is one ``tools:<id>`` segment and a sub-agent's at least
-    two (``tools:<id>|tools:<id>``). The full path is in ``configurable`` (and
-    ``metadata.langgraph_checkpoint_ns``); ``metadata.checkpoint_ns`` holds only
-    the first segment, so it cannot tell the two apart.
+    Two kinds of sub-agent, two signals:
+
+    * **In-graph** (deepagents' blocking ``task``): LangGraph runs a tool as a
+      task in its agent's ``tools`` node, and deepagents runs a sub-agent
+      inside the parent's ``task`` tool — so a main-agent tool's checkpoint
+      namespace is one ``tools:<id>`` segment and a sub-agent's at least two
+      (``tools:<id>|tools:<id>``). The full path is in ``configurable`` (and
+      ``metadata.langgraph_checkpoint_ns``); ``metadata.checkpoint_ns`` holds
+      only the first segment, so it cannot tell the two apart.
+    * **Async task** (plan 41): it runs top-level on its own thread, so its
+      namespace looks like a main agent's. The runner marks its context with
+      ``async_task_id`` instead — read from the run's LangGraph context, or
+      from ``context``, the agent's context the tool was built with.
     """
+    if is_async_task_context(context):
+        return True
     if not isinstance(config, Mapping):
         return False
+    if is_async_task_context(_runtime_context(config)):
+        return True
     namespace = (config.get("configurable") or {}).get("checkpoint_ns") or (
         config.get("metadata") or {}
     ).get("langgraph_checkpoint_ns")
@@ -174,11 +217,16 @@ def _as_dict(question: Any) -> dict[str, Any]:
     return question.model_dump() if hasattr(question, "model_dump") else dict(question)
 
 
-def build_ask_user_tool() -> StructuredTool:
-    """Return the ``ask_user`` tool. Stateless: the pause lives in the checkpoint."""
+def build_ask_user_tool(*, context: Mapping[str, Any] | None = None) -> StructuredTool:
+    """Return the ``ask_user`` tool. Stateless: the pause lives in the checkpoint.
+
+    ``context`` is the agent's run context when the builder has it, so a task
+    run built with ``async_task_id`` refuses even if LangGraph's own run
+    context does not carry the marker.
+    """
 
     async def _ask_user(questions: list[Any], config: RunnableConfig) -> str:
-        if in_subagent(config):
+        if in_subagent(config, context=context):
             logger.info("ask_user_refused_in_subagent", "A sub-agent tried to ask the user; refused")
             return SUBAGENT_REFUSAL
         payload = ask_user_payload(_as_dict(question) for question in questions)
@@ -203,6 +251,7 @@ def build_ask_user_tool() -> StructuredTool:
 
 __all__ = [
     "ASK_USER_TOOL_NAME",
+    "ASYNC_TASK_CONTEXT_KEY",
     "SKIPPED_REPLY",
     "SUBAGENT_REFUSAL",
     "ask_user_payload",
@@ -210,5 +259,6 @@ __all__ = [
     "format_reply",
     "in_subagent",
     "is_ask_user_interrupt",
+    "is_async_task_context",
     "resume_value",
 ]

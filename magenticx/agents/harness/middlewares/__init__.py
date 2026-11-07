@@ -3,6 +3,7 @@ from harness.middlewares.rate_limit import RetryOnRateLimitMiddleware
 from harness.middlewares.summarization import (
     COMPACTION_KEY,
     EVENT_KEY,
+    SESSION_ID_KEY,
     ConfigurableSummarizationMiddleware,
     build_summarization_middleware,
     exclude_stock_summarization,
@@ -19,6 +20,7 @@ from harness.middlewares.usage_metrics import UsageMetricsMiddleware
 __all__ = [
     "COMPACTION_KEY",
     "EVENT_KEY",
+    "SESSION_ID_KEY",
     "ConfigurableSummarizationMiddleware",
     "FirstTokenCallback",
     "RetryOnRateLimitMiddleware",

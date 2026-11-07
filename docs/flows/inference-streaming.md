@@ -50,7 +50,9 @@ The event log is durable across container restarts (Redis is its own service) bu
 
 **Checkpoint thread vs run id.** `create_inference_run_record` also allocates the run's durable LangGraph checkpoint thread (`messages.checkpoint_thread_id`) by mode: `send` inherits the branch leaf's thread, `new` mints one, `edit`/`retry` mint a fresh thread seeded copy-on-fork from the parent branch's checkpoint. The checkpoint `thread_id` is therefore **branch-scoped** (shared by every run on a branch), distinct from `run.id` (the per-run assistant-message id used for the WebSocket path, Redis key, and AG-UI `message_id`). See [Delta-Payload Inference](#delta-payload-inference--durable-checkpoint-resume) below.
 
-The response is always:
+**Composer queue (plan 41).** A `send` with `"queue_if_busy": true` to a conversation that already has an active run is not refused: the message (text and slash command only — a send with files keeps the 409) is held as `conversations.queued_message`, the route answers **202** `{"queued": true, "queued_message": {...}}`, and the bridge sends it as a normal `send` on the leaf of that run when it ends. Without the flag the 409 stays. Full rules in [async-subagents](async-subagents.md).
+
+The response is always (except the 202 above):
 
 ```json
 {
@@ -419,7 +421,7 @@ Multiple observers per run are supported natively — Redis Streams fan out read
 - AI `MessageTable` row: `content`, `reasoning_steps`, `reasoning_time_seconds`, `raw_events`, `plan`, `subagents`, `is_error`, `error_message`, `streaming_status`, `streaming_completed_at`, and `checkpoint_id` (the durable checkpoint head captured from the terminal `CHECKPOINT_COMMITTED` event; `checkpoint_thread_id` was already stamped at run creation)
 - `ConversationTable`: clears `active_assistant_message_id` (if pointing at this message), updates `last_message_preview` and `last_message_at`
 
-After commit, the task emits one final terminal event to the Redis stream and applies `EXPIRE` with `terminal_ttl_seconds` (default 3600). Connected WebSocket observers receive the terminal frame and close cleanly. Late reconnects within the TTL window can still replay the full backlog from Redis; reconnects after expiry get a one-shot Postgres snapshot from `stream_run_events`. The UI treats terminal `streaming_status` as authoritative and clears `activeRunId`/`isStreaming` even if an older summary still contains active flags.
+After commit, the task emits one final terminal event to the Redis stream and applies `EXPIRE` with `terminal_ttl_seconds` (default 3600). Then it runs the **run-finished hooks** (`register_run_finished_hook`, called with the run id once the terminal frame is out): plan 41's hook (`utils/task_wakeups.on_run_finished`) sends the conversation's **queued message first**, and only when nothing was queued (or it could not be sent) wakes the orchestrator **once** for a background task whose settle is still unhandled — the safety net for the window "last model call done, slot not yet freed". See [async-subagents](async-subagents.md). Connected WebSocket observers receive the terminal frame and close cleanly. Late reconnects within the TTL window can still replay the full backlog from Redis; reconnects after expiry get a one-shot Postgres snapshot from `stream_run_events`. The UI treats terminal `streaming_status` as authoritative and clears `activeRunId`/`isStreaming` even if an older summary still contains active flags.
 
 ---
 
@@ -588,6 +590,14 @@ The IndexedDB UI snapshot intentionally does not persist transient streaming sta
 
 ---
 
+## Runs Nobody's Client Started — the Conversation Channel
+
+Since plan 41 a run can start without a client asking for it: a **wake-up run** (a background task's subtree settled; its input is a `kind = task_notification` notice row), the **queued composer message** being sent, and a **scheduled fire**. Each is created through the same pipeline (`start_inference_flow` / `create_run_and_respond` → `inference_run_manager.launch`) and then announced as `{"type": "run_started", "run": InferenceRunOut}` on the **conversation channel** — a per-conversation Redis Stream (`conversation:{id}:channel`, capped, EXPIREd a day after its last frame) tailed by `WS /v1/conversations/{user_id}/{conversation_id}/ws`. The UI attaches to the announced run through the ordinary run socket above. The same channel carries background-task frames (`task`) and the composer queue's state (`queue`). A stream rather than pub/sub so a reconnect with `since` loses nothing, and so no state lives in process memory. Details: [async-subagents](async-subagents.md).
+
+**Tasks outlive runs.** A sub-agent is no longer part of the run that started it: the run ends right after `start_async_task` returns, while the task keeps running in the agents service. Its events are on its own stream (`task:{id}:events`, drill-down socket `/v1/tasks/{user_id}/{task_id}/ws`), its state in `conversation_tasks`.
+
+---
+
 ## Shared Conversation Continuation
 
 Shared continuation uses the same start endpoint and run lifecycle as normal chat.
@@ -613,7 +623,8 @@ The original shared conversation is not mutated. The copied conversation belongs
 - **The run id is the assistant message id.** There is no separate `inference_runs` table — every reference to `run_id` in URLs, WebSocket frames, Redis stream keys, and runtime caches is the AI `messages.id`. The LangGraph checkpoint key is a **different** id — the branch-scoped `checkpoint_thread_id` — shared across a branch's runs.
 
 - **The bridge sends a delta payload, not the full history, when a branch is checkpoint-backed.** `delta_resume`/`delta_fork` send only the new user message (+ the durable `thread_id` or `fork_from`); the agent resumes/seeds from its `agent_runtime` checkpoint. Full reconstruction (`full_seed`) is the cold-start fallback only — a branch with no committed checkpoint yet (new conversation, pre-migration branch, `shared_continue`, never-committed fork target).
-- **One active stream per conversation.** The backend pre-checks, and the partial unique index `uq_messages_one_active_stream_per_conversation` enforces active statuses `queued`, `running`, and `cancelling`.
+- **One active stream per conversation.** The backend pre-checks, and the partial unique index `uq_messages_one_active_stream_per_conversation` enforces active statuses `queued`, `running`, and `cancelling`. A `send` with `queue_if_busy` is queued (202) instead of refused; a wake-up that finds the slot taken does nothing and lets the active run pull the task's result.
+- **A wake-up run inherits `scheduled_task_id` from the run that started the task tree**, so a scheduled task's wake-ups stay non-interactive (`run_is_interactive`) and count as that task's runs (a fire is skipped while one is active).
 - **Streaming has no intermediate DB writes.** Per-chunk durability lives in Redis Streams (`MAXLEN ~ 20000` delta frames). A refresh during a live run doesn't even need the backlog: the fresh-subscribe snapshot frame carries the full coalesced log from the in-process runtime, and only new deltas tail after it. Terminal commits the final state to Postgres.
 - **Reconnect is transparent up to 1 h after terminal.** The WebSocket client resumes with `since=<lastSeenSeq>`; the Redis stream is kept alive for `terminal_ttl_seconds` (default 3600 s) after `streaming_status` flips terminal.
 - **Startup cleanup fails orphaned active streams.** On bridge startup, AI messages stuck in `streaming_status IN ('queued','running','cancelling')` from a previous process are transitioned to `failed` and conversation active pointers are cleared (`cleanup_orphaned_inference_runs`).
@@ -649,6 +660,10 @@ The original shared conversation is not mutated. The copied conversation belongs
 | Committed-ancestor lookup | [magenticx/dialogue_bridge/utils/inference.py](../../magenticx/dialogue_bridge/utils/inference.py) | `nearest_committed_ai()`, `prepare_inference_history()` |
 | Conversation reap (checkpoints + filesystem) | [magenticx/agents/main.py](../../magenticx/agents/main.py) | `reap_conversation()` route |
 | Run shape builder | [magenticx/dialogue_bridge/utils/inference_runs.py](../../magenticx/dialogue_bridge/utils/inference_runs.py) | `build_run_out_from_message()` |
+| Run-finished hooks | [magenticx/dialogue_bridge/utils/inference_runs.py](../../magenticx/dialogue_bridge/utils/inference_runs.py) | `register_run_finished_hook()`, `_run_finished()` (called from `_publish_snapshot(..., "terminal")`) |
+| Queue on start / queued send | [magenticx/dialogue_bridge/utils/composer_queue.py](../../magenticx/dialogue_bridge/utils/composer_queue.py) | `queue_if_busy()`, `send_queued_message()` |
+| Wake-up runs, run-end hook | [magenticx/dialogue_bridge/utils/task_wakeups.py](../../magenticx/dialogue_bridge/utils/task_wakeups.py) | `handle_outbox_item()`, `on_run_finished()` |
+| Conversation channel | [magenticx/dialogue_bridge/utils/conversation_channel.py](../../magenticx/dialogue_bridge/utils/conversation_channel.py) + [router/tasks.py](../../magenticx/dialogue_bridge/router/tasks.py) | `publish_run_started()`, `channel_frames()`, `conversation_websocket()` |
 | Orphaned-run cleanup | [magenticx/dialogue_bridge/utils/inference_runs.py](../../magenticx/dialogue_bridge/utils/inference_runs.py) | `cleanup_orphaned_inference_runs()` |
 | Shared clone helper | [magenticx/dialogue_bridge/utils/shared_conv.py](../../magenticx/dialogue_bridge/utils/shared_conv.py) | `create_conversation_from_share_record()` |
 | Redis settings | [magenticx/dialogue_bridge/core/settings.py](../../magenticx/dialogue_bridge/core/settings.py) | `RedisSettings` — `url`, `password`, `stream_maxlen`, `terminal_ttl_seconds`, `read_block_ms` |

@@ -18,6 +18,10 @@ class InferenceStartPayload(BaseModel):
     targetMessageId: Optional[str] = None
     messagePath: list[str] | None = None
     message: Optional[MessageIn] = None
+    # Composer queue (plan 41 §3.6, §14.4): on a `send` to a conversation that
+    # already has an active run, hold this message as the conversation's one
+    # queued message (202) instead of refusing it (409). Sent when the run ends.
+    queue_if_busy: bool = False
 
 
 class InferenceRunOut(BaseModel):

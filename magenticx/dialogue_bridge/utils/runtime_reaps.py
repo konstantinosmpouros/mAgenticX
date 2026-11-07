@@ -9,6 +9,10 @@ the agents service confirms; a failure keeps it, and it is retried after the
 next delete and when the bridge starts. No loop, no TTL — this is deletion,
 not retention.
 
+The reap first stops the conversation's background sub-agent tasks (plan 41,
+``POST /tasks/cancel-scope``), and the threads it drops include theirs (a
+task's thread id is its task id).
+
 The reap is by conversation id alone. It used to go agent by agent, and an
 agent that had been deactivated or deleted meant its threads and files were
 silently left behind.
@@ -20,7 +24,7 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.database import ConversationTable, MessageTable, PendingRuntimeReapTable, SessionLocal
+from core.database import ConversationTable, ConversationTaskTable, MessageTable, PendingRuntimeReapTable, SessionLocal
 from core.logging import get_context, get_logger
 from core.security.internal_trust import internal_service_headers
 from core.security.tls import get_httpx_client_cert, get_httpx_verify
@@ -28,6 +32,9 @@ from core.settings import settings
 from utils.agents import build_conversation_reap_url
 
 logger = get_logger(__name__)
+
+#: Stops every background task of a conversation (plan 41 §14.3).
+_CANCEL_SCOPE_URL = f"{settings.upstream.agents_service_url.rstrip('/')}/tasks/cancel-scope"
 
 #: Rows sent per drain, oldest first — a backlog is worked off over a few
 #: deletes rather than holding one delete's response.
@@ -40,11 +47,15 @@ async def enqueue_runtime_reap(db: AsyncSession, user_id: str, conversation_id: 
     Must run before the conversation's messages are deleted: they are where the
     bridge recorded the checkpoint threads.
     """
-    thread_ids = await db.scalars(
+    thread_ids = set(await db.scalars(
         select(MessageTable.checkpoint_thread_id)
         .where(MessageTable.conversation_id == conversation_id, MessageTable.checkpoint_thread_id.is_not(None))
         .distinct()
-    )
+    ))
+    # A background task's checkpoint thread is its task id (plan 41).
+    thread_ids.update(await db.scalars(
+        select(ConversationTaskTable.task_id).where(ConversationTaskTable.conversation_id == conversation_id)
+    ))
     await db.merge(PendingRuntimeReapTable(
         conversation_id=conversation_id, user_id=user_id, thread_ids=sorted(thread_ids), attempts=0,
     ))
@@ -60,12 +71,23 @@ async def delete_conversation(db: AsyncSession, user_id: str, conversation: Conv
     never blocks the delete.
     """
     await enqueue_runtime_reap(db, user_id, conversation.id)
+    await db.execute(delete(ConversationTaskTable).where(ConversationTaskTable.conversation_id == conversation.id))
     await db.delete(conversation)
     await db.commit()
     await drain_runtime_reaps()
 
 
 async def _send(client: httpx.AsyncClient, row: PendingRuntimeReapTable) -> None:
+    # Stop the conversation's background tasks first (plan 41), so none is
+    # still writing to a thread about to be dropped. A 404 is an agents
+    # service without the task API: nothing to stop.
+    cancelled = await client.post(
+        _CANCEL_SCOPE_URL,
+        json={"user_id": row.user_id, "conversation_id": row.conversation_id},
+        headers=internal_service_headers(get_context().get("request_id")),
+    )
+    if cancelled.status_code != 404:
+        cancelled.raise_for_status()
     resp = await client.post(
         build_conversation_reap_url(row.user_id, row.conversation_id),
         json={"thread_ids": list(row.thread_ids or [])},

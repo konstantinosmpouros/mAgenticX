@@ -229,4 +229,13 @@ def serialise_message_with_images_for_agent(msg: MessageTable, *, include_input_
     else:
         content_payload = content_parts
 
-    return {"role": role, "content": content_payload}
+    serialised: dict = {"role": role, "content": content_payload}
+    if getattr(msg, "kind", None) == "task_notification":
+        # A background task's notification (plan 41): the agents service must
+        # rebuild the exact HumanMessage it wrote — its additional_kwargs are
+        # how the async-subagent middleware recognises and dedupes it.
+        notice = getattr(msg, "task_notice", None)
+        agent_kwargs = notice.get("agent_kwargs") if isinstance(notice, dict) else None
+        serialised["kind"] = "task_notification"
+        serialised["additional_kwargs"] = dict(agent_kwargs) if isinstance(agent_kwargs, dict) else {}
+    return serialised

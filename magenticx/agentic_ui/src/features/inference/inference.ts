@@ -8,8 +8,10 @@ import type {
   ConversationDetail,
   MessageIn,
   MessageOut,
+  InferenceStartOutcome,
   InferenceStartRequest,
   InferenceStartResponse,
+  QueuedMessage,
 } from "@/shared/lib/types";
 import type { MutableRefObject, Dispatch, SetStateAction } from "react";
 import { updateSession } from "@/shared/lib/authStorage";
@@ -63,6 +65,15 @@ type InferenceCtx = {
   persistUIState?: () => void;
   beginInferenceRun: (request: InferenceStartRequest) => Promise<InferenceStartResponse>;
   stopActiveInferenceRun?: () => void | Promise<void>;
+  /**
+   * Plan 41 §3.6: a run is going in this conversation, and a send is queued
+   * rather than refused. Only for a persisted conversation; the start goes
+   * through `queueInferenceSend`, and a 202 hands the held message to
+   * `onMessageQueued` (the composer's chip).
+   */
+  isConversationStreaming?: boolean;
+  queueInferenceSend?: (request: InferenceStartRequest) => Promise<InferenceStartOutcome>;
+  onMessageQueued?: (message: QueuedMessage | null) => void;
 };
 
 // Edit flow dependencies for turning a user message edit into a fresh branch.
@@ -152,6 +163,8 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
     persistUIState,
     beginInferenceRun,
     stopActiveInferenceRun,
+    queueInferenceSend,
+    onMessageQueued,
   } = ctx;
 
   const resolveLastPersistedMessageId = () => {
@@ -210,6 +223,66 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
     setCurrentMessage("");
     ctx.setPendingCommand(null);
     setAttachments([]);
+
+    // A run is going in this conversation (plan 41 §3.6): the message is held
+    // as the conversation's one queued message — no optimistic bubble and no
+    // thinking dot, since nothing answers it yet. If the run ended meanwhile,
+    // the bridge starts it at once and it is taken in like any send.
+    if (
+      ctx.isConversationStreaming &&
+      queueInferenceSend &&
+      currentConversation?.id &&
+      lastPersistedMessageId &&
+      messages.length > 0
+    ) {
+      try {
+        const outcome = await queueInferenceSend({
+          mode: "send",
+          agentId: currentAgent?.id ?? currentConversation.agent.id,
+          conversationId: currentConversation.id,
+          parentMessageId: lastPersistedMessageId,
+          messagePath: buildPathToMessage(
+            currentConversation.messages ?? messages,
+            lastPersistedMessageId,
+          ),
+          message: {
+            parentMessageId: lastPersistedMessageId,
+            sender: "user",
+            content: promptText || undefined,
+            attachments: apiAttachments,
+            command,
+          },
+        });
+        if (outcome.queued) {
+          // The bridge may describe the held message; when it does not, the
+          // chip still shows what was typed.
+          onMessageQueued?.(
+            outcome.queuedMessage ?? {
+              id: null,
+              content: promptText,
+              attachmentCount: apiAttachments.length,
+              commandName: command?.name ?? null,
+              queuedAt: Date.now(),
+            },
+          );
+        } else if (setShowAiTransition) {
+          setShowAiTransition(true);
+        }
+        persistUIState?.();
+      } catch (error) {
+        setCurrentMessage(currentMessage);
+        ctx.setPendingCommand(command ?? null);
+        setAttachments(attachments);
+        const copy = getInferenceStartErrorCopy(error, {
+          title: "Error",
+          description: "Failed to send message. Please try again.",
+        });
+        toastError(toast, copy.title, error, { description: copy.description });
+      } finally {
+        setIsSendingMessage(false);
+      }
+      return;
+    }
 
     // Optimistic echo (ChatGPT-style): the user's bubble renders the instant
     // they hit send — before the /start round-trip — with the transition dot

@@ -9,6 +9,7 @@ import type {
   MessageOut,
   ConversationDetail,
   ConversationSummary,
+  InferenceRun,
   SharedConversationDetail,
 } from "@/shared/lib/types";
 import { usePreferencesHandlers } from "@/features/settings/handlers/preferences";
@@ -81,10 +82,12 @@ import {
   createInferenceHandlers,
   createMessageEditHandlers,
   createRetryHandlers,
+  useBackgroundTasks,
   useInferenceRuns,
   pendingTimelineInterrupts,
+  type BackgroundTasksContextValue,
 } from "@/features/inference";
-import { getAgents, getSuggestions } from "@/shared/lib/api";
+import { getAgents, getConversationDetail, getSuggestions } from "@/shared/lib/api";
 
 // The two conversation-body surfaces this hook renders via renderConversationBody.
 import ChatBody from "@/features/chat/components/ChatBody";
@@ -337,6 +340,8 @@ export function useChatWorkspace({
 
   const {
     beginRun: beginInferenceRun,
+    beginOrQueueRun,
+    attachRun,
     stopRun: stopInferenceRun,
     resumeRun: resumeInferenceRunHandler,
     isDecisionInFlight,
@@ -353,6 +358,75 @@ export function useChatWorkspace({
     setShowAiTransition,
     toast: toastWrapper,
   });
+
+  /**
+   * A run this client did not start (plan 41): a wake-up reporting a
+   * background task's result, the queued message going out, a scheduled run.
+   * Attach to it like a run the client started; and since its parent row (the
+   * notice row, or the queued message) was written by the bridge, re-read the
+   * conversation when that row is not here yet, or the reply has no parent to
+   * hang from.
+   */
+  const handleBackgroundRunStarted = useCallback(
+    (run: InferenceRun) => {
+      attachRun(run);
+      const open = useWorkspaceStore.getState().currentConversation;
+      if (!userId || !open || open.id !== run.conversationId) return;
+      const parentKnown =
+        !run.parentMessageId ||
+        (open.messages ?? []).some((message) => message.id === run.parentMessageId);
+      if (parentKnown) return;
+      void getConversationDetail(userId, run.conversationId)
+        .then((detail) => {
+          setCurrentConversation((prev) => {
+            if (!prev || prev.id !== detail.id) return prev;
+            const stored = new Set(detail.messages.map((message) => message.id));
+            // Keep rows only this client holds (an optimistic echo) after the
+            // stored ones; the run's own fields stay as the live run set them.
+            const localOnly = (prev.messages ?? []).filter((message) => !stored.has(message.id));
+            return { ...prev, title: detail.title, messages: [...detail.messages, ...localOnly] };
+          });
+        })
+        .catch((error: unknown) => {
+          if (import.meta.env.DEV) console.warn("Failed to re-read the conversation:", error);
+        });
+    },
+    [attachRun, setCurrentConversation, userId],
+  );
+
+  // The background task tree and the composer queue of the open conversation.
+  // A shared view (`shared:<token>`) and the unsaved new-chat shell have none.
+  const taskConversationId =
+    currentConversation?.id && !currentConversation.id.startsWith("shared:")
+      ? currentConversation.id
+      : null;
+  const backgroundTasks = useBackgroundTasks({
+    userId,
+    conversationId: taskConversationId,
+    onRunStarted: handleBackgroundRunStarted,
+    toast: toastWrapper,
+  });
+  const {
+    tree: taskTree,
+    openTaskId,
+    openTask,
+    stopTask,
+    resumeTask,
+    isDecisionSent,
+    queuedMessage,
+    holdQueuedMessage,
+    cancelQueuedMessage,
+  } = backgroundTasks;
+  const backgroundTasksContext = useMemo<BackgroundTasksContextValue | null>(
+    () =>
+      taskConversationId
+        ? { tree: taskTree, openTaskId, openTask, stopTask, resumeTask, isDecisionSent }
+        : null,
+    [isDecisionSent, openTask, openTaskId, resumeTask, stopTask, taskConversationId, taskTree],
+  );
+  // A message typed while the run streams is queued (plan 41 §3.6) — only in a
+  // persisted conversation, the only kind that has a queue.
+  const canQueueSend = Boolean(taskConversationId);
 
   const activeConversationRun = getRunForConversation(currentConversation?.id ?? null);
   const isCurrentConversationStreaming =
@@ -964,7 +1038,13 @@ export function useChatWorkspace({
     currentConversation,
     currentMessage,
     pendingCommand: composer.pendingCommand,
-    isSendingMessage: isCurrentConversationBusy || isCompacting,
+    // While a run streams, a send is queued rather than blocked (plan 41) — so
+    // only a send already in flight blocks another.
+    isSendingMessage:
+      (canQueueSend ? composer.isSendingMessage : isCurrentConversationBusy) || isCompacting,
+    isConversationStreaming: isCurrentConversationStreaming,
+    queueInferenceSend: canQueueSend ? beginOrQueueRun : undefined,
+    onMessageQueued: holdQueuedMessage,
     setMessages: setConversationMessages,
     setCurrentMessage,
     setPendingCommand: composer.setPendingCommand,
@@ -981,6 +1061,18 @@ export function useChatWorkspace({
     sharedConversationToken,
     persistUIState: requestPersist,
   });
+
+  /**
+   * The queued chip's ×: cancel the queued message, and put its text back in
+   * the composer when the composer is empty — nothing typed is lost, which is
+   * why the cancel asks no confirmation.
+   */
+  const handleCancelQueuedMessage = useCallback(async () => {
+    const cancelled = await cancelQueuedMessage();
+    if (cancelled?.content && !composer.currentMessage.trim()) {
+      setCurrentMessage(cancelled.content);
+    }
+  }, [cancelQueuedMessage, composer.currentMessage, setCurrentMessage]);
 
   // Conversation handlers
   const {
@@ -1215,6 +1307,7 @@ export function useChatWorkspace({
     activeMessages,
     isCurrentConversationBusy ? (activeConversationRun?.assistantMessageId ?? null) : null,
     isCurrentConversationBusy ? (activeConversationRun?.timeline ?? null) : null,
+    taskTree,
   );
   const agentMapAgentName = currentAgent?.name ?? "Main agent";
   // The composer's plan: the deep agent's checklist per answer on the visible
@@ -1417,6 +1510,11 @@ export function useChatWorkspace({
     workflows,
     resumeInferenceRunHandler,
     isDecisionInFlight,
+    // Background tasks (plan 41): the tree for the chat's context, the queue.
+    backgroundTasksContext,
+    queuedMessage,
+    canQueueSend,
+    handleCancelQueuedMessage,
     resolvedPreferences,
     toast,
     isSearchOpen,

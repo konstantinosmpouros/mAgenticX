@@ -8,7 +8,7 @@
 // features/inference/agui — shared/ must not import from features/. The schema
 // lives there so this type stays derived from the wire contract; agui re-exports
 // it so the AG-UI consumers still have one import site.
-import type { PlanSnapshot } from "../schemas";
+import type { AsyncTaskStatus, PlanSnapshot } from "../schemas";
 
 export type ToolExecutionState =
   "input-streaming" | "input-available" | "output-available" | "output-error";
@@ -146,9 +146,21 @@ export type ContentBlock = {
  *   - `done` / `failed`: SUBAGENT_COMPLETED arrived (the orchestrator got its
  *     `task` result), or the run ended while it was running — `failed` and
  *     `cancelled` follow the run's terminal status and stay distinct.
+ *
+ * Two more are only ever set on an async task's card (plan 41), whose status
+ * comes from the task itself, never from a run:
+ *   - `waiting_children`: its own run ended, its sub-agents are still working;
+ *   - `stopping`: the user pressed Stop and the cancel has not landed yet.
  */
 export type SubagentRunStatus =
-  "pending" | "running" | "awaiting_approval" | "done" | "failed" | "cancelled";
+  | "pending"
+  | "running"
+  | "awaiting_approval"
+  | "waiting_children"
+  | "stopping"
+  | "done"
+  | "failed"
+  | "cancelled";
 
 export type SubagentBlock = {
   kind: "subagent";
@@ -180,6 +192,13 @@ export type SubagentBlock = {
   status?: SubagentRunStatus;
   /** Set when the run's terminal status (not SUBAGENT_COMPLETED) ended it. */
   endedByRun?: boolean;
+  /**
+   * An async task's card (plan 41), built from the conversation's task tree by
+   * an adapter — never folded from a run. Its `status` is the task's own:
+   * `finalizeTimeline` never ends it and `subagentRunStatus` reads it as is,
+   * because the task outlives the run it appears next to.
+   */
+  asyncTask?: boolean;
   /** Epoch ms: first event from inside the sub-agent / its completion. */
   startedAt?: number;
   endedAt?: number;
@@ -261,8 +280,42 @@ export type CompactionBlock = {
   keptMessages?: number;
 };
 
+/**
+ * The run started a background task (plan 41, TASK_LAUNCHED): a reference at
+ * the log position, linked to the task's node in the conversation's task tree,
+ * which owns everything live about it (status, events, Stop). The block holds
+ * only what the launch said, so it renders before the tree knows the task.
+ */
+export type TaskRefBlock = {
+  kind: "task_ref";
+  id: string;
+  taskId: string;
+  name: string;
+  description?: string;
+};
+
+/**
+ * A background task's result arrived inside this (busy) run instead of waking
+ * the orchestrator with a run of its own (plan 41, TASK_SETTLED_INLINE): the
+ * inline "✓ researcher finished" marker, persisted with the run's events.
+ */
+export type TaskSettledBlock = {
+  kind: "task_settled";
+  id: string;
+  taskId: string;
+  name: string;
+  status: AsyncTaskStatus;
+};
+
 export type TimelineBlock =
-  ThinkingBlock | ContentBlock | SubagentBlock | ArtifactBlock | ChartBlock | CompactionBlock;
+  | ThinkingBlock
+  | ContentBlock
+  | SubagentBlock
+  | ArtifactBlock
+  | ChartBlock
+  | CompactionBlock
+  | TaskRefBlock
+  | TaskSettledBlock;
 
 export type TimelineTerminalStatus = "completed" | "cancelled" | "failed";
 
@@ -397,6 +450,16 @@ export type SubagentItem = {
   id: string;
   label?: string;
   type?: string;
+  /** The model an async task runs on (plan 41); absent for a blocking sub-agent. */
+  model?: string;
+  /** Tokens an async task has used so far, already worded ("1.2k in · 340 out"). */
+  usageLabel?: string;
+  /**
+   * How long an async task has been working (live) or worked (settled),
+   * already worded. A blocking sub-agent's card computes its own duration from
+   * `startedAt`/`endedAt` once settled instead.
+   */
+  elapsedLabel?: string;
   description?: string;
   namespace?: string;
   prompt?: string;

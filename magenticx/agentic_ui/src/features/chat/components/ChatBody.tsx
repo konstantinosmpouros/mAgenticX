@@ -10,6 +10,8 @@ import { ChatMessage } from "./ChatMessage";
 import { AiTransitionIndicator } from "./AiTransitionIndicator";
 import { CompactionDivider } from "./message_parts/CompactionDivider";
 import { ConversationRail } from "./message_parts/ConversationRail";
+import { TaskNoticeRow } from "./message_parts/TaskNoticeRow";
+import { TaskSidePanel } from "./message_parts/RunSidePanels";
 
 import { findStreamAnchor, streamScrollTarget } from "@/features/chat/lib/streamScroll";
 
@@ -262,6 +264,13 @@ export default function ChatBody({
   React.useEffect(() => {
     committedIdsRef.current = messages.map((m) => m.id);
   }, [messages]);
+
+  // The rail lists the user's questions; a wake-up's notice row (plan 41) is
+  // not one.
+  const railMessages = React.useMemo(
+    () => messages.filter((message) => message.kind !== "task_notification"),
+    [messages],
+  );
 
   // The question the live reply answers, held near the top while it streams.
   const anchorMessageId = React.useMemo(
@@ -781,6 +790,20 @@ export default function ChatBody({
                   : "opacity-0 group-hover/message:opacity-100 hover:opacity-100 pointer-events-none group-hover/message:pointer-events-auto hover:pointer-events-auto"
               }`;
 
+              // A wake-up's input row (plan 41): a compact notice, never a
+              // user bubble — no edit, copy or branch controls.
+              if (message.kind === "task_notification") {
+                return (
+                  <div
+                    key={rowKeys[index]}
+                    data-message-id={message.id}
+                    className="animate-message-in py-1"
+                  >
+                    <TaskNoticeRow message={message} />
+                  </div>
+                );
+              }
+
               const parentId = message.parentMessageId ?? null;
 
               const branchOptions = parentId
@@ -874,8 +897,14 @@ export default function ChatBody({
         </div>
       </ScrollArea>
       {!loadingConversation && (
-        <ConversationRail messages={messages} viewportRef={viewportRef} columnRef={columnRef} />
+        <ConversationRail
+          messages={railMessages}
+          viewportRef={viewportRef}
+          columnRef={columnRef}
+        />
       )}
+      {/* One drill-down for the conversation's background tasks, any depth. */}
+      <TaskSidePanel />
       <button
         type="button"
         aria-label="Jump to latest message"

@@ -22,6 +22,7 @@ from core.logging import get_logger
 from harness.tools.builtins import (
     BUILTIN_BY_NAME,
     EXECUTE_TOOL_NAME,
+    GATE_ALIASES,
     builtin_hitl_defaults,
     locked_gates,
     ungateable_tools,
@@ -100,6 +101,23 @@ def strip_reserved_names(
     return kept
 
 
+def with_gate_aliases(gates: Mapping[str, bool] | None) -> dict[str, bool]:
+    """``gates`` with each aliased key's value copied onto its other name.
+
+    ``task`` and ``start_async_task`` are one delegation gate (plan 41,
+    ``builtins.GATE_ALIASES``): stored preferences were migrated to the new
+    name, stored definitions may still use the old one, and the run has only
+    one of the two tools depending on ``ASYNC_SUBAGENTS_ENABLED``. Copying the
+    value both ways makes either spelling gate whichever tool exists. A key the
+    layer states under *both* names keeps each value as stated.
+    """
+    out = dict(gates or {})
+    for name, alias in GATE_ALIASES.items():
+        if name in out and alias not in out:
+            out[alias] = out[name]
+    return out
+
+
 def user_gates(
     tools: Sequence[NamedTool],
     approvals: Mapping[str, bool],
@@ -167,9 +185,13 @@ def resolve_interrupt_on(
     Then the ungateable tools are dropped from the result, whichever layer set
     them: ``ask_user`` is itself the pause, and a gate in front of it would
     stop for an approval before asking the question.
+
+    Layers 2 and 3 are read through :func:`with_gate_aliases`, so a choice
+    about ``task`` is a choice about ``start_async_task`` and back (plan 41).
     """
-    resolved = {**builtin_hitl_defaults(), **(own_gates or {})}
-    for name, wanted in user_gates(tools, approvals, agent_slug=agent_slug).items():
+    resolved = {**builtin_hitl_defaults(), **with_gate_aliases(own_gates)}
+    chosen = with_gate_aliases(user_gates(tools, approvals, agent_slug=agent_slug))
+    for name, wanted in chosen.items():
         if wanted:
             resolved[name] = True
         else:
@@ -205,4 +227,5 @@ __all__ = [
     "strip_reserved_names",
     "trust_level",
     "user_gates",
+    "with_gate_aliases",
 ]

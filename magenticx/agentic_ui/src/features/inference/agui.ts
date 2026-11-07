@@ -25,6 +25,9 @@ export const TOKEN_USAGE_EVENT_TYPE = "TOKEN_USAGE" as const;
 export const PRESENT_ARTIFACT_EVENT_TYPE = "PRESENT_ARTIFACT" as const;
 export const RENDER_CHART_EVENT_TYPE = "RENDER_CHART" as const;
 export const CONTEXT_COMPACTION_EVENT_TYPE = "CONTEXT_COMPACTION" as const;
+// Async sub-agents (plan 41 §14.4), inside a run's own stream.
+export const TASK_LAUNCHED_EVENT_TYPE = "TASK_LAUNCHED" as const;
+export const TASK_SETTLED_INLINE_EVENT_TYPE = "TASK_SETTLED_INLINE" as const;
 
 export const PLAN_SNAPSHOT_EVENT_NAMES = [PLAN_SNAPSHOT_EVENT_TYPE, "plan_snapshot"] as const;
 
@@ -109,6 +112,23 @@ export const SubAgentCompletedPayloadSchema = z.object({
   namespace: z.array(z.string()).nullish(),
   started_at: z.number().nullish(),
   ended_at: z.number().nullish(),
+});
+
+// ------------------------------------------------------
+// Async sub-agent tasks (plan 41) — a run started a background task
+// (`start_async_task` returned), or a task's result was pulled into this busy
+// run instead of waking the orchestrator with a run of its own.
+// ------------------------------------------------------
+export const TaskLaunchedPayloadSchema = z.object({
+  task_id: z.string().min(1),
+  name: z.string().nullish(),
+  description: z.string().nullish(),
+});
+
+export const TaskSettledInlinePayloadSchema = z.object({
+  task_id: z.string().min(1),
+  name: z.string().nullish(),
+  status: z.string().nullish(),
 });
 
 // ------------------------------------------------------

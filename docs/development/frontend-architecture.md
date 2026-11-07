@@ -49,12 +49,19 @@ src/
                    #   AgentBuilderPage), hooks (useAgentTools, useMemories, …), lib/
     chat/          # conversation rendering + chat handlers/hooks + sidebar
       components/  #   ChatBody, ChatMessage, ChatInputBar, ChatHeader, ChatSidebar,
-                   #   AgentRunTimeline, HitlInputTakeover, message_parts/*
+                   #   AgentRunTimeline, HitlInputTakeover, ComposerTaskNotices,
+                   #   message_parts/* (incl. the async-task parts: TaskTreeCards,
+                   #   TaskRefBlockView, TaskSettledMarker, TaskNoticeRow, MessageTaskTree,
+                   #   TaskStopButton, TaskOutcomeLine; TaskSidePanel in RunSidePanels)
+      lib/         #   pure helpers, e.g. taskTreeAdapter (task tree → sub-agent cards)
       hooks/       #   useChatEffects, useActiveRunBranchSnap, useConversationRail,
-                   #   useKeyboardShortcuts
+                   #   useKeyboardShortcuts, useTaskClock
       handlers/    #   conversations, messages, shortcuts, ui
     inference/     # the AG-UI run engine: agui, timeline, inference, hitl(+context),
-                   #   useInferenceRuns, useRunTimeline, inferenceErrors, index (barrel)
+                   #   useInferenceRuns, useRunTimeline, inferenceErrors, index (barrel);
+                   #   async sub-agent tasks (plan 41): taskTree (the conversation-level
+                   #   tree fold), useBackgroundTasks (tree + conversation channel + task
+                   #   sockets + composer queue), backgroundTasks-context
     automations/   # the Automations page (plan 38): AutomationsPage, automations_parts/*
                    #   (AutomationCard, ScheduleForm, AutomationFormDialog, AutomationToolbar,
                    #   TemplateSection, TemplateCard, EmptyState, ErrorState), hooks/useAutomations,

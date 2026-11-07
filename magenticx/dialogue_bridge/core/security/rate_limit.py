@@ -272,6 +272,23 @@ suggestions_rate_limit = rate_limit(
     emit_headers=True,
 )
 
+# Background tasks (plan 41) — per user, after auth (+ CSRF on mutations).
+# Reading the tree is cheap and frequent (every conversation open); stopping a
+# task, answering its approval or cancelling the queued message is not.
+task_read_rate_limit = rate_limit(
+    (settings.rate_limit.task_read_max_attempts, settings.rate_limit.task_read_window_seconds),
+    scope="task-read",
+    identifier=user_path_identity,
+    emit_headers=True,
+)
+
+task_mutate_rate_limit = rate_limit(
+    (settings.rate_limit.task_mutate_max_attempts, settings.rate_limit.task_mutate_window_seconds),
+    scope="task-mutate",
+    identifier=user_path_identity,
+    emit_headers=True,
+)
+
 refresh_rate_limit = rate_limit(
     (settings.rate_limit.refresh_max_attempts, settings.rate_limit.refresh_window_seconds),
     scope="auth-refresh",

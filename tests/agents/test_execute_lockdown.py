@@ -58,7 +58,7 @@ def _files():
 
 
 def test_workspace_factory_builds_with_sandbox_execution_disabled(agents_service, skills_fs):
-    """The normal path: flag off + StateBackend default builds cleanly."""
+    """The normal path: flag off + the branch-scratch default builds cleanly."""
     workspace = importlib.import_module("harness.filesystem.workspace")
     assert agents_service.settings_module.settings.filesystem.sandbox_execution_enabled is False
     factory = workspace.build_workspace_backend(
@@ -76,11 +76,11 @@ def test_workspace_factory_refuses_sandbox_default_when_disabled(
     instead of silently exposing `execute`."""
     workspace = importlib.import_module("harness.filesystem.workspace")
 
-    class _SandboxLookalike(workspace.StateBackend):
-        """StateBackend subclass registered as a virtual SandboxBackendProtocol."""
+    class _SandboxLookalike(workspace.BranchScratchBackend):
+        """Default-backend subclass registered as a virtual SandboxBackendProtocol."""
 
     SandboxBackendProtocol.register(_SandboxLookalike)
-    monkeypatch.setattr(workspace, "StateBackend", _SandboxLookalike)
+    monkeypatch.setattr(workspace, "BranchScratchBackend", _SandboxLookalike)
 
     factory = workspace.build_workspace_backend(
         user_id="user-1", agent_slug="agent-1", files=_files(), use_memory=False
@@ -224,7 +224,7 @@ def test_flag_off_keeps_the_state_backend_default(agents_service, skills_fs):
     backend = workspace.build_workspace_backend(
         user_id="user-1", agent_slug="agent-1", files=_files(), use_memory=False
     )(None)
-    assert type(backend.default) is workspace.StateBackend
+    assert type(backend.default) is workspace.BranchScratchBackend
     assert not isinstance(backend.default, SandboxBackendProtocol)
     assert not supports_execution(backend)
 
@@ -238,7 +238,7 @@ def test_flag_on_without_a_runner_url_stays_off(agents_service, skills_fs):
     backend = workspace.build_workspace_backend(
         user_id="user-1", agent_slug="agent-1", files=_files(), use_memory=False
     )(None)
-    assert type(backend.default) is workspace.StateBackend
+    assert type(backend.default) is workspace.BranchScratchBackend
     assert not supports_execution(backend)
 
 
@@ -248,11 +248,11 @@ def test_the_guard_still_fires_when_the_flag_is_on_but_no_runner_is_set(
     """Half-configured is off — and the guard holds that too."""
     workspace = importlib.import_module("harness.filesystem.workspace")
 
-    class _SandboxLookalike(workspace.StateBackend):
+    class _SandboxLookalike(workspace.BranchScratchBackend):
         pass
 
     SandboxBackendProtocol.register(_SandboxLookalike)
-    monkeypatch.setattr(workspace, "StateBackend", _SandboxLookalike)
+    monkeypatch.setattr(workspace, "BranchScratchBackend", _SandboxLookalike)
     agents_service.settings_module.settings.filesystem.sandbox_execution_enabled = True
     factory = workspace.build_workspace_backend(
         user_id="user-1", agent_slug="agent-1", files=_files(), use_memory=False
@@ -272,8 +272,8 @@ def test_enabled_makes_the_bound_sandbox_backend_the_default(agents_service, ski
     assert isinstance(default, sandbox.RemoteSandboxBackend)
     assert isinstance(default, SandboxBackendProtocol)
     assert supports_execution(backend)
-    # File operations are still StateBackend's — tool-mediated IO unchanged.
-    assert isinstance(default, workspace.StateBackend)
+    # File operations are the branch scratch store's — the same as with execution off.
+    assert isinstance(default, workspace.BranchScratchBackend)
     # Bound to this run's identity, taken from the conversation files.
     assert (default._user_id, default._agent_slug, default._conversation_id) == ("user-1", "agent-1", "conv-1")
     # The id is stable and does not carry the raw identity.
@@ -754,6 +754,9 @@ async def test_execute_pauses_two_levels_down_although_the_spec_says_false(
     agents_service, probe, monkeypatch, skills_fs
 ):
     _enable(agents_service)
+    # Nested delegation here is the blocking `task` path (plan 41 keeps it
+    # behind ASYNC_SUBAGENTS_ENABLED=false).
+    agents_service.settings_module.settings.async_tasks.enabled = False
     runner = _Runner(_ok(stdout="nested ok\n"))
     _wire_runner(agents_service, monkeypatch, runner)
     agent, _model = probe({

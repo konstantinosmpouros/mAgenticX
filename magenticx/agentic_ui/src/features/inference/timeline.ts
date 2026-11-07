@@ -14,7 +14,11 @@ import {
   SUBAGENT_EVENT_TYPE,
   SubAgentCompletedPayloadSchema,
   SubAgentPayloadSchema,
+  TASK_LAUNCHED_EVENT_TYPE,
+  TASK_SETTLED_INLINE_EVENT_TYPE,
   TASK_SUBAGENT_EVENT_TYPE,
+  TaskLaunchedPayloadSchema,
+  TaskSettledInlinePayloadSchema,
   TaskSubAgentPayloadSchema,
   TOKEN_USAGE_EVENT_TYPE,
   TokenUsagePayloadSchema,
@@ -31,6 +35,8 @@ import type {
   SubagentBlock,
   SubagentFoldIndexes,
   SubagentRunStatus,
+  TaskRefBlock,
+  TaskSettledBlock,
   ThinkingBlock,
   TimelineBlock,
   TimelineFoldIndexes,
@@ -41,7 +47,8 @@ import type {
   TimelineThought,
   TimelineToolExecution,
 } from "@/shared/lib/types";
-import type { SubagentItem } from "@/shared/lib/types";
+import type { AsyncTaskStatus, SubagentItem } from "@/shared/lib/types";
+import { ASYNC_TASK_STATUSES } from "@/shared/lib/schemas";
 
 // The single fold from raw AG-UI events to the rendered timeline structure
 // [Thinking, Content, Subagent, Content, …]. Used incrementally on live WS
@@ -368,6 +375,71 @@ function pushChartBlock(
     stacked: Boolean(data.stacked),
     horizontal: Boolean(data.horizontal),
     showValues: Boolean(data.show_values),
+  };
+  session.state.blocks.push(block);
+  session.clonedBlocks.add(session.state.blocks.length - 1);
+}
+
+// ------------------------------------------------------
+// Async sub-agent tasks (plan 41)
+// ------------------------------------------------------
+/**
+ * The payload of a task event, whether the service sent it as a `CUSTOM`
+ * event (`name` + `value`, like every other custom event) or as an event type
+ * of its own with the fields beside `type` — §14.4 names the events without
+ * saying which, so both are read.
+ */
+function taskEventPayload(event: RawEvent): unknown {
+  return event.type === "CUSTOM" ? event.value : event;
+}
+
+/**
+ * TASK_LAUNCHED: the reference block, at the log position (closing the open
+ * blocks like an artifact card, so "text, task, text" keeps its order).
+ * Once per task — a resumed run replays the step that launched it.
+ */
+function pushTaskRefBlock(session: Session, event: RawEvent): void {
+  const parsed = TaskLaunchedPayloadSchema.safeParse(taskEventPayload(event));
+  if (!parsed.success) return;
+  const { task_id, name, description } = parsed.data;
+  const exists = session.state.blocks.some(
+    (block) => block.kind === "task_ref" && block.taskId === task_id,
+  );
+  if (exists) return;
+  const fold = session.state.fold;
+  closeThinking(session, eventTimestamp(event));
+  fold.openContentIndex = null;
+  const block: TaskRefBlock = {
+    kind: "task_ref",
+    id: nextBlockId(session),
+    taskId: task_id,
+    name: name || "sub-agent",
+    ...(description ? { description } : {}),
+  };
+  session.state.blocks.push(block);
+  session.clonedBlocks.add(session.state.blocks.length - 1);
+}
+
+/** TASK_SETTLED_INLINE: the inline "finished" marker, once per task. */
+function pushTaskSettledBlock(session: Session, event: RawEvent): void {
+  const parsed = TaskSettledInlinePayloadSchema.safeParse(taskEventPayload(event));
+  if (!parsed.success) return;
+  const { task_id, name, status } = parsed.data;
+  const exists = session.state.blocks.some(
+    (block) => block.kind === "task_settled" && block.taskId === task_id,
+  );
+  if (exists) return;
+  const fold = session.state.fold;
+  closeThinking(session, eventTimestamp(event));
+  fold.openContentIndex = null;
+  const block: TaskSettledBlock = {
+    kind: "task_settled",
+    id: nextBlockId(session),
+    taskId: task_id,
+    name: name || "sub-agent",
+    status: ASYNC_TASK_STATUSES.includes(status as AsyncTaskStatus)
+      ? (status as AsyncTaskStatus)
+      : "success",
   };
   session.state.blocks.push(block);
   session.clonedBlocks.add(session.state.blocks.length - 1);
@@ -974,6 +1046,9 @@ function applyNestedTask(block: SubagentBlock, fold: TimelineFoldIndexes, key: s
  *     a message of the delegating sub-agent's graph, so its completion arrives
  *     inside that sub-agent's envelope. It settles the nested block (its own
  *     block, by call id or namespace), never a step of the envelope's owner.
+ *   - `TASK_LAUNCHED` / `TASK_SETTLED_INLINE` (plan 41) are top-level only: an
+ *     async task's events never arrive wrapped — each task streams on its own
+ *     socket and is folded there as a top-level run of its own.
  * Add a new event type to BOTH unless it falls into one of those groups.
  */
 function applySubagentInnerEvent(session: Session, key: string, inner: RawEvent): void {
@@ -1160,9 +1235,27 @@ function applyEvent(session: Session, event: RawEvent): void {
   const type = event.type;
   if (typeof type !== "string") return;
 
+  if (type === TASK_LAUNCHED_EVENT_TYPE) {
+    pushTaskRefBlock(session, event);
+    return;
+  }
+  if (type === TASK_SETTLED_INLINE_EVENT_TYPE) {
+    pushTaskSettledBlock(session, event);
+    return;
+  }
+
   if (type === "CUSTOM") {
     const name = event.name;
     if (typeof name !== "string") return;
+
+    if (name === TASK_LAUNCHED_EVENT_TYPE) {
+      pushTaskRefBlock(session, event);
+      return;
+    }
+    if (name === TASK_SETTLED_INLINE_EVENT_TYPE) {
+      pushTaskSettledBlock(session, event);
+      return;
+    }
 
     if (PLAN_EVENT_NAMES.has(name)) {
       const parsed = PlanSnapshotSchema.safeParse(event.value);
@@ -1437,10 +1530,14 @@ export function finalizeTimeline(state: RunTimeline, status: TimelineTerminalSta
   // A sub-agent still working when the run ended ends with the run: done,
   // failed or cancelled (kept distinct). Unspawned ones (a rejected or never
   // started `task` call) are left as they are — they are not shown.
+  //
+  // Async tasks (plan 41) are not touched, whatever the run did: a task
+  // outlives the run that started it. The run's own `task_ref` blocks carry no
+  // status at all, and an `asyncTask` card's status is the task's own.
   const ended: SubagentRunStatus =
     status === "completed" ? "done" : status === "failed" ? "failed" : "cancelled";
   session.state.blocks.forEach((block, index) => {
-    if (block.kind !== "subagent" || !block.spawned) return;
+    if (block.kind !== "subagent" || !block.spawned || block.asyncTask) return;
     if (isSubagentSettled(block) && !block.endedByRun) return;
     const write = blockForWrite<SubagentBlock>(session, index);
     write.status = ended;
@@ -1465,6 +1562,10 @@ export function subagentRunStatus(
   timeline: Pick<RunTimeline, "terminal" | "interrupts">,
   live: boolean,
 ): SubagentRunStatus | null {
+  // An async task's card (plan 41) reads its own status: the task keeps
+  // running in the background whether or not the run beside it is live, so it
+  // is never "cancelled" for want of a stream.
+  if (block.asyncTask) return block.status ?? "running";
   const pending = timeline.interrupts.some((item) => item.status === "pending");
   if (!block.spawned) {
     if (timeline.terminal) return null;

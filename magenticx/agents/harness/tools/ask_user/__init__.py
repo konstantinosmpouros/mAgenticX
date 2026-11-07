@@ -6,18 +6,22 @@ public surface so ``harness.tools.ask_user`` stays the import path.
 """
 from harness.tools.ask_user.tool import (
     ASK_USER_TOOL_NAME,
+    ASYNC_TASK_CONTEXT_KEY,
     build_ask_user_tool,
     format_reply,
     in_subagent,
     is_ask_user_interrupt,
+    is_async_task_context,
     resume_value,
 )
 
 __all__ = [
     "ASK_USER_TOOL_NAME",
+    "ASYNC_TASK_CONTEXT_KEY",
     "build_ask_user_tool",
     "format_reply",
     "in_subagent",
     "is_ask_user_interrupt",
+    "is_async_task_context",
     "resume_value",
 ]

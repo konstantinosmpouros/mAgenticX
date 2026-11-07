@@ -250,7 +250,7 @@ def build(deep_agent_module, monkeypatch):
         captured: dict[str, Any] = {}
         monkeypatch.setattr(deep_agent_module, "create_deep_agent", lambda **kwargs: captured.update(kwargs))
         agent = Bare()
-        monkeypatch.setattr(agent, "_build_composite_backend", lambda: StateBackend)
+        monkeypatch.setattr(agent, "_build_composite_backend", lambda: StateBackend())
         agent.tools = [search, lookup, ask_user]
         agent.build_deep_agent(model=MODEL, middleware=[], interrupt_on=interrupt_on or {}, subagents=subagents)
         return captured

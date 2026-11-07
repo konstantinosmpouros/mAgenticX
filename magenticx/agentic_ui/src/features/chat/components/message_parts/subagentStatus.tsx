@@ -1,4 +1,12 @@
-import { Check, CircleAlert, CircleDashed, CircleSlash, Clock, Loader2 } from "lucide-react";
+import {
+  Check,
+  CircleAlert,
+  CircleDashed,
+  CircleSlash,
+  Clock,
+  ListTree,
+  Loader2,
+} from "lucide-react";
 import type { ReactNode } from "react";
 
 import type { SubagentRunStatus } from "@/shared/lib/types";
@@ -24,6 +32,18 @@ export const STATUS_META: Record<
     label: "Awaiting approval",
     chip: "bg-warning/15 text-warning",
     icon: <Clock className="h-3 w-3" aria-hidden="true" />,
+  },
+  // An async task (plan 41) whose own run ended while its sub-agents work on.
+  waiting_children: {
+    label: "Sub-agents working",
+    chip: "bg-[hsl(var(--subagent-active)/0.12)] text-[hsl(var(--subagent-active))]",
+    icon: <ListTree className="h-3 w-3" aria-hidden="true" />,
+  },
+  // Between the Stop click and the cancel landing.
+  stopping: {
+    label: "Stopping",
+    chip: "bg-muted text-muted-foreground",
+    icon: <Loader2 className="h-3 w-3 motion-safe:animate-spin" aria-hidden="true" />,
   },
   done: {
     label: "Done",

@@ -8,3 +8,6 @@ export * from "./decisionsInFlight";
 export * from "./inferenceErrors";
 export * from "./hitl";
 export * from "./runState";
+export * from "./taskTree";
+export * from "./useBackgroundTasks";
+export * from "./backgroundTasks-context";

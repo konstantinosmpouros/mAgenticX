@@ -14,9 +14,11 @@ import psycopg
 
 from core.logging import get_logger
 from core.settings import settings
+from harness.async_tasks.store import AsyncTaskStore
 from harness.checkpointer import get_checkpointer
 from harness.conversation_files import ConversationFileStore
 from harness.conversation_files.paths import OUTPUT_PREFIX, InvalidPath, normalise
+from harness.filesystem import BranchScratchStore
 from harness.memory import get_memory_pool
 
 logger = get_logger(__name__)
@@ -90,6 +92,10 @@ async def reap_conversation(user_id: str, conversation_id: str, thread_ids: list
         for thread_id in filter(None, thread_ids):
             await checkpointer.adelete_thread(thread_id)
         await _store().delete_conversation(user_id, conversation_id)
+        await BranchScratchStore(get_memory_pool()).delete_conversation(user_id, conversation_id)
+        # The conversation's background tasks (plan 41): their threads, then rows.
+        for task_id in await AsyncTaskStore(get_memory_pool()).delete_conversation(user_id, conversation_id):
+            await checkpointer.adelete_thread(task_id)
     except (RuntimeError, psycopg.Error) as exc:
         logger.warning("conversation_reap_failed", "Could not reap a deleted conversation; the bridge retries",
                        error_type=type(exc).__name__)

@@ -46,6 +46,14 @@ QUESTION = "How tall is the Eiffel Tower? Please verify it."
 # Scripted models: one model for every agent, answering by the role its system
 # prompt opens with.
 # ---------------------------------------------------------------------------
+
+@pytest.fixture(autouse=True)
+def _blocking_subagents(agents_service):
+    """This module tests the blocking ``task`` path, which async sub-agents
+    (plan 41, on by default) replace; it stays for trials, pre-compiled
+    sub-agents and the ``ASYNC_SUBAGENTS_ENABLED=false`` switch."""
+    agents_service.settings_module.settings.async_tasks.enabled = False
+
 def _task(call_id: str, subagent: str, description: str) -> dict:
     return {"id": call_id, "name": "task", "args": {"subagent_type": subagent, "description": description}}
 

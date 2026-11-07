@@ -21,6 +21,9 @@ from utils.agent_trials import run_trial_sweeper
 from utils.embeddings import run_embedding_sweeper
 from utils.runtime_reaps import drain_runtime_reaps
 from utils.workflow_runs import cleanup_orphaned_workflow_runs, run_workflow_watchdog
+# Importing task_consumers also registers the run-end hook of utils.task_wakeups
+# (queued composer message, wake-up safety net) with the run manager.
+from utils.task_consumers import task_consumers
 from core.logging import (
     RequestLoggingMiddleware,
     configure_logging,
@@ -40,6 +43,8 @@ from router import (
     inference_router,
     preferences_router,
     conversations_router,
+    conversation_tasks_router,
+    tasks_router,
     export_router,
     messages_router,
     attachments_router,
@@ -146,6 +151,11 @@ async def lifespan(app: FastAPI):
     # runs are reaped (a restart-interrupted scheduled run is now 'failed', so the
     # next fire's skip-if-running check sees it correctly).
     scheduler.start()
+    # Background sub-agent tasks (plan 41): the tasks:status / tasks:outbox
+    # consumers and the reconcile loop. Started after orphaned runs are
+    # reaped, so the startup reconcile sees a conversation with no active run
+    # as free to wake, and sends the queued messages a restart left behind.
+    task_consumers.start()
     # Background embedding sweeper: backfills + keeps message embeddings current
     # off the request path (no-op if EMBEDDINGS_ENABLED is false).
     embedding_stop_event = asyncio.Event()
@@ -170,6 +180,7 @@ async def lifespan(app: FastAPI):
     trial_stop_event.set()
     workflow_stop_event.set()
     await scheduler.stop()
+    await task_consumers.stop()
     for task in (embedding_task, purger_task, reap_task, trial_task, workflow_task):
         try:
             await asyncio.wait_for(task, timeout=10)
@@ -268,6 +279,18 @@ app.include_router(
     conversations_router,
     prefix="/v1/conversations",
     tags=["Conversations"],
+)
+# Plan 41: a conversation's task tree, queued message and channel socket. Its
+# paths are three segments deep, so they never shadow /{user_id}/{conversation_id}.
+app.include_router(
+    conversation_tasks_router,
+    prefix="/v1/conversations",
+    tags=["Tasks"],
+)
+app.include_router(
+    tasks_router,
+    prefix="/v1/tasks",
+    tags=["Tasks"],
 )
 app.include_router(
     messages_router,

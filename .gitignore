@@ -36,3 +36,6 @@ plans/
 
 # Local-dev session signing key + exported public keys (plan 29). Never committed.
 magenticx/secrets/
+
+# pytest-cov data file (local and CI test runs)
+.coverage

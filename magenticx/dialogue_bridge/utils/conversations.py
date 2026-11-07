@@ -2,7 +2,7 @@ import base64
 import hashlib
 from copy import deepcopy
 from datetime import UTC, datetime, timezone
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from fastapi import HTTPException, status
 from sqlalchemy import Select, func, select, update
@@ -333,6 +333,9 @@ async def clone_branch_to_conversation(
             error_message=source_message.error_message,
             raw_events=deepcopy(source_message.raw_events),
             command=deepcopy(source_message.command),
+            # A background-task notice row forks as a notice (plan 41).
+            kind=source_message.kind,
+            task_notice=deepcopy(source_message.task_notice),
             created_at=source_message.created_at,
             updated_at=source_message.updated_at,
         )
@@ -402,7 +405,18 @@ def _message_to_share_snapshot(message: MessageTable) -> dict:
         "rawEvents": deepcopy(message.raw_events) or [],
         # Just the name — the chip on a shared user message (plan 35).
         "command": deepcopy(message.command),
+        # A background-task notice (plan 41): the public keys only, never the
+        # notification's agent kwargs.
+        "kind": message.kind,
+        "taskNotice": _public_task_notice(message.task_notice) if message.kind else None,
     }
+
+
+def _public_task_notice(notice: Any) -> dict | None:
+    """The four keys of a stored task notice a share may carry."""
+    if not isinstance(notice, dict):
+        return None
+    return {key: notice.get(key) for key in ("task_id", "name", "status", "duration_ms")}
 
 
 def is_shareable(attachment: AttachmentTable) -> bool:

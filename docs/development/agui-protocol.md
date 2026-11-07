@@ -116,6 +116,8 @@ All custom events share a wrapper shape:
 | `workflow.node_input` | `{config, iteration}` | **Workflow runs only**, after a node's `STEP_STARTED`: its config with templates resolved (`null` when resolving failed) and the execution count |
 | `workflow.node_output` | `{output, branch, durationMs, error}` | **Workflow runs only**, closes a node's own events: its output and taken branch, or `error: {code, message}` with `output: null` when it failed |
 | `bridge.approval_decision` | `{decision, comment?}` | **Bridge-synthesized** into a workflow run's event log when a `waiting` run is resumed; carries the paused node's `workflow` block so the timeline places it on that node |
+| `TASK_LAUNCHED` | `TaskLaunchedEvent` `{task_id, name, description}` | **Async sub-agents (plan 41).** A run started a background task (`start_async_task` returned). **Agents side:** the normalizer emits it as a `CUSTOM` event (`name` + `value`) when the launch's ToolMessage arrives and its text carries `task_id: <id>`; `name` is the call's `subagent_type`, `description` its `description` arg (a `/resume` stream learns a gated launch's args through `seed_pending_tasks`). Once per call id, across the run's streams (`_THREAD_TASKS_LAUNCHED`). No tool card opens for a launch; a launch that failed (error result, or no task id in it) is shown instead as an ordinary `start_async_task` tool call ending in error. The UI folds it into a `task_ref` block ("Started task") at the log position, linked to the task's node in the conversation's task tree — the block carries no status of its own. The UI also accepts it as a bare `{"type": "TASK_LAUNCHED", task_id, …}` event; deduplicated by `task_id` (a resume replays the launch) |
+| `TASK_SETTLED_INLINE` | `TaskSettledInlineEvent` `{task_id, name, status}` | **Async sub-agents (plan 41).** A task's result was pulled into this busy run instead of waking the orchestrator with a run of its own. **Agents side:** deepagents' `AsyncSubAgentMiddleware` adds a notification message to the running agent's state (an `updates` chunk of its `before_agent` / `before_model` / `after_model` node); the normalizer reads its `TaskEvent` from `additional_kwargs.lc_data` when `lc_source == "async_subagent"` (else the deprecated `deepagents_notification` key) and emits a `CUSTOM` event: `name` = `agent_name`, `status` mapped onto the settled `TaskStatus` (`success`, `error`, `cancelled`; `timeout` → `error`). A `waiting` notification is not announced, nor is a `before_agent` rewrite of the run's own input (a message already in state, with an id). Once per `(task_id, run_id, status)` per stream. The notification itself is **never** rendered as user text (a non-AI message produces no `TEXT_MESSAGE_*`). Folded into a `task_settled` block: the inline "✓ researcher finished" marker, persisted with the run's `raw_events`. Same dual shape and dedupe as `TASK_LAUNCHED` |
 | `bridge.events_truncated` | `{maxEvents}` | **Bridge-synthesized**, once, when a workflow run hits `WORKFLOW_RUN_MAX_EVENTS`; afterwards only `RUN_*` and `HITL_INTERRUPT` are stored |
 
 #### `PlanSnapshot`
@@ -334,6 +336,8 @@ flowchart TD
     I --> K["AIMessage → check tool_calls"]
     K --> L["write_todos → PLAN_SNAPSHOT + ignore"]
     K --> M["task → TASK_SUBAGENT + ignore"]
+    K --> M2["start_async_task → remember args + ignore<br/>(its result → TASK_LAUNCHED)"]
+    I --> M3["task notification (HumanMessage / dict)<br/>→ TASK_SETTLED_INLINE"]
     K --> N["other → TOOL_CALL_START + TOOL_CALL_ARGS"]
     I --> O["AIMessage text → TEXT_MESSAGE_CONTENT<br/>(if not saw_messages_chunk)"]
 ```
@@ -370,7 +374,7 @@ Tool calls span two modes: `args` arrive in the `updates` chunk (from the `AIMes
 
 ## Phase 4 — Special Tool Handling
 
-Three tool names break the standard start/args/result/end lifecycle:
+These tool names break the standard start/args/result/end lifecycle:
 
 ### `write_todos` — Plan Snapshot
 
@@ -400,6 +404,16 @@ When `name == "task"`:
 3. Adds `tool_call_id` to `_ignored_tool_call_ids`.
 
 `_pending_tasks` is later consumed by `_bind_namespace_to_next_task()` (via `_resolve_namespace_label()`) to bind the LangGraph subgraph namespace to the task ID in task-call order (see Phase 5).
+
+### `start_async_task` — Background Task (plan 41)
+
+`start_async_task` (deepagents' async sub-agent tool) returns at once with `Launched async subagent. task_id: <id>`; the task runs on its own thread and streams on its own channel, never inside this run.
+
+1. On the call: `{subagent_type, description, args}` is kept in `_async_launch_calls[tool_call_id]` and the id is ignored — no `TOOL_CALL_START`.
+2. On its ToolMessage (from `messages` or `updates`, recognised by call id or by tool name): `TASK_LAUNCHED {task_id, name, description}`, once per call id for the whole run.
+3. A failed launch (error status, or no task id in the text) emits the full tool lifecycle instead — start, args, result with `error: true`, end — so the failure is visible.
+
+`check_async_task`, `update_async_task`, `cancel_async_task` and `list_async_tasks` keep the ordinary tool lifecycle. The blocking `task` path above is unchanged until cut-over.
 
 ### `__interrupt__` — HITL
 
@@ -664,6 +678,49 @@ Sub-agent rendering folds entirely from the `TASK_SUBAGENT` / `SUBAGENT_EVENT` e
 
 ---
 
+## Phase 9 — Async Sub-Agent Tasks on the Client (plan 41)
+
+Under plan 41 every sub-agent is a background **task** that outlives the run that started it. A run's own stream only says that it launched one (`TASK_LAUNCHED`) or that a result was pulled into it (`TASK_SETTLED_INLINE`); everything live about a task arrives on two conversation-scoped channels and is folded into a **conversation-level task tree**, never into a run's timeline. The shapes are fixed in [plan 41 §14](../../plans/41-async-subagents.md).
+
+```mermaid
+flowchart LR
+    REST["GET /v1/conversations/{user}/{conv}/tasks<br/>(on open + every channel reconnect)"] --> TREE
+    CH["WS /v1/conversations/{user}/{conv}/ws<br/>task · run_started · queue"] --> TREE["taskTree.ts<br/>flat by task_id"]
+    CH -->|run_started| RUNS["useInferenceRuns.attachRun<br/>(same as a run the client started)"]
+    CH -->|queue| CHIP["composer queued chip"]
+    TS["WS /v1/tasks/{user}/{task}/ws<br/>(open drill-down + waiting tasks)"] -->|"AG-UI events"| NODE["node timeline<br/>(reduceTimelineEvents)"]
+    NODE --> TREE
+    TREE --> CARDS["SubagentTreeCard via taskTreeAdapter<br/>+ TaskSidePanel drill-down"]
+```
+
+**The conversation channel** (`connectConversationChannel`, subscribe frame `{"type":"subscribe"}`):
+
+| Frame | Client effect |
+| --- | --- |
+| `{"type":"task","event":"TASK_STARTED"\|"TASK_STATUS"\|"TASK_SETTLED","task":TaskOut}` | `applyTaskFrame` — upsert by `task_id` |
+| `{"type":"run_started","run":RunOut,"from_queue"?:bool}` | `attachRun(run)`: snapshot + run socket, exactly like a run the client started. When the run's parent row (the wake-up's notice row, or the queued message) is not in the open conversation yet, the conversation detail is re-read. `from_queue: true` (UI-side extension, optional) clears the queued chip |
+| `{"type":"queue","queued_message":{…}\|null}` | Shows / clears the composer's queued chip |
+
+Frames sent while the socket was down are not replayed, so every (re)connect re-reads `GET …/tasks` (throttled to one read per 2 s).
+
+**Ordering rules of the tree** (`features/inference/taskTree.ts`), so frames may land in any order:
+
+- flat by id, children linked by `parent_task_id` when drawn — a child may arrive before its parent;
+- a `TASK_STARTED` for a known task never moves its status (only fills in what was missing);
+- a hydration answer never overwrites a task a frame wrote after the read went out (a per-tree `clock` and per-task `touchedAt`);
+- usage only grows;
+- Stop is optimistic (`stopping` until the task settles); for `STOP_GRACE_MS` (10 s) after a user stop, a non-settled frame for that cancelled task is treated as emitted before the cancel and ignored; after it, a settled task may reopen (plan §3.4).
+
+**The task socket** (`connectTaskSocket`, subscribe `{"type":"subscribe","since":<last stream id>|null}`) behaves like the run socket: `snapshot` (optionally carrying `task` and the coalesced `events` so far) re-folds the node, `{"type":"event","seq","event"}` folds one AG-UI event with the **same reducer as a top-level run** (a task's stream is exactly what the normalizer emits for one; its own children appear as `task_ref` blocks), `terminal` closes the node's timeline. The UI opens one for the task in the drill-down and for every task in `waiting` (its approval card needs the interrupt from its events).
+
+**What the timeline no longer does.** `finalizeTimeline` ends only the blocking `task` sub-agent blocks of the run (until the phase-6 cut-over); it never touches `task_ref` blocks or a sub-agent block flagged `asyncTask` (the adapter's cards). `subagentRunStatus` returns an `asyncTask` card's own status, so a task still running after its run ended is never shown as cancelled.
+
+**Rendering.** A `task_ref` block renders the task's live card (status badge for `pending`/`running`/`waiting_children`/`waiting`/`success`/`error`/`cancelled`, plus a client-only `stopping`; elapsed time, model, usage) with its subtree nested inside; a card opens `TaskSidePanel` (in `RunSidePanels.tsx`) on that task at any depth; every active node — and the panel header — has Stop (`POST /v1/tasks/{user}/{task}/cancel`). The tree stays on the AI message whose id is the tasks' `spawned_by_message_id`. A message with `kind == "task_notification"` (a wake-up's input row) renders as one centred line from `task_notice` ("✓ researcher finished · 2m 14s"), never as a user bubble; `transformMessage` whitelists `kind` and `task_notice`. A waiting task's approval is a `HitlInterruptCard` in its drill-down, resumed through `POST /v1/tasks/{user}/{task}/resume` with the run-resume body; a line above the composer points to it.
+
+**Composer queue.** While a run streams in a persisted conversation, a send goes out with `queue_if_busy: true` (no optimistic bubble). A 202 `{queued: true, queued_message}` shows the queued chip; its × calls `DELETE /v1/conversations/{user}/{conv}/queued-message` and puts the text back into an empty composer; a second send replaces the held message. The chip clears on `queue: null` or on the `run_started` of the queued send.
+
+---
+
 ## Sharp Edges and Behavioral Notes
 
 - **`THINKING_END` is not always explicit.** The normalizer emits `THINKING_END` lazily in `_end_thinking_if_needed()` — it fires the first time a non-thinking event (text chunk or tool result) arrives while `thinking_started=true`. An agent that never produces output after thinking will leave the thinking phase open until the stream ends. The bridge handles this by storing `thinking_end = 0.0` and using `perf_counter()` as the end time in `thinking_duration_seconds()` if `thinking_end` is not set.
@@ -694,6 +751,8 @@ Sub-agent rendering folds entirely from the `TASK_SUBAGENT` / `SUBAGENT_EVENT` e
 
 | Concept | File | What to look for |
 | --- | --- | --- |
+| Async task contracts (UI) | [shared/lib/schemas.ts](../../magenticx/agentic_ui/src/shared/lib/schemas.ts), [shared/lib/api/asyncTasks.ts](../../magenticx/agentic_ui/src/shared/lib/api/asyncTasks.ts) | `AsyncTaskSchema`, `toConversationChannelFrame`, `toTaskSocketFrame`, `InferenceStartOrQueueSchema`; REST + both sockets |
+| Async task tree (UI) | [features/inference/taskTree.ts](../../magenticx/agentic_ui/src/features/inference/taskTree.ts), [useBackgroundTasks.ts](../../magenticx/agentic_ui/src/features/inference/useBackgroundTasks.ts) | `applyTaskFrame`, `hydrateTaskTree`, `requestTaskStop`, `applyTaskSocketFrame` |
 | Custom event type constants | [magenticx/agents/harness/agui/events.py](../../magenticx/agents/harness/agui/events.py) | `HITL_INTERRUPT_EVENT_TYPE`, `PLAN_SNAPSHOT_EVENT_TYPE`, `CHECKPOINT_COMMITTED_EVENT_TYPE`, `PRESENT_ARTIFACT_EVENT_TYPE`, `RENDER_CHART_EVENT_TYPE`, etc. |
 | Custom event Pydantic models | [magenticx/agents/harness/agui/events.py](../../magenticx/agents/harness/agui/events.py) | `HITLInterruptEvent`, `PlanSnapshot`, `PlanItem`, `TaskSubAgentEvent`, `SubAgentEvent`, `BeforeAgentEvent`, `TokenUsageEvent`, `ToolUsageEvent`, `CheckpointCommittedEvent`, `PresentArtifactEvent` |
 | Per-call metrics stamps | [magenticx/agents/harness/middlewares/usage_metrics.py](../../magenticx/agents/harness/middlewares/usage_metrics.py), [first_token.py](../../magenticx/agents/harness/middlewares/first_token.py), [tool_metrics.py](../../magenticx/agents/harness/middlewares/tool_metrics.py) | `mx_usage_metrics` (incl. `ttft_ms` via `first_token_scope` / `FirstTokenCallback`), `mx_tool_metrics` (`ToolMetricsMiddleware`) |

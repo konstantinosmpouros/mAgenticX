@@ -35,6 +35,13 @@ from pgvector.sqlalchemy import Vector
 from core.database.engine import Base, gen_uuid
 
 
+def _nullable_jsonb() -> JSON:
+    """JSONB on Postgres (plain JSON on the test sqlite) where Python ``None``
+    is SQL NULL, not the JSON value ``null`` — so ``IS NULL`` means "unset"
+    (plan 41's columns are read with ``IS NULL`` / ``IS NOT NULL``)."""
+    return JSON(none_as_null=True).with_variant(JSONB(none_as_null=True), "postgresql")
+
+
 # Embedding vector size. Must match the agents service EMBEDDING_DIMENSIONS and
 # the dimension baked into migration 0010 (the pgvector column type is fixed at
 # DDL time — changing this requires a new migration + a full re-embed).
@@ -304,6 +311,14 @@ class ConversationTable(Base):
     last_context_window = Column(Integer, nullable=True)
     usage_updated_at = Column(DateTime, nullable=True)
 
+    # The composer's one queued message (plan 41 §3.6, migration 0046): a user
+    # message sent while the conversation had an active run, held here and
+    # sent as a normal ``send`` when that run ends. One slot — a second send
+    # replaces it — so a column, not a table. Kept in the database so it
+    # survives a bridge restart. NULL when nothing is queued. Text and a slash
+    # command only, never attachment bytes (utils/composer_queue.py).
+    queued_message = Column(_nullable_jsonb(), nullable=True)
+
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -344,6 +359,12 @@ class ConversationTable(Base):
 
 
 MessageSenderEnum = Enum("user", "ai", name="message_sender_enum")
+# What kind of row a message is, beyond its sender (plan 41, migration 0046).
+# NULL for every ordinary message. ``task_notification`` is the wake-up input
+# row: sender stays "user" because the orchestrator receives it as a
+# HumanMessage, but the UI renders it as a compact system notice — never as
+# the user's words.
+MessageKindEnum = Enum("task_notification", name="message_kind_enum")
 
 
 class MessageTable(Base):
@@ -448,6 +469,14 @@ class MessageTable(Base):
     # Its argument is the message content; the instruction lives in the agents
     # service. Retry re-runs it from here; the bubble shows it as a chip.
     command = Column(JSON, nullable=True)
+    # A background-task notification row (plan 41, migration 0046). ``kind`` is
+    # NULL on every ordinary message; ``task_notice`` is set only with it:
+    # {"task_id", "name", "status", "duration_ms"} for the UI, plus
+    # "agent_kwargs" — the notification's ``additional_kwargs`` the agents
+    # service needs to rebuild the exact HumanMessage it wrote (never sent to
+    # the browser; schema.messages.TaskNoticeOut projects the four keys).
+    kind = Column(MessageKindEnum, nullable=True)
+    task_notice = Column(_nullable_jsonb(), nullable=True)
 
     # error info
     is_error = Column(Boolean, nullable=False, server_default="false")
@@ -754,6 +783,65 @@ class ScheduledTaskTable(Base):
     max_runs = Column(Integer, nullable=True)
     expires_at = Column(DateTime, nullable=True)
 
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+#: The task statuses after which a task's subtree is done (plan 41 §14.1).
+TASK_SETTLED_STATUSES = ("success", "error", "cancelled")
+
+
+class ConversationTaskTable(Base):
+    """The UI-facing mirror of one background sub-agent task (plan 41 §4).
+
+    The agents service owns tasks (``agent_runtime.async_tasks``) and runs
+    them; it announces every status change on the Redis stream
+    ``tasks:status``, which the bridge consumes into this table
+    (utils/async_tasks.py). The mirror is what the conversation's task tree,
+    its reload and its drill-down read, so the UI never needs the agents
+    service to draw it. The columns are the §14.1 ``TaskOut`` fields plus:
+
+    * ``raw_events`` — the task's AG-UI events, coalesced like
+      ``messages.raw_events``, captured from ``task:{id}:events`` when the task
+      settles, so a settled node still opens after the Redis stream expires;
+    * ``usage_booked`` — the usage already written to ``message_usage`` and
+      the rollups, so a task that settles twice (re-opened by the orchestrator,
+      or a duplicated stream entry) is never counted twice;
+    * ``notified_at`` — when the bridge handled the task's wake-up (woke the
+      orchestrator, or deliberately skipped it). Bookkeeping only: the durable
+      truth is ``async_tasks.parent_notified_at`` in the agents service.
+
+    ``parent_task_id``, ``root_run_id`` and ``spawned_by_message_id`` are plain
+    strings, not foreign keys: entries can arrive out of order, and a task row
+    must never block a message or a parent from being written first. Cascades
+    with its conversation and its user.
+    """
+    __tablename__ = "conversation_tasks"
+
+    task_id = Column(String, primary_key=True)
+    conversation_id = Column(
+        String, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    parent_task_id = Column(String, nullable=True, index=True)
+    root_run_id = Column(String, nullable=True)
+    branch_thread_id = Column(String, nullable=True)
+    spawned_by_message_id = Column(String, nullable=True)
+    depth = Column(Integer, nullable=False, server_default="1")
+    name = Column(String, nullable=False)
+    subagent_path = Column(String, nullable=True)
+    description = Column(Text, nullable=True)
+    model = Column(String, nullable=True)
+    # pending | running | waiting_children | waiting | success | error | cancelled
+    status = Column(String, nullable=False)
+    result_preview = Column(Text, nullable=True)
+    error = Column(Text, nullable=True)
+    usage = Column(_nullable_jsonb(), nullable=True)
+    usage_booked = Column(_nullable_jsonb(), nullable=True)
+    raw_events = Column(_nullable_jsonb(), nullable=True)
+    started_at = Column(DateTime, nullable=True)
+    settled_at = Column(DateTime, nullable=True)
+    notified_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 

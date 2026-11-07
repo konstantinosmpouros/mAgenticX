@@ -7,6 +7,7 @@ from langchain_mcp_adapters.tools import load_mcp_tools
 from core.security.internal_trust import require_internal_caller
 from core.logging import get_context, get_logger, set_context
 from harness.abstractions.user_agents import definition_texts, errors_of
+from harness.async_tasks.notification import normalize_payload_messages
 from harness.checkpointer import has_checkpointer_initialized
 from harness.checkpointer.fork import seed_thread_from_checkpoint
 from harness.commands import AgentFacts, CommandRefused, apply_command, resolve_invocation
@@ -109,6 +110,10 @@ async def stream_agent(agent_slug: str, req: Request):
         except CommandRefused as exc:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
         messages = apply_command(req.messages, invocation) if invocation else req.messages
+        # A persisted task-notification row (plan 41) replays as the notification
+        # HumanMessage it was, metadata included, so the async sub-agent
+        # middleware recognises it and never reports that result twice.
+        messages = normalize_payload_messages(messages)
         # Initialise the agent
         agent_logger.info("agent_initialization_started", "Agent initialization started")
         agent = definition.build(config=req.config)

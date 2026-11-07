@@ -94,6 +94,8 @@ def upstream(agents_service, seeded_user, session_factory, monkeypatch):
 def _reap_ok(agents_service, user_id: str, conversation_id: str) -> str:
     path = f"/users/{user_id}/conversations/{conversation_id}/reap"
     agents_service.on("POST", path, httpx.Response(204))
+    # The reap stops the conversation's background tasks first (plan 41).
+    agents_service.on("POST", "/tasks/cancel-scope", httpx.Response(200, json={"cancelled": 0}))
     return path
 
 

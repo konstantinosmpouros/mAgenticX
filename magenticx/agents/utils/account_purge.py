@@ -21,9 +21,10 @@ import psycopg
 
 from core.logging import get_logger
 from harness.agent_registry.store import AgentDefinitionStore
+from harness.async_tasks.store import AsyncTaskStore
 from harness.checkpointer import get_checkpointer
 from harness.conversation_files import ConversationFileStore
-from harness.filesystem import layout
+from harness.filesystem import BranchScratchStore, layout
 from harness.memory import AgentMemoryStore, get_memory_pool
 from harness.skill_registry.store import SkillStore
 from harness.workflows.store import WorkflowStore
@@ -80,6 +81,15 @@ async def purge_user(user_id: str) -> dict[str, int]:
         counts.update(await AgentDefinitionStore(pool).purge_user(user_id))
         counts.update(await ConversationFileStore(pool).purge_user(user_id))
         counts.update(await WorkflowStore(pool).purge_user(user_id))
+        counts.update(await BranchScratchStore(pool).purge_user(user_id))
+        # Background tasks (plan 41): their checkpoint threads, then their rows
+        # (runs cascade). The bridge has already stopped them (cancel-scope).
+        task_ids = await AsyncTaskStore(pool).delete_user(user_id)
+        if task_ids:
+            checkpointer = get_checkpointer()
+            for task_id in task_ids:
+                await checkpointer.adelete_thread(task_id)
+        counts["async_tasks"] = len(task_ids)
     except psycopg.Error as exc:
         logger.warning(
             "account_purge_rows_failed",

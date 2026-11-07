@@ -1,13 +1,36 @@
-import { useMemo } from "react";
-import { Bot, ListChecks } from "lucide-react";
+import { Fragment, useMemo, useState } from "react";
+import { Bot, ChevronRight, ListChecks } from "lucide-react";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/shared/ui/sheet";
+import { cn } from "@/shared/lib/utils";
 import { SubagentTreeCard } from "./SubagentTreeCard";
+import { HitlInterruptCard } from "./HitlInterruptCard";
+import { STATUS_META } from "./subagentStatus";
+import { TaskStopButton } from "./TaskStopButton";
+import { TaskTreeCards } from "./TaskTreeCards";
+import { TimelineSequence } from "./TimelineSequence";
 import { PlanChecklist } from "../plan/PlanChecklist";
 import { PlanProgressRing } from "../plan/PlanProgressRing";
-import { subagentRunStatus, subagentTree } from "@/features/inference";
+import {
+  isTaskSettled,
+  pendingTimelineInterrupts,
+  subagentRunStatus,
+  subagentTree,
+  taskAncestry,
+  taskChildrenIndex,
+  taskDisplayStatus,
+  toTitleCase,
+  useBackgroundTasksContext,
+  type BackgroundTasksContextValue,
+} from "@/features/inference";
 import type { PlanSnapshot } from "@/features/inference/agui";
 import { buildPlanAnswer, planProgressLabel } from "@/features/chat/lib/conversationPlans";
-import type { PlanStepTiming, RunTimeline, SubagentBlock } from "@/shared/lib/types";
+import {
+  taskElapsedLabel,
+  taskSubagentStatus,
+  taskUsageLabel,
+} from "@/features/chat/lib/taskTreeAdapter";
+import { useTaskClock } from "@/features/chat/hooks/useTaskClock";
+import type { AsyncTask, PlanStepTiming, RunTimeline, SubagentBlock } from "@/shared/lib/types";
 
 // Post-run side panels behind two action-bar buttons: one answer's plan (the
 // same checklist as the composer's plan panel), and its sub-agents — the cards
@@ -133,5 +156,202 @@ export function SubagentsSidePanel({
         </div>
       </SheetContent>
     </Sheet>
+  );
+}
+
+/**
+ * The drill-down of one background task, at any depth (plan 41 §3.9): its
+ * live events folded like a run of its own, its approval when it waits on
+ * one, its own sub-agents (each opens the same panel one level down), and
+ * Stop in the header. One panel for the whole conversation, opened by the
+ * task tree's `openTask` — from a card, a notice row, an inline marker or the
+ * composer's approval prompt. The path above the title walks back up.
+ */
+export function TaskSidePanel() {
+  const tasks = useBackgroundTasksContext();
+  const openId = tasks?.openTaskId ?? null;
+  const task = openId && tasks ? tasks.tree.tasks[openId] : undefined;
+  return (
+    <Sheet open={Boolean(task)} onOpenChange={(open) => (open ? null : tasks?.openTask(null))}>
+      <SheetContent
+        side="right"
+        className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-lg"
+      >
+        {task && tasks ? <TaskSidePanelBody key={task.taskId} task={task} tasks={tasks} /> : null}
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function TaskSidePanelBody({
+  task,
+  tasks,
+}: {
+  task: AsyncTask;
+  tasks: BackgroundTasksContextValue;
+}) {
+  const { tree, openTask, stopTask, resumeTask, isDecisionSent } = tasks;
+  const status = taskDisplayStatus(tree, task.taskId) ?? task.status;
+  const active = !isTaskSettled(task.status);
+  const now = useTaskClock(active);
+  const node = tree.nodes[task.taskId];
+  const [expandedThinking, setExpandedThinking] = useState<Record<string, boolean>>({});
+  const meta = STATUS_META[taskSubagentStatus(status)];
+  const ancestry = useMemo(() => taskAncestry(tree, task.taskId), [tree, task.taskId]);
+  const elapsed = taskElapsedLabel(task, now);
+  const usage = taskUsageLabel(task.usage);
+  const approvals = useMemo(
+    () => (task.status === "waiting" ? pendingTimelineInterrupts(node?.timeline) : []),
+    [node?.timeline, task.status],
+  );
+  // Its own sub-agents not already drawn at their launch point in its events.
+  const children = useMemo(() => {
+    const referenced = new Set(
+      (node?.timeline.blocks ?? []).flatMap((block) =>
+        block.kind === "task_ref" ? [block.taskId] : [],
+      ),
+    );
+    return (taskChildrenIndex(tree).get(task.taskId) ?? []).filter(
+      (child) => !referenced.has(child.taskId),
+    );
+  }, [node?.timeline, task.taskId, tree]);
+  const hasEvents = Boolean(node && node.timeline.blocks.length);
+
+  return (
+    <>
+      <SheetHeader className="space-y-2 border-b border-border/70 px-5 py-4 text-left">
+        {ancestry.length > 1 ? (
+          <nav aria-label="Task path" className="min-w-0 pr-8">
+            <ol className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5 text-xs text-muted-foreground">
+              {ancestry.map((step, index) => {
+                const last = index === ancestry.length - 1;
+                return (
+                  <Fragment key={step.taskId}>
+                    {index > 0 ? (
+                      <li aria-hidden="true">
+                        <ChevronRight className="h-3 w-3" />
+                      </li>
+                    ) : null}
+                    <li className="min-w-0 max-w-[10rem]">
+                      {last ? (
+                        <span aria-current="page" className="block truncate text-foreground">
+                          {toTitleCase(step.name)}
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => openTask(step.taskId)}
+                          className="block max-w-full truncate rounded-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                        >
+                          {toTitleCase(step.name)}
+                        </button>
+                      )}
+                    </li>
+                  </Fragment>
+                );
+              })}
+            </ol>
+          </nav>
+        ) : null}
+        {/* pr-8 keeps the row clear of the sheet's own close button (top-right). */}
+        <div className="flex min-w-0 items-start gap-2.5 pr-8">
+          <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl border border-border bg-secondary/55 text-primary">
+            <Bot className="h-4 w-4" aria-hidden="true" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <SheetTitle className="truncate text-base">{toTitleCase(task.name)}</SheetTitle>
+            <SheetDescription asChild>
+              <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 font-medium",
+                    meta.chip,
+                  )}
+                >
+                  {meta.icon}
+                  {meta.label}
+                </span>
+                {elapsed ? <span className="tabular-nums">{elapsed}</span> : null}
+                {task.model ? (
+                  <span className="min-w-0 max-w-[12rem] truncate" title={task.model}>
+                    {task.model}
+                  </span>
+                ) : null}
+                {usage ? <span className="whitespace-nowrap tabular-nums">{usage}</span> : null}
+              </div>
+            </SheetDescription>
+          </div>
+          <TaskStopButton
+            name={task.name}
+            status={status}
+            onStop={() => void stopTask(task.taskId)}
+          />
+        </div>
+      </SheetHeader>
+      {/* Block container, NOT flex-col — see SubagentsSidePanel: the cards'
+          overflow-hidden roots would be squashed by a flex column. */}
+      <div className="scrollbar-muted min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
+        {approvals.map((approval) => (
+          <HitlInterruptCard
+            key={approval.id}
+            interrupt={{
+              interruptId: approval.id,
+              threadId: approval.threadId,
+              content: approval.content,
+            }}
+            resolved={isDecisionSent(approval.id)}
+            onResolve={(decision, reason) =>
+              resumeTask(task.taskId, {
+                interruptId: approval.id,
+                threadId: approval.threadId,
+                decision,
+                reason,
+              })
+            }
+          />
+        ))}
+        {task.status === "waiting" && !approvals.length ? (
+          <div className="loading-skeleton h-24 rounded-[24px]" aria-label="Loading the approval" />
+        ) : null}
+        {task.description ? (
+          <p className="whitespace-pre-wrap [overflow-wrap:anywhere] text-sm leading-6 text-muted-foreground">
+            {task.description}
+          </p>
+        ) : null}
+        {hasEvents && node ? (
+          <div className="min-w-0 space-y-3">
+            <TimelineSequence
+              timeline={node.timeline}
+              runId={`task:${task.taskId}`}
+              isStreaming={active}
+              expandedThinking={expandedThinking}
+              onToggleThinking={(key, next) =>
+                setExpandedThinking((prev) => ({ ...prev, [key]: next ?? !prev[key] }))
+              }
+            />
+          </div>
+        ) : active ? (
+          <div className="space-y-2" aria-label="Loading the task's activity">
+            <div className="loading-skeleton h-4 w-3/4 rounded-full" />
+            <div className="loading-skeleton h-4 w-1/2 rounded-full" />
+          </div>
+        ) : task.resultPreview ? (
+          <p className="whitespace-pre-wrap [overflow-wrap:anywhere] text-sm leading-6 text-foreground">
+            {task.resultPreview}
+          </p>
+        ) : null}
+        {task.status === "error" && task.error ? (
+          <p className="rounded-2xl border border-destructive/25 bg-destructive/[0.06] px-3 py-2 text-sm text-destructive [overflow-wrap:anywhere]">
+            {task.error}
+          </p>
+        ) : null}
+        {children.length ? (
+          <section aria-label="Sub-agents" className="space-y-1.5">
+            <p className="px-1 text-xs text-muted-foreground">Sub-agents</p>
+            <TaskTreeCards roots={children} tasks={tasks} defaultCollapsedSections />
+          </section>
+        ) : null}
+      </div>
+    </>
   );
 }

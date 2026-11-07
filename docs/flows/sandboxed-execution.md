@@ -12,7 +12,7 @@ flowchart LR
     B -->|"resume"| A["agents<br/>RemoteSandboxBackend"]
     A -->|"POST /v1/exec (secret + mTLS on Dennis)<br/>command + input/output files"| R["sandbox_runner<br/>dind + gVisor (privileged)"]
     R -->|"docker run --runtime=runsc"| BOX["throwaway box<br/>no network · read-only root · uid 1000"]
-    A --> DB[("agent_runtime<br/>conversation_files")]
+    A --> DB[("agent_runtime<br/>conversation_files · branch_scratch_files")]
 ```
 
 ---
@@ -45,7 +45,7 @@ sequenceDiagram
 
 ## Phase 1 — Availability and Approval
 
-`execute` exists only when `SANDBOX_EXECUTION_ENABLED` is true **and** `SANDBOX_RUNNER_URL` is set (`settings.filesystem.sandbox_execution_active`); then every deep agent's default backend is `RemoteSandboxBackend`, which implements deepagents' `SandboxBackendProtocol`, so the framework offers the tool. With it off, the workspace factory still refuses to build a sandbox-capable default (the fail-closed guard). `execute` always asks: `resolve_interrupt_on` forces it after every other layer, at every depth and in Try-it trials, and a user definition with `hitl.execute: false` is refused.
+`execute` exists only when `SANDBOX_EXECUTION_ENABLED` is true **and** `SANDBOX_RUNNER_URL` is set (`settings.filesystem.sandbox_execution_active`); then every deep agent's default backend is `RemoteSandboxBackend`, which implements deepagents' `SandboxBackendProtocol`, so the framework offers the tool. Its file operations are the plain default's — `BranchScratchBackend` over the branch scratch store (`branch_scratch_files`, plan 41 §3.7) — so turning execution on or off never changes where an agent's scratch files live, and the orchestrator and its async tasks share them either way. With it off, the workspace factory still refuses to build a sandbox-capable default (the fail-closed guard). `execute` always asks: `resolve_interrupt_on` forces it after every other layer, at every depth and in Try-it trials, and a user definition with `hitl.execute: false` is refused.
 
 | Key fact | Value / detail |
 | --- | --- |
@@ -76,6 +76,7 @@ Kill reasons come back in plain words: `timeout`, `memory`, `output_limit`, `dis
 - **`noexec` on the bind mounts does not hold under gVisor.** It holds on `/tmp`, but gVisor ignores it on `/conversation/input` and `/conversation/output`, so a script written to `output/` and `chmod +x`-ed runs. Accepted: `sh` and `python` can run anything in the box already; the boundary is gVisor, the network and the limits, not exec bits.
 - **A fork bomb kills the whole sandbox** under gVisor (its own threads count against the process cap), exit 2 within a second — contained, unlike runc's clean `fork()` failure.
 - **The box sees the same paths as the agent** (`/conversation/input/…`, `/conversation/output/…`), because the files are copied in, not mounted from the host: conversation files live in `agent_runtime` (plan 36), not on disk.
+- **Scratch files do not enter the box.** Files at paths outside the mounts (`/notes.md`, the branch scratch store) are read and written by the agent's file tools only; the runner's contract takes `input/` and `output/`, so a command works on `/conversation/input` and `/conversation/output` — the conversation's files, which every agent of the conversation already shares. To hand a scratch file to a command, write it under `/conversation/output/` first.
 - **The runner is privileged** (its inner `dockerd`), the second such service after the MCP gateway: no host port, a single-peer internal network, no secrets but its own TLS material.
 - **Requests can be large**: 20 MiB of files is about 27 MB of JSON; the agents client waits `SANDBOX_RUNNER_TIMEOUT_SECONDS` (default 330).
 
@@ -93,6 +94,7 @@ Kill reasons come back in plain words: `timeout`, `memory`, `output_limit`, `dis
 | Image | [sandbox/runner/Dockerfile](https://github.com/konstantinosmpouros/sandbox/blob/main/runner/Dockerfile), [box/](https://github.com/konstantinosmpouros/sandbox/tree/main/box) | gVisor pin + checksum, the box |
 | Agents backend | [magenticx/agents/harness/filesystem/sandbox_backend.py](../../magenticx/agents/harness/filesystem/sandbox_backend.py) | `RemoteSandboxBackend.aexecute`, file staging, result text |
 | Wiring + guard | [magenticx/agents/harness/filesystem/workspace.py](../../magenticx/agents/harness/filesystem/workspace.py) | sandbox default when active, fail-closed otherwise |
+| Default file operations | [magenticx/agents/harness/filesystem/scratch_backend.py](../../magenticx/agents/harness/filesystem/scratch_backend.py), [scratch_store.py](../../magenticx/agents/harness/filesystem/scratch_store.py) | `BranchScratchBackend` (the sandbox backend's base), the branch scratch rows |
 | Forced approval | [magenticx/agents/harness/tools/gates.py](../../magenticx/agents/harness/tools/gates.py) | `resolve_interrupt_on` |
 | Prompt guidance | [magenticx/agents/harness/prompt_engineering/prompts/capabilities_prompt.py](../../magenticx/agents/harness/prompt_engineering/prompts/capabilities_prompt.py) | `_SANDBOX` |
 | UI | [magenticx/agentic_ui/src/features/chat/components/message_parts/ToolCallViews.tsx](../../magenticx/agentic_ui/src/features/chat/components/message_parts/ToolCallViews.tsx), [lib/approvalPresentation.ts](../../magenticx/agentic_ui/src/features/chat/lib/approvalPresentation.ts) | terminal view, the execute approval |

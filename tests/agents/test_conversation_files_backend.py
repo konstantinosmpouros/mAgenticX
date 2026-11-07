@@ -241,7 +241,9 @@ async def test_glob_matches_like_the_volume(backend):
     flat = await backend.aglob("*.md", "/output")
     deep = await backend.aglob("**/*.md", "/output")
 
-    assert [m["path"] for m in flat.matches] == ["/output/a.md"]
+    # deepagents 0.7's shared glob contract: a bare pattern matches the
+    # basename at any depth, as on every other route.
+    assert sorted(m["path"] for m in flat.matches) == ["/output/a.md", "/output/sub/b.md"]
     assert sorted(m["path"] for m in deep.matches) == ["/output/a.md", "/output/sub/b.md"]
 
 

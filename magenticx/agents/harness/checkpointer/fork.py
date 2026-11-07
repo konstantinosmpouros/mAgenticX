@@ -16,6 +16,16 @@ If reducer-based seeding ever proves lossy for complex deepagents state, the
 fallback is a row-level copy of the source thread's checkpoint chain up to the
 fork checkpoint (rewriting ``thread_id``) directly in Postgres — see the
 migration plan. Keep that swap localized to this module.
+
+**The branch's scratch files come along** (plan 41 §3.7). The workspace's
+default route is no longer graph state but rows keyed by branch thread
+(:mod:`harness.filesystem.scratch_store`), so the seed alone would start the
+new branch with none. :func:`copy_branch_scratch` copies the source branch's
+rows to the target — copy-on-fork, rows only, idempotent. They are the source
+branch's files as they are *now*, not at the fork checkpoint: the store keeps
+no history. A source branch not yet imported from its legacy ``files`` state
+still forks correctly, because that state rides the seed and the target's own
+one-shot import picks it up.
 """
 
 from __future__ import annotations
@@ -23,6 +33,8 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from core.logging import get_logger
+from harness.filesystem.scratch_store import BranchScratchStore
+from harness.memory import has_memory_pool
 from harness.middlewares import EVENT_KEY
 
 logger = get_logger(__name__)
@@ -57,6 +69,30 @@ async def carry_compaction(
     return True
 
 
+async def copy_branch_scratch(source_thread_id: str, target_thread_id: str) -> int:
+    """Copy-on-fork for the scratch store: the source branch's files onto the target.
+
+    Degraded, never crashing, like the seed: without the store (no pool wired,
+    a database error) the new branch starts with no scratch files and the
+    failure is logged. Returns how many files were copied.
+    """
+    if not has_memory_pool():
+        return 0
+    try:
+        store = BranchScratchStore()
+        await store.ensure_setup()
+        return await store.copy_branch(source_thread_id, target_thread_id)
+    except Exception:
+        logger.warning(
+            "checkpoint_fork_scratch_not_copied",
+            "Seeded a branch thread but could not copy the source branch's scratch files",
+            exc_info=True,
+            source_thread_id=source_thread_id,
+            target_thread_id=target_thread_id,
+        )
+        return 0
+
+
 async def seed_thread_from_checkpoint(
     *,
     graph: Any,
@@ -65,12 +101,16 @@ async def seed_thread_from_checkpoint(
     target_thread_id: str,
 ) -> bool:
     """Seed ``target_thread_id`` from the state at ``source_thread_id``/
-    ``source_checkpoint_id``. Idempotent: if the target already has state it is
-    left as-is. Returns True when the target ends up seeded (or already was),
-    False when the source had no state to copy or seeding failed (the caller
-    proceeds on an empty thread — degraded, never crashing)."""
+    ``source_checkpoint_id``, and copy the source branch's scratch files to it.
+    Idempotent: if the target already has state it is left as-is, and scratch
+    files it already has are kept. Returns True when the target ends up seeded
+    (or already was), False when the source had no state to copy or seeding
+    failed (the caller proceeds on an empty thread — degraded, never crashing)."""
     if not source_thread_id or not target_thread_id:
         return False
+    # Before the seed, so the copy also happens when the state was seeded by
+    # an earlier attempt, and before the new branch's first run reads it.
+    await copy_branch_scratch(source_thread_id, target_thread_id)
 
     target_cfg = {"configurable": {"thread_id": target_thread_id}}
     try:

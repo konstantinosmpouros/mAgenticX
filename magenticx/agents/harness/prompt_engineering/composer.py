@@ -10,12 +10,14 @@ one answer to "what does the prompt look like":
 1. the agent's own instructions (``AGENT.md``, or a code agent's constant)
 2. personalization — the user's preset + custom instructions
 3. the workspace — which mounts exist, which refuse writes
-4. the platform verbs — ``view_image`` / ``present_artifact`` / ``render_chart`` / ``ask_user``
-5. long-term memory
-6. the current date and time
+4. the platform verbs — ``view_image`` / ``present_artifact`` / ``render_chart`` / ``ask_user``,
+   and background delegation (``start_async_task``) when async sub-agents are on
+5. working out loud — short updates to the user between tool calls
+6. long-term memory
+7. the current date and time
 
-Stable sections first, volatile last: 1-5 are fixed for a given agent and run,
-so a provider can cache that prefix, while 6 changes every minute. Reversing
+Stable sections first, volatile last: 1-6 are fixed for a given agent and run,
+so a provider can cache that prefix, while 7 changes every minute. Reversing
 those two would cost the cache on every request — see ``temporal_prompt``.
 
 Every section returns "" when its feature is off, so an agent with nothing
@@ -27,6 +29,7 @@ from harness.prompt_engineering.context import PromptContext
 from harness.prompt_engineering.prompts.capabilities_prompt import capabilities_prompt
 from harness.prompt_engineering.prompts.filesystem_prompt import filesystem_prompt
 from harness.prompt_engineering.prompts.memory_prompt import memory_prompt
+from harness.prompt_engineering.prompts.progress_prompt import progress_prompt
 from harness.prompt_engineering.prompts.temporal_prompt import temporal_prompt
 
 #: The platform sections, in composition order. A section is `(name, builder)`;
@@ -35,6 +38,7 @@ from harness.prompt_engineering.prompts.temporal_prompt import temporal_prompt
 _SECTIONS = (
     ("filesystem", filesystem_prompt),
     ("capabilities", capabilities_prompt),
+    ("progress", progress_prompt),
     ("memory", memory_prompt),
     ("temporal", temporal_prompt),
 )

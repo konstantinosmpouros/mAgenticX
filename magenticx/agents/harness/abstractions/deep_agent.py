@@ -1,6 +1,7 @@
+import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, List, Mapping, Optional, Literal, Sequence
+from typing import Any, List, Mapping, Optional, Literal, Sequence
 from abc import abstractmethod, ABC
 
 from deepagents import ProviderProfile, create_deep_agent, register_provider_profile
@@ -9,18 +10,32 @@ from deepagents.backends import CompositeBackend
 # Private, but the very merge create_deep_agent applies to its own sub-agents'
 # gates; a sub-agent built below depth 1 must get the same.
 from deepagents.graph import _merge_fs_interrupt_on
+# Private and deprecated (removed in deepagents 0.9): the base prompt 0.6.x
+# appended to every main agent's system prompt. 0.7 dropped it; we keep
+# appending it so the model's instructions do not change with the upgrade.
+from deepagents.graph import _LEGACY_BASE_AGENT_PROMPT
 from deepagents.middleware._fs_interrupt import _build_interrupt_on_from_permissions
 from deepagents.middleware.filesystem import FilesystemMiddleware
 from deepagents.middleware.patch_tool_calls import PatchToolCallsMiddleware
 from deepagents.middleware.subagents import GENERAL_PURPOSE_SUBAGENT, SubAgentMiddleware
 from deepagents.middleware.summarization import create_summarization_middleware
-from langchain.agents.middleware import TodoListMiddleware
+from langchain.agents.middleware import ModelRefusalMiddleware, TodoListMiddleware
 from langchain_anthropic.middleware import AnthropicPromptCachingMiddleware
 from langgraph.checkpoint.memory import MemorySaver
 
 from harness.agui import AGUIEmitter, AGUIStreamNormalizer
 from harness.abstractions.base_agent import AgentType, BaseAgent
 from harness.abstractions.subagent_tree import SUBAGENTS_KEY, validate_subagent_tree
+from harness.async_tasks.client import AsyncTaskMiddleware
+from harness.async_tasks.specs import (
+    TaskNode,
+    async_subagent_specs,
+    disable_blocking_general_purpose,
+    resolve_chain,
+    supports_async,
+    top_level,
+)
+from harness.async_tasks.token import InheritedContext, mint_launch_token
 from harness.commands import command_permissions
 from harness.personalization import build_personalization_prompt
 from harness.prompt_engineering import PromptContext, compose_system_prompt, describe_sections
@@ -40,7 +55,12 @@ from harness.middlewares import (
     find_summarizer,
 )
 from harness.conversation_files import ConversationFiles, ConversationFileStore
-from harness.filesystem import build_workspace_backend, workspace_write_deny
+from harness.filesystem import (
+    build_workspace_backend,
+    filesystem_middleware,
+    resolve_branch_thread_id,
+    workspace_write_deny,
+)
 from harness.memory import get_memory_pool
 from core.logging import get_logger
 from core.settings import settings
@@ -55,6 +75,25 @@ def _without_ask_user(tools: Sequence[Any] | None) -> list[Any]:
     """``tools`` minus ``ask_user``: only the main agent may pause the run on a
     question, at any depth (the tool also refuses a sub-agent's call)."""
     return [t for t in (tools or []) if getattr(t, "name", None) != ASK_USER_TOOL_NAME]
+
+
+def ensure_planning_and_filesystem(stack: Sequence[Any] | None, backend: Any, permissions: list[Any]) -> list[Any]:
+    """``stack`` with the 0.6.x base guaranteed: ``write_todos`` and our filesystem.
+
+    deepagents 0.7 no longer adds ``TodoListMiddleware`` to a deep agent or its
+    sub-agents, and its own filesystem middleware differs from 0.6.x (see
+    :mod:`harness.filesystem.middleware`). Both are put back here (never
+    duplicated) for the stacks deepagents assembles — the main agent's and each
+    depth-1 sub-agent's — where a middleware with a stock name replaces
+    deepagents' own in place and a new one lands after its base. The write-deny
+    rules ride this middleware, never ``create_deep_agent(permissions=)``.
+    """
+    items = list(stack or [])
+    if not any(isinstance(m, TodoListMiddleware) for m in items):
+        items.insert(0, TodoListMiddleware())
+    if not any(isinstance(m, FilesystemMiddleware) for m in items):
+        items.insert(1, filesystem_middleware(backend, permissions))
+    return items
 
 
 def _unique_by_name(tools: Sequence[Any]) -> list[Any]:
@@ -149,6 +188,11 @@ class DeepAgent(BaseAgent, ABC):
     # none) — what a manual compaction of this agent's thread runs (plan 34).
     summarizer: Optional[ConfigurableSummarizationMiddleware] = None
 
+    # A background task's node of the tree (plan 41), set per instance by the
+    # task runner; the class default keeps an ordinary run's build unchanged.
+    async_task_node: Optional[TaskNode] = None
+    async_task_model: Optional[str] = None
+
 
     def __init__(self, *, config: Optional[Mapping[str, Any]] = None) -> None:
         super().__init__(config=config)
@@ -167,6 +211,11 @@ class DeepAgent(BaseAgent, ABC):
         self.checkpointer: MemorySaver | None = None
         self.sub_agents: SubAgentsT = None
         self.agent: Any = None
+        # Set by the async task runner (plan 41): build this node of the
+        # sub-agent tree instead of the main agent. None for an ordinary run.
+        self.async_task_node: Optional[TaskNode] = None
+        # The model a task node resolved to, for the task's record (TaskOut).
+        self.async_task_model: Optional[str] = None
 
         # AGUI: the normalizer keys message_id / sub-agent namespaces on the
         # per-run id (run_id), falling back to the LangGraph thread_id.
@@ -223,8 +272,8 @@ class DeepAgent(BaseAgent, ABC):
         return self._conversation_files
 
 
-    def _build_composite_backend(self) -> Callable[[Any], CompositeBackend]:
-        """Delegate to the filesystem workspace builder for this run's identity.
+    def _build_composite_backend(self) -> CompositeBackend:
+        """This run's ``CompositeBackend``, built by the workspace builder.
 
         The mount layout (virtual routes → per-(user, agent, conversation)
         roots) and its write-deny ladder live together in
@@ -233,8 +282,12 @@ class DeepAgent(BaseAgent, ABC):
         *policy* here: the resolved ``self.use_memory`` toggle (drops the
         ``/memories/`` mount when off). Permissions are applied in
         ``build_deep_agent`` via ``WORKSPACE_WRITE_DENY``.
+
+        deepagents 0.7 takes a backend instance only (factories were removed),
+        so the builder's factory is called once here, per build — each request
+        builds its own agent, so the instance is never shared across runs.
         """
-        return build_workspace_backend(
+        factory = build_workspace_backend(
             user_id=self.context["user_id"],
             agent_slug=self.name,
             files=self.conversation_files,
@@ -244,7 +297,12 @@ class DeepAgent(BaseAgent, ABC):
             reference_files=self.reference_files,
             default_skills_dir=self.default_skills_dir,
             declared_skills=self.declared_skills,
+            # The shared scratch store is keyed by the branch (plan 41 §3.7): a
+            # task run (its own thread) reads its root's ``branch_thread_id``
+            # from the context, so the whole tree shares one scratch.
+            branch_thread_id=resolve_branch_thread_id(self.context, self.run_config),
         )
+        return factory(None)
 
 
     @property
@@ -363,8 +421,19 @@ class DeepAgent(BaseAgent, ABC):
                 trust_level=trust_level(self.tools),
                 files=self.conversation_files if ctx.get("conversation_id") else None,
                 interactive=self.interactive,
+                async_task_id=self.async_task_id,
             )
         )
+
+
+    @property
+    def async_task_id(self) -> Optional[str]:
+        """The background task this run is (plan 41), or ``None`` for a chat turn.
+
+        The runner puts it in the run context (``async_task_id``, the marker
+        ``ask_user`` also checks); a task run never gets ``ask_user``."""
+        value = (self.context or {}).get("async_task_id")
+        return value if isinstance(value, str) and value.strip() else None
 
 
     @property
@@ -455,7 +524,7 @@ class DeepAgent(BaseAgent, ABC):
         return items
 
 
-    def prompt_context(self, *, has_subagents: bool = False) -> PromptContext:
+    def prompt_context(self, *, has_subagents: bool = False, async_subagents: bool = False) -> PromptContext:
         """What this run has, for the prompt composer to describe.
 
         Every field is read from the same flag that builds the thing it names,
@@ -467,10 +536,18 @@ class DeepAgent(BaseAgent, ABC):
         return PromptContext(
             use_memory=self.use_memory,
             has_subagents=has_subagents,
+            async_subagents=async_subagents,
             has_conversation=bool(ctx.get("conversation_id")),
+            # Every deep agent the user talks to narrates its work in the chat;
+            # a background task's text goes to its parent, not the user.
+            narrate_progress=bool(ctx.get("conversation_id")) and self.async_task_id is None,
             # The same gate as the tool's builder (a user, a conversation, an
             # interactive run): the rule never describes a tool the run lacks.
-            has_ask_user=bool(ctx.get("user_id") and ctx.get("conversation_id")) and self.interactive,
+            has_ask_user=(
+                bool(ctx.get("user_id") and ctx.get("conversation_id"))
+                and self.interactive
+                and self.async_task_id is None
+            ),
             has_reference=self._has_reference,
             has_default_skills=self._has_default_skills,
             search_past_convs=bool(ctx.get("search_past_convs")),
@@ -530,6 +607,37 @@ class DeepAgent(BaseAgent, ABC):
         # sub-agents inside create_deep_agent): the window rides the profile.
         self.register_model_windows()
         backend = self._build_composite_backend()
+
+        # Selection already happened in _filter_live_tools; builtins are appended
+        # here and are structurally out of reach of any user disable.
+        resolved_tools = _unique_by_name([*self.tools, *self._builtin_tools()])
+
+        # `is not None` and not truthiness: a spec that deliberately declares no
+        # gates passes `{}` and must stay empty rather than falling back to the
+        # class attribute. The layer order itself lives in harness.tools.gates.
+        own_gates = interrupt_on if interrupt_on is not None else self.hitl_gates
+
+        # Derived from the same flag as the mount, so a rule can never point at a
+        # route this run didn't mount. A slash command can only add rules here
+        # (read-only), never lift one.
+        permissions = workspace_write_deny(
+            include_reference=self._has_reference,
+            include_default_skills=self._has_default_skills,
+        ) + command_permissions(self.command_spec)
+
+        # A background task's run (plan 41) builds its node of the tree, from
+        # the same backend, tools, gates and rules as the main agent's.
+        if self.async_task_node is not None:
+            return self._build_task_node(
+                model=model,
+                subagents=subagents,
+                backend=backend,
+                tools=resolved_tools,
+                own_gates=own_gates,
+                permissions=permissions,
+            )
+
+        use_async = self._uses_async_subagents(subagents)
         stack = middleware if middleware is not None else self.default_middleware(model, backend)
         stack = self._ensure_platform_middleware(stack)  # guarantee on the main agent
         self.summarizer = find_summarizer(stack)
@@ -539,7 +647,7 @@ class DeepAgent(BaseAgent, ABC):
         # by the composer, which owns their order. Every section is empty when
         # its feature is off, so an agent with nothing enabled composes to
         # exactly the instructions it was given.
-        prompt_context = self.prompt_context(has_subagents=bool(subagents))
+        prompt_context = self.prompt_context(has_subagents=bool(subagents), async_subagents=use_async)
         system_prompt = compose_system_prompt(system_prompt, prompt_context)
         logger.info(
             "deep_agent_prompt_composed",
@@ -550,46 +658,45 @@ class DeepAgent(BaseAgent, ABC):
             has_custom_instructions=self.personalization.has_custom_instructions,
         )
 
-        # Selection already happened in _filter_live_tools; builtins are appended
-        # here and are structurally out of reach of any user disable.
-        resolved_tools = _unique_by_name([*self.tools, *self._builtin_tools()])
-
-        # `is not None` and not truthiness: a spec that deliberately declares no
-        # gates passes `{}` and must stay empty rather than falling back to the
-        # class attribute. The layer order itself lives in harness.tools.gates.
-        own_gates = interrupt_on if interrupt_on is not None else self.hitl_gates
         resolved_interrupt_on = resolve_interrupt_on(
             resolved_tools,
             own_gates=own_gates,
             approvals=self.tool_config.approvals,
             agent_slug=self.name,
         )
+        stack = ensure_planning_and_filesystem(stack, backend, permissions)
 
-        # Derived from the same flag as the mount, so a rule can never point at a
-        # route this run didn't mount. A slash command can only add rules here
-        # (read-only), never lift one.
-        permissions = workspace_write_deny(
-            include_reference=self._has_reference,
-            include_default_skills=self._has_default_skills,
-        ) + command_permissions(self.command_spec)
-
-        # Sub-agents get the platform guarantees separately (parent middleware
-        # doesn't reach them), at every depth; pre-compiled "runnable" specs
-        # pass through untouched.
-        augmented_subagents = self._prepare_subagents(
-            subagents,
-            model=model,
-            backend=backend,
-            tools=resolved_tools,
-            own_gates=own_gates,
-            permissions=permissions,
-        )
+        if use_async:
+            # Every sub-agent, the general-purpose one included, is an async
+            # task (plan 41): the five task tools replace the blocking `task`,
+            # which deepagents would otherwise still add for general-purpose.
+            validate_subagent_tree(subagents or [])
+            stack.append(self._task_middleware(
+                top_level(subagents, self.skills_paths),
+                parent_path=(),
+                launch_token=self._launch_token(),
+            ))
+            disable_blocking_general_purpose(model)
+            augmented_subagents: SubAgentsT = None
+        else:
+            # Sub-agents get the platform guarantees separately (parent
+            # middleware doesn't reach them), at every depth; pre-compiled
+            # "runnable" specs pass through untouched.
+            augmented_subagents = self._prepare_subagents(
+                subagents,
+                model=model,
+                backend=backend,
+                tools=resolved_tools,
+                own_gates=own_gates,
+                permissions=permissions,
+            )
 
         return create_deep_agent(
             model=model,
             name=self.name,
             tools=resolved_tools,
-            system_prompt=system_prompt,
+            # Exactly what deepagents 0.6.x assembled: ours, then its base prompt.
+            system_prompt=f"{system_prompt}\n\n{_LEGACY_BASE_AGENT_PROMPT}",
             subagents=augmented_subagents,
             interrupt_on=resolved_interrupt_on,
             middleware=stack,
@@ -597,7 +704,214 @@ class DeepAgent(BaseAgent, ABC):
             memory=self.agent_md_paths,
             skills=self.skills_paths,
             backend=backend,
-            permissions=permissions,
+            # The rules ride our filesystem middleware (in ``stack`` and every
+            # sub-agent's): deepagents 0.7 would refuse them on its own one
+            # while sandbox execution is on (harness.filesystem.middleware).
+            context_schema=self.context,
+            checkpointer=self.checkpointer,
+            store=None,
+        )
+
+
+    # ---------------------------------------------------------------------
+    # Async sub-agents (plan 41)
+    # ---------------------------------------------------------------------
+    @property
+    def async_subagents_supported(self) -> bool:
+        """Whether this agent's sub-agents may run as background tasks.
+
+        A task run rebuilds the agent from its stored definition, so an agent
+        that has none to rebuild from (a trial's unsaved draft) keeps the
+        blocking path. True by default.
+        """
+        return True
+
+
+    def definition_fingerprint(self) -> str:
+        """The definition version a task tree is pinned to (the ``graph_id``'s).
+
+        Code agents change only with a deploy, so their class and ``version``
+        name them. Declarative agents hash their definition instead
+        (``YamlDeepAgent``). Hex only, so it can never contain the ``@`` or
+        ``:`` of a graph id.
+        """
+        raw = f"{type(self).__module__}.{type(self).__qualname__}:{self.version}"
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+
+
+    def _branch_thread_id(self) -> str:
+        """The orchestrator's branch thread: the run context's, else the run's thread."""
+        ctx = self.context or {}
+        value = ctx.get("branch_thread_id") or self.run_config.get("configurable", {}).get("thread_id") or ""
+        return str(value)
+
+
+    def _uses_async_subagents(self, subagents: SubAgentsT) -> bool:
+        """Whether this build gives the agent async tasks instead of ``task``.
+
+        All of: the flag is on, the agent can be rebuilt by a task run, the run
+        has an identity to bind the tasks to (user, conversation, branch), and
+        every node of the tree can be rebuilt from a path.
+        """
+        if not settings.async_tasks.enabled or not self.async_subagents_supported:
+            return False
+        ctx = self.context or {}
+        if not (ctx.get("user_id") and ctx.get("conversation_id") and self._branch_thread_id()):
+            return False
+        if not supports_async(subagents):
+            logger.warning(
+                "async_subagents_unsupported_tree",
+                "The sub-agent tree holds a compiled sub-agent; keeping blocking sub-agents",
+                agent_slug=self.name,
+            )
+            return False
+        return True
+
+
+    def _inherited_context(self) -> InheritedContext:
+        """What this run's children inherit (see ``InheritedContext``)."""
+        if self.async_task_node is not None:
+            return self.async_task_node.inherited
+        ctx = self.context or {}
+        tool_config = ctx.get("tool_config")
+        owner = ctx.get("agent_owner_id")
+        command = ctx.get("command")
+        use_memory = ctx.get("use_memory")
+        return InheritedContext(
+            interactive=self.interactive,
+            use_memory=use_memory if isinstance(use_memory, bool) else None,
+            search_past_convs=bool(ctx.get("search_past_convs")),
+            tool_config=dict(tool_config) if isinstance(tool_config, Mapping) else None,
+            agent_owner_id=owner if isinstance(owner, str) and owner else None,
+            command=command if isinstance(command, str) and command else None,
+        )
+
+
+    def _launch_token(self) -> str:
+        """The task-launch token this build's children are started with.
+
+        Minted per build (agents are built per request and per task run), and
+        bound to this run's identity and its place in the tree; the router
+        reads the caller from it, never from the request body.
+        """
+        node = self.async_task_node
+        if node is not None:
+            return mint_launch_token(
+                user_id=node.user_id,
+                conversation_id=node.conversation_id,
+                root_run_id=node.root_run_id,
+                branch_thread_id=node.branch_thread_id,
+                caller_task_id=node.task_id,
+                caller_depth=node.depth,
+                caller_path=list(node.path),
+                agent_slug=node.agent_slug,
+                definition_version=node.definition_version,
+                context=node.inherited,
+            )
+        ctx = self.context or {}
+        branch = self._branch_thread_id()
+        return mint_launch_token(
+            user_id=str(ctx["user_id"]),
+            conversation_id=str(ctx["conversation_id"]),
+            root_run_id=str(ctx.get("run_id") or branch),
+            branch_thread_id=branch,
+            caller_task_id=None,
+            caller_depth=0,
+            caller_path=[],
+            agent_slug=self.name,
+            definition_version=self.definition_fingerprint(),
+            context=self._inherited_context(),
+        )
+
+
+    def _task_middleware(
+        self,
+        children: Sequence[Mapping[str, Any]],
+        *,
+        parent_path: Sequence[str],
+        launch_token: str,
+    ) -> AsyncTaskMiddleware:
+        """The five task tools over ``children``, served by this process's ``/ap``."""
+        node = self.async_task_node
+        return AsyncTaskMiddleware(async_subagents=async_subagent_specs(
+            children,
+            agent_slug=node.agent_slug if node is not None else self.name,
+            definition_version=node.definition_version if node is not None else self.definition_fingerprint(),
+            parent_path=parent_path,
+            launch_token=launch_token,
+        ))
+
+
+    def _build_task_node(
+        self,
+        *,
+        model: Any,
+        subagents: SubAgentsT,
+        backend: Any,
+        tools: Sequence[Any],
+        own_gates: Mapping[str, Any] | None,
+        permissions: list[Any],
+    ) -> Any:
+        """The graph of one background task: its node of the sub-agent tree.
+
+        Resolved down the tree exactly as the blocking path resolves a
+        sub-agent: the model defaults to the one above it, the tools to the
+        ones above it (never ``ask_user``; a spec can only narrow them), the
+        gates are the run's re-resolved for its tools with its own on top. It
+        is then built as a deep agent of its own — planning, our filesystem
+        with the write-deny rules, our summarizer, the platform middleware —
+        on the same workspace backend as the agent, and, when it has children,
+        with its own task tools whose ``graph_id`` paths continue its own.
+        """
+        node = self.async_task_node
+        if node is None:
+            raise RuntimeError("_build_task_node needs async_task_node")
+        tree = subagents if isinstance(subagents, (list, tuple)) else None
+        if tree:
+            validate_subagent_tree(tree)
+        chain = resolve_chain(tree, self.skills_paths, node.path)
+        node_model = model
+        node_tools: list[Any] = _without_ask_user(tools)
+        for level in chain:
+            node_model = level.get("model") or node_model
+            node_tools = _without_ask_user(level["tools"]) if "tools" in level else node_tools
+        spec = chain[-1]
+        self.async_task_model = node_model if isinstance(node_model, str) else getattr(node_model, "model_name", None)
+        gates = self._subagent_gates(node_tools, spec.get("interrupt_on"), own_gates)
+        children = [child for child in (spec.get(SUBAGENTS_KEY) or []) if isinstance(child, Mapping)]
+        system_prompt = str(spec.get("system_prompt") or "")
+        stack: list[Any] = [
+            self.tool_error_middleware(),
+            self.build_summarization_middleware(node_model, backend),
+            *(spec.get("middleware") or []),
+        ]
+        if children:
+            stack.append(self._task_middleware(children, parent_path=node.path, launch_token=self._launch_token()))
+            system_prompt = delegating_subagent_prompt(system_prompt, async_subagents=True)
+        stack = self._ensure_platform_middleware(ensure_planning_and_filesystem(stack, backend, permissions))
+        self.summarizer = find_summarizer(stack)
+        exclude_stock_summarization(node_model if isinstance(node_model, str) else "")
+        disable_blocking_general_purpose(node_model)
+        logger.info(
+            "async_task_node_built",
+            "Built a background task's node of the sub-agent tree",
+            agent_slug=self.name,
+            task_id=node.task_id,
+            depth=node.depth,
+            has_children=bool(children),
+            tool_count=len(node_tools),
+        )
+        return create_deep_agent(
+            model=node_model,
+            name=self.name,
+            tools=node_tools,
+            system_prompt=system_prompt,
+            subagents=None,
+            interrupt_on=gates,
+            middleware=stack,
+            memory=None,
+            skills=list(spec["skills"]) if spec.get("skills") else None,
+            backend=backend,
             context_schema=self.context,
             checkpointer=self.checkpointer,
             store=None,
@@ -662,23 +976,34 @@ class DeepAgent(BaseAgent, ABC):
                     depth=2,
                 ))
                 spec["system_prompt"] = delegating_subagent_prompt(spec.get("system_prompt"))
-            spec["middleware"] = self._ensure_platform_middleware(stack)
+            spec["middleware"] = self._ensure_platform_middleware(
+                ensure_planning_and_filesystem(stack, backend, permissions)
+            )
             prepared.append(spec)
         if not any(isinstance(s, Mapping) and s.get("name") == GENERAL_PURPOSE_SUBAGENT["name"] for s in prepared):
-            prepared.insert(0, self._general_purpose_subagent(model, inherited))
+            prepared.insert(0, self._general_purpose_subagent(model, inherited, backend, permissions))
         return prepared
 
 
-    def _general_purpose_subagent(self, model: Any, tools: Sequence[Any]) -> dict[str, Any]:
+    def _general_purpose_subagent(
+        self,
+        model: Any,
+        tools: Sequence[Any],
+        backend: Any,
+        permissions: list[Any],
+    ) -> dict[str, Any]:
         """deepagents' general-purpose sub-agent, declared rather than auto-added,
         so it too runs without ``ask_user`` and with the platform middleware.
         Same name, description, prompt, model and skills as the one deepagents
-        would add; as a declared spec it gets the same base stack."""
+        would add; as a declared spec it gets the same base stack, plus the
+        0.6.x planning tool and filesystem tool set."""
         spec: dict[str, Any] = {
             **GENERAL_PURPOSE_SUBAGENT,
             "model": model,
             "tools": list(tools),
-            "middleware": self._ensure_platform_middleware([]),
+            "middleware": self._ensure_platform_middleware(
+                ensure_planning_and_filesystem([], backend, permissions)
+            ),
         }
         if self.skills_paths:
             spec["skills"] = list(self.skills_paths)
@@ -727,14 +1052,16 @@ class DeepAgent(BaseAgent, ABC):
     ) -> dict[str, Any]:
         """A fully built spec for a sub-agent at ``depth`` ≥ 2.
 
-        ``SubAgentMiddleware`` runs a spec as given, so everything deepagents
-        adds at depth 1 is added here, in the same order — planning,
-        filesystem with the workspace's write-deny rules, summarization,
-        PatchToolCalls (whose marker binds the sub-agent's stream), the spec's
-        own middleware, its own ``task`` tool if it has sub-agents, prompt
-        caching — and then the platform middleware. Its model defaults to the
-        one above it, its tools to the ones above it (never ``ask_user``), its
-        approval gates to the run's, re-resolved for its tools.
+        ``SubAgentMiddleware`` runs a spec as given, so everything a depth-1
+        sub-agent gets is added here — planning, filesystem with the
+        workspace's write-deny rules, summarization, PatchToolCalls (whose
+        marker binds the sub-agent's stream), the spec's own middleware, its
+        own ``task`` tool if it has sub-agents, prompt caching, refusal
+        handling — and then the platform middleware (``SubAgentMiddleware``
+        adds the unsupported-content guard when it compiles the spec). Its
+        model defaults to the one above it, its tools to the ones above it
+        (never ``ask_user``), its approval gates to the run's, re-resolved for
+        its tools.
         """
         spec = dict(raw)
         children = spec.pop(SUBAGENTS_KEY, None) or []
@@ -742,12 +1069,12 @@ class DeepAgent(BaseAgent, ABC):
         resolved_model = resolve_model(model)
         tools = _without_ask_user(spec["tools"]) if "tools" in spec else list(parent_tools)
         gates = _merge_fs_interrupt_on(
-            _build_interrupt_on_from_permissions(permissions),
+            _build_interrupt_on_from_permissions(permissions, backend),
             self._subagent_gates(tools, spec.get("interrupt_on"), own_gates),
         )
         stack: list[Any] = [
             TodoListMiddleware(),
-            FilesystemMiddleware(backend=backend, _permissions=permissions),
+            filesystem_middleware(backend, permissions),
             create_summarization_middleware(resolved_model, backend),
             PatchToolCallsMiddleware(),
             *(spec.get("middleware") or []),
@@ -765,6 +1092,7 @@ class DeepAgent(BaseAgent, ABC):
             ))
             system_prompt = delegating_subagent_prompt(system_prompt)
         stack.append(AnthropicPromptCachingMiddleware(unsupported_model_behavior="ignore"))
+        stack.append(ModelRefusalMiddleware())
         built: dict[str, Any] = {
             "name": spec["name"],
             "description": spec.get("description", ""),

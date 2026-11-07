@@ -20,6 +20,10 @@ class _Cursor:
     def __init__(self, rowcount: int):
         self.rowcount = rowcount
 
+    async def fetchall(self):
+        # A ``DELETE ... RETURNING`` (the background-task rows) deletes nothing here.
+        return []
+
 
 class _Transaction:
     async def __aenter__(self):
@@ -142,6 +146,7 @@ async def test_purge_user_removes_rows_and_cached_agents(purge, agents_service):
         assert counts["agent_definition_versions"] == 1
         assert counts["conversation_files"] == 1 and counts["conversation_file_blobs"] == 1
         assert counts["workflows"] == 1 and counts["workflow_versions"] == 1
+        assert counts["async_tasks"] == 0
     finally:
         cache.pop(("u2", "theirs"), None)
 

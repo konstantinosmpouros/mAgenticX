@@ -3,6 +3,7 @@
 // ------------------------------------------------------
 import type { AttachmentIn, AttachmentOut } from "./attachments";
 import type { CommandRef } from "./commands";
+import type { TaskNotice } from "../schemas";
 
 // A manual compaction recorded on the answer it follows (plan 34). Token
 // figures are estimates until the next model call reports the real prompt;
@@ -78,6 +79,15 @@ export type MessageOut = {
   compaction?: MessageCompaction | null;
   /** The slash command this user message ran (plan 35), shown as a chip. */
   command?: CommandRef | null;
+  /**
+   * `task_notification`: a wake-up input row (plan 41) — the graph's input is
+   * a HumanMessage, so `sender` is `user`, but it is the system telling the
+   * orchestrator a background task settled. Rendered as a compact notice,
+   * never as the user's words. Null for every ordinary message.
+   */
+  kind?: "task_notification" | null;
+  /** What the notice row says (which task, how it ended, how long it took). */
+  taskNotice?: TaskNotice | null;
 };
 
 // Message input for API requests
