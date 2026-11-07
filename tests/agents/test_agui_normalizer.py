@@ -1332,3 +1332,18 @@ def test_a_sub_agents_refused_ask_user_stays_silent(agents_service):
     assert out == []
     refused = ToolMessage(content="ask_user is not available to a sub-agent", tool_call_id="ask-sub")
     assert norm.handle_chunk((ns, "messages", (refused, {}))) == []
+
+
+def test_a_resume_does_not_repeat_the_text_and_usage_of_the_approved_message(agents_service):
+    # After an approval, HumanInTheLoopMiddleware.after_model re-emits the AI
+    # message the model node streamed before the pause (text and usage
+    # included). The fresh /resume normalizer must show only its tool call.
+    reply = AIMessage(
+        id="ai-1",
+        content="I'll start a slow task now.",
+        tool_calls=[{"name": "danger", "args": {"target": "x"}, "id": "c1"}],
+        usage_metadata={"input_tokens": 5, "output_tokens": 1, "total_tokens": 6},
+    )
+    norm = _norm(agents_service, thread_id="t-resume")
+    frames = norm.handle_chunk(("updates", {"HumanInTheLoopMiddleware.after_model": {"messages": [reply]}}))
+    assert _names(frames) == ["TOOL_CALL_START", "TOOL_CALL_ARGS"]

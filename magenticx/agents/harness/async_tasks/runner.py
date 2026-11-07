@@ -45,7 +45,7 @@ import uuid
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import HTTPException
 from langchain_mcp_adapters.tools import load_mcp_tools
@@ -100,6 +100,9 @@ BUILD_FAILED = "The subagent could not be started."
 #: A task's status as its latest run ended.
 _SETTLED_FROM_RUN = {"success": "success", "error": "error", "timeout": "error", "interrupted": "cancelled"}
 
+#: The outcomes a parent's ``async_tasks`` state records for a finished child.
+_TRACKED_SETTLED = frozenset({"success", "error", "cancelled"})
+
 #: The description kept on a task's row (TaskOut.description), at most.
 _DESCRIPTION_CHARS = 2000
 
@@ -132,6 +135,9 @@ class RunOutcome:
     # The run's final message (a successful run that did not pause), kept on
     # the task as its result.
     result: dict[str, Any] | None = None
+    # The children whose outcome the run's own state records (its middleware
+    # took the result in); ``None`` when the run did not end cleanly.
+    seen_settled: frozenset[str] | None = None
 
 
 @dataclass
@@ -168,7 +174,7 @@ class _Usage:
         # The model the calls actually went to, as the usage event reports it.
         # It names the task's model for its record and its cost: the built
         # model object does not reliably expose a plain name.
-        self.model: Optional[str] = None
+        self.model: str | None = None
 
     def _add(self, key: str, value: Any) -> None:
         if isinstance(value, (int, float)) and not isinstance(value, bool):
@@ -556,9 +562,15 @@ class TaskRunner:
         snapshot = await agent.compiled.aget_state(agent.run_config)
         waiting = bool(list(getattr(snapshot, "interrupts", None) or []))
         await release_checkpoint_unless_paused(agent, active.run_id)
-        messages = list((getattr(snapshot, "values", None) or {}).get("messages") or [])
+        values = getattr(snapshot, "values", None) or {}
+        messages = list(values.get("messages") or [])
         result = message_dict(messages[-1]) if messages and not waiting else None
-        return RunOutcome(status="success", waiting=waiting, usage=usage.totals, result=result)
+        tracked = values.get("async_tasks") or {}
+        seen = frozenset(
+            str(child_id) for child_id, record in tracked.items()
+            if isinstance(record, Mapping) and record.get("status") in _TRACKED_SETTLED
+        )
+        return RunOutcome(status="success", waiting=waiting, usage=usage.totals, result=result, seen_settled=seen)
 
     async def build_agent(self, task: Mapping[str, Any], run_id: str) -> DeepAgent:
         """The task's node, built from the definition its tree is pinned to.
@@ -615,8 +627,18 @@ class TaskRunner:
                 seconds=time.monotonic() - active.began, status=status, kind=active.kind,
                 task_id=task_id, depth=int(task["depth"]) if task else 0,
             )
-            if task is None or task["status"] == "cancelled":
+            if task is None:
                 return
+            if task["status"] == "cancelled":
+                # A stop settles the task (and announces it) before the run it
+                # interrupted gets here with that run's usage. Announce it again
+                # so the bridge books the spend; it adds only the delta since
+                # its last booking, so nothing is counted twice.
+                if outcome.usage:
+                    await self._publish("TASK_SETTLED", task_id)
+                return
+            if outcome.seen_settled is not None:
+                await self._reconcile_deliveries(task_id, outcome.seen_settled)
             queued = self._queue.get(task_id)
             if queued:
                 pending = queued.pop(0)
@@ -627,6 +649,29 @@ class TaskRunner:
             follow_up = await self._evaluate(task)
         if follow_up is not None:
             await follow_up()
+
+    async def _reconcile_deliveries(self, task_id: str, seen: frozenset[str]) -> None:
+        """Make ``parent_notified_at`` of ``task_id``'s children match what its run took in.
+
+        A read of a settled child by the parent marks it delivered
+        (``utils.async_tasks``), but a read the middleware abandoned (its pull
+        timed out after ``runs.get`` answered) never reaches the model. The
+        parent's own state is the truth: a child it records as finished was
+        delivered; a settled child it does not record was not, and is taken
+        back so ``_evaluate`` wakes the parent with it. A child the parent
+        stopped itself (``cancel_reason="parent"``) needs no telling.
+        """
+        for child in await self.store.children(task_id):
+            if child["status"] not in SETTLED_STATUSES:
+                continue
+            if child["task_id"] in seen:
+                await self.store.mark_notified(child["task_id"])
+            elif child.get("parent_notified_at") is not None and child.get("cancel_reason") != "parent":
+                await self.store.clear_notified(child["task_id"])
+                logger.info(
+                    "async_task_delivery_taken_back", "A child's result never reached its parent; it will be woken",
+                    task_id=task_id, child_task_id=child["task_id"],
+                )
 
     # -- settling and waking ---------------------------------------------------
     async def _evaluate(self, task: dict[str, Any]) -> Callable[[], Awaitable[None]] | None:

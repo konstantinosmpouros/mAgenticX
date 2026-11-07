@@ -39,6 +39,7 @@ import fakeredis.aioredis
 import httpx
 import pytest
 import pytest_asyncio
+from deepagents.middleware import async_subagents
 from deepagents.middleware.async_subagents import AsyncSubAgentMiddleware, _notification_event
 from fastapi import HTTPException
 from langchain_core.callbacks import CallbackManagerForLLMRun
@@ -105,6 +106,11 @@ class FakeTaskStore:
             return False
         row["parent_notified_at"] = when or self._now()
         return True
+
+    async def clear_notified(self, task_id):
+        row = self.tasks.get(task_id)
+        if row is not None:
+            row["parent_notified_at"] = None
 
     def _sorted(self, rows):
         return sorted(rows, key=lambda r: r["_seq"])
@@ -282,7 +288,9 @@ class RuleModel(BaseChatModel):
     def _generate(self, messages, stop=None, run_manager: CallbackManagerForLLMRun | None = None, **kw):
         visible = [m for m in messages if m.type != "system"]
         type(self).seen.setdefault(self.who, []).append(visible)
-        return ChatResult(generations=[ChatGeneration(message=self.decide(visible))])
+        reply = self.decide(visible)
+        reply.usage_metadata = {"input_tokens": 10, "output_tokens": 2, "total_tokens": 12}
+        return ChatResult(generations=[ChatGeneration(message=reply)])
 
     def decide(self, messages: list[BaseMessage]) -> AIMessage:
         last = messages[-1]
@@ -769,6 +777,16 @@ async def test_cancel_stops_the_whole_subtree(env):
     assert all(row["parent_notified_at"] is not None for row in rows.values())
     assert await stream_entries(env, "tasks:outbox") == []
     assert not env.runner._active
+    # The stop settles each task before its interrupted run records what it
+    # spent; the last announcement still carries that spend, so the bridge
+    # books it.
+    last: dict[str, dict] = {}
+    for entry in await stream_entries(env, "tasks:status"):
+        last[entry["task"]["task_id"]] = entry
+    for name in ("researcher", "helper", "sub-helper"):
+        final = last[rows[name]["task_id"]]
+        assert final["event"] == "TASK_SETTLED" and final["task"]["status"] == "cancelled"
+        assert final["task"]["usage"]["calls"] >= 1
 
 
 async def _named_status(env, name: str, status: str) -> bool:
@@ -826,6 +844,47 @@ async def test_a_busy_parent_pulls_its_childs_result(env):
     kinds = [r["kind"] for r in env.store.runs.values() if r["task_id"] == rows["researcher"]["task_id"]]
     assert kinds == ["start"]  # no wake-up run
     assert "researcher saw helper success" in rows["researcher"]["result_preview"]
+
+
+async def test_an_abandoned_pull_is_taken_back_and_the_parent_woken(env, monkeypatch):
+    # The parent's pull reads the settled child (``runs.get`` marks it
+    # delivered), then gives up, as on its 5 s timeout: the result never
+    # reaches the parent's state. The run's end must take the delivery back
+    # and wake the parent with it, not settle the parent without it.
+    await turn(env, "research delegate then wait")
+    await until(lambda: _named_status(env, "helper", "success"))
+    original = async_subagents._aobserve
+
+    async def read_then_give_up(client, task):
+        await original(client, task)
+        raise TimeoutError
+
+    monkeypatch.setattr(async_subagents, "_aobserve", read_then_give_up)
+    open_gate("researcher")
+    await settle(env)
+    rows = tasks_by_name(env)
+    assert rows["researcher"]["status"] == "success"
+    kinds = [r["kind"] for r in env.store.runs.values() if r["task_id"] == rows["researcher"]["task_id"]]
+    assert kinds == ["start", "wake"]
+    assert rows["helper"]["parent_notified_at"] is not None
+    assert "researcher saw helper success" in rows["researcher"]["result_preview"]
+
+
+async def test_a_wake_up_announces_a_second_result_it_pulls_in(env):
+    # Two tasks settle together: the wake-up for one pulls the other in at
+    # before_agent, and its stream marks it with the inline "finished".
+    await turn(env, "research one hold")
+    await turn(env, "research two hold")
+    open_gate("researcher")
+    await settle(env)
+    rows = sorted(env.store.tasks.values(), key=lambda r: r["_seq"])
+    first, second = rows
+    agent = env.definition.build(config=_root_config(env))
+    events = []
+    async for frame in agent.astream({"messages": [await env.runner.notification_for(first)]}):
+        events.extend(env.runner_mod.parse_sse_frames(frame))
+    inline = [e["value"] for e in events if e.get("type") == "CUSTOM" and e.get("name") == "TASK_SETTLED_INLINE"]
+    assert inline == [{"task_id": second["task_id"], "name": "researcher", "status": "success"}]
 
 
 async def test_restart_errors_the_task_and_an_update_reopens_it(env):

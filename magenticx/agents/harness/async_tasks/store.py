@@ -224,6 +224,14 @@ class AsyncTaskStore:
             )
             return await cur.fetchone() is not None
 
+    async def clear_notified(self, task_id: str) -> None:
+        """Take back a delivery the parent never took in (see ``TaskRunner._reconcile_deliveries``)."""
+        async with self._pool.connection() as conn:
+            await conn.execute(
+                "UPDATE async_tasks SET parent_notified_at = NULL, updated_at = now() WHERE task_id = %s",
+                (task_id,),
+            )
+
     async def list_tasks(self, user_id: str, conversation_id: str, limit: int) -> list[dict[str, Any]]:
         async with self._pool.connection() as conn:
             cur = await conn.execute(

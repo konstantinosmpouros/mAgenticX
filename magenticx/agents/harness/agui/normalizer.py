@@ -470,13 +470,20 @@ class AGUIStreamNormalizer:
                 # HumanMessage the user never typed: never rendered as text,
                 # announced as the inline "finished" marker instead.
                 if msg_kind != "ai":
-                    self._emit_task_settled_inline(out, msg, node_name, ns_label)
+                    self._emit_task_settled_inline(out, msg, node_name, node_update, ns_label)
                     continue
+
+                # A middleware node re-emits an AI message the model node
+                # already streamed (``HumanInTheLoopMiddleware.after_model`` on
+                # a resume, a compaction keeping recent messages): its text and
+                # usage went out then. Only its tool calls can be new here (the
+                # calls an approval let through).
+                reemitted = isinstance(node_name, str) and "." in node_name
 
                 # If updates stream contains final AI content:
                 # - With messages-mode chunks already seen: only close response.
                 # - With updates-only mode: synthesize start/content/end once.
-                ai_content = self._extract_text_delta(msg)
+                ai_content = "" if reemitted else self._extract_text_delta(msg)
                 if ai_content:
                     self._end_thinking_if_needed(out, ns_label)
                     state = self._get_state(ns_label)
@@ -498,8 +505,8 @@ class AGUIStreamNormalizer:
                 # tokens). One emission per settled AI message; message_id lets
                 # the bridge dedupe. Sub-agent usage is namespace-wrapped
                 # downstream by _wrap_subagent_events_if_needed.
-                usage_metadata = getattr(msg, "usage_metadata", None)
-                response_metadata = getattr(msg, "response_metadata", None) or {}
+                usage_metadata = None if reemitted else getattr(msg, "usage_metadata", None)
+                response_metadata = {} if reemitted else (getattr(msg, "response_metadata", None) or {})
                 compaction = response_metadata.get(COMPACTION_KEY)
                 if isinstance(compaction, dict) and self._is_main(namespace):
                     self._push(out, self._compaction_done(compaction, usage_metadata, response_metadata))
@@ -880,7 +887,7 @@ class AGUIStreamNormalizer:
 
 
     def _emit_task_settled_inline(
-        self, out: List[bytes], msg: Any, node_name: Any, ns_label: Optional[str]
+        self, out: List[bytes], msg: Any, node_name: Any, node_update: Mapping[str, Any], ns_label: Optional[str]
     ) -> None:
         """TASK_SETTLED_INLINE for a task notification pulled into this run.
 
@@ -889,10 +896,15 @@ class AGUIStreamNormalizer:
         ``after_model``) as a new notification message. Two cases say nothing:
 
         * a status that is not settled (``waiting`` paused for approval);
-        * the run's own input re-labelled by ``before_agent`` — a wake-up run
-          whose notification a later follow-up superseded. That message is
-          already in state (it has an id; a freshly pulled one is a bare dict
-          without one), and the bridge shows a wake-up's notice row itself.
+        * the run's own input re-labelled by ``before_agent``: a wake-up run
+          whose notification a later follow-up superseded. The
+          bridge shows a wake-up's notice row itself.
+
+        ``before_agent`` returns that re-labelled input and the outcomes it
+        pulled in the same update, all as messages with ids (the middleware
+        node coerces them). A pulled outcome is the one whose task the same
+        update records at the event's run (``async_tasks``); the re-labelled
+        input names an older run.
 
         Once per (task, run, status) per stream.
         """
@@ -903,9 +915,11 @@ class AGUIStreamNormalizer:
         task_id = str(event.get("task_id") or "")
         if status is None or not task_id:
             return
-        msg_id = msg.get("id") if isinstance(msg, Mapping) else getattr(msg, "id", None)
-        if isinstance(node_name, str) and node_name.endswith(".before_agent") and msg_id:
-            return
+        if isinstance(node_name, str) and node_name.endswith(".before_agent"):
+            records = node_update.get("async_tasks")
+            record = records.get(task_id) if isinstance(records, Mapping) else None
+            if not isinstance(record, Mapping) or str(record.get("run_id") or "") != str(event.get("run_id") or ""):
+                return
         key = (task_id, str(event.get("run_id") or ""), status)
         if key in self._settled_inline_keys:
             return

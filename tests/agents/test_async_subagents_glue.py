@@ -333,12 +333,27 @@ def test_a_notification_is_announced_once(normalizer):
 
 def test_the_runs_own_relabelled_input_is_not_announced(normalizer):
     # A wake-up run's input notification, rewritten by before_agent because a
-    # follow-up superseded it: already in state (it has an id), and the bridge
-    # shows the wake-up's notice row itself.
+    # follow-up superseded it: the update records no task at that run, and the
+    # bridge shows the wake-up's notice row itself.
     norm = normalizer.AGUIStreamNormalizer(thread_id="t-input")
     rewritten = HumanMessage(id="msg-input", **{k: v for k, v in _notification().items() if k != "role"})
-    out = norm.handle_chunk(("updates", {"AsyncSubAgentMiddleware.before_agent": {"messages": [rewritten]}}))
+    out = norm.handle_chunk(
+        ("updates", {"AsyncSubAgentMiddleware.before_agent": {"messages": [rewritten], "async_tasks": {}}})
+    )
     assert out == []
+
+
+def test_an_outcome_pulled_by_before_agent_is_announced(normalizer):
+    # A wake-up run pulls a second task that settled at the same time. The
+    # middleware node coerces it to a message with an id, and records the
+    # task at the event's run in the same update.
+    norm = normalizer.AGUIStreamNormalizer(thread_id="t-agent")
+    pulled = HumanMessage(id="msg-pulled", **{k: v for k, v in _notification().items() if k != "role"})
+    record = {"task_id": TASK_ID, "run_id": "run-9", "status": "success"}
+    out = norm.handle_chunk(
+        ("updates", {"AsyncSubAgentMiddleware.before_agent": {"messages": [pulled], "async_tasks": {TASK_ID: record}}})
+    )
+    assert _custom(out, "TASK_SETTLED_INLINE") == [{"task_id": TASK_ID, "name": "researcher", "status": "success"}]
 
 
 def test_a_notification_is_never_rendered_as_text(normalizer):
