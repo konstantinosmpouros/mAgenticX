@@ -61,6 +61,17 @@ describe("TASK_LAUNCHED / TASK_SETTLED_INLINE in a run's stream", () => {
     expect(timeline.blocks[1]).not.toHaveProperty("action");
   });
 
+  it("shows a follow-up a task received where its new run begins (its drill-down)", () => {
+    const timeline = foldTimeline([
+      { type: "TEXT_MESSAGE_CONTENT", delta: "First draft." },
+      { type: "CUSTOM", name: "TASK_INPUT", value: { text: "Carry on with the essay." } },
+      { type: "TEXT_MESSAGE_CONTENT", delta: "Continuing." },
+      { type: "CUSTOM", name: "TASK_INPUT", value: { text: "" } },
+    ]);
+    expect(timeline.blocks.map((block) => block.kind)).toEqual(["content", "task_input", "content"]);
+    expect(timeline.blocks[1]).toMatchObject({ kind: "task_input", text: "Carry on with the essay." });
+  });
+
   it("draws one block per task when a resume replays the launch", () => {
     const timeline = foldTimeline([launched("t1"), launched("t1"), launched("t2", "writer")]);
     expect(timeline.blocks.filter((block) => block.kind === "task_ref")).toHaveLength(2);

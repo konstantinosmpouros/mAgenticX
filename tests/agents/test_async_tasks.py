@@ -757,6 +757,12 @@ async def test_update_interrupts_the_run_and_the_new_run_sees_both(env):
     assert [r["kind"] for r in runs] == ["start", "update"]
     final = env.store.tasks[task_id]["result"]["content"]
     assert "research and wait" in final and "update: also pears" in final
+    # The follow-up is in the task's own stream, so its drill-down shows what
+    # it was asked where the new run begins; the first input is not (it is the
+    # task's description).
+    events = await stream_entries(env, f"task:{task_id}:events")
+    inputs = [e["value"]["text"] for e in events if e.get("type") == "CUSTOM" and e.get("name") == "TASK_INPUT"]
+    assert len(inputs) == 1 and "update: also pears" in inputs[0]
 
 
 async def _waiting_at(key: str) -> bool:

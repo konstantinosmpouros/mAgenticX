@@ -19,6 +19,8 @@ CONTEXT_COMPACTION_EVENT_TYPE = "CONTEXT_COMPACTION"
 # Async sub-agents (plan 41 §14.4), inside a run's own stream.
 TASK_LAUNCHED_EVENT_TYPE = "TASK_LAUNCHED"
 TASK_SETTLED_INLINE_EVENT_TYPE = "TASK_SETTLED_INLINE"
+#: A follow-up instruction a background task received (its own event stream only).
+TASK_INPUT_EVENT_TYPE = "TASK_INPUT"
 
 
 # ------------------------------------------------------------------

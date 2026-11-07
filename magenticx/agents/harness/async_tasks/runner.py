@@ -55,7 +55,7 @@ from core.logging import clear_context, get_logger, set_context
 from core.settings import settings
 from harness.abstractions.agent_spec import MAX_SUBAGENT_DEPTH
 from harness.abstractions.deep_agent import DeepAgent
-from harness.agui.events import TOKEN_USAGE_EVENT_TYPE
+from harness.agui.events import TASK_INPUT_EVENT_TYPE, TOKEN_USAGE_EVENT_TYPE
 from harness.async_tasks import metrics
 from harness.async_tasks.events import TaskStreamPublisher
 from harness.async_tasks.notification import (
@@ -406,6 +406,8 @@ class TaskRunner:
             active = self._active.get(task_id)
             if active is not None and not active.started and strategy != "reject":
                 active.inputs.extend(inputs)
+                if active.kind != "start":
+                    await self._announce_input(task_id, inputs)
                 run = await self.store.get_run(active.run_id)
                 logger.info("async_task_update_folded", "Follow-up joined a run that had not started",
                             task_id=task_id, run_id=active.run_id)
@@ -418,6 +420,8 @@ class TaskRunner:
             if active is not None and strategy == "reject":
                 raise TaskRefused(409, "The task is busy.")
             kind = "start" if runs_so_far == 0 else "update"
+            if kind == "update":
+                await self._announce_input(task_id, inputs)
             if kind == "start" and not fresh.get("description"):
                 description = "\n".join(_message_text(m) for m in inputs).strip()[:_DESCRIPTION_CHARS]
                 await self.store.update_task(task_id, {"description": description or None})
@@ -443,6 +447,17 @@ class TaskRunner:
         if run is None:
             raise TaskRefused(500, "The run could not be read.")
         return run
+
+    async def _announce_input(self, task_id: str, inputs: Sequence[Mapping[str, Any]]) -> None:
+        """Put a follow-up's instruction in the task's own stream (TASK_INPUT), so
+        its drill-down shows what the parent asked, where the new run begins.
+        The first run's input is the task's description, shown already."""
+        text = "\n\n".join(t for t in (_message_text(m).strip() for m in inputs) if t)
+        if text:
+            await self.publisher.task_event(task_id, {
+                "type": "CUSTOM", "name": TASK_INPUT_EVENT_TYPE,
+                "value": {"text": text}, "timestamp": int(time.time() * 1000),
+            })
 
     async def _reopen(self, task: dict[str, Any]) -> None:
         """A settled task runs again (§3.4): its settle and notification are cleared."""

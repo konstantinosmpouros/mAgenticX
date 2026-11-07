@@ -27,6 +27,15 @@ export function TaskRefBlockView({ block }: { block: TaskRefBlock }) {
           {block.action === "update" ? "Updated task in the background" : "Started task in the background"}
         </span>
       </p>
+      {block.action === "update" && block.description ? (
+        // What the task was sent; the card below keeps its original brief.
+        <p
+          className="ml-5 line-clamp-2 border-l-2 border-border pl-2 text-xs italic text-muted-foreground [overflow-wrap:anywhere]"
+          title={block.description}
+        >
+          {block.description}
+        </p>
+      ) : null}
       {tasks && task ? (
         <TaskTreeCards roots={roots} tasks={tasks} />
       ) : (

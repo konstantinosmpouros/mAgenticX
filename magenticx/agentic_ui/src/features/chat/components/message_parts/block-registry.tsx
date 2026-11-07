@@ -8,6 +8,7 @@ import type {
   MessageOut,
   SubagentBlock,
   SubagentRunStatus,
+  TaskInputBlock,
   TaskRefBlock,
   TaskSettledBlock,
   ThinkingBlock,
@@ -20,6 +21,7 @@ import { CompactionDivider } from "./CompactionDivider";
 import { ContentBlockView } from "./Content";
 import { CoTBlock } from "./CoTBlock";
 import { SubagentTreeCard } from "./SubagentTreeCard";
+import { TaskInputBlockView } from "./TaskInputBlockView";
 import { TaskRefBlockView } from "./TaskRefBlockView";
 import { TaskSettledMarker } from "./TaskSettledMarker";
 
@@ -107,6 +109,7 @@ export const BLOCK_REGISTRY: Record<
   // tree, and the inline marker of a result pulled into this run.
   task_ref: (block) => <TaskRefBlockView block={block as TaskRefBlock} />,
   task_settled: (block) => <TaskSettledMarker block={block as TaskSettledBlock} />,
+  task_input: (block) => <TaskInputBlockView block={block as TaskInputBlock} />,
   thinking: (block, ctx) => (
     <CoTBlock
       block={block as ThinkingBlock}

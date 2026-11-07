@@ -194,26 +194,44 @@ export function useBackgroundTasks({
   // The open drill-down, and every task waiting on an approval. Keyed by the
   // sorted id list so a status frame that does not change the set does not
   // tear the sockets down.
+  // Each id carries whether its task is settled: a node's socket ends at the
+  // settle, so a task the orchestrator continues changes the key and its
+  // drill-down reconnects and streams again, without a reload.
   const watchedKey = useMemo(() => {
     const ids = new Set<string>();
     if (openTaskId && tree.tasks[openTaskId]) ids.add(openTaskId);
     for (const task of Object.values(tree.tasks)) {
       if (task.status === "waiting") ids.add(task.taskId);
     }
-    return [...ids].sort().join("|");
+    return [...ids]
+      .sort()
+      .map((id) => `${id}:${isTaskSettled(tree.tasks[id].status) ? "settled" : "live"}`)
+      .join("|");
   }, [openTaskId, tree.tasks]);
 
   const nodeControllersRef = useRef<Map<string, AbortController>>(new Map());
+  // Each watched node's state ("settled" / "live") when its socket was opened.
+  const nodeStatesRef = useRef<Map<string, string>>(new Map());
 
   useEffect(() => {
     const controllers = nodeControllersRef.current;
-    const watched = new Set(watchedKey ? watchedKey.split("|") : []);
+    const states = new Map(
+      (watchedKey ? watchedKey.split("|") : []).map((entry) => {
+        const cut = entry.lastIndexOf(":");
+        return [entry.slice(0, cut), entry.slice(cut + 1)] as const;
+      }),
+    );
+    const watched = new Set(states.keys());
     for (const [taskId, controller] of controllers) {
-      if (!watched.has(taskId)) {
+      const reopened = nodeStatesRef.current.get(taskId) === "settled" && states.get(taskId) === "live";
+      if (!watched.has(taskId) || reopened) {
+        // Gone from view, or running again: a socket opened on the settled
+        // task has nothing more to say — open a fresh one below.
         controller.abort();
         controllers.delete(taskId);
       }
     }
+    nodeStatesRef.current = states;
     if (!userId) return;
     for (const taskId of watched) {
       if (controllers.has(taskId)) continue;

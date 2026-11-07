@@ -28,6 +28,8 @@ export const CONTEXT_COMPACTION_EVENT_TYPE = "CONTEXT_COMPACTION" as const;
 // Async sub-agents (plan 41 §14.4), inside a run's own stream.
 export const TASK_LAUNCHED_EVENT_TYPE = "TASK_LAUNCHED" as const;
 export const TASK_SETTLED_INLINE_EVENT_TYPE = "TASK_SETTLED_INLINE" as const;
+// In a task's own stream: a follow-up instruction it received (update_async_task).
+export const TASK_INPUT_EVENT_TYPE = "TASK_INPUT" as const;
 
 export const PLAN_SNAPSHOT_EVENT_NAMES = [PLAN_SNAPSHOT_EVENT_TYPE, "plan_snapshot"] as const;
 
@@ -125,6 +127,10 @@ export const TaskLaunchedPayloadSchema = z.object({
   description: z.string().nullish(),
   // "update": an `update_async_task` reached an existing task (shown as "Updated task").
   action: z.enum(["start", "update"]).catch("start").optional(),
+});
+
+export const TaskInputPayloadSchema = z.object({
+  text: z.string().min(1),
 });
 
 export const TaskSettledInlinePayloadSchema = z.object({

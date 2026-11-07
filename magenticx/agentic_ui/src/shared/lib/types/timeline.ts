@@ -309,6 +309,16 @@ export type TaskSettledBlock = {
   status: AsyncTaskStatus;
 };
 
+/**
+ * In a background task's own timeline (its drill-down): a follow-up its parent
+ * sent with `update_async_task` (TASK_INPUT), where the run it started begins.
+ */
+export type TaskInputBlock = {
+  kind: "task_input";
+  id: string;
+  text: string;
+};
+
 export type TimelineBlock =
   | ThinkingBlock
   | ContentBlock
@@ -317,7 +327,8 @@ export type TimelineBlock =
   | ChartBlock
   | CompactionBlock
   | TaskRefBlock
-  | TaskSettledBlock;
+  | TaskSettledBlock
+  | TaskInputBlock;
 
 export type TimelineTerminalStatus = "completed" | "cancelled" | "failed";
 

@@ -331,6 +331,16 @@ describe("task tree: Stop", () => {
     expect(taskDisplayStatus(tree, "t1")).toBe("stopping");
   });
 
+  it("drops a continued task's closed drill-down so it streams afresh", () => {
+    let tree = applyTaskFrame(createTaskTree(CONV), wireTask("t1"), "TASK_STARTED", T0);
+    tree = applyTaskSocketFrame(tree, "t1", { type: "terminal", status: "success" } as TaskSocketFrame, T0 + 100);
+    expect(tree.nodes.t1).toBeDefined();
+    tree = applyTaskFrame(tree, wireTask("t1", { status: "success" }), "TASK_SETTLED", T0 + 200);
+    tree = applyTaskFrame(tree, wireTask("t1", { status: "running" }), "TASK_STATUS", T0 + 300);
+    expect(tree.nodes.t1).toBeUndefined();
+    expect(taskDisplayStatus(tree, "t1")).toBe("running");
+  });
+
   it("ignores a stop on a settled task", () => {
     const tree = applyTaskFrame(
       createTaskTree(CONV),

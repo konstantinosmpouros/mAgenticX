@@ -14,9 +14,11 @@ import {
   SUBAGENT_EVENT_TYPE,
   SubAgentCompletedPayloadSchema,
   SubAgentPayloadSchema,
+  TASK_INPUT_EVENT_TYPE,
   TASK_LAUNCHED_EVENT_TYPE,
   TASK_SETTLED_INLINE_EVENT_TYPE,
   TASK_SUBAGENT_EVENT_TYPE,
+  TaskInputPayloadSchema,
   TaskLaunchedPayloadSchema,
   TaskSettledInlinePayloadSchema,
   TaskSubAgentPayloadSchema,
@@ -35,6 +37,7 @@ import type {
   SubagentBlock,
   SubagentFoldIndexes,
   SubagentRunStatus,
+  TaskInputBlock,
   TaskRefBlock,
   TaskSettledBlock,
   ThinkingBlock,
@@ -417,6 +420,17 @@ function pushTaskRefBlock(session: Session, event: RawEvent): void {
     ...(description ? { description } : {}),
     ...(action === "update" ? { action } : {}),
   };
+  session.state.blocks.push(block);
+  session.clonedBlocks.add(session.state.blocks.length - 1);
+}
+
+/** TASK_INPUT: a follow-up the task received, where its new run begins. */
+function pushTaskInputBlock(session: Session, event: RawEvent): void {
+  const parsed = TaskInputPayloadSchema.safeParse(taskEventPayload(event));
+  if (!parsed.success) return;
+  closeThinking(session, eventTimestamp(event));
+  session.state.fold.openContentIndex = null;
+  const block: TaskInputBlock = { kind: "task_input", id: nextBlockId(session), text: parsed.data.text };
   session.state.blocks.push(block);
   session.clonedBlocks.add(session.state.blocks.length - 1);
 }
@@ -1244,6 +1258,10 @@ function applyEvent(session: Session, event: RawEvent): void {
     pushTaskSettledBlock(session, event);
     return;
   }
+  if (type === TASK_INPUT_EVENT_TYPE) {
+    pushTaskInputBlock(session, event);
+    return;
+  }
 
   if (type === "CUSTOM") {
     const name = event.name;
@@ -1255,6 +1273,10 @@ function applyEvent(session: Session, event: RawEvent): void {
     }
     if (name === TASK_SETTLED_INLINE_EVENT_TYPE) {
       pushTaskSettledBlock(session, event);
+      return;
+    }
+    if (name === TASK_INPUT_EVENT_TYPE) {
+      pushTaskInputBlock(session, event);
       return;
     }
 

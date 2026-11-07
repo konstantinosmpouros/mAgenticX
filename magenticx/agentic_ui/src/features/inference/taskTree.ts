@@ -123,14 +123,16 @@ function writeTask(
   if (merged === existing) return state;
   const tasks = { ...state.tasks, [incoming.taskId]: merged };
   const revived = existing && isTaskSettled(existing.status) && !isTaskSettled(merged.status);
-  if (revived && incoming.taskId in state.stopRequestedAt) {
-    // The stop is over: the task settled, and is now running again (the
-    // orchestrator continued it). It is no longer "Stopping…".
-    const stopRequestedAt = { ...state.stopRequestedAt };
-    delete stopRequestedAt[incoming.taskId];
-    return { ...state, tasks, stopRequestedAt };
-  }
-  return { ...state, tasks };
+  if (!revived) return { ...state, tasks };
+  // Running again (the orchestrator continued it):
+  //  - the stop is over, so it is no longer "Stopping…";
+  //  - its drill-down timeline was closed at the settle: drop it, so the node
+  //    socket (re-opened for the live task) folds the whole log afresh.
+  const stopRequestedAt = { ...state.stopRequestedAt };
+  delete stopRequestedAt[incoming.taskId];
+  const nodes = { ...state.nodes };
+  delete nodes[incoming.taskId];
+  return { ...state, tasks, stopRequestedAt, nodes };
 }
 
 /**
