@@ -1,8 +1,12 @@
 import {
+  Activity,
   BookOpen,
+  Bot,
   Brain,
+  CircleStop,
   FolderOpen,
   Image,
+  ListChecks,
   Pencil,
   Search,
   SquareTerminal,
@@ -59,6 +63,13 @@ export const TOOL_PRESENTATION: Record<string, ToolPresentation> = {
   search_past_conversations: { icon: Brain },
   // The one that needs all three: a human label, no arguments, just the image.
   view_image: { label: "View image", bare: true, icon: Image },
+  // Background sub-agent tasks (plan 41). A launch and an update are normally
+  // the task's own card; they show as a step only when the call failed.
+  start_async_task: { icon: Bot },
+  update_async_task: { icon: Bot },
+  check_async_task: { icon: Activity },
+  list_async_tasks: { icon: ListChecks },
+  cancel_async_task: { icon: CircleStop },
 };
 
 export const toolLabel = (name: string): string => TOOL_PRESENTATION[name]?.label ?? name;

@@ -1,6 +1,7 @@
 import type { BundledLanguage } from "shiki";
 
 import { toolLabel } from "@/shared/lib/consts";
+import type { SubagentRunStatus } from "@/shared/lib/types";
 
 import { mcpMeta, mcpToolTitle } from "./mcpToolPresentation";
 
@@ -80,6 +81,17 @@ const TITLES: Record<string, (args: ToolArgs | null) => string | null> = {
     str(a, "subagent_type")
       ? `Hand off to the ${subagentName(str(a, "subagent_type"))} sub-agent`
       : null,
+  start_async_task: (a) =>
+    str(a, "subagent_type")
+      ? `Start the ${subagentName(str(a, "subagent_type"))} sub-agent in the background`
+      : "Start a background task",
+  update_async_task: () => "Update a background task",
+  check_async_task: () => "Check a background task",
+  list_async_tasks: (a) => {
+    const filter = str(a, "status_filter");
+    return filter && filter !== "all" ? `List ${filter} background tasks` : "List background tasks";
+  },
+  cancel_async_task: () => "Stop a background task",
 };
 
 /**
@@ -293,12 +305,103 @@ const SUCCESS_PREFIXES: Record<string, string[]> = {
   remember: ["Saved memory "],
   forget: ["Forgot memory "],
   create_skill: ["Created skill "],
+  cancel_async_task: ["Cancelled async subagent task"],
 };
 
 export const isRoutineSuccess = (name: string, result: string | undefined): boolean => {
   const text = result?.trim() ?? "";
   if (name === "create_skill" && text.includes("could not enable it")) return false;
   return (SUCCESS_PREFIXES[name] ?? []).some((prefix) => text.startsWith(prefix));
+};
+
+// ---------------------------------------------------------------------------
+// Background tasks (plan 41): deepagents' check / list results
+// ---------------------------------------------------------------------------
+
+/** A task status as deepagents reports it, in the sub-agent cards' vocabulary. */
+export const asyncTaskRunStatus = (status: string): SubagentRunStatus | null => {
+  switch (status) {
+    case "pending":
+      return "pending";
+    case "running":
+      return "running";
+    case "waiting":
+      return "awaiting_approval";
+    case "success":
+      return "done";
+    case "error":
+    case "timeout":
+      return "failed";
+    case "cancelled":
+    case "interrupted":
+      return "cancelled";
+    default:
+      return null;
+  }
+};
+
+/** How a status reads in a step's meta (the same words as the cards' chips). */
+const STATUS_LABELS: Record<SubagentRunStatus, string> = {
+  pending: "starting",
+  running: "running",
+  awaiting_approval: "awaiting approval",
+  waiting_children: "sub-agents working",
+  stopping: "stopping",
+  done: "done",
+  failed: "failed",
+  cancelled: "cancelled",
+};
+
+export type TaskCheck = {
+  status: SubagentRunStatus;
+  answer?: string;
+  error?: string;
+  note?: string;
+};
+
+/**
+ * `check_async_task`'s result: JSON `{status, result?, error?, note?}` (its
+ * answer's text inlined as `result` when it has no media). Null when it is not
+ * that shape — the step then shows the raw result.
+ */
+export const parseTaskCheck = (result: string | undefined): TaskCheck | null => {
+  if (!result) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(result);
+  } catch {
+    return null;
+  }
+  const body = asToolArgs(parsed);
+  const status = body && typeof body.status === "string" ? asyncTaskRunStatus(body.status) : null;
+  if (!body || !status) return null;
+  const textOf = (key: string) => (typeof body[key] === "string" && body[key] ? (body[key] as string) : undefined);
+  return { status, answer: textOf("result"), error: textOf("error"), note: textOf("note") };
+};
+
+export type TaskListEntry = { taskId: string; agent: string; status: SubagentRunStatus };
+
+const TASK_LIST_LINE = /^- task_id:\s*(\S+)\s+agent:\s*(\S+)\s+status:\s*(\S+)\s*$/;
+
+/**
+ * `list_async_tasks`'s result: `N tracked task(s):` then one
+ * `- task_id: …  agent: …  status: …` line per task, or the "none" sentence
+ * (an empty list). Null when it is neither.
+ */
+export const parseTaskList = (result: string | undefined): TaskListEntry[] | null => {
+  const text = result?.trim();
+  if (!text) return null;
+  if (text.startsWith("No async subagent tasks")) return [];
+  const [head, ...lines] = text.split("\n");
+  if (!/tracked task/.test(head)) return null;
+  const entries: TaskListEntry[] = [];
+  for (const line of lines) {
+    const match = TASK_LIST_LINE.exec(line.trim());
+    const status = match ? asyncTaskRunStatus(match[3]) : null;
+    if (!match || !status) return null;
+    entries.push({ taskId: match[1], agent: match[2], status });
+  }
+  return entries;
 };
 
 // ---------------------------------------------------------------------------
@@ -346,6 +449,14 @@ export const toolMeta = (
     case "search_past_conversations": {
       const hits = parsePastChats(result);
       return hits ? plural(hits.length, "match", "matches") : undefined;
+    }
+    case "check_async_task": {
+      const check = parseTaskCheck(result);
+      return check ? STATUS_LABELS[check.status] : undefined;
+    }
+    case "list_async_tasks": {
+      const list = parseTaskList(result);
+      return list ? plural(list.length, "task") : undefined;
     }
     case "view_image": {
       const region = asToolArgs(a?.region);

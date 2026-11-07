@@ -34,11 +34,16 @@ import {
   parseNumberedFile,
   parsePastChats,
   parsePathList,
+  parseTaskCheck,
+  parseTaskList,
   toDiff,
   type ToolArgs,
   undoDoubleEscaping,
 } from "@/features/chat/lib/toolPresentation";
+import { toTitleCase } from "@/features/inference";
+import type { SubagentRunStatus } from "@/shared/lib/types";
 import { McpResultView } from "./McpToolViews";
+import { STATUS_META } from "./subagentStatus";
 
 // `text-foreground` resets the colour: a step waiting for approval tints its
 // whole row amber, and that must not bleed into the content panes.
@@ -61,6 +66,22 @@ const Note = ({ children, tone = "muted" }: { children: string; tone?: "muted" |
     {children}
   </p>
 );
+
+/** A background task's status, drawn like the chip on its card. */
+const TaskStatusChip = ({ status }: { status: SubagentRunStatus }) => {
+  const meta = STATUS_META[status];
+  return (
+    <span
+      className={cn(
+        "inline-flex flex-shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium",
+        meta.chip,
+      )}
+    >
+      {meta.icon}
+      {meta.label}
+    </span>
+  );
+};
 
 const TruncatedNote = ({ show }: { show?: boolean }) =>
   show ? <Note>Result truncated for display — the agent saw the full output.</Note> : null;
@@ -179,7 +200,22 @@ export const ToolCallArgsView = ({
     case "execute":
       return text(a, "command") ? <TerminalCommand command={text(a, "command")} /> : null;
 
+    // Background tasks: the title says which call it was; ids are noise.
+    case "check_async_task":
+    case "list_async_tasks":
+    case "cancel_async_task":
+      return null;
+
+    // A follow-up to a task: the instruction it was sent reads as Markdown.
+    case "update_async_task":
+      return text(a, "message") ? (
+        <div className={cn(PANE, "p-3")}>
+          <MarkdownRenderer className={COMPACT_MARKDOWN} content={undoDoubleEscaping(text(a, "message"))} />
+        </div>
+      ) : null;
+
     // The title names the sub-agent; the brief it is handed reads as Markdown.
+    case "start_async_task":
     case "task":
       return text(a, "description") ? (
         <div className={cn(PANE, "p-3")}>
@@ -349,6 +385,43 @@ export const ToolCallResultView = ({
         </ul>
       );
     }
+
+    case "check_async_task": {
+      const check = parseTaskCheck(result);
+      if (!check) return generic;
+      const detail = check.answer ?? check.error ?? check.note;
+      return (
+        <div className="space-y-1.5">
+          <TaskStatusChip status={check.status} />
+          {check.answer ? (
+            <div className={cn(PANE, "max-h-72 overflow-y-auto p-3")}>
+              <MarkdownRenderer className={COMPACT_MARKDOWN} content={undoDoubleEscaping(check.answer)} />
+            </div>
+          ) : detail ? (
+            <Note tone={check.error ? "warn" : "muted"}>{detail}</Note>
+          ) : null}
+        </div>
+      );
+    }
+
+    case "list_async_tasks": {
+      const list = parseTaskList(result);
+      if (!list) return generic;
+      if (!list.length) return <Note>No background tasks yet.</Note>;
+      return (
+        <ul className={cn(PANE, "space-y-1 p-2")}>
+          {list.map((entry) => (
+            <li key={entry.taskId} className="flex min-w-0 items-center justify-between gap-2">
+              <span className="min-w-0 truncate">{toTitleCase(entry.agent)}</span>
+              <TaskStatusChip status={entry.status} />
+            </li>
+          ))}
+        </ul>
+      );
+    }
+
+    case "cancel_async_task":
+      return isRoutineSuccess(tool.name, result) ? null : <Note tone="warn">{result}</Note>;
 
     // Writes and memory: the title already says it succeeded. Anything else —
     // a refusal, a partial outcome — is prose worth one line.

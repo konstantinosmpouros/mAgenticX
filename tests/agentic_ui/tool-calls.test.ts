@@ -9,12 +9,15 @@ import {
   parseNumberedFile,
   parsePastChats,
   parsePathList,
+  parseTaskCheck,
+  parseTaskList,
   toolMeta,
   toolTitle,
   toolTitleHint,
   undoDoubleEscaping,
 } from "@/features/chat/lib/toolPresentation";
 import { mcpToolTitle } from "@/features/chat/lib/mcpToolPresentation";
+import { toolIcon } from "@/shared/lib/consts";
 
 /**
  * How a tool step titles and parses itself in the chain of thought.
@@ -242,5 +245,58 @@ describe("double-escaped line breaks (mirrors harness/tools/text_args.py)", () =
   it("leaves text with real line breaks alone", () => {
     const text = "Line one\nUse \\n to break a line.";
     expect(undoDoubleEscaping(text)).toBe(text);
+  });
+});
+
+describe("background task tools (plan 41)", () => {
+  // deepagents 0.7.34 output: check is JSON, list is one line per task,
+  // cancel is one sentence.
+  const check = (body: Record<string, unknown>) => JSON.stringify({ thread_id: "t", ...body });
+  const list =
+    "2 tracked task(s):\n" +
+    "- task_id: a1  agent: general-purpose  status: running\n" +
+    "- task_id: b2  agent: researcher  status: cancelled";
+
+  it("titles each call by what it did, and gives each its own icon", () => {
+    expect(toolTitle("check_async_task", { task_id: "a1" })).toBe("Check a background task");
+    expect(toolTitle("list_async_tasks", {})).toBe("List background tasks");
+    expect(toolTitle("list_async_tasks", { status_filter: "running" })).toBe("List running background tasks");
+    expect(toolTitle("cancel_async_task", { task_id: "a1" })).toBe("Stop a background task");
+    expect(toolTitle("update_async_task", { task_id: "a1", message: "m" })).toBe("Update a background task");
+    expect(toolTitle("start_async_task", { subagent_type: "general-purpose", description: "d" })).toBe(
+      "Start the general-purpose sub-agent in the background",
+    );
+    const icons = ["check_async_task", "list_async_tasks", "cancel_async_task", "start_async_task"].map(toolIcon);
+    expect(icons.every(Boolean)).toBe(true);
+    expect(new Set(icons.slice(0, 3)).size).toBe(3);
+  });
+
+  it("reads a check: status in the cards' words, and the answer, error or note", () => {
+    expect(parseTaskCheck(check({ status: "success", result: "The essay." }))).toEqual({
+      status: "done",
+      answer: "The essay.",
+      error: undefined,
+      note: undefined,
+    });
+    expect(parseTaskCheck(check({ status: "error", error: "boom" }))?.error).toBe("boom");
+    expect(parseTaskCheck(check({ status: "waiting", note: "Asks the user" }))?.status).toBe("awaiting_approval");
+    expect(toolMeta("check_async_task", {}, check({ status: "running" }))).toBe("running");
+    expect(parseTaskCheck("not json")).toBeNull();
+    expect(parseTaskCheck(check({ status: "weird" }))).toBeNull();
+  });
+
+  it("reads a list, an empty one, and rejects anything else", () => {
+    expect(parseTaskList(list)).toEqual([
+      { taskId: "a1", agent: "general-purpose", status: "running" },
+      { taskId: "b2", agent: "researcher", status: "cancelled" },
+    ]);
+    expect(toolMeta("list_async_tasks", {}, list)).toBe("2 tasks");
+    expect(parseTaskList("No async subagent tasks tracked.")).toEqual([]);
+    expect(parseTaskList("something else")).toBeNull();
+  });
+
+  it("hides a routine stop and keeps a refusal visible", () => {
+    expect(isRoutineSuccess("cancel_async_task", "Cancelled async subagent task: a1")).toBe(true);
+    expect(isRoutineSuccess("cancel_async_task", "Unknown task_id: a1")).toBe(false);
   });
 });
