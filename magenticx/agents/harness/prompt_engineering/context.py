@@ -50,6 +50,10 @@ class PromptContext:
     #: narrate between tool calls (``progress_prompt``). Off for a background
     #: task's run, whose text is its parent's input, not the user's chat.
     narrate_progress: bool = False
+    #: The run is a background sub-agent task: it narrates too, but its text is
+    #: shown in its task panel (the drill-down) and its last message is the
+    #: result handed back to its parent, so it gets the sub-agent wording.
+    narrate_as_subagent: bool = False
     #: Wall-clock for the run, injected rather than read inside a prompt so the
     #: composed text is deterministic under test.
     now: Optional[datetime] = None

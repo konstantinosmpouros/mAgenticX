@@ -49,7 +49,9 @@ START_ASYNC_TASK_TOOL_NAME = "start_async_task"
 UPDATE_ASYNC_TASK_TOOL_NAME = "update_async_task"
 #: ``start_async_task``'s success text, ``Launched async subagent. task_id: <id>``
 #: (deepagents 0.7.34) — the task id is the whitespace-free token after it.
-_LAUNCHED_TASK_ID_RE = re.compile(r"task_id:\s*(\S+)")
+# The id alone: an update to a task waiting for a human ends its sentence right
+# after it ("task_id: <id>. It was waiting for a human…").
+_LAUNCHED_TASK_ID_RE = re.compile(r"task_id:\s*([A-Za-z0-9_-]+)")
 #: How deepagents labels a task notification it adds to a running agent's
 #: state (``langchain_core.messages.add_notification_metadata``): the source
 #: in ``additional_kwargs["lc_source"]``, the ``TaskEvent`` in ``lc_data``.

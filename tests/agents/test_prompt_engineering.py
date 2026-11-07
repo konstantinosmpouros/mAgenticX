@@ -202,7 +202,17 @@ def test_a_run_without_narration_gets_no_progress_section(pe):
     assert "Keep the User in the Loop" not in out
 
 
-def test_every_conversation_run_narrates_but_a_background_task_does_not(agents_service):
+def test_a_background_task_narrates_for_its_panel_and_returns_a_standalone_result(pe):
+    out = pe.compose_system_prompt(
+        "x", pe.PromptContext(has_conversation=True, narrate_progress=True, narrate_as_subagent=True)
+    )
+    assert "## Narrate Your Work as You Go" in out
+    assert "Keep the User in the Loop" not in out
+    assert "**Your final message is your result**" in out
+    assert "Before you delegate" in out
+
+
+def test_every_conversation_run_narrates_a_background_task_as_a_sub_agent(agents_service):
     deep_agent = importlib.import_module("harness.abstractions.deep_agent")
     personalization_mod = importlib.import_module("harness.personalization.personalization")
 
@@ -220,8 +230,10 @@ def test_every_conversation_run_narrates_but_a_background_task_does_not(agents_s
 
     build = deep_agent.DeepAgent.prompt_context
     chat = {"user_id": "u", "conversation_id": "c"}
-    assert build(_Probe(chat)).narrate_progress is True
-    assert build(_Probe(chat, async_task_id="t")).narrate_progress is False
+    main = build(_Probe(chat))
+    task = build(_Probe(chat, async_task_id="t"))
+    assert (main.narrate_progress, main.narrate_as_subagent) == (True, False)
+    assert (task.narrate_progress, task.narrate_as_subagent) == (True, True)
     assert build(_Probe({})).narrate_progress is False
 
 

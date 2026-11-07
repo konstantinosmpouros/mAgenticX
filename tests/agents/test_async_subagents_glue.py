@@ -280,6 +280,21 @@ def test_an_update_shows_the_tasks_live_card_in_this_answer(normalizer):
     ]
 
 
+def test_an_update_to_a_task_that_was_waiting_still_links_its_card(normalizer):
+    # deepagents ends the sentence right after the id when it dropped a pending
+    # human request: the id must not keep the full stop (the card would not
+    # find its task and show a nameless "Sub Agent" with no status).
+    norm = normalizer.AGUIStreamNormalizer(thread_id="t-update-waiting")
+    call = AIMessage(content="", tool_calls=[{"id": "upd-3", "name": "update_async_task",
+                                              "args": {"task_id": TASK_ID, "message": "Go on."}}])
+    norm.handle_chunk(("updates", {"model": {"messages": [call]}}))
+    ended = norm.handle_chunk(("messages", ToolMessage(
+        content=f"Updated async subagent. task_id: {TASK_ID}. It was waiting for a human; that request was dropped.",
+        tool_call_id="upd-3", name="update_async_task")))
+
+    assert [v["task_id"] for v in _custom(ended, "TASK_LAUNCHED")] == [TASK_ID]
+
+
 def test_a_failed_update_stays_a_visible_errored_tool_call(normalizer):
     norm = normalizer.AGUIStreamNormalizer(thread_id="t-update-fail")
     call = AIMessage(content="", tool_calls=[{"id": "upd-2", "name": "update_async_task",

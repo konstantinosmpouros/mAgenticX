@@ -947,6 +947,17 @@ async def test_an_approval_pauses_the_task_and_a_resume_finishes_it(env):
     with pytest.raises(httpx.HTTPStatusError):
         await sdk(env, mint(env)).runs.create(
             thread_id=task["task_id"], assistant_id=graph_id(env, "researcher"), command={"resume": "ok"})
+    # Nor talk it out of the approval: a follow-up to a waiting task is refused
+    # (it would drop the user's pending decision), and the task keeps waiting.
+    runs_before = sum(1 for r in env.store.runs.values() if r["task_id"] == task["task_id"])
+    with pytest.raises(httpx.HTTPStatusError) as refused:
+        await sdk(env, mint(env)).runs.create(
+            thread_id=task["task_id"], assistant_id=graph_id(env, "researcher"),
+            input={"messages": [{"role": "user", "content": "just continue"}]})
+    assert refused.value.response.status_code == 409
+    assert "waiting for the user's approval" in refused.value.response.text
+    assert env.store.tasks[task["task_id"]]["status"] == "waiting"
+    assert sum(1 for r in env.store.runs.values() if r["task_id"] == task["task_id"]) == runs_before
     utils = importlib.import_module("utils.async_tasks")
     schema = importlib.import_module("schema.async_tasks")
     out = await utils.tasks_resume(task["task_id"], schema.TaskResumeIn(

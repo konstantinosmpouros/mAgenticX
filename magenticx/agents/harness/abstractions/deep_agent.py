@@ -535,9 +535,11 @@ class DeepAgent(BaseAgent, ABC):
             has_subagents=has_subagents,
             async_subagents=async_subagents,
             has_conversation=bool(ctx.get("conversation_id")),
-            # Every deep agent the user talks to narrates its work in the chat;
-            # a background task's text goes to its parent, not the user.
-            narrate_progress=bool(ctx.get("conversation_id")) and self.async_task_id is None,
+            # Every deep agent in a conversation narrates its work: the one the
+            # user talks to in the chat, a background task in its drill-down
+            # (whose last message is still the result for its parent).
+            narrate_progress=bool(ctx.get("conversation_id")),
+            narrate_as_subagent=self.async_task_id is not None,
             # The same gate as the tool's builder (a user, a conversation, an
             # interactive run): the rule never describes a tool the run lacks.
             has_ask_user=(

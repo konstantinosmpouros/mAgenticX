@@ -404,6 +404,14 @@ class TaskRunner:
             if fresh is None:
                 raise TaskRefused(404, "Not found.")
             active = self._active.get(task_id)
+            if fresh["status"] == "waiting":
+                # Paused on the user's approval: a follow-up would drop that
+                # request (deepagents does) without the user deciding it.
+                raise TaskRefused(
+                    409,
+                    "This task is waiting for the user's approval and continues when they answer it. "
+                    "Do not update it; tell the user it is waiting for them.",
+                )
             if active is not None and not active.started and strategy != "reject":
                 active.inputs.extend(inputs)
                 if active.kind != "start":
