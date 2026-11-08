@@ -384,9 +384,23 @@ const TERMINAL_STATUS: Partial<Record<SubagentRunStatus, TimelineTerminalStatus>
  * order for a log that has none — splitting the thinking block there, as the
  * orchestrator's own sub-agents sit in an answer. One whose step is not found
  * goes at the end.
+ *
+ * A background task (plan 41) passes `taskTimeline`, its node's own event
+ * timeline — what the task drill-down draws. It is used as is when it has
+ * anything: it keeps what the card's folded block drops (the orchestrator's
+ * follow-up instructions, the "Started task" cards of its own tasks, its
+ * approvals). Without one (the socket has not delivered yet) the folded block
+ * stands in.
  */
-export function agentTranscript(node: AgentMapNode): AgentTranscript {
+export function agentTranscript(node: AgentMapNode, taskTimeline?: RunTimeline): AgentTranscript {
   const live = node.status === "running";
+  if (taskTimeline?.blocks.length) {
+    return {
+      instruction: (node.block.prompt || node.block.description || "").trim(),
+      live,
+      timeline: taskTimeline,
+    };
+  }
   const children = node.children.map((child) => child.block);
   const byTask = new Map(children.map((child) => [child.taskId, child]));
   const placed = new Set<SubagentBlock>();

@@ -69,6 +69,11 @@ export type BackgroundTasks = {
   /** The task whose drill-down is open, at any depth. */
   openTaskId: string | null;
   openTask: (taskId: string | null) => void;
+  /**
+   * Stream a task's events without opening its drill-down: the agent map's
+   * detail view reads the same node timeline the drill-down does.
+   */
+  viewTask: (taskId: string | null) => void;
   /** Stop a task and its subtree: "Stopping…" at once, the frames confirm it. */
   stopTask: (taskId: string) => Promise<void>;
   /** The user's decision on a waiting task's approval. */
@@ -98,6 +103,7 @@ export function useBackgroundTasks({
   // useInferenceRuns).
   const treeRef = useRef(tree);
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  const [viewedTaskId, setViewedTaskId] = useState<string | null>(null);
   const [queuedMessage, setQueuedMessage] = useState<QueuedMessage | null>(null);
   const queuedRef = useRef<QueuedMessage | null>(null);
   const [sentDecisions, setSentDecisions] = useState<ReadonlySet<string>>(() => new Set());
@@ -200,6 +206,7 @@ export function useBackgroundTasks({
   const watchedKey = useMemo(() => {
     const ids = new Set<string>();
     if (openTaskId && tree.tasks[openTaskId]) ids.add(openTaskId);
+    if (viewedTaskId && tree.tasks[viewedTaskId]) ids.add(viewedTaskId);
     for (const task of Object.values(tree.tasks)) {
       if (task.status === "waiting") ids.add(task.taskId);
     }
@@ -207,7 +214,7 @@ export function useBackgroundTasks({
       .sort()
       .map((id) => `${id}:${isTaskSettled(tree.tasks[id].status) ? "settled" : "live"}`)
       .join("|");
-  }, [openTaskId, tree.tasks]);
+  }, [openTaskId, tree.tasks, viewedTaskId]);
 
   const nodeControllersRef = useRef<Map<string, AbortController>>(new Map());
   // Each watched node's state ("settled" / "live") when its socket was opened.
@@ -333,6 +340,7 @@ export function useBackgroundTasks({
     tree,
     openTaskId,
     openTask: setOpenTaskId,
+    viewTask: setViewedTaskId,
     stopTask,
     resumeTask,
     isDecisionSent,

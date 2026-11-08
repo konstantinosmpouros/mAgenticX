@@ -411,6 +411,7 @@ export function useChatWorkspace({
     tree: taskTree,
     openTaskId,
     openTask,
+    viewTask,
     stopTask,
     resumeTask,
     isDecisionSent,
@@ -421,9 +422,9 @@ export function useChatWorkspace({
   const backgroundTasksContext = useMemo<BackgroundTasksContextValue | null>(
     () =>
       taskConversationId
-        ? { tree: taskTree, openTaskId, openTask, stopTask, resumeTask, isDecisionSent }
+        ? { tree: taskTree, openTaskId, openTask, viewTask, stopTask, resumeTask, isDecisionSent }
         : null,
-    [isDecisionSent, openTask, openTaskId, resumeTask, stopTask, taskConversationId, taskTree],
+    [isDecisionSent, openTask, openTaskId, resumeTask, stopTask, taskConversationId, taskTree, viewTask],
   );
   // A message typed while the run streams is queued (plan 41 §3.6) — only in a
   // persisted conversation, the only kind that has a queue.

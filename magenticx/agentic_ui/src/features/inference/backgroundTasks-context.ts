@@ -11,7 +11,7 @@ import type { BackgroundTasks } from "./useBackgroundTasks";
 
 export type BackgroundTasksContextValue = Pick<
   BackgroundTasks,
-  "tree" | "openTaskId" | "openTask" | "stopTask" | "resumeTask" | "isDecisionSent"
+  "tree" | "openTaskId" | "openTask" | "viewTask" | "stopTask" | "resumeTask" | "isDecisionSent"
 >;
 
 export const BackgroundTasksContext = createContext<BackgroundTasksContextValue | null>(null);

@@ -80,6 +80,7 @@ function contextValue(
     tree,
     openTaskId: null,
     openTask: vi.fn(),
+    viewTask: vi.fn(),
     stopTask: vi.fn(async () => {}),
     resumeTask: vi.fn(async () => {}),
     isDecisionSent: () => false,

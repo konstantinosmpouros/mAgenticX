@@ -1,4 +1,12 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Bot, CornerDownRight, MessageSquare, Timer, Wrench } from "lucide-react";
 
@@ -7,8 +15,15 @@ import { Card } from "@/shared/ui/card";
 import { Response } from "@/shared/ui/ai-elements/response";
 import type { SubagentBlock } from "@/shared/lib/types";
 import {
+  BackgroundTasksContext,
+  taskChildrenIndex,
+  useBackgroundTasksContext,
+  type BackgroundTasksContextValue,
+} from "@/features/inference";
+import {
   agentNodeDuration,
   agentTranscript,
+  flattenAgentNodes,
   type AgentMapAnswer,
   type AgentMapNode,
 } from "@/features/chat/lib/agentMap";
@@ -18,6 +33,8 @@ import {
 } from "@/features/chat/components/message_parts/TimelineSequence";
 import { AiTransitionIndicator } from "@/features/chat/components/AiTransitionIndicator";
 import { STATUS_META } from "@/features/chat/components/message_parts/subagentStatus";
+import { TaskApprovals } from "@/features/chat/components/message_parts/TaskApprovals";
+import { TaskTreeCards } from "@/features/chat/components/message_parts/TaskTreeCards";
 
 // The agent map's detail view: one sub-agent, opened from the tree. A header
 // with what it is and where it sits (the answer, the sub-agent that delegated
@@ -127,7 +144,19 @@ export function AgentMapDetail({
   const active = node.status === "running";
   const duration = agentNodeDuration(node, now);
   const parent = ancestors[ancestors.length - 1];
-  const transcript = useMemo(() => agentTranscript(node), [node]);
+  // A background task (plan 41) reads as the drill-down does: its node's own
+  // events (streamed while it is open here), its approvals answerable here.
+  const tasks = useBackgroundTasksContext();
+  const task = node.block.asyncTask ? tasks?.tree.tasks[node.taskId] : undefined;
+  const taskTimeline = task ? tasks?.tree.nodes[node.taskId]?.timeline : undefined;
+  const viewTask = tasks?.viewTask;
+  const isTask = Boolean(node.block.asyncTask);
+  useEffect(() => {
+    if (!viewTask || !isTask) return;
+    viewTask(node.taskId);
+    return () => viewTask(null);
+  }, [isTask, node.taskId, viewTask]);
+  const transcript = useMemo(() => agentTranscript(node, taskTimeline), [node, taskTimeline]);
   const [expandedThinking, setExpandedThinking] = useState<Record<string, boolean>>({});
   const onToggleThinking = useCallback((key: string, next?: boolean) => {
     setExpandedThinking((current) => ({ ...current, [key]: next ?? !current[key] }));
@@ -137,6 +166,30 @@ export function AgentMapDetail({
   // sub-agent runs), so the reply's blocks are not re-derived on each tick.
   const openNodeRef = useRef(onOpenNode);
   openNodeRef.current = onOpenNode;
+  // A task card inside the reply opens that task here, a step deeper, rather
+  // than the drill-down sheet; one the map does not hold falls back to it.
+  const mapTasks = useMemo<BackgroundTasksContextValue | null>(() => {
+    if (!tasks) return null;
+    const ids = new Set(flattenAgentNodes(answer.nodes).map((entry) => entry.id));
+    return {
+      ...tasks,
+      openTask: (taskId: string | null) => {
+        const id = taskId ? `${node.messageId}/${taskId}` : null;
+        if (id && ids.has(id)) openNodeRef.current(id);
+        else tasks.openTask(taskId);
+      },
+    };
+  }, [answer.nodes, node.messageId, tasks]);
+  // Its own tasks the reply does not already show at their launch point.
+  const unreferencedChildren = useMemo(() => {
+    if (!task || !tasks || !taskTimeline?.blocks.length) return [];
+    const referenced = new Set(
+      taskTimeline.blocks.flatMap((block) => (block.kind === "task_ref" ? [block.taskId] : [])),
+    );
+    return (taskChildrenIndex(tasks.tree).get(task.taskId) ?? []).filter(
+      (child) => !referenced.has(child.taskId),
+    );
+  }, [task, taskTimeline, tasks]);
   const subagentLinks = useMemo<TimelineSubagentLinks>(() => {
     const byTask = new Map(node.children.map((child) => [child.taskId, child]));
     return {
@@ -221,22 +274,36 @@ export function AgentMapDetail({
           text={transcript.instruction}
         />
 
-        <div className="flex w-full min-w-0 flex-col gap-3 text-card-foreground">
-          {hasReply ? (
-            <TimelineSequence
-              timeline={transcript.timeline}
-              runId={node.messageId}
-              isStreaming={transcript.live}
-              expandedThinking={expandedThinking}
-              onToggleThinking={onToggleThinking}
-              subagentLinks={subagentLinks}
-            />
-          ) : transcript.live ? null : (
-            <p className="text-sm text-muted-foreground">No reply was recorded.</p>
-          )}
-          {/* Before its first step, the thinking orb the chat shows. */}
-          <AiTransitionIndicator visible={transcript.live && !hasReply} />
-        </div>
+        {task && mapTasks ? <TaskApprovals task={task} tasks={mapTasks} /> : null}
+
+        <BackgroundTasksContext.Provider value={mapTasks}>
+          <div className="flex w-full min-w-0 flex-col gap-3 text-card-foreground">
+            {hasReply ? (
+              <TimelineSequence
+                timeline={transcript.timeline}
+                runId={node.messageId}
+                isStreaming={transcript.live}
+                expandedThinking={expandedThinking}
+                onToggleThinking={onToggleThinking}
+                subagentLinks={subagentLinks}
+              />
+            ) : transcript.live ? null : (
+              <p className="text-sm text-muted-foreground">No reply was recorded.</p>
+            )}
+            {/* Before its first step, the thinking orb the chat shows. */}
+            <AiTransitionIndicator visible={transcript.live && !hasReply} />
+            {unreferencedChildren.length && mapTasks ? (
+              <section aria-label="Sub-agents" className="space-y-1.5">
+                <p className="px-1 text-xs text-muted-foreground">Sub-agents</p>
+                <TaskTreeCards
+                  roots={unreferencedChildren}
+                  tasks={mapTasks}
+                  defaultCollapsedSections
+                />
+              </section>
+            ) : null}
+          </div>
+        </BackgroundTasksContext.Provider>
       </motion.section>
     </div>
   );

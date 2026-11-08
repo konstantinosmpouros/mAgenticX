@@ -3,7 +3,7 @@ import { Bot, ChevronRight, ListChecks } from "lucide-react";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/shared/ui/sheet";
 import { cn } from "@/shared/lib/utils";
 import { SubagentTreeCard } from "./SubagentTreeCard";
-import { HitlInterruptCard } from "./HitlInterruptCard";
+import { TaskApprovals } from "./TaskApprovals";
 import { STATUS_META } from "./subagentStatus";
 import { TaskStopButton } from "./TaskStopButton";
 import { TaskTreeCards } from "./TaskTreeCards";
@@ -12,7 +12,6 @@ import { PlanChecklist } from "../plan/PlanChecklist";
 import { PlanProgressRing } from "../plan/PlanProgressRing";
 import {
   isTaskSettled,
-  pendingTimelineInterrupts,
   subagentRunStatus,
   subagentTree,
   taskAncestry,
@@ -190,7 +189,7 @@ function TaskSidePanelBody({
   task: AsyncTask;
   tasks: BackgroundTasksContextValue;
 }) {
-  const { tree, openTask, stopTask, resumeTask, isDecisionSent } = tasks;
+  const { tree, openTask, stopTask } = tasks;
   const status = taskDisplayStatus(tree, task.taskId) ?? task.status;
   const active = !isTaskSettled(task.status);
   const now = useTaskClock(active);
@@ -200,10 +199,6 @@ function TaskSidePanelBody({
   const ancestry = useMemo(() => taskAncestry(tree, task.taskId), [tree, task.taskId]);
   const elapsed = taskElapsedLabel(task, now);
   const usage = taskUsageLabel(task.usage);
-  const approvals = useMemo(
-    () => (task.status === "waiting" ? pendingTimelineInterrupts(node?.timeline) : []),
-    [node?.timeline, task.status],
-  );
   // Its own sub-agents not already drawn at their launch point in its events.
   const children = useMemo(() => {
     const referenced = new Set(
@@ -291,28 +286,7 @@ function TaskSidePanelBody({
       {/* Block container, NOT flex-col — see SubagentsSidePanel: the cards'
           overflow-hidden roots would be squashed by a flex column. */}
       <div className="scrollbar-muted min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
-        {approvals.map((approval) => (
-          <HitlInterruptCard
-            key={approval.id}
-            interrupt={{
-              interruptId: approval.id,
-              threadId: approval.threadId,
-              content: approval.content,
-            }}
-            resolved={isDecisionSent(approval.id)}
-            onResolve={(decision, reason) =>
-              resumeTask(task.taskId, {
-                interruptId: approval.id,
-                threadId: approval.threadId,
-                decision,
-                reason,
-              })
-            }
-          />
-        ))}
-        {task.status === "waiting" && !approvals.length ? (
-          <div className="loading-skeleton h-24 rounded-[24px]" aria-label="Loading the approval" />
-        ) : null}
+        <TaskApprovals task={task} tasks={tasks} />
         {task.description ? (
           <p className="whitespace-pre-wrap [overflow-wrap:anywhere] text-sm leading-6 text-muted-foreground">
             {task.description}
