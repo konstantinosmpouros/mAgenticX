@@ -138,7 +138,9 @@ export default function ChatHeader({
           aria-label="Toggle sidebar"
           className="inline-flex h-10 w-10 rounded-xl bg-transparent text-foreground transition-colors hover:bg-[hsl(var(--hover-surface))] hover:text-foreground active:bg-[hsl(var(--hover-surface-strong))] focus-visible:ring-2 focus-visible:ring-ring md:hidden [&_svg]:size-5"
         />
-        <div className="flex items-center gap-2">
+        {/* Takes the header's free width, so the agent's name shows whole
+            and is cut only where the actions on the right need the room. */}
+        <div className="flex min-w-0 flex-1 items-center gap-2">
           <AgentPicker
             agents={displayAgents}
             selectedId={selectedAgent}

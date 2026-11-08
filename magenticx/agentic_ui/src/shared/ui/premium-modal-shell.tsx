@@ -77,7 +77,7 @@ export function PremiumModalShell({
       cardProps={{ role: "dialog", "aria-modal": true, tabIndex: -1 }}
     >
       {/* Capped at the window minus the overlay's py-6 (3rem). */}
-      <div className="relative flex max-h-[calc(100dvh-3rem)] flex-col overflow-y-auto overflow-x-hidden overscroll-contain rounded-[1.6rem] border border-white/[0.14] bg-[#151515] text-white shadow-[0_28px_100px_rgba(0,0,0,0.72)] [scrollbar-color:rgba(255,255,255,0.2)_transparent] [scrollbar-width:thin]">
+      <div className="relative flex max-h-[calc(100dvh-3rem)] flex-col overflow-y-auto overflow-x-hidden overscroll-contain rounded-[1.6rem] border border-white/[0.14] bg-[#151515] text-white shadow-[0_28px_100px_rgba(0,0,0,0.72)]">
         <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/20" />
         {showClose ? (
           <Button

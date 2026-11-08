@@ -103,7 +103,7 @@ export default function EditProfileDialog({ open, onClose, user }: EditProfileDi
           Edit profile
         </h3>
 
-        <div className="min-h-0 overflow-y-auto overscroll-contain px-6 pb-1 md:px-7 [scrollbar-color:rgba(255,255,255,0.2)_transparent] [scrollbar-width:thin]">
+        <div className="min-h-0 overflow-y-auto overscroll-contain px-6 pb-1 md:px-7">
           <div className="mt-6 flex justify-center [@media(max-height:720px)]:mt-4">
             <motion.div
               initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.9 }}

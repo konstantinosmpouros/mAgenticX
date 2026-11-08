@@ -686,14 +686,15 @@ class TaskRunner:
         parent's own state is the truth: a child it records as finished was
         delivered; a settled child it does not record was not, and is taken
         back so ``_evaluate`` wakes the parent with it. A child the parent
-        stopped itself (``cancel_reason="parent"``) needs no telling.
+        stopped itself (``cancel_reason="parent"``) needs no telling, nor does one
+        the user stopped (``"user"``: D8, a Stop wakes nobody).
         """
         for child in await self.store.children(task_id):
             if child["status"] not in SETTLED_STATUSES:
                 continue
             if child["task_id"] in seen:
                 await self.store.mark_notified(child["task_id"])
-            elif child.get("parent_notified_at") is not None and child.get("cancel_reason") != "parent":
+            elif child.get("parent_notified_at") is not None and child.get("cancel_reason") not in ("parent", "user"):
                 await self.store.clear_notified(child["task_id"])
                 logger.info(
                     "async_task_delivery_taken_back", "A child's result never reached its parent; it will be woken",
@@ -858,8 +859,33 @@ class TaskRunner:
         logger.info("async_task_cancelled", "Background task stopped with its subtree", task_id=task_id,
                     reason=reason, cancelled=cancelled)
         if reason == "user" and cancelled:
-            await self._notify_parent(task_id)
+            stopped = await self.store.get_task(task_id)
+            if stopped is not None and stopped.get("parent_task_id"):
+                await self._user_stopped_child(stopped["parent_task_id"], task_id)
+            else:
+                await self._notify_parent(task_id)
         return cancelled
+
+    async def _user_stopped_child(self, parent_id: str, child_id: str) -> None:
+        """The user stopped a nested task: D8 at every depth, nobody is woken.
+
+        Woken with the stop, the parent would carry on and could start the
+        task again (and then wake the orchestrator). Instead the stop counts
+        as delivered, and a parent with nothing else working and no run of
+        its own settles with what it has — which, as any finished task, tells
+        its own parent.
+        """
+        await self.store.mark_notified(child_id)
+        follow_up: Callable[[], Awaitable[None]] | None = None
+        async with self._lock(parent_id):
+            parent = await self.store.get_task(parent_id)
+            if parent is None or parent["status"] in SETTLED_STATUSES or parent_id in self._active:
+                return  # a running parent reads the stop on its next step
+            if parent["status"] != "waiting_children":
+                return
+            follow_up = await self._evaluate(parent)
+        if follow_up is not None:
+            await follow_up()
 
     async def resume(self, task: Mapping[str, Any], decisions: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
         """Answer a waiting task's approval (§3.8): a ``resume`` run with ``Command(resume=...)``.

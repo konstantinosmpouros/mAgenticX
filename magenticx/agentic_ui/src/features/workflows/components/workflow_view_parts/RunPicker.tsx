@@ -44,7 +44,9 @@ export function RunPicker({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        className={cn(SECONDARY_BUTTON, "max-w-[16rem]")}
+        // The one button of the header's row that gives way on a narrow
+        // screen: its label truncates so Edit and Run always fit.
+        className={cn(SECONDARY_BUTTON, "min-w-0 max-w-[16rem] flex-shrink")}
         aria-label={
           selected
             ? `Run from ${formatRelativeTime(selected.startedAt, now)}, change run`

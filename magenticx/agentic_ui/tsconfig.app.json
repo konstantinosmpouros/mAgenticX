@@ -34,6 +34,8 @@
       "vitest": ["./node_modules/vitest"],
       "@testing-library/*": ["./node_modules/@testing-library/*"],
       "react-router-dom": ["./node_modules/react-router-dom"],
+      // A test that drives a hook through its own state (`useState`).
+      "react": ["./node_modules/@types/react"],
       // Point at the TYPE declarations, not the .js: mapping these to the
       // runtime files makes every .tsx in src lose its JSX types.
       "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime"],

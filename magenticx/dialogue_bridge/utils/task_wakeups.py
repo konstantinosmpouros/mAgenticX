@@ -303,8 +303,34 @@ async def wake_pending_for_conversation(conversation_id: str, user_id: str, sess
     return False
 
 
+async def hold_pending_wakeups(conversation_id: str, user_id: str, session_factory: SessionFactory) -> int:
+    """The user stopped the orchestrator: keep the results waiting to wake it
+    for its next run instead. Returns how many were held.
+
+    Each is marked handled, so neither the run-end safety net nor the
+    reconcile loop starts the orchestrator again right after the Stop. Nothing
+    is lost: its next run (the user's next message, or a task that finishes
+    later) pulls every settled task it started. A task that settles after the
+    Stop still wakes it, as any finished task does.
+    """
+    try:
+        items = await agents_list_unnotified(
+            settings.async_tasks.unnotified_limit, user_id=user_id, conversation_id=conversation_id
+        )
+    except AgentsTaskError as exc:
+        logger.warning("task_unnotified_fetch_failed", "Could not list unnotified tasks", error_type=str(exc))
+        return 0
+    for item in items:
+        await _mark_handled(item, session_factory)
+    if items:
+        logger.info("task_wakeups_held", "The user stopped the orchestrator: pending wake-ups held for its next run",
+                    conversation_id=conversation_id, count=len(items))
+    return len(items)
+
+
 async def on_run_finished(run_id: str, session_factory: SessionFactory) -> None:
-    """After every run: the queued message first, else one pending wake-up."""
+    """After every run: the queued message first, else one pending wake-up —
+    unless the user stopped this run: then the pending wake-ups are held."""
     async with session_factory() as db:
         run = await db.get(MessageTable, run_id)
         conversation = await db.get(ConversationTable, run.conversation_id) if run is not None else None
@@ -312,10 +338,15 @@ async def on_run_finished(run_id: str, session_factory: SessionFactory) -> None:
             return
         conversation_id, user_id = conversation.id, conversation.user_id
         has_queued = conversation.queued_message is not None
+        stopped_by_user = run.streaming_cancel_requested_at is not None
     if has_queued and await send_queued_message(conversation_id, after_run_id=run_id, session_factory=session_factory):
         return
-    if settings.async_tasks.enabled:
-        await wake_pending_for_conversation(conversation_id, user_id, session_factory)
+    if not settings.async_tasks.enabled:
+        return
+    if stopped_by_user:
+        await hold_pending_wakeups(conversation_id, user_id, session_factory)
+        return
+    await wake_pending_for_conversation(conversation_id, user_id, session_factory)
 
 
 register_run_finished_hook(on_run_finished)

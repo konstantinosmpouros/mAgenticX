@@ -1241,8 +1241,9 @@ export default function ChatSidebar({
                     open={workflowsOpen}
                     onToggle={() => setWorkflowsOpen((open) => !open)}
                     listId={workflowsListId}
-                    // Capped like Pinned: a long list scrolls on its own.
-                    listClassName="max-h-[25dvh]"
+                    // Five rows (2rem each, no gap) show; the rest scroll inside
+                    // the section, with the Chats list's scrollbar.
+                    listClassName="max-h-[10rem]"
                   >
                     <SidebarSectionRows>{workflows.map(renderWorkflowRow)}</SidebarSectionRows>
                   </SidebarSection>

@@ -97,13 +97,15 @@ export function AgentPicker({
             // Width hugs the agent name: the trigger is followed by the "might be
             // inactive" indicator, which must sit next to the chevron.
             className={cn(
-              "flex h-11 w-auto max-w-[16rem] items-center gap-2 rounded-xl px-3 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+              // Hugs the name, up to the header's free width (its group
+              // grows; min-w-0 lets it give way before the actions do).
+              "flex h-11 w-auto min-w-0 max-w-full items-center gap-2 rounded-xl px-3 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 md:max-w-[22rem]",
               INTERACTIVE_SURFACE,
             )}
           >
             <span
               className={cn(
-                "max-w-[8.5rem] truncate text-lg md:max-w-[10.5rem]",
+                "min-w-0 truncate text-lg",
                 selected ? "text-foreground" : "text-muted-foreground",
               )}
             >

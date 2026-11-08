@@ -816,6 +816,31 @@ async def test_a_user_stop_rings_the_outbox_marked_as_the_users(env):
     assert refused.value.status_code == 404
 
 
+async def test_a_user_stop_of_a_nested_task_wakes_no_one(env):
+    # The regression: stopping a nested task woke its parent, which carried on
+    # (and could start the task again), finished and woke the orchestrator.
+    # Now the parent is not woken: with nothing else working, it settles.
+    await turn(env, "research delegate hold")
+    await until(lambda: _named_status(env, "helper", "running"))
+    rows = tasks_by_name(env)
+    researcher, helper = rows["researcher"], rows["helper"]
+    await until(lambda: _status(env, researcher["task_id"], "waiting_children"))
+    utils = importlib.import_module("utils.async_tasks")
+    schema = importlib.import_module("schema.async_tasks")
+    out = await utils.tasks_cancel(helper["task_id"], schema.TaskCancelIn(user_id=USER))
+    assert out.status == "cancelled"
+    await settle(env)
+
+    researcher = env.store.tasks[researcher["task_id"]]
+    assert researcher["status"] == "success"
+    kinds = [r["kind"] for r in env.store.runs.values() if r["task_id"] == researcher["task_id"]]
+    assert kinds == ["start"]  # never woken for the stop
+    assert env.store.tasks[helper["task_id"]]["parent_notified_at"] is not None
+    # The researcher finished: that, as any finished task, tells the orchestrator.
+    outbox = await stream_entries(env, "tasks:outbox")
+    assert outbox[-1]["task_id"] == researcher["task_id"] and outbox[-1]["cancelled_by_user"] is False
+
+
 async def test_a_task_node_is_built_with_its_own_platform_sections(env, monkeypatch):
     # The regression: a task's prompt was its spec's instructions alone, so the
     # narration (and file-work) rules never reached a background sub-agent.

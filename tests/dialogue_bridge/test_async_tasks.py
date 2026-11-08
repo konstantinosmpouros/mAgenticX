@@ -495,6 +495,31 @@ async def test_a_run_end_wakes_once_for_an_unhandled_settle(
     assert request.url.params["conversation_id"] == ids["conversation_id"]
 
 
+async def test_a_run_the_user_stopped_wakes_nothing_and_holds_the_pending_results(
+    session_factory, seeded_user, seeded_agent, agents_service, launched
+):
+    # The regression: each Stop of the orchestrator was followed at once by a
+    # wake-up for a result that was waiting, so it never stayed stopped.
+    ids = await _branchy_conversation(session_factory, seeded_user, seeded_agent)
+    async with session_factory() as s:
+        s.add(ConversationTaskTable(task_id="task-1", conversation_id=ids["conversation_id"], user_id=seeded_user.id,
+                                    name="r", status="success", depth=1))
+        run = await s.get(MessageTable, ids["a2"])
+        run.streaming_cancel_requested_at = _now()  # the Stop button
+        await s.commit()
+    unnotified = [_outbox(ids["conversation_id"], seeded_user.id).model_dump(mode="json")]
+    agents_service.on("GET", "/tasks/unnotified", httpx.Response(200, json=unnotified))
+    agents_service.on("POST", "/tasks/task-1/notified", httpx.Response(204))
+
+    await on_run_finished(ids["a2"], session_factory)
+
+    assert launched == []  # stays stopped
+    # Held for its next run, so the reconcile loop does not wake it either.
+    assert len(agents_service.called("POST", "/tasks/task-1/notified")) == 1
+    async with session_factory() as s:
+        assert (await s.get(ConversationTaskTable, "task-1")).notified_at is not None
+
+
 async def test_a_run_end_with_nothing_to_do_never_calls_the_agents_service(
     session_factory, seeded_user, seeded_agent, agents_service, launched
 ):

@@ -255,6 +255,8 @@ export type WorkflowViewPageProps = {
   onEdit?: () => void;
   /** Open the builder with its History panel showing; no History button without it. */
   onHistory?: () => void;
+  /** After the workflow was deleted (from the ⋯ menu); no Delete without it. */
+  onDeleted?: () => void;
 };
 
 /** The details panel's tabs. */

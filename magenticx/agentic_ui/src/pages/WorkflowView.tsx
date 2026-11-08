@@ -1,6 +1,7 @@
 import { motion, type Variants } from "framer-motion";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 
+import { automationsAreaPath } from "@/features/automations/lib/routes";
 import WorkflowViewPage from "@/features/workflows/components/WorkflowViewPage";
 import {
   workflowEditPath,
@@ -35,7 +36,8 @@ const PAGE_FADE: Variants = {
  * workflows or runs never remounts it (WorkspaceShell keys by surface).
  */
 export default function WorkflowView() {
-  const { reduceMotion, navigate } = useChatWorkspaceContext();
+  const { reduceMotion, navigate, workflows } = useChatWorkspaceContext();
+  const routerNavigate = useNavigate();
   const { workflowId = "", runId } = useParams();
 
   return (
@@ -53,6 +55,12 @@ export default function WorkflowView() {
         onSelectRun={(id) => navigate(workflowRunPath(workflowId, id))}
         onEdit={() => navigate(workflowEditPath(workflowId))}
         onHistory={() => navigate(workflowHistoryPath(workflowId))}
+        onDeleted={() => {
+          // The sidebar's list drops it; the view leaves for the Workflows
+          // area, as a delete from the builder does.
+          workflows.refresh();
+          routerNavigate(automationsAreaPath("workflows"), { replace: true });
+        }}
       />
     </motion.div>
   );

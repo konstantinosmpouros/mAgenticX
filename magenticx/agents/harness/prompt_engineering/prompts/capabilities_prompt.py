@@ -101,6 +101,9 @@ _ASYNC_SUBAGENTS = """\
     Never start a new task with `start_async_task` for work an existing task
     was doing; start a new one only when the user asks for a fresh, separate
     task.
+  - **A task the user stopped stays stopped.** Don't start it again, resume it
+    or start a replacement for it unless the user asks; carry on with what you
+    have and say what the stopped task leaves open.
   - A notification is not a message from the user. Report the result in your
     own words. A task waiting for the user's approval is theirs to answer —
     you cannot approve it for them, and you must not send it
@@ -140,7 +143,8 @@ still running, you are woken with their results. Send a clarification with
 `update_async_task` — and use it too to resume or continue a task that was
 stopped, failed or finished, rather than starting a new one for the same work —
 but never on a task waiting for the user's approval: it continues when they
-answer. Stop a task you no longer need with `cancel_async_task`. Only your final message goes back to the agent that
+answer. A task the user stopped stays stopped: never start it again or a
+replacement for it. Stop a task you no longer need with `cancel_async_task`. Only your final message goes back to the agent that
 started you, so fold your sub-agents' findings into it — including the paths
 of any files they wrote; neither you nor they can present a file to the user."""
 

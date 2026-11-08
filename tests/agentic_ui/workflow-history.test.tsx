@@ -306,6 +306,36 @@ describe("the workflow view header", () => {
     expect(onHistory).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps Edit and Delete in its ⋯ menu, Delete last, and only Run on the row", async () => {
+    const onEdit = vi.fn();
+    const onDelete = vi.fn();
+    render(
+      <SidebarProvider defaultOpen>
+        <WorkflowHeader
+          name="Nightly"
+          description={null}
+          onRun={vi.fn()}
+          onEdit={onEdit}
+          onHistory={vi.fn()}
+          onDelete={onDelete}
+        />
+      </SidebarProvider>,
+    );
+    // The row holds ⋯ and Run only (it fits a phone).
+    expect(screen.queryByRole("button", { name: /^Edit$/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /Run/ })).toBeInTheDocument();
+
+    fireEvent.keyDown(screen.getByRole("button", { name: "More actions" }), { key: "Enter" });
+    const items = await screen.findAllByRole("menuitem");
+    expect(items.map((item) => item.textContent?.trim())).toEqual(["Edit", "Version history", "Delete workflow"]);
+    fireEvent.click(items[0]);
+    expect(onEdit).toHaveBeenCalledTimes(1);
+
+    fireEvent.keyDown(screen.getByRole("button", { name: "More actions" }), { key: "Enter" });
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Delete workflow/ }));
+    expect(onDelete).toHaveBeenCalledTimes(1);
+  });
+
   it("offers Version history in the builder's ⋯ menu", async () => {
     renderAt("/workflows/wf-9/edit");
     await screen.findByLabelText("Workflow name");

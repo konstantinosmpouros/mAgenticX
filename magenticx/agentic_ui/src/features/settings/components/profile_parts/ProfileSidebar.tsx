@@ -299,8 +299,6 @@ export default function ProfileSidebar({ normalizedActiveTab, setActiveTab }: Pr
               // thin scrollbar — keeps the top rail short on small screens.
               "flex flex-1 flex-col items-stretch justify-start gap-0.5 pt-0",
               "max-[639px]:min-w-0 max-[639px]:flex-row max-[639px]:flex-nowrap max-[639px]:items-center max-[639px]:gap-1 max-[639px]:overflow-x-auto max-[639px]:pb-1",
-              "max-[639px]:[scrollbar-width:thin] max-[639px]:[scrollbar-color:rgba(255,255,255,0.22)_transparent]",
-              "[&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/20",
             )}
           >
             {SETTINGS_NAV_ITEMS.map(renderNavItem)}

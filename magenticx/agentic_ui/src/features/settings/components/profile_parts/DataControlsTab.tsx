@@ -41,13 +41,8 @@ const sharedTooltipClass =
   "!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md";
 
 const dataControlListClass = cn(
+  // The scrollbar is the app's one (styles/scrollbars.css).
   "max-h-[22rem] overflow-y-auto rounded-[1.35rem]",
-  "[scrollbar-width:thin] [scrollbar-color:hsl(var(--muted-foreground)_/_0.25)_transparent]",
-  "[&::-webkit-scrollbar]:w-3 [&::-webkit-scrollbar-track]:bg-transparent",
-  "[&::-webkit-scrollbar-button]:h-0 [&::-webkit-scrollbar-button]:w-0",
-  "[&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-2",
-  "[&::-webkit-scrollbar-thumb]:border-transparent [&::-webkit-scrollbar-thumb]:bg-[hsl(var(--muted-foreground)/0.25)]",
-  "[&::-webkit-scrollbar-thumb:hover]:bg-[hsl(var(--muted-foreground)/0.35)]",
 );
 
 export default function DataControlsTab({

@@ -1,164 +1,53 @@
+/* One scrollbar for the whole app: the chat body's.
+
+   The chat body scrolls in a Radix ScrollArea (shared/ui/scroll-area.tsx): a
+   12px transparent track holding an 8px rounded thumb in the muted foreground
+   colour at 20% (30% on hover), with no arrow buttons. Every native scroller
+   (the sidebar, dialogs, panels, menus, code blocks, tables, the composer's
+   attachment strip, …) draws the same thing, in both themes, so nothing on
+   screen shows a different or OS-native bar.
+
+   WebKit/Blink draw it from the ::-webkit-scrollbar pseudo-elements. Setting
+   the standard scrollbar-width / scrollbar-color on an element switches those
+   off in Chromium (it then draws its own native bar), so the standard
+   properties are only used where the pseudo-elements do not exist (Firefox).
+
+   The old per-place classes (scrollbar-muted, slim-scrollbar,
+   attachment-strip-scroll, the sidebar's and chat-markdown's rules) are now
+   this rule; the class names stay valid and simply add nothing. */
 @layer base {
-  /* Subtle scrollbar styling for sidebar content and the chat list that
-     scrolls inside it under the pinned "Chats" heading. */
-  [data-sidebar="content"],
-  [data-sidebar="chats-list"] {
-    scrollbar-width: auto;
-    scrollbar-color: rgb(58, 58, 62) transparent;
+  *::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
   }
 
-  [data-sidebar="content"]::-webkit-scrollbar,
-  [data-sidebar="chats-list"]::-webkit-scrollbar {
-    width: 16px;
-  }
-
-  [data-sidebar="content"]::-webkit-scrollbar-track,
-  [data-sidebar="chats-list"]::-webkit-scrollbar-track {
+  *::-webkit-scrollbar-track,
+  *::-webkit-scrollbar-corner {
     background: transparent;
   }
 
-  [data-sidebar="content"]::-webkit-scrollbar-thumb,
-  [data-sidebar="chats-list"]::-webkit-scrollbar-thumb {
-    background-color: rgb(58, 58, 62);
+  *::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--muted-foreground) / 0.2);
     border-radius: 9999px;
     border: 2px solid transparent;
+    background-clip: padding-box;
   }
 
-  [data-sidebar="content"]::-webkit-scrollbar-thumb:hover,
-  [data-sidebar="chats-list"]::-webkit-scrollbar-thumb:hover {
-    background-color: rgb(80, 80, 86);
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--muted-foreground) / 0.3);
   }
-}
 
-/* Muted scrollbars for content blocks inside responses */
-.chat-markdown {
-  scrollbar-width: thin;
-  scrollbar-color: hsl(var(--muted-foreground) / 0.25) transparent;
-}
-
-.chat-markdown *::-webkit-scrollbar {
-  height: 10px;
-  width: 10px;
-}
-
-.chat-markdown *::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.chat-markdown *::-webkit-scrollbar-thumb {
-  background-color: hsl(var(--muted-foreground) / 0.25);
-  border-radius: 9999px;
-  border: 2px solid transparent;
-}
-
-.chat-markdown *::-webkit-scrollbar-thumb:hover {
-  background-color: hsl(var(--muted-foreground) / 0.35);
-}
-
-/* Horizontal attachment strip inside the composer */
-.attachment-strip-scroll {
-  scrollbar-width: thin;
-  scrollbar-color: hsl(var(--muted-foreground) / 0.25) transparent;
-}
-
-.attachment-strip-scroll::-webkit-scrollbar {
-  height: 6px;
-}
-
-.attachment-strip-scroll::-webkit-scrollbar-button {
-  display: none;
-  width: 0;
-  height: 0;
-  -webkit-appearance: none;
-  appearance: none;
-  background: transparent;
-}
-
-.attachment-strip-scroll::-webkit-scrollbar-button:horizontal:start:decrement,
-.attachment-strip-scroll::-webkit-scrollbar-button:horizontal:end:increment,
-.attachment-strip-scroll::-webkit-scrollbar-button:horizontal:start:increment,
-.attachment-strip-scroll::-webkit-scrollbar-button:horizontal:end:decrement {
-  display: none;
-  width: 0;
-  height: 0;
-  -webkit-appearance: none;
-  appearance: none;
-  background: transparent;
-}
-
-.attachment-strip-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.attachment-strip-scroll::-webkit-scrollbar-thumb {
-  border-radius: 9999px;
-  background-color: hsl(var(--muted-foreground) / 0.25);
-}
-
-.attachment-strip-scroll::-webkit-scrollbar-thumb:hover {
-  background-color: hsl(var(--muted-foreground) / 0.35);
-}
-
-/* Reusable thin muted scrollbar — matches the data-controls list, chat content
-   blocks, and composer strip. Apply to any overflow container that would
-   otherwise show the chunky native scrollbar. */
-.scrollbar-muted {
-  scrollbar-width: thin;
-  scrollbar-color: hsl(var(--muted-foreground) / 0.25) transparent;
-}
-
-.scrollbar-muted::-webkit-scrollbar {
-  width: 12px;
-  height: 12px;
-}
-
-.scrollbar-muted::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.scrollbar-muted::-webkit-scrollbar-button {
-  width: 0;
-  height: 0;
-  display: none;
-}
-
-.scrollbar-muted::-webkit-scrollbar-thumb {
-  background-color: hsl(var(--muted-foreground) / 0.25);
-  border-radius: 9999px;
-  border: 2px solid transparent;
-  background-clip: padding-box;
-}
-
-.scrollbar-muted::-webkit-scrollbar-thumb:hover {
-  background-color: hsl(var(--muted-foreground) / 0.35);
-  background-clip: padding-box;
-}
-
-/* A slim scrollbar with no arrow buttons, for scrolling bodies inside dialogs
-   (the report dialog). WebKit/Blink use the pseudo-elements (setting the
-   standard scrollbar-width or scrollbar-color would switch them off there);
-   Firefox uses the standard properties. */
-.slim-scrollbar::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-.slim-scrollbar::-webkit-scrollbar-button {
-  display: none;
-}
-.slim-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-.slim-scrollbar::-webkit-scrollbar-thumb {
-  background-color: hsl(var(--muted-foreground) / 0.3);
-  border-radius: 9999px;
-}
-.slim-scrollbar::-webkit-scrollbar-thumb:hover {
-  background-color: hsl(var(--muted-foreground) / 0.45);
-}
-@supports not selector(::-webkit-scrollbar) {
-  .slim-scrollbar {
-    scrollbar-width: thin;
-    scrollbar-color: hsl(var(--muted-foreground) / 0.3) transparent;
+  @supports not selector(::-webkit-scrollbar) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: hsl(var(--muted-foreground) / 0.2) transparent;
+    }
   }
 }
 

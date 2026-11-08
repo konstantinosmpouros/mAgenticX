@@ -4,7 +4,7 @@ import type { AgentTemplate } from "./shared";
 
 /** Deep research: a director with source, evidence, challenge, fact-check and writing specialists. */
 const draft = (model: string): AgentDraft => ({
-  ...named(model, "Research Director"),
+  ...named(model, "Deep Research"),
   description:
     "Runs deep research with a team: frames the question, gathers and grades sources, extracts and checks the evidence, stress-tests the answer, verifies every claim and writes a sourced brief with stated confidence.",
   icon: "Telescope",
@@ -385,6 +385,6 @@ export const RESEARCH_TEMPLATE: AgentTemplate = {
   name: "Deep research team",
   blurb: "Plans, sources, analyses, challenges and fact-checks, then writes a sourced brief.",
   icon: "Telescope",
-  lead: "Research Director",
+  lead: "Deep Research",
   draft,
 };

@@ -8,6 +8,7 @@ import {
   Pencil,
   Play,
   Square,
+  Trash2,
   Workflow as WorkflowIcon,
 } from "lucide-react";
 
@@ -15,6 +16,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
 import { SidebarTrigger } from "@/shared/ui/sidebar";
@@ -37,10 +39,12 @@ type WorkflowHeaderProps = {
   cancelling?: boolean;
   onRun: () => void;
   runDisabled?: boolean;
-  /** Open the builder (an Edit button before Run). */
+  /** Open the builder (the ⋯ menu's "Edit"). */
   onEdit?: () => void;
   /** Open the version history (the ⋯ menu's "Version history"). */
   onHistory?: () => void;
+  /** Ask to delete the workflow (the ⋯ menu's "Delete workflow", last). */
+  onDelete?: () => void;
   /** The workflow's schedule (its `trigger.schedule` start node): a line under the name. */
   schedule?: WorkflowSchedule | null;
   /** The clock the schedule line reads relative times against (ms). */
@@ -70,6 +74,7 @@ export function WorkflowHeader({
   runDisabled = false,
   onEdit,
   onHistory,
+  onDelete,
   schedule = null,
   now = Date.now(),
   onSetSchedulePaused,
@@ -154,7 +159,9 @@ export function WorkflowHeader({
           </div>
         </div>
 
-        <div className="flex flex-shrink-0 items-center gap-2">
+        {/* Below the title on a phone, the full width: the run picker shrinks
+            (truncating its label) so every action stays on screen. */}
+        <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto sm:flex-shrink-0">
           {picker}
           {onCancel ? (
             <button
@@ -174,7 +181,7 @@ export function WorkflowHeader({
               Cancel
             </button>
           ) : null}
-          {onHistory ? (
+          {onEdit || onHistory || onDelete ? (
             // Not modal, like the builder's ⋯ menu: a modal menu's body lock
             // could be left behind when the item navigates away.
             <DropdownMenu modal={false}>
@@ -187,19 +194,33 @@ export function WorkflowHeader({
                   <MoreHorizontal className="h-4 w-4" aria-hidden />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="rounded-xl p-1">
-                <DropdownMenuItem onSelect={onHistory} className="gap-2 rounded-lg">
-                  <History className="h-3.5 w-3.5" aria-hidden />
-                  Version history
-                </DropdownMenuItem>
+              <DropdownMenuContent align="end" className="min-w-[11rem] rounded-xl p-1">
+                {onEdit ? (
+                  <DropdownMenuItem onSelect={onEdit} className="gap-2 rounded-lg">
+                    <Pencil className="h-3.5 w-3.5" aria-hidden />
+                    Edit
+                  </DropdownMenuItem>
+                ) : null}
+                {onHistory ? (
+                  <DropdownMenuItem onSelect={onHistory} className="gap-2 rounded-lg">
+                    <History className="h-3.5 w-3.5" aria-hidden />
+                    Version history
+                  </DropdownMenuItem>
+                ) : null}
+                {onDelete ? (
+                  <>
+                    {onEdit || onHistory ? <DropdownMenuSeparator /> : null}
+                    <DropdownMenuItem
+                      onSelect={onDelete}
+                      className="gap-2 rounded-lg text-destructive focus:bg-destructive/10 focus:text-destructive"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                      Delete workflow
+                    </DropdownMenuItem>
+                  </>
+                ) : null}
               </DropdownMenuContent>
             </DropdownMenu>
-          ) : null}
-          {onEdit ? (
-            <button type="button" onClick={onEdit} className={SECONDARY_BUTTON}>
-              <Pencil className="h-3.5 w-3.5" aria-hidden />
-              Edit
-            </button>
           ) : null}
           <button type="button" onClick={onRun} disabled={runDisabled} className={PRIMARY_BUTTON}>
             <Play className="h-4 w-4" aria-hidden />

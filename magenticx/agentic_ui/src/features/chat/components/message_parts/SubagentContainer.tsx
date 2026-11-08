@@ -163,7 +163,7 @@ function CopyableContentBox({
 
       <div
         className={cn(
-          "overflow-y-auto pr-[4.75rem] pt-1 [scrollbar-width:thin] [scrollbar-color:hsl(var(--muted-foreground)_/_0.25)_transparent] [&::-webkit-scrollbar]:w-3.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-button]:h-0 [&::-webkit-scrollbar-button]:w-0 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-2 [&::-webkit-scrollbar-thumb]:border-transparent [&::-webkit-scrollbar-thumb]:bg-[hsl(var(--muted-foreground)/0.25)] [&::-webkit-scrollbar-thumb:hover]:bg-[hsl(var(--muted-foreground)/0.35)]",
+          "overflow-y-auto pr-[4.75rem] pt-1",
           size === "sm" && "max-h-[3.25rem]",
           size === "md" && "max-h-[6.5rem]",
           size === "lg" && "max-h-[8.75rem]",

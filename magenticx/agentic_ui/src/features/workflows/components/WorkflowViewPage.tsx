@@ -8,6 +8,7 @@ import { toastError } from "@/shared/lib/toast";
 import { Sheet, SheetContent, SheetTitle } from "@/shared/ui/sheet";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { TooltipProvider } from "@/shared/ui/tooltip";
+import { ConfirmDialog } from "@/shared/ui/confirm-dialog";
 import type {
   WorkflowExecutionPick,
   WorkflowInputDef,
@@ -18,6 +19,7 @@ import { useWorkflow } from "@/features/workflows/hooks/useWorkflow";
 import { useWorkflowRun } from "@/features/workflows/hooks/useWorkflowRun";
 import { useWorkflowRuns } from "@/features/workflows/hooks/useWorkflowRuns";
 import { useWorkflowSchedulePause } from "@/features/workflows/hooks/useWorkflowSchedulePause";
+import { useWorkflowMutations } from "@/features/workflows/hooks/useWorkflowMutations";
 import { latestExecution } from "@/features/workflows/lib/graph";
 import { isLiveRunStatus } from "@/features/workflows/lib/runStatus";
 import { buildTimelineRows } from "@/features/workflows/lib/timeline";
@@ -86,6 +88,7 @@ export function WorkflowViewPage({
   onSelectRun,
   onEdit,
   onHistory,
+  onDeleted,
 }: WorkflowViewPageProps) {
   const { toast } = useToast();
   const isMobile = useIsMobile();
@@ -98,6 +101,8 @@ export function WorkflowViewPage({
 
   const [runDialogOpen, setRunDialogOpen] = React.useState(false);
   const [cancelling, setCancelling] = React.useState(false);
+  const [confirmDelete, setConfirmDelete] = React.useState(false);
+  const { remove: removeWorkflow } = useWorkflowMutations();
   const [pick, setPick] = React.useState<WorkflowExecutionPick | null>(null);
   const [sheetOpen, setSheetOpen] = React.useState(false);
   const graphSplit = useGraphSplit();
@@ -148,6 +153,19 @@ export function WorkflowViewPage({
     } finally {
       setCancelling(false);
     }
+  };
+
+  // Delete from the ⋯ menu, after the confirm: the dialog stays open (and
+  // says why) if it fails; on success the caller leaves the gone workflow.
+  const handleDelete = async () => {
+    try {
+      await removeWorkflow(workflowId);
+    } catch (err) {
+      toastError(toast, "The workflow wasn't deleted", err);
+      throw err;
+    }
+    toast({ title: "Workflow deleted" });
+    onDeleted?.();
   };
 
   // Pause / resume from the header: shown at once, rolled back on failure.
@@ -249,6 +267,7 @@ export function WorkflowViewPage({
           runDisabled={!spec}
           onEdit={onEdit}
           onHistory={onHistory}
+          onDelete={onDeleted ? () => setConfirmDelete(true) : undefined}
           schedule={workflow.schedule ?? null}
           now={now}
           onSetSchedulePaused={(paused) => void handleSchedulePaused(paused)}
@@ -323,6 +342,15 @@ export function WorkflowViewPage({
         workflowName={name}
         inputs={spec?.inputs ?? NO_INPUTS}
         onStart={handleStart}
+      />
+
+      <ConfirmDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title={`Delete “${name.trim() || "this workflow"}”?`}
+        description="Its versions and its whole run history go with it. Live runs are cancelled. This can't be undone."
+        confirmLabel="Delete workflow"
+        onConfirm={handleDelete}
       />
 
       {isMobile ? (
