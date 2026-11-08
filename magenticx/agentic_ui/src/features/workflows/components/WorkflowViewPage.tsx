@@ -1,5 +1,5 @@
 import * as React from "react";
-import { CircleAlert, MousePointerClick } from "lucide-react";
+import { CircleAlert, Flag } from "lucide-react";
 
 import { useIsMobile } from "@/shared/hooks/use-mobile";
 import { cn } from "@/shared/lib/utils";
@@ -12,25 +12,27 @@ import { ConfirmDialog } from "@/shared/ui/confirm-dialog";
 import type {
   WorkflowExecutionPick,
   WorkflowInputDef,
+  WorkflowRunPanelTab,
   WorkflowViewPageProps,
 } from "@/shared/lib/types";
-import { useGraphSplit } from "@/features/workflows/hooks/useGraphSplit";
 import { useWorkflow } from "@/features/workflows/hooks/useWorkflow";
 import { useWorkflowRun } from "@/features/workflows/hooks/useWorkflowRun";
 import { useWorkflowRuns } from "@/features/workflows/hooks/useWorkflowRuns";
 import { useWorkflowSchedulePause } from "@/features/workflows/hooks/useWorkflowSchedulePause";
 import { useWorkflowMutations } from "@/features/workflows/hooks/useWorkflowMutations";
+import { useRunPanelWidth } from "@/features/workflows/hooks/useRunPanelWidth";
 import { latestExecution } from "@/features/workflows/lib/graph";
 import { isLiveRunStatus } from "@/features/workflows/lib/runStatus";
+import { RUN_STATUS_META } from "@/features/workflows/lib/status";
 import { buildTimelineRows } from "@/features/workflows/lib/timeline";
-import { ExecutionDetails } from "./workflow_view_parts/ExecutionDetails";
-import { ExecutionTimeline } from "./workflow_view_parts/ExecutionTimeline";
+import { RunFeed } from "./workflow_view_parts/RunFeed";
 import { RunInputDialog } from "./workflow_view_parts/RunInputDialog";
+import { RunPanel } from "./workflow_view_parts/RunPanel";
 import { RunPicker } from "./workflow_view_parts/RunPicker";
 import { SectionBoundary } from "./workflow_view_parts/SectionBoundary";
+import { StatusIcon } from "./workflow_view_parts/StatusChip";
 import {
   NoRunsState,
-  RunSummary,
   WorkflowLoadError,
   WorkflowViewSkeleton,
 } from "./workflow_view_parts/ViewStates";
@@ -58,23 +60,15 @@ function GraphFallback() {
   );
 }
 
-function NoSelection() {
-  return (
-    <div className="flex h-full min-h-[10rem] flex-col items-center justify-center gap-2 px-6 text-center text-sm text-muted-foreground">
-      <MousePointerClick className="h-5 w-5" aria-hidden />
-      Select a step in the timeline or the graph to see its input, output and tool calls.
-    </div>
-  );
-}
-
 /**
  * The workflow view (plan 38, step 2), in place of the chat body: the header
- * (name, version, run picker, Cancel while live, Run ▸ with a form generated
- * from the spec's inputs), the graph with the run's overlay on top (the
- * larger share by default; the handle under it resizes the split, remembered
- * per device), the run's summary strip (status, error banner, final output), and below the
- * timeline on the left and the selected execution's details on the right. On
- * a phone the panes stack and a picked execution's details rise as a sheet.
+ * (name, run picker, Cancel while live, Run ▸ with a form generated from the
+ * spec's inputs), then the graph across the full height with the run's
+ * overlay, and beside it the run panel — **Result** first (what the run
+ * produced, where it failed or waits), **Steps** for the timeline and each
+ * step's details (a graph node opens its step there). On a phone the graph
+ * takes the screen; a "Result" button and a tapped node open the run as a
+ * feed in a sheet — the result, then the steps as cards opening in place.
  *
  * Selection: until the user picks an execution the view follows the newest
  * one (so a live run walks along by itself); a pick — a timeline row or a
@@ -105,7 +99,18 @@ export function WorkflowViewPage({
   const { remove: removeWorkflow } = useWorkflowMutations();
   const [pick, setPick] = React.useState<WorkflowExecutionPick | null>(null);
   const [sheetOpen, setSheetOpen] = React.useState(false);
-  const graphSplit = useGraphSplit();
+  const [panelTab, setPanelTab] = React.useState<WorkflowRunPanelTab>("result");
+  const [stepOpen, setStepOpen] = React.useState(false);
+  /** The step a tapped node opens in the phone's feed. */
+  const [feedOpenId, setFeedOpenId] = React.useState<string | null>(null);
+  const panelWidth = useRunPanelWidth();
+
+  // Another run opens on its result.
+  React.useEffect(() => {
+    setPanelTab("result");
+    setStepOpen(false);
+    setFeedOpenId(null);
+  }, [shownRunId]);
 
   const runIsLive = Boolean(run && isLiveRunStatus(run.status));
 
@@ -130,7 +135,13 @@ export function WorkflowViewPage({
   const choose = (executionId: string) => {
     if (!shownRunId) return;
     setPick({ runId: shownRunId, executionId });
-    if (isMobile) setSheetOpen(true);
+    if (isMobile) {
+      setFeedOpenId(executionId);
+      setSheetOpen(true);
+    } else {
+      setPanelTab("steps");
+      setStepOpen(true);
+    }
   };
 
   const chooseNode = (nodeId: string) => {
@@ -141,6 +152,8 @@ export function WorkflowViewPage({
   const handleStart = async (inputs: Record<string, unknown>) => {
     const newRunId = await startRun(inputs);
     setPick(null);
+    setPanelTab("result");
+    setStepOpen(false);
     onSelectRun(newRunId);
   };
 
@@ -192,53 +205,42 @@ export function WorkflowViewPage({
 
   const name = spec?.name || workflow.name;
   const noRuns = !runsLoading && runs.length === 0;
-  const details = selectedRow ? (
-    <ExecutionDetails
-      execution={selectedRow.execution}
-      label={selectedRow.label}
-      kindLabel={selectedRow.kindLabel}
-      passes={selectedRow.passes}
-      onResume={resume}
-    />
-  ) : (
-    <NoSelection />
-  );
 
-  let lower: React.ReactNode;
+  let panel: React.ReactNode;
   if (noRuns) {
-    lower = <NoRunsState onRun={() => setRunDialogOpen(true)} />;
-  } else if (runsLoading && runs.length === 0) {
-    lower = (
-      <div className="space-y-3 p-4" aria-busy="true" aria-label="Loading runs">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <div key={`run-skeleton-${index}`} className="flex items-center gap-3">
-            <Skeleton className="h-4 w-4 rounded-full" />
-            <Skeleton className="h-10 flex-1 rounded-xl" />
-          </div>
-        ))}
+    panel = <NoRunsState onRun={() => setRunDialogOpen(true)} />;
+  } else if (!run) {
+    panel = (
+      <div className="space-y-3 p-5" aria-busy="true" aria-label="Loading the run">
+        <Skeleton className="h-8 w-40 rounded-xl" />
+        <div className="grid grid-cols-2 gap-2">
+          <Skeleton className="h-16 rounded-xl" />
+          <Skeleton className="h-16 rounded-xl" />
+        </div>
+        <Skeleton className="h-40 rounded-xl" />
       </div>
     );
   } else {
-    lower = (
-      <div className="grid h-full min-h-0 md:grid-cols-[minmax(16rem,22rem)_minmax(0,1fr)]">
-        <div className="min-h-0 md:border-r md:border-border/60">
-          <SectionBoundary label="timeline">
-            <ExecutionTimeline
-              rows={rows}
-              selectedId={selected?.executionId ?? null}
-              onSelect={choose}
-              following={following}
-              onFollow={() => setPick(null)}
-              isLive={runIsLive}
-            />
-          </SectionBoundary>
-        </div>
-        {!isMobile ? (
-          <div className="slim-scrollbar hidden min-h-0 overflow-y-auto overflow-x-hidden px-5 py-4 md:block">
-            <SectionBoundary label="details">{details}</SectionBoundary>
-          </div>
-        ) : null}
-      </div>
+    panel = (
+      <RunPanel
+        run={run}
+        view={view}
+        rows={rows}
+        now={now}
+        tab={panelTab}
+        onTab={(next) => {
+          setPanelTab(next);
+          if (next === "result") setStepOpen(false);
+        }}
+        selectedRow={selectedRow}
+        stepOpen={stepOpen}
+        onOpenStep={choose}
+        onCloseStep={() => setStepOpen(false)}
+        following={following}
+        onFollow={() => setPick(null)}
+        isLive={runIsLive}
+        onResume={resume}
+      />
     );
   }
 
@@ -284,12 +286,8 @@ export function WorkflowViewPage({
           </p>
         ) : null}
 
-        <div ref={graphSplit.areaRef} className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <div
-            className="relative min-h-[13rem] flex-shrink-0 bg-muted/[0.18]"
-            style={{ height: isMobile ? "42%" : `${(graphSplit.split * 100).toFixed(1)}%` }}
-            data-testid="workflow-graph-pane"
-          >
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <div className="relative min-w-0 flex-1 bg-muted/[0.18]" data-testid="workflow-graph-pane">
             {spec ? (
               <SectionBoundary label="graph">
                 <React.Suspense fallback={<GraphFallback />}>
@@ -298,7 +296,7 @@ export function WorkflowViewPage({
                     schedule={workflow.schedule ?? null}
                     view={shownRunId ? view : null}
                     catalog={catalog}
-                    selectedNodeId={selected?.nodeId ?? null}
+                    selectedNodeId={stepOpen || sheetOpen ? selected?.nodeId ?? null : null}
                     onSelectNode={chooseNode}
                   />
                 </React.Suspense>
@@ -308,31 +306,62 @@ export function WorkflowViewPage({
                 This workflow has no definition yet.
               </p>
             )}
-          </div>
-          {isMobile ? (
-            <div className="h-px flex-shrink-0 bg-border/60" aria-hidden />
-          ) : (
-            <div
-              {...graphSplit.separatorProps}
-              className="group relative z-10 -my-1.5 flex h-3 flex-shrink-0 cursor-row-resize items-center focus-visible:outline-none"
-            >
-              <span
-                className={cn(
-                  "h-px w-full bg-border/60 transition-colors group-hover:bg-primary/50 group-focus-visible:bg-primary",
-                  graphSplit.dragging && "bg-primary",
+            {isMobile && run ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setFeedOpenId(null);
+                  setSheetOpen(true);
+                }}
+                className="absolute bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-10 inline-flex items-center gap-2 rounded-full bg-primary motion-safe:duration-300 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-90 motion-safe:slide-in-from-bottom-3 px-4 py-2.5 text-[13.5px] font-semibold text-primary-foreground shadow-[0_10px_28px_-10px_hsl(var(--primary)/0.9)] transition-transform active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              >
+                {run.status === "succeeded" ? (
+                  <Flag className="h-4 w-4" aria-hidden />
+                ) : (
+                  <StatusIcon meta={RUN_STATUS_META[run.status]} className="h-4 w-4 text-primary-foreground" />
                 )}
-                aria-hidden
-              />
-              <span
-                className="absolute left-1/2 top-1/2 h-1 w-10 -translate-x-1/2 -translate-y-1/2 rounded-full bg-muted-foreground/25 transition-colors group-hover:bg-primary/60 group-focus-visible:bg-primary"
-                aria-hidden
-              />
-            </div>
-          )}
-
-          <RunSummary run={run} view={run ? view : null} now={now} />
-
-          <div className="min-h-[8rem] flex-1 overflow-hidden">{lower}</div>
+                Result
+              </button>
+            ) : null}
+            {isMobile && noRuns ? (
+              <div className="absolute inset-x-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-10 rounded-2xl border border-border/60 bg-background/95 shadow-lg backdrop-blur">
+                <NoRunsState onRun={() => setRunDialogOpen(true)} />
+              </div>
+            ) : null}
+          </div>
+          {!isMobile ? (
+            <aside
+              ref={panelWidth.panelRef}
+              aria-label="Run"
+              className={cn(
+                "relative flex min-w-0 flex-shrink-0 flex-col border-l border-border/60 bg-background",
+                !panelWidth.dragging &&
+                  "transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+              )}
+              style={{ width: panelWidth.width }}
+            >
+              <div
+                {...panelWidth.separatorProps}
+                className="group absolute inset-y-0 -left-1.5 z-20 flex w-3 cursor-col-resize justify-center focus-visible:outline-none"
+              >
+                <span
+                  aria-hidden
+                  className={cn(
+                    "h-full w-px bg-transparent transition-colors group-hover:bg-primary/50 group-focus-visible:bg-primary",
+                    panelWidth.dragging && "bg-primary",
+                  )}
+                />
+                <span
+                  aria-hidden
+                  className={cn(
+                    "absolute top-1/2 h-10 w-1 -translate-y-1/2 rounded-full bg-muted-foreground/25 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100",
+                    panelWidth.dragging && "opacity-100",
+                  )}
+                />
+              </div>
+              {panel}
+            </aside>
+          ) : null}
         </div>
       </div>
 
@@ -353,21 +382,17 @@ export function WorkflowViewPage({
         onConfirm={handleDelete}
       />
 
-      {isMobile ? (
-        <Sheet open={sheetOpen && Boolean(selectedRow)} onOpenChange={setSheetOpen}>
+      {isMobile && run ? (
+        <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
           <SheetContent
             side="bottom"
             aria-describedby={undefined}
-            className="slim-scrollbar max-h-[85dvh] overflow-y-auto overflow-x-hidden rounded-t-[1.6rem] px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-5"
+            className="slim-scrollbar h-[88dvh] overflow-y-auto overflow-x-hidden rounded-t-[1.6rem] px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-6"
           >
-            <SheetTitle className="sr-only">
-              {selectedRow
-                ? selectedRow.passes > 1
-                  ? `${selectedRow.label} · Run ${selectedRow.execution.iteration}`
-                  : selectedRow.label
-                : "Step details"}
-            </SheetTitle>
-            <SectionBoundary label="details">{details}</SectionBoundary>
+            <SheetTitle className="mb-4 text-base font-semibold">{name}</SheetTitle>
+            <SectionBoundary label="run">
+              <RunFeed run={run} view={view} rows={rows} now={now} openId={feedOpenId} onResume={resume} />
+            </SectionBoundary>
           </SheetContent>
         </Sheet>
       ) : null}

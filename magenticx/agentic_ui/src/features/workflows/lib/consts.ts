@@ -7,9 +7,9 @@ import type { WorkflowDetailTab } from "@/shared/lib/types";
  */
 
 export const DETAIL_TABS: ReadonlyArray<{ id: WorkflowDetailTab; label: string }> = [
-  { id: "input", label: "Input" },
   { id: "output", label: "Output" },
-  { id: "state", label: "State" },
+  { id: "input", label: "Input" },
+  { id: "state", label: "Saved" },
   { id: "tools", label: "Tool calls" },
 ];
 
@@ -43,8 +43,31 @@ export const graphFitView = (rightInset = 0, leftInset = 0) => ({
 
 export const GRAPH_FIT_VIEW = graphFitView();
 
-/** The run view's graph / timeline split: the graph's share of the height. */
-export const GRAPH_SPLIT = { min: 0.25, max: 0.8, initial: 0.58, step: 0.04 } as const;
+/**
+ * The run view's motion: one ease and a few durations (s) for every panel
+ * transition — tabs, a step opening, cards unfolding — so they move as one.
+ * Reduced motion turns the movement off (fades stay, instantly).
+ */
+export const VIEW_MOTION = {
+  ease: [0.22, 1, 0.36, 1] as const,
+  fast: 0.16,
+  base: 0.24,
+  slow: 0.34,
+  /** How far content slides in (px). */
+  shift: 14,
+  /** The gap between staggered items (s), and the most items that stagger. */
+  stagger: 0.035,
+  staggerMax: 12,
+} as const;
+
+/** The run view's side panel width (px): its bounds, default and keyboard step. */
+export const RUN_PANEL_WIDTH = { min: 340, max: 760, initial: 440, step: 24 } as const;
+
+/** The run panel keeps at least this share of the window for the graph. */
+export const RUN_PANEL_MAX_SHARE = 0.6;
+
+/** Where the run panel's width is remembered on this device. */
+export const RUN_PANEL_WIDTH_STORAGE_KEY = "magenticx:workflow-view:panel-width";
 
 /** JSON trees open this many levels deep; deeper levels start folded. */
 export const JSON_OPEN_DEPTH = 2;

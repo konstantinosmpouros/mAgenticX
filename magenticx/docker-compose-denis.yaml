@@ -369,7 +369,7 @@ services:
 
   agentic_ui: # 8050
     container_name: agentic_ui
-    image: ghcr.io/konstantinosmpouros/magenticx_agentic_ui:v1.2.12
+    image: ghcr.io/konstantinosmpouros/magenticx_agentic_ui:v1.2.13
     entrypoint: ["/usr/local/bin/load-secrets-and-exec.sh", "/bin/sh", "/etc/nginx/tls/entrypoint-nginx-tls.sh"]
     command: ["nginx", "-g", "daemon off;"]
     security_opt:

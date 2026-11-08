@@ -117,6 +117,28 @@ function JsonNode({ name, value, depth, openDepth }: JsonNodeProps) {
   );
 }
 
+/** The folding tree in its scrolling box, without a heading or copy button. */
+export function JsonTree({
+  value,
+  openDepth = JSON_OPEN_DEPTH,
+  className,
+}: {
+  value: unknown;
+  openDepth?: number;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "slim-scrollbar max-h-[28rem] overflow-auto overscroll-contain rounded-xl bg-muted/40 px-2 py-2 font-mono text-[12px] leading-5",
+        className,
+      )}
+    >
+      <JsonNode value={value} depth={0} openDepth={openDepth} />
+    </div>
+  );
+}
+
 /** Copy the payload as indented JSON; the icon says when it worked. */
 export function CopyJsonButton({ value, label = "Copy JSON" }: { value: unknown; label?: string }) {
   const [copied, setCopied] = React.useState(false);
@@ -190,9 +212,7 @@ export function JsonView({
           {emptyText}
         </p>
       ) : (
-        <div className="slim-scrollbar max-h-[28rem] overflow-auto overscroll-contain rounded-xl bg-muted/40 px-2 py-2 font-mono text-[12px] leading-5">
-          <JsonNode value={value} depth={0} openDepth={openDepth} />
-        </div>
+        <JsonTree value={value} openDepth={openDepth} />
       )}
     </section>
   );

@@ -1,4 +1,5 @@
 import * as React from "react";
+import { motion, useReducedMotion } from "framer-motion";
 import { CircleAlert, Clock, GitBranch, Timer } from "lucide-react";
 
 import { cn } from "@/shared/lib/utils";
@@ -7,7 +8,7 @@ import type {
   WorkflowDetailTab,
   WorkflowExecution,
 } from "@/shared/lib/types";
-import { DETAIL_TABS } from "@/features/workflows/lib/consts";
+import { DETAIL_TABS, VIEW_MOTION } from "@/features/workflows/lib/consts";
 import {
   executionStateWrites,
   formatClock,
@@ -16,13 +17,16 @@ import {
 } from "@/features/workflows/lib/format";
 import { EXECUTION_STATUS_META } from "@/features/workflows/lib/status";
 import { ApprovalCard } from "./ApprovalCard";
-import { JsonView } from "./JsonView";
+import { KindTile } from "../workflow_parts/KindTile";
 import { StatusChip } from "./StatusChip";
 import { ToolCallList } from "./ToolCallList";
+import { MarkdownBlock, Readable, ValueView } from "./ValueView";
 
 type ExecutionDetailsProps = {
   execution: WorkflowExecution;
   label: string;
+  /** The step's kind (its tile); empty when the node is no longer in the spec. */
+  kind?: string;
   kindLabel: string;
   /** How many times this step ran in the run; "Run N" shows only above 1. */
   passes?: number;
@@ -30,6 +34,10 @@ type ExecutionDetailsProps = {
   /** Hide the title row (the mobile sheet shows its own). */
   hideTitle?: boolean;
 };
+
+/** An llm step's output keys the readable view leaves out once its answer is shown rendered. */
+const TEXT_KEYS = ["text", "messages"] as const;
+const NO_KEYS: readonly string[] = [];
 
 const STATE_EMPTY: Partial<Record<WorkflowExecution["status"], string>> = {
   running: "Nothing saved yet — the step is still running.",
@@ -52,7 +60,7 @@ function StateTab({ execution }: { execution: WorkflowExecution }) {
       {writes.map((write, index) => (
         <li
           key={`${write.kind}-${write.path}-${index}`}
-          className="rounded-xl border border-border/60 bg-card px-3 py-2"
+          className="rounded-xl border border-border/60 bg-card/40 px-3.5 py-2.5"
         >
           <div className="flex min-w-0 items-center gap-2">
             <span className="flex-shrink-0 rounded-full bg-primary/[0.1] px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-primary">
@@ -66,7 +74,9 @@ function StateTab({ execution }: { execution: WorkflowExecution }) {
             <p className="mt-1 text-[11.5px] leading-5 text-muted-foreground">{write.note}</p>
           ) : null}
           {write.hasValue ? (
-            <JsonView value={write.value} openDepth={1} className="mt-1.5" emptyText="(empty)" />
+            <div className="mt-2 min-w-0">
+              <Readable value={write.value} depth={1} />
+            </div>
           ) : null}
         </li>
       ))}
@@ -87,12 +97,17 @@ function StateTab({ execution }: { execution: WorkflowExecution }) {
 export function ExecutionDetails({
   execution,
   label,
+  kind = "",
   kindLabel,
   passes = 1,
   onResume,
   hideTitle = false,
 }: ExecutionDetailsProps) {
   const [tab, setTab] = React.useState<WorkflowDetailTab>("output");
+  const reduceMotion = useReducedMotion();
+  // The streamed answer is shown rendered above the output: not again among its fields.
+  const outputText = execution.output && typeof execution.output === "object" ? (execution.output as Record<string, unknown>).text : undefined;
+  const hideOutputKeys = execution.text && outputText === execution.text ? TEXT_KEYS : NO_KEYS;
   const meta = EXECUTION_STATUS_META[execution.status];
   const tabsId = React.useId();
   const tablistRef = React.useRef<HTMLDivElement>(null);
@@ -114,37 +129,44 @@ export function ExecutionDetails({
   return (
     <section aria-label={`${label} details`} className="min-w-0 space-y-4">
       {!hideTitle ? (
-        <header className="min-w-0">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <h3 className="min-w-0 truncate text-base font-semibold tracking-tight text-foreground">
-              {label}
-            </h3>
-            {passes > 1 ? (
-              <span className="rounded bg-muted/70 px-1.5 py-0.5 text-[11px] tabular-nums text-muted-foreground">
-                Run {execution.iteration}
-              </span>
-            ) : null}
-            <StatusChip meta={meta} />
-          </div>
-          <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs tabular-nums text-muted-foreground">
-            {kindLabel ? <span>{kindLabel}</span> : null}
-            <span className="inline-flex items-center gap-1">
-              <Clock className="h-3 w-3" aria-hidden />
-              {formatClock(execution.startedAt)}
-            </span>
-            {duration ? (
+        <header className="flex min-w-0 items-start gap-3">
+          <KindTile kind={kind} size="md" className="mt-0.5" />
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <h3 className="min-w-0 truncate text-[15px] font-semibold tracking-tight text-foreground">
+                {label}
+              </h3>
+              {passes > 1 ? (
+                <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-muted-foreground">
+                  Run {execution.iteration}
+                </span>
+              ) : null}
+              <StatusChip meta={meta} />
+            </div>
+            <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs tabular-nums text-muted-foreground">
+              {kindLabel ? <span className="font-medium text-foreground/70">{kindLabel}</span> : null}
+              {kindLabel ? <span aria-hidden className="text-muted-foreground/40">·</span> : null}
               <span className="inline-flex items-center gap-1">
-                <Timer className="h-3 w-3" aria-hidden />
-                {duration}
+                <Clock className="h-3 w-3" aria-hidden />
+                {formatClock(execution.startedAt)}
               </span>
-            ) : null}
-            {execution.branch ? (
-              <span className="inline-flex items-center gap-1 text-primary">
-                <GitBranch className="h-3 w-3" aria-hidden />
-                {execution.branch}
-              </span>
-            ) : null}
-          </p>
+              {duration ? (
+                <>
+                  <span aria-hidden className="text-muted-foreground/40">·</span>
+                  <span className="inline-flex items-center gap-1">
+                    <Timer className="h-3 w-3" aria-hidden />
+                    {duration}
+                  </span>
+                </>
+              ) : null}
+              {execution.branch ? (
+                <span className="ml-1 inline-flex items-center gap-1 rounded-full bg-primary/[0.08] px-2 py-0.5 font-medium text-primary">
+                  <GitBranch className="h-3 w-3" aria-hidden />
+                  {execution.branch}
+                </span>
+              ) : null}
+            </p>
+          </div>
         </header>
       ) : null}
 
@@ -203,11 +225,9 @@ export function ExecutionDetails({
                 tabIndex={active ? 0 : -1}
                 onClick={() => setTab(entry.id)}
                 className={cn(
-                  "relative inline-flex min-h-[2.5rem] flex-shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-2.5 text-[13px] font-medium transition-colors",
+                  "relative inline-flex min-h-[2.5rem] flex-shrink-0 items-center gap-1.5 whitespace-nowrap px-2.5 text-[13px] font-medium transition-colors duration-200",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/60",
-                  active
-                    ? "border-primary text-foreground"
-                    : "border-transparent text-muted-foreground supports-[hover:hover]:hover:text-foreground",
+                  active ? "text-foreground" : "text-muted-foreground supports-[hover:hover]:hover:text-foreground",
                 )}
               >
                 {entry.label}
@@ -215,6 +235,16 @@ export function ExecutionDetails({
                   <span className="rounded-full bg-muted px-1.5 text-[10.5px] tabular-nums text-muted-foreground">
                     {count}
                   </span>
+                ) : null}
+                {active ? (
+                  <motion.span
+                    layoutId={`detail-tab-${tabsId}`}
+                    aria-hidden
+                    className="absolute inset-x-1 bottom-0 h-0.5 rounded-full bg-primary"
+                    transition={
+                      reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 40, mass: 0.6 }
+                    }
+                  />
                 ) : null}
               </button>
             );
@@ -228,29 +258,30 @@ export function ExecutionDetails({
           tabIndex={0}
           className="pt-3 focus-visible:outline-none"
         >
+          <motion.div
+            key={tab}
+            initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: VIEW_MOTION.base, ease: VIEW_MOTION.ease }}
+          >
           {tab === "input" ? (
-            <JsonView
-              value={execution.input}
-              title="Input"
-              emptyText="This node ran with no input."
-            />
+            <ValueView value={execution.input} title="Input" emptyText="This step ran with no input." />
           ) : null}
           {tab === "output" ? (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {execution.text ? (
-                <section aria-label="Streamed text">
-                  <h4 className="mb-1.5 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                    Text
+                <section aria-label="Response" className="min-w-0">
+                  <h4 className="mb-2 flex min-h-[1.75rem] items-center text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    Response
                   </h4>
-                  <p className="slim-scrollbar max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-muted/40 px-3 py-2.5 text-[13px] leading-6 text-foreground">
-                    {execution.text}
-                  </p>
+                  <MarkdownBlock text={execution.text} />
                 </section>
               ) : null}
               {hasContent(execution.output) || !execution.text ? (
-                <JsonView
+                <ValueView
                   value={execution.output}
-                  title="Output"
+                  title={execution.text ? "Details" : "Output"}
+                  hideKeys={hideOutputKeys}
                   emptyText={execution.status === "running" ? "Still running…" : "No output."}
                 />
               ) : null}
@@ -258,6 +289,7 @@ export function ExecutionDetails({
           ) : null}
           {tab === "state" ? <StateTab execution={execution} /> : null}
           {tab === "tools" ? <ToolCallList calls={execution.toolCalls} /> : null}
+          </motion.div>
         </div>
       </div>
     </section>

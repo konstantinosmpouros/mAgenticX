@@ -268,11 +268,16 @@ export type WorkflowDetailTab = "input" | "output" | "state" | "tools";
  * it (a loop's body is one deeper than the loop); `rails` are the lane levels
  * that carry a vertical line through this row.
  */
+/** The run panel's tabs: the outcome, or the steps that led to it. */
+export type WorkflowRunPanelTab = "result" | "steps";
+
 export type WorkflowTimelineRow = {
   execution: WorkflowExecution;
   depth: number;
   rails: number[];
   label: string;
+  /** The step's kind (its icon and accent); empty when the node is no longer in the spec. */
+  kind: string;
   kindLabel: string;
   /** How many times this execution's node ran in the run; "pass N" shows only above 1. */
   passes: number;

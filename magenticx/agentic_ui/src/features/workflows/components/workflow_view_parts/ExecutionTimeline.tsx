@@ -5,7 +5,7 @@ import { cn } from "@/shared/lib/utils";
 import type { WorkflowTimelineRow } from "@/shared/lib/types";
 import { formatDuration } from "@/features/workflows/lib/format";
 import { EXECUTION_STATUS_META } from "@/features/workflows/lib/status";
-import { StatusIcon } from "./StatusChip";
+import { StepTile } from "../workflow_parts/KindTile";
 
 /** A row's element by execution id (ids come from the server: no selector strings). */
 const rowElement = (list: HTMLElement | null, executionId: string): HTMLElement | null =>
@@ -13,8 +13,8 @@ const rowElement = (list: HTMLElement | null, executionId: string): HTMLElement 
     (element) => element.dataset.executionId === executionId,
   ) ?? null;
 
-/** Width of one lane, in rem: the dot sits centred in its lane. */
-const LANE_REM = 1.1;
+/** Width of one lane, in rem: the step's tile sits centred in its lane. */
+const LANE_REM = 2;
 
 type ExecutionTimelineProps = {
   rows: WorkflowTimelineRow[];
@@ -25,12 +25,15 @@ type ExecutionTimelineProps = {
   /** Shown while live and not following: jump back to the newest. */
   onFollow?: () => void;
   isLive: boolean;
+  /** The "Steps" heading (off where a tab already names the list). */
+  showTitle?: boolean;
 };
 
 /**
  * The run's executions as a git-graph-like list: one row per execution in the
- * order they started, a lane line down the left with a dot per row coloured
- * (and iconed) by status, and a loop's body indented one lane in under its
+ * order they started, a lane line down the left with the step's kind tile per
+ * row and a status badge on its corner (icon and colour; the label for screen
+ * readers), and a loop's body indented one lane in under its
  * loop so the iterations read as a group. A listbox: arrows move, Enter or a
  * click selects. While the run is live the newest row scrolls into view, until
  * the user picks a row themselves.
@@ -42,6 +45,7 @@ export function ExecutionTimeline({
   following,
   onFollow,
   isLive,
+  showTitle = true,
 }: ExecutionTimelineProps) {
   const listRef = React.useRef<HTMLDivElement>(null);
 
@@ -61,12 +65,19 @@ export function ExecutionTimeline({
 
   return (
     <section aria-label="Execution timeline" className="flex h-full min-h-0 flex-col">
-      <div className="flex min-h-[2.75rem] flex-shrink-0 items-center justify-between gap-2 px-4 pt-2">
-        <h3 className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-          Timeline
-          <span className="ml-1.5 tabular-nums normal-case tracking-normal text-muted-foreground/80">
-            {rows.length ? `· ${rows.length}` : ""}
-          </span>
+      <div
+        className={cn(
+          "flex flex-shrink-0 items-center justify-between gap-2 px-4",
+          showTitle ? "min-h-[2.75rem] pt-2" : isLive && !following && onFollow ? "min-h-[2.25rem]" : "hidden",
+        )}
+      >
+        <h3 className={cn("flex items-center gap-2 text-[13px] font-semibold text-foreground", !showTitle && "sr-only")}>
+          Steps
+          {rows.length ? (
+            <span className="rounded-full bg-muted px-1.5 py-px text-[11px] font-medium tabular-nums text-muted-foreground">
+              {rows.length}
+            </span>
+          ) : null}
         </h3>
         {isLive && !following && onFollow ? (
           <button
@@ -111,6 +122,7 @@ export function ExecutionTimeline({
                 aria-selected={selected}
                 tabIndex={selected || (!selectedId && first) ? 0 : -1}
                 data-execution-id={execution.executionId}
+                style={{ animationDelay: `${Math.min(index, 12) * 25}ms` }}
                 data-depth={row.depth}
                 onClick={() => onSelect(execution.executionId)}
                 onKeyDown={(event) => {
@@ -120,10 +132,11 @@ export function ExecutionTimeline({
                   }
                 }}
                 className={cn(
-                  "group/row relative flex min-h-[3.25rem] cursor-pointer items-stretch rounded-xl pr-2 transition-colors",
+                  "group/row relative flex min-h-[3.5rem] cursor-pointer items-stretch rounded-xl pr-3 transition-[background-color,box-shadow] duration-200",
+                  "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-left-1 motion-safe:duration-300 motion-safe:fill-mode-both",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
                   selected
-                    ? "bg-primary/[0.08]"
+                    ? "bg-primary/[0.07] shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.16)]"
                     : "supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))]",
                 )}
               >
@@ -160,18 +173,16 @@ export function ExecutionTimeline({
                     />
                   ) : null}
                   <span
-                    className={cn(
-                      "absolute top-1/2 flex h-4 w-4 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-background",
-                      meta.dot,
-                      selected && "ring-2 ring-primary/50",
-                    )}
+                    className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-lg bg-background"
                     style={{ left: `${row.depth * LANE_REM + LANE_REM / 2 + 0.2}rem` }}
-                  />
+                  >
+                    <StepTile kind={row.kind} status={execution.status} />
+                  </span>
                 </span>
 
-                <span className="flex min-w-0 flex-1 flex-col justify-center gap-0.5 py-1.5 pl-1">
+                <span className="flex min-w-0 flex-1 flex-col justify-center gap-0.5 py-2 pl-1.5">
                   <span className="flex min-w-0 items-center gap-2">
-                    <span className="min-w-0 truncate text-[13px] font-semibold text-foreground">
+                    <span className="min-w-0 truncate text-[13px] font-medium text-foreground">
                       {row.label}
                     </span>
                     {row.passes > 1 ? (
@@ -190,12 +201,11 @@ export function ExecutionTimeline({
                         {execution.branch}
                       </span>
                     ) : null}
-                    {duration ? <span className="flex-shrink-0">{duration}</span> : null}
                   </span>
                 </span>
 
-                <span className="flex flex-shrink-0 items-center gap-1 pl-1" title={meta.label}>
-                  <StatusIcon meta={meta} />
+                <span className="flex flex-shrink-0 items-center pl-2 text-[11.5px] tabular-nums text-muted-foreground" title={meta.label}>
+                  {duration ?? null}
                   <span className="sr-only">{meta.label}</span>
                 </span>
               </div>

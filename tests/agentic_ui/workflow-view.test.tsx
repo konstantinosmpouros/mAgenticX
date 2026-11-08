@@ -5,6 +5,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import WorkflowGraph from "@/features/workflows/components/workflow_view_parts/WorkflowGraph";
 import { ExecutionTimeline } from "@/features/workflows/components/workflow_view_parts/ExecutionTimeline";
 import { ExecutionDetails } from "@/features/workflows/components/workflow_view_parts/ExecutionDetails";
+import { RunFeed } from "@/features/workflows/components/workflow_view_parts/RunFeed";
 import { RunInputDialog } from "@/features/workflows/components/workflow_view_parts/RunInputDialog";
 import { WorkflowViewPage } from "@/features/workflows/components/WorkflowViewPage";
 import { WorkflowNodeCard } from "@/features/workflows/components/workflow_parts/WorkflowNodeCard";
@@ -809,9 +810,9 @@ describe("details panel", () => {
     );
     const tabs = screen.getAllByRole("tab");
     expect(tabs.map((tab) => tab.textContent?.replace(/\d+$/, ""))).toEqual([
-      "Input",
       "Output",
-      "State",
+      "Input",
+      "Saved",
       "Tool calls",
     ]);
     const panel = () => screen.getByRole("tabpanel");
@@ -822,7 +823,7 @@ describe("details panel", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Input" }));
     expect(within(panel()).getByText(/api\.example\.test/)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("tab", { name: /State/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /Saved/ }));
     // The engine's own write (the result) comes first, then the variable, a plain Set.
     expect(within(panel()).getByText("nodes.poll.output")).toBeInTheDocument();
     expect(within(panel()).getByText(/Run 2 \(nodes\.poll\.outputs\.1\)/)).toBeInTheDocument();
@@ -859,7 +860,7 @@ describe("details panel", () => {
         onResume={vi.fn()}
       />,
     );
-    fireEvent.click(screen.getByRole("tab", { name: /State/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /Saved/ }));
     const panel = screen.getByRole("tabpanel");
     expect(within(panel).getByText("nodes.ask.output")).toBeInTheDocument();
     expect(within(panel).getByText("conversations.chat")).toBeInTheDocument();
@@ -876,7 +877,7 @@ describe("details panel", () => {
         onResume={vi.fn()}
       />,
     );
-    fireEvent.click(screen.getByRole("tab", { name: /State/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /Saved/ }));
     expect(screen.getByRole("tabpanel")).toHaveTextContent("The step failed, so it saved nothing.");
   });
 
@@ -1175,35 +1176,59 @@ describe("workflow view page", () => {
     expect(screen.getByRole("region", { name: "Approval required" })).toBeInTheDocument();
     expect(await screen.findByTestId("workflow-node-count-poll")).toHaveTextContent("×3");
 
-    // A pick stops following; the details show the picked execution.
-    fireEvent.click(screen.getByRole("option", { name: /Run 2/ }));
-    expect(screen.getByRole("region", { name: "Poll API details" })).toHaveTextContent("Run 2");
+    // A pick in Steps stops following; the details show the picked execution.
+    fireEvent.click(screen.getByRole("tab", { name: /Steps/ }));
+    fireEvent.click(await screen.findByRole("option", { name: /Run 2/ }));
+    expect(await screen.findByRole("region", { name: "Poll API details" })).toHaveTextContent("Run 2");
 
     fireEvent.click(screen.getByRole("button", { name: /Cancel/ }));
     await waitFor(() => expect(state.cancel).toHaveBeenCalled());
   });
 
-  it("gives the graph the larger share, resizable from the handle and remembered", () => {
+  it("opens on the result, and walks into a step and back from Steps", async () => {
+    const live = runRow({ id: "r2" });
+    hooks.useWorkflowRuns.mockReturnValue(runsState([live]));
+    hooks.useWorkflowRun.mockReturnValue(runState(live, view));
+    renderPage("r2");
+    expect(screen.getByRole("tab", { name: "Result" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("region", { name: "Run result" })).toBeInTheDocument();
+    expect(screen.queryByRole("separator", { name: "Resize the graph" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /How it ran/ }));
+    expect(screen.getByRole("tab", { name: /Steps/ })).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(await screen.findByRole("option", { name: /Run 2/ }));
+    expect(await screen.findByRole("region", { name: "Poll API details" })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "Next step" }));
+    await waitFor(() =>
+      expect(screen.getByRole("region", { name: "Poll API details" })).toHaveTextContent("Run 3"),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /All steps/ }));
+    expect(await screen.findByRole("listbox", { name: "Executions" })).toBeInTheDocument();
+  });
+
+  it("lets the run panel be resized from its edge, remembered, with Run before the ⋯ menu", () => {
     window.localStorage.clear();
-    hooks.useWorkflowRuns.mockReturnValue(runsState([]));
-    hooks.useWorkflowRun.mockReturnValue(runState(null, emptyView));
-    const first = renderPage();
-    const pane = screen.getByTestId("workflow-graph-pane");
-    const handle = screen.getByRole("separator", { name: "Resize the graph" });
-    expect(handle).toHaveAttribute("aria-valuenow", "58");
-    expect(pane.style.height).toBe("58.0%");
-    fireEvent.keyDown(handle, { key: "ArrowDown" });
-    expect(handle).toHaveAttribute("aria-valuenow", "62");
-    expect(pane.style.height).toBe("62.0%");
-    // Clamped: neither side vanishes.
+    const live = runRow({ id: "r2" });
+    hooks.useWorkflowRuns.mockReturnValue(runsState([live]));
+    hooks.useWorkflowRun.mockReturnValue(runState(live, view));
+    const first = renderPage("r2");
+    const handle = screen.getByRole("separator", { name: "Resize the run panel" });
+    const panel = screen.getByRole("complementary", { name: "Run" });
+    expect(handle).toHaveAttribute("aria-valuenow", "440");
+    fireEvent.keyDown(handle, { key: "ArrowLeft" });
+    expect(handle).toHaveAttribute("aria-valuenow", "464");
+    expect(panel.style.width).toBe("464px");
     fireEvent.keyDown(handle, { key: "End" });
-    expect(handle).toHaveAttribute("aria-valuenow", "80");
-    fireEvent.keyDown(handle, { key: "Home" });
-    expect(handle).toHaveAttribute("aria-valuenow", "25");
-    fireEvent.keyDown(handle, { key: "ArrowDown", shiftKey: true });
+    expect(handle).toHaveAttribute("aria-valuenow", "340");
     first.unmount();
-    renderPage();
-    expect(screen.getByRole("separator", { name: "Resize the graph" })).toHaveAttribute("aria-valuenow", "37");
+    renderPage("r2");
+    expect(screen.getByRole("separator", { name: "Resize the run panel" })).toHaveAttribute("aria-valuenow", "340");
+    fireEvent.doubleClick(screen.getByRole("separator", { name: "Resize the run panel" }));
+    expect(screen.getByRole("separator", { name: "Resize the run panel" })).toHaveAttribute("aria-valuenow", "440");
+    // The header's actions: the primary Run, then the ⋯ menu last.
+    const run = screen.getByRole("button", { name: "Run" });
+    const more = screen.queryByRole("button", { name: "More actions" });
+    if (more) expect(run.compareDocumentPosition(more) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     window.localStorage.clear();
   });
 
@@ -1217,19 +1242,23 @@ describe("workflow view page", () => {
       }),
     );
     renderPage("r3");
+    // No step ran: said plainly, the engine's reason kept underneath.
+    expect(screen.getByText("The run couldn't start")).toBeInTheDocument();
     expect(screen.getByText("The agents service went away.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Cancel/ })).toBeNull();
   });
 
-  it("offers the final output of a succeeded run", () => {
+  it("shows a succeeded run's output as its result", () => {
     const done = runRow({ id: "r4", status: "succeeded", finishedAt: "2026-11-04T10:01:00Z" });
     hooks.useWorkflowRuns.mockReturnValue(runsState([done]));
     hooks.useWorkflowRun.mockReturnValue(
       runState(done, { ...emptyView, output: { report: "ok" } }),
     );
     renderPage("r4");
-    fireEvent.click(screen.getByRole("button", { name: /Final output/ }));
-    expect(screen.getByRole("region", { name: "Final output" })).toHaveTextContent("report");
+    // The result is what the panel opens on: a short value as a tile, its key as the label.
+    const result = screen.getByRole("region", { name: "Run result" });
+    expect(result).toHaveTextContent("Report");
+    expect(result).toHaveTextContent("ok");
   });
 
   it("shows the load error when the workflow cannot be opened", () => {
@@ -1243,5 +1272,31 @@ describe("workflow view page", () => {
     hooks.useWorkflowRun.mockReturnValue(runState(null, emptyView));
     renderPage();
     expect(screen.getByRole("alert")).toHaveTextContent("Not found.");
+  });
+});
+
+describe("run feed (the phone's panel)", () => {
+  it("shows the result first, then each step as a card that opens in place", () => {
+    const rows = buildTimelineRows(view, spec, catalog);
+    const target = rows.find((row) => row.label === "Poll API" && row.execution.iteration === 2)!;
+    render(
+      <RunFeed
+        run={runRow({ id: "r2" })}
+        view={view}
+        rows={rows}
+        now={Date.parse("2026-11-04T10:02:00Z")}
+        openId={target.execution.executionId}
+        onResume={vi.fn(async () => undefined)}
+      />,
+    );
+    expect(screen.getByRole("region", { name: "Run result" })).toBeInTheDocument();
+    const steps = screen.getByRole("region", { name: "Steps" });
+    expect(within(steps).getAllByRole("listitem")).toHaveLength(rows.length);
+    // The step opened from the graph is expanded; the others are folded.
+    const expanded = within(steps).getAllByRole("button", { expanded: true });
+    expect(expanded).toHaveLength(1);
+    expect(expanded[0]).toHaveTextContent("Poll API");
+    fireEvent.click(expanded[0]);
+    expect(within(steps).queryAllByRole("button", { expanded: true })).toHaveLength(0);
   });
 });

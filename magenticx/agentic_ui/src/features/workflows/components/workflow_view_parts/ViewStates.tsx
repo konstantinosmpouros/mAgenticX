@@ -1,19 +1,8 @@
-import * as React from "react";
-import { ChevronDown, CircleAlert, Flag, Play, Workflow as WorkflowIcon } from "lucide-react";
+import { CircleAlert, Play, Workflow as WorkflowIcon } from "lucide-react";
 
 import { Skeleton } from "@/shared/ui/skeleton";
 import { cn } from "@/shared/lib/utils";
-import type { WorkflowRun, WorkflowRunView } from "@/shared/lib/types";
 import { PRIMARY_BUTTON } from "@/features/workflows/lib/consts";
-import {
-  formatDuration,
-  formatTrigger,
-  hasContent,
-  runDurationMs,
-} from "@/features/workflows/lib/format";
-import { RUN_STATUS_META } from "@/features/workflows/lib/status";
-import { JsonView } from "./JsonView";
-import { StatusChip } from "./StatusChip";
 
 /** The whole view while the workflow loads: header, graph, timeline rows, details. */
 export function WorkflowViewSkeleton() {
@@ -92,82 +81,6 @@ export function NoRunsState({ onRun }: { onRun: () => void }) {
         <Play className="h-4 w-4" aria-hidden />
         Run it now
       </button>
-    </div>
-  );
-}
-
-/**
- * The selected run in one strip under the graph: its status, trigger and
- * duration; the run-level error as a banner when it failed; the final output
- * (folded) when it succeeded.
- */
-export function RunSummary({
-  run,
-  view,
-  now,
-}: {
-  run: WorkflowRun | null;
-  view: WorkflowRunView | null;
-  now: number;
-}) {
-  const [showOutput, setShowOutput] = React.useState(false);
-  const outputId = React.useId();
-  if (!run) return null;
-  const meta = RUN_STATUS_META[run.status];
-  const runError =
-    view?.runError ??
-    (run.status === "failed" && run.error ? { message: run.error, code: null } : null);
-  const output = view?.output;
-  const duration = formatDuration(runDurationMs(run, now));
-  return (
-    <div className="flex-shrink-0 space-y-2 border-b border-border/60 px-4 py-2.5 sm:px-6">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs tabular-nums text-muted-foreground">
-        <StatusChip meta={meta} />
-        <span>{formatTrigger(run.triggerKind)}</span>
-        {duration ? <span>{duration}</span> : null}
-        {run.versionNo !== null ? <span>v{run.versionNo}</span> : null}
-        {run.status === "succeeded" && hasContent(output) ? (
-          <button
-            type="button"
-            onClick={() => setShowOutput((current) => !current)}
-            aria-expanded={showOutput}
-            aria-controls={outputId}
-            className="ml-auto inline-flex min-h-[2rem] items-center gap-1 rounded-full px-2.5 font-medium text-success transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 supports-[hover:hover]:hover:bg-success/10"
-          >
-            <Flag className="h-3.5 w-3.5" aria-hidden />
-            Final output
-            <ChevronDown
-              className={cn(
-                "h-3.5 w-3.5 transition-transform duration-200",
-                !showOutput && "-rotate-90",
-              )}
-              aria-hidden
-            />
-          </button>
-        ) : null}
-      </div>
-      {runError ? (
-        <div
-          role="alert"
-          className="flex gap-2.5 rounded-2xl border border-destructive/25 bg-destructive/[0.06] px-3.5 py-2.5"
-        >
-          <CircleAlert className="mt-0.5 h-4 w-4 flex-shrink-0 text-destructive" aria-hidden />
-          <p className="min-w-0 whitespace-pre-wrap break-words text-[12.5px] leading-5 text-foreground [overflow-wrap:anywhere]">
-            {runError.code ? (
-              <code className="mr-1.5 font-mono text-[12px] text-destructive">{runError.code}</code>
-            ) : null}
-            {runError.message}
-          </p>
-        </div>
-      ) : null}
-      {showOutput && run.status === "succeeded" ? (
-        <div
-          id={outputId}
-          className="rounded-2xl border border-success/25 bg-success/[0.04] px-3.5 py-3"
-        >
-          <JsonView value={output} title="Final output" />
-        </div>
-      ) : null}
     </div>
   );
 }

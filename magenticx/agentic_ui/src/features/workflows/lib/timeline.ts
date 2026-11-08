@@ -67,6 +67,7 @@ export function buildTimelineRows(
       // its group, which start contiguously after their parent.
       rails: Array.from({ length: depth + 1 }, (_, level) => level),
       label: nodeLabel(node, execution.nodeId),
+      kind: node?.kind ?? "",
       kindLabel: node ? kindView(catalog, node.kind).label : "",
       passes: passes.get(execution.nodeId) ?? 1,
     };

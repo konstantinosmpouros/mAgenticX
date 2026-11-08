@@ -27,7 +27,7 @@ import {
   scheduleLastRun,
   scheduleNextLine,
 } from "@/shared/lib/workflowSchedule";
-import { PRIMARY_BUTTON, SECONDARY_BUTTON } from "@/features/workflows/lib/consts";
+import { ICON_BUTTON, PRIMARY_BUTTON, SECONDARY_BUTTON } from "@/features/workflows/lib/consts";
 
 type WorkflowHeaderProps = {
   name: string;
@@ -181,6 +181,10 @@ export function WorkflowHeader({
               Cancel
             </button>
           ) : null}
+          <button type="button" onClick={onRun} disabled={runDisabled} className={PRIMARY_BUTTON}>
+            <Play className="h-4 w-4" aria-hidden />
+            Run
+          </button>
           {onEdit || onHistory || onDelete ? (
             // Not modal, like the builder's ⋯ menu: a modal menu's body lock
             // could be left behind when the item navigates away.
@@ -188,7 +192,7 @@ export function WorkflowHeader({
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
-                  className={cn(SECONDARY_BUTTON, "w-10 justify-center px-0")}
+                  className={cn(ICON_BUTTON, "h-9 w-9 rounded-xl")}
                   aria-label="More actions"
                 >
                   <MoreHorizontal className="h-4 w-4" aria-hidden />
@@ -222,10 +226,6 @@ export function WorkflowHeader({
               </DropdownMenuContent>
             </DropdownMenu>
           ) : null}
-          <button type="button" onClick={onRun} disabled={runDisabled} className={PRIMARY_BUTTON}>
-            <Play className="h-4 w-4" aria-hidden />
-            Run
-          </button>
         </div>
       </div>
     </header>

@@ -363,7 +363,7 @@ describe("llm run text", () => {
     expect(execution?.text).toBe("The answer is 42.");
     render(<ExecutionDetails execution={execution!} label="Ask" kindLabel="LLM" onResume={vi.fn()} />);
     const panel = screen.getByRole("tabpanel");
-    expect(within(panel).getByRole("region", { name: "Streamed text" })).toHaveTextContent("The answer is 42.");
+    expect(within(panel).getByRole("region", { name: "Response" })).toHaveTextContent("The answer is 42.");
   });
 });
 
