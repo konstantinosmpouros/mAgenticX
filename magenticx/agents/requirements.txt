@@ -28,3 +28,4 @@ croniter==2.0.5  # cron validation of the workflow trigger.schedule node (matche
 tzdata==2025.2  # IANA zones for trigger.schedule timezones on hosts without a system tz database
 jsonschema==4.26.0  # the workflow llm node checks the JSON Schema and the reply (also pulled in by mcp)
 redis==8.1.0  # async-task events and status/outbox streams (plan 41; matches the bridge pin)
+langfuse==4.18.0  # agent traces to the ../../langfuse sibling; off unless LANGFUSE_BASE_URL + keys are set

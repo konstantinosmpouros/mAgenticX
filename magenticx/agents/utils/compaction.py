@@ -83,6 +83,8 @@ async def compact_agent_thread(agent_slug: str, req: CompactRequest) -> CompactR
             summarizer=summarizer,
             thread_id=req.thread_id,
             expected_checkpoint_id=req.expected_checkpoint_id,
+            session_id=agent.context.get("conversation_id"),
+            user_id=agent.context.get("user_id"),
         )
     except CompactionConflict as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_CONFLICT_DETAIL) from exc

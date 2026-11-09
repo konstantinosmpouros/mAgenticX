@@ -716,6 +716,65 @@ class RedisSettings(BaseSettings):
         return resolved if resolved else ""
 
 
+def _resolve_optional_key(name: str) -> str:
+    """A Langfuse key, or ``""`` (tracing off) when its file is missing or unreadable."""
+    try:
+        return _resolve_file_backed_secret(name) or ""
+    except RuntimeError:
+        return ""
+
+
+class LangfuseSettings(BaseSettings):
+    """Agent traces to the self-hosted Langfuse (the ../../langfuse sibling).
+
+    An opt-in add-on like MCP and the sandbox: off unless ``LANGFUSE_BASE_URL``
+    and both project keys are set, and a run never waits on it — spans leave in
+    a background batch, and a Langfuse that is down only costs those traces.
+    The base URL is the internal ``http://langfuse-web:3000`` on the
+    ``langfuse`` network, never the public hostname. The keys are file-backed
+    (``LANGFUSE_PUBLIC_KEY_FILE`` / ``LANGFUSE_SECRET_KEY_FILE``), and unlike
+    every other secret here an unreadable key file does not stop the service:
+    locally the files come from the Langfuse sibling, which may not be set up,
+    and then tracing is simply off.
+    """
+    model_config = _BASE_MODEL_CONFIG
+
+    base_url: str = Field("", validation_alias="LANGFUSE_BASE_URL")
+    public_key: SecretStr = Field(default_factory=lambda: SecretStr(""))
+    secret_key: SecretStr = Field(default_factory=lambda: SecretStr(""))
+    # Share of runs traced (1.0 = all). Lower it if the volume ever matters.
+    sample_rate: float = Field(1.0, ge=0.0, le=1.0, validation_alias="LANGFUSE_SAMPLE_RATE")
+    # Per export request; the export runs in a background thread either way.
+    timeout_seconds: int = Field(5, ge=1, le=30, validation_alias="LANGFUSE_TIMEOUT_SECONDS")
+
+    @field_validator("public_key", mode="before")
+    @classmethod
+    def _load_public_key(cls, value: object) -> object:
+        if isinstance(value, SecretStr) and value.get_secret_value():
+            return value
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        return _resolve_optional_key("LANGFUSE_PUBLIC_KEY")
+
+    @field_validator("secret_key", mode="before")
+    @classmethod
+    def _load_secret_key(cls, value: object) -> object:
+        if isinstance(value, SecretStr) and value.get_secret_value():
+            return value
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        return _resolve_optional_key("LANGFUSE_SECRET_KEY")
+
+    @property
+    def enabled(self) -> bool:
+        """True when the URL and both keys are set — the one "is tracing on" check."""
+        return bool(
+            self.base_url.strip()
+            and self.public_key.get_secret_value()
+            and self.secret_key.get_secret_value()
+        )
+
+
 class AsyncTasksSettings(BaseSettings):
     """Async sub-agents (plan 41): every sub-agent runs as a background task.
 
@@ -796,6 +855,7 @@ class Settings(BaseSettings):
     agui: AguiSettings = Field(default_factory=AguiSettings)
     redis: RedisSettings = Field(default_factory=RedisSettings)
     async_tasks: AsyncTasksSettings = Field(default_factory=AsyncTasksSettings)
+    langfuse: LangfuseSettings = Field(default_factory=LangfuseSettings)
 
     @model_validator(mode="after")
     def _require_proxy_secret(self) -> "Settings":

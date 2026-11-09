@@ -36,7 +36,7 @@ The in-container **alias** (e.g. `openai_api_key`) is intentionally fixed so app
 
 ## Core stack secrets — `docker-compose-denis.yaml`
 
-Ten Swarm secrets, declared at the bottom of the compose with `external: true` and a `magenticx_`-prefixed `name:`. The alias column is both the `secrets:` entry name and the `/run/secrets/<alias>` path.
+Twelve Swarm secrets, declared at the bottom of the compose with `external: true` and a `magenticx_`-prefixed `name:`. The alias column is both the `secrets:` entry name and the `/run/secrets/<alias>` path.
 
 | External Swarm name | Alias / path | Resolved via | Consumed by | Purpose / functionality |
 | --- | --- | --- | --- | --- |
@@ -48,6 +48,8 @@ Ten Swarm secrets, declared at the bottom of the compose with `external: true` a
 | `magenticx_postgres_password` | `postgres_password` | `POSTGRES_PASSWORD_FILE` (pg); `DATABASE_PASSWORD_FILE` (bridge); `AGENT_RUNTIME_DATABASE_PASSWORD_FILE` (agents) | `chat_postgres`, `dialogue_bridge`, `agents` | Password for the `admin` Postgres role. The bridge connects to `chat_db`; agents connects to the separate `agent_runtime` DB (LangGraph checkpointer) on the same instance. Spliced into each password-less `DATABASE_URL` at settings load. |
 | `magenticx_agent_runtime_aes_key` | `agent_runtime_aes_key` | `LANGGRAPH_AES_KEY_FILE` | `agents` | AES key for the LangGraph `EncryptedSerializer` — at-rest encryption of checkpoint blobs in `agent_runtime`. Empty ⇒ no encryption, so this is what makes stored conversation state ciphertext. |
 | `magenticx_log_redaction_secret` | `log_redaction_secret` | `LOG_REDACTION_SECRET_FILE` | `dialogue_bridge`, `agents`, `rag_service` | Shared HMAC key so the hashed `client_ip` (`h:<16hex>`) correlates across services. Absent ⇒ each process falls back to a random per-process key (correlation degrades, logs stay private). See [observability.md](../development/observability.md). |
+| `langfuse_public_key` | `langfuse_public_key` | `LANGFUSE_PUBLIC_KEY_FILE` | `agents` | Public key of the Langfuse project `magenticx` (agent traces). Copy of `/opt/langfuse/secrets/init_project_public_key`. Must exist **before** the release that references it, or the stack deploy fails. |
+| `langfuse_secret_key` | `langfuse_secret_key` | `LANGFUSE_SECRET_KEY_FILE` | `agents` | Secret key of the same project: with it, a caller on the `langfuse` network can write traces into that project. Copy of `/opt/langfuse/secrets/init_project_secret_key`. Rotate with new keys in Langfuse → Project settings → API keys, a versioned Swarm name, and a release. |
 | `magenticx_oci_signer_key` | `oci_signer_key` | `OCI_API_PRIVATE_KEY_FILE` | `dialogue_bridge` | API private key of the dedicated OCI principal whose **only** permission is `use keys` on the session-signing HSM key, **and only from Dennis** (IAM network-source condition). It cannot read, export or rotate the key — only request a signature over a digest. OCI API keys carry no expiry date; rotate it on any suspected leak (see below). Without it, new logins and refreshes stop. |
 | `magenticx_entra_client_secret` | `entra_client_secret` | `ENTRA_CLIENT_SECRET_FILE` | `dialogue_bridge` | Microsoft Entra app-registration **client secret** for the OIDC relying-party (auth-code + PKCE) sign-in — **the only way into the platform**. The bridge refuses to start without it. **Expires on a calendar date: record it below and rotate before it lapses**, or nobody can sign in. |
 

@@ -372,6 +372,35 @@ Every panel counts an event the OrthodoxAI services actually emit (verified agai
 
 ---
 
+## Agent traces — Langfuse (a sibling project, opt-in)
+
+Logs answer *what happened to a request*; Langfuse answers *what the agent did*: every model call (prompt, reply, tokens, cost, latency), tool call, sub-agent and middleware step of a run, as one trace. The server is its own workspace project, [langfuse](https://github.com/konstantinosmpouros/langfuse) (self-hosted Langfuse v4); its `docs/app-integration.md` is the contract this side follows. Only the **agents** service sends traces.
+
+```mermaid
+flowchart LR
+  subgraph agents["agents"]
+    R["a run<br/>(chat · sub-agent · workflow · compaction · title)"]
+    H["CallbackHandler<br/>(one per run)"]
+    M["mask"]
+    Q["background batch<br/>(OTel exporter)"]
+  end
+  R -->|LangChain callbacks| H --> M --> Q
+  Q -->|"http://langfuse-web:3000<br/>langfuse network only"| W["langfuse-web<br/>project magenticx"]
+```
+
+| | |
+| --- | --- |
+| **Off / on** | Off unless `LANGFUSE_BASE_URL` **and** both project keys are set (`settings.langfuse.enabled`). Off, no client exists and every run config is handed back untouched. |
+| **Fail-open** | Spans leave in a background batch, so a run never waits on Langfuse. Langfuse down costs only those traces; a client that cannot start leaves tracing off, never the service. The lifespan flushes the queue on shutdown, off the event loop. |
+| **What is traced** | Every `BaseAgent.astream` (chat, resume, background sub-agents — deepagents' sub-agents and middleware ride the same callbacks), every workflow run (`prepare_run`), a manual compaction's summary call, title and suggestion generation. Not traced: embeddings and voice (they bypass LangChain). |
+| **Trace attributes** | Name = agent slug (or `workflow` / `compaction` / `title` / `suggestions`). Session = the conversation (a sub-agent lands in its parent's), or the workflow run. User = `hash_identifier(user_id)`, the keyed `h:<16hex>` pseudonym — never the raw id. Tags: `magenticx`, the kind (`chat`, `subagent`, `workflow`, …), the agent slug or `workflow:<id>` / `trigger:<kind>`. |
+| **Masking** | Content **is** captured (that is the point) — but every input, output and metadata value goes through `mask` before it leaves: the contract's patterns (Langfuse/OpenAI/Anthropic keys, AWS, GitHub tokens, JWTs, `Bearer`, e-mails), `user:pass@` in URLs, and string values under the credential-like field names the log redaction uses (`is_sensitive_key`). An unknown object is masked as its `str()`, never passed through. Langfuse keeps trace content 30 days. |
+| **Plugged in** | Local: `docker-compose.yaml` joins agents to the `langfuse` network, which both projects declare by name (whichever starts first creates it), and mounts the keys from `../../langfuse/secrets`. Langfuse not running → no traces; not set up (no key files) → tracing off. Dennis: the hand-made `langfuse` overlay, external in `docker-compose-denis.yaml`, and the two `langfuse_*_key` secrets. Never the public hostname. |
+
+Locally there is nothing to switch on: with `../langfuse` running, traces appear at <http://localhost:3300> → project **magenticx**. To turn it off locally, `LANGFUSE_BASE_URL=` (empty) in `magenticx/.env`. Turning it off on Dennis: `- LANGFUSE_BASE_URL=` in `docker-compose-denis.yaml` and release.
+
+Later, with Phase 3's OTel SDK: create the app's `TracerProvider` **before** `init_langfuse()`, so Langfuse and Tempo share one W3C `trace_id` (contract § 5).
+
 ## Sharp Edges and Behavioral Notes
 
 - **The redaction secret must be provisioned in prod, or `client_ip` correlation silently degrades.** Without `magenticx_log_redaction_secret`, each service hardens to a *random per-process* key — the `client_ip` hash no longer matches across services or survives a restart (`user_id`/`session_id` are unaffected — they are logged raw). This is fail-safe (never the reversible default), not fail-loud; provision the secret.
@@ -386,6 +415,9 @@ Every panel counts an event the OrthodoxAI services actually emit (verified agai
 - **OrthodoxAI's event names are a cross-repo contract.** Its dashboards and two alert rules match literal event strings emitted in the `orthodox-ai` repo (`kiosk_access_denied`, `inference_run_started`, `realtime_voice_*`, …). Renaming one there silently empties a panel here, and nothing fails. Grep the [monitoring](https://github.com/konstantinosmpouros/monitoring) repo before renaming an OrthodoxAI or mAgenticX log event.
 - **OrthodoxAI panels that cannot exist yet.** It logs no run duration and no token counts, so there are no answer-latency or cost panels (its Phase 8 telemetry). Its knowledge pipeline (plan 04) emits nothing yet, so there is no scrape dashboard and no "scrape did not run" alert (R-43). Add both when those events exist; a dashboard for events nobody emits would only show an empty screen.
 - **Dashboard provider paths must not overlap.** A Grafana file provider scans its path recursively, so a provider pointed at `/etc/grafana/dashboards` would load both projects' dashboards a second time.
+- **Langfuse's propagated trace metadata is not masked.** The SDK masks inputs, outputs and per-observation metadata, but the trace-level attributes it propagates (session, user, tags, name, and a workflow run's `configurable` values such as `workflow_id` / `owner_user_id`, which LangGraph copies into run metadata) go as they are. Only ids belong there — never put content into run metadata.
+- **Langfuse configured but down logs export warnings.** The run is unaffected; the background exporter logs each batch it could not deliver (locally: Langfuse stopped while the keys exist).
+- **Images in a traced run are not uploaded.** The SDK tries to upload base64 media to Langfuse's media store, which the self-hosted stack does not configure; the trace keeps a reference and the SDK logs the failed upload in its background thread. The run is unaffected.
 - **`agents` suppresses uvloop cancellation noise.** The event-loop exception handler swallows `CancelledError`/`BrokenPipeError`/`ConnectionResetError` (normal on client disconnect mid-stream) and only logs genuine `event_loop_exception`s.
 
 ---
@@ -414,4 +446,8 @@ Every panel counts an event the OrthodoxAI services actually emit (verified agai
 | Monitoring stack (Denis) | [monitoring/docker-compose-denis.yml](https://github.com/konstantinosmpouros/monitoring/blob/main/docker-compose-denis.yml) | Grafana, Prometheus, Loki, Alloy, cAdvisor, node-exporter, Alertmanager |
 | mAgenticX dashboards | [monitoring/grafana/dashboards/magenticx/](https://github.com/konstantinosmpouros/monitoring/tree/main/grafana/dashboards/magenticx) | the **magenticX** folder |
 | OrthodoxAI dashboards | [monitoring/grafana/dashboards/orthodoxai/](https://github.com/konstantinosmpouros/monitoring/tree/main/grafana/dashboards/orthodoxai) | the **OrthodoxAI** folder; queries select `stack="orthodoxai"` / `orthodoxai_.*` |
+| Langfuse client, mask, per-run config | [magenticx/agents/harness/observability/langfuse.py](../../magenticx/agents/harness/observability/langfuse.py) | `init_langfuse`, `trace_run_config`, `mask`, `shutdown_langfuse` |
+| Langfuse settings | [magenticx/agents/core/settings.py](../../magenticx/agents/core/settings.py) | `LangfuseSettings` |
+| Langfuse local wiring | [magenticx/docker-compose.yaml](../../magenticx/docker-compose.yaml) | `langfuse` network, keys from `../../langfuse/secrets` |
+| Langfuse project | [langfuse](https://github.com/konstantinosmpouros/langfuse) | the server, `docs/app-integration.md` (the contract) |
 | Local discovery configs | [monitoring/local/](https://github.com/konstantinosmpouros/monitoring/tree/main/local) | Compose → Swarm label mapping, silent `alertmanager.yml` |

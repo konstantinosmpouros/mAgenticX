@@ -88,6 +88,15 @@ services:
       # service writes the task streams the bridge reads to the same Redis.
       - REDIS_URL=redis://redis:6379/0
       - REDIS_PASSWORD=${REDIS_PASSWORD:-magenticx-dev-redis}
+      # Agent traces to the ../../langfuse sibling (http://localhost:3300, project
+      # magenticx), keys read straight from its secrets. Plug and play: Langfuse
+      # down or not set up only means no traces — never a slower or failed run.
+      - LANGFUSE_BASE_URL=${LANGFUSE_BASE_URL:-http://langfuse-web:3000}
+      - LANGFUSE_PUBLIC_KEY_FILE=/run/secrets/langfuse_public_key
+      - LANGFUSE_SECRET_KEY_FILE=/run/secrets/langfuse_secret_key
+    secrets:
+      - langfuse_public_key
+      - langfuse_secret_key
     volumes:
       # The agents filesystem's global plane (agent definitions + skills
       # catalogue). See harness/filesystem/layout.py.
@@ -103,6 +112,7 @@ services:
       - frontend
       - mcp_net
       - sandbox_net
+      - langfuse
 
 
   chat_postgres: # 5432
@@ -232,6 +242,20 @@ networks:
   sandbox_net:
     name: sandbox_net
     internal: true
+  # Shared by name with ../../langfuse's compose (which declares the same
+  # network): whichever project starts first creates it, so neither depends on
+  # the other being up. agents ↔ langfuse-web only.
+  langfuse:
+    name: langfuse
+
+
+secrets:
+  # The init project's keys of the ../../langfuse sibling. Missing (Langfuse not
+  # set up) only turns tracing off — the agents never fail on them.
+  langfuse_public_key:
+    file: ../../langfuse/secrets/init_project_public_key
+  langfuse_secret_key:
+    file: ../../langfuse/secrets/init_project_secret_key
 
 
 

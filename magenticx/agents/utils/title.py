@@ -6,6 +6,7 @@ from langchain_core.runnables import RunnableLambda
 from core.settings import settings
 from core.error_handling import provider_error_handler
 from core.logging import get_logger
+from harness.observability import trace_run_config
 from utils import make_merge_with_template
 from schema import TitleRequest, ConversationTitle
 
@@ -54,7 +55,8 @@ async def generate_title(req: TitleRequest) -> ConversationTitle:
     """Generate multiple short, descriptive title options for a new conversation."""
     logger.info("title_generation_started", "Title generation started", prompt_messages=len(req.user_input))
     try:
-        result = await _title_chain.ainvoke(req.user_input)
+        # Traced to Langfuse when it is on (no session: it precedes the conversation).
+        result = await _title_chain.ainvoke(req.user_input, config=trace_run_config({}, kind="title", name="title"))
     except Exception as exc:
         provider_error_handler.raise_provider_error(
             logger,

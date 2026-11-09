@@ -17,6 +17,7 @@ from harness.async_tasks.events import TaskStreamPublisher
 from harness.async_tasks.runner import TaskRunner, set_task_runner
 from harness.async_tasks.store import AsyncTaskStore
 from harness.checkpointer import init_durable_checkpointer
+from harness.observability import init_langfuse, shutdown_langfuse
 from core.settings import settings
 from core.logging import (
     RequestLoggingMiddleware,
@@ -89,6 +90,9 @@ async def _lifespan(app: FastAPI):
     task_runner: TaskRunner | None = None
     try:
         logger.info("service_startup", "Agents service startup initiated")
+        # Langfuse traces (opt-in): a no-op without LANGFUSE_BASE_URL + keys,
+        # and a client that cannot start leaves tracing off, never the service.
+        init_langfuse()
         # Seed built-in declarative (YAML) agents into the global volume, then
         # re-scan so they join AGENT_REGISTRY (invisible at import, before seed).
         seed_global_agents()
@@ -127,6 +131,9 @@ async def _lifespan(app: FastAPI):
                 pass
         if pool is not None:
             await pool.close()
+        # Last, after the runs above have stopped: flush their queued spans. The
+        # flush blocks (bounded by the exporter's timeout), so it runs off-loop.
+        await asyncio.to_thread(shutdown_langfuse)
         loop.set_exception_handler(old)
         logger.info("service_shutdown", "Agents service shutdown completed")
         shutdown_logging()

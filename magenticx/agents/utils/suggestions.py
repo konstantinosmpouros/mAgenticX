@@ -6,6 +6,7 @@ from langchain_core.runnables import RunnableLambda
 from core.settings import settings
 from core.error_handling import provider_error_handler
 from core.logging import get_logger
+from harness.observability import trace_run_config
 from schema import ConversationSuggestions, SuggestionsRequest
 from utils import make_merge_with_template
 
@@ -55,7 +56,8 @@ async def generate_suggestions(req: SuggestionsRequest) -> ConversationSuggestio
     """Generate personalized starter suggestions for a new conversation."""
     logger.info("suggestion_generation_started", "Suggestion generation started", prompt_messages=len(req.user_input))
     try:
-        result = await _suggestions_chain.ainvoke(req.user_input)
+        # Traced to Langfuse when it is on (no session: it precedes the conversation).
+        result = await _suggestions_chain.ainvoke(req.user_input, config=trace_run_config({}, kind="suggestions", name="suggestions"))
     except Exception as exc:
         provider_error_handler.raise_provider_error(
             logger,

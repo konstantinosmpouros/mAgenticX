@@ -35,6 +35,7 @@ from core.logging import get_logger
 from core.settings import settings
 from harness.agui.usage_callback import UsageMetricsCallback
 from harness.checkpointer.fork import STATE_WRITER_NODE
+from harness.observability import trace_run_config
 from harness.middlewares import (
     EVENT_KEY,
     SESSION_ID_KEY,
@@ -184,13 +185,16 @@ async def compact_thread(
     summarizer: ConfigurableSummarizationMiddleware,
     thread_id: str,
     expected_checkpoint_id: str,
+    session_id: Optional[str] = None,
+    user_id: Optional[str] = None,
 ) -> CompactionResult:
     """Summarize everything before the branch's latest exchange now, keeping that exchange whole.
 
     Raises :class:`CompactionConflict` when the head is not
     ``expected_checkpoint_id`` (before or after the summary is written) and
     :class:`CompactionFailed` when the summary call fails. Neither leaves a
-    trace on the thread.
+    trace on the thread. ``session_id`` / ``user_id`` only attribute the
+    summary call's Langfuse trace (when tracing is on).
     """
     cfg: dict[str, Any] = {"configurable": {"thread_id": thread_id}}
     head, messages, previous, values = await read_state(graph, cfg)
@@ -212,9 +216,14 @@ async def compact_thread(
     # Outside a graph run there is no runnable config. LangChain merges a
     # context-var config's callbacks into the summary call — that is how the
     # call's tokens are measured.
-    token = var_child_runnable_config.set(
-        {"configurable": {"thread_id": thread_id}, "callbacks": [usage_callback]}
-    )
+    # Tracing on, the same config also carries the Langfuse handler.
+    token = var_child_runnable_config.set(dict(trace_run_config(
+        {"configurable": {"thread_id": thread_id}, "callbacks": [usage_callback]},
+        kind="compaction",
+        name="compaction",
+        session_id=session_id or thread_id,
+        user_id=user_id,
+    )))
     # The history file's id, resolved as in an automatic compaction: the
     # branch thread, read from the context-var config set just above.
     session_id = summarizer._get_session_id(values)

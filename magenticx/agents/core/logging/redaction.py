@@ -54,7 +54,11 @@ def _should_hash_field(key: str) -> bool:
     return k == "client_ip"
 
 
-def _is_sensitive_key(key: str) -> bool:
+def is_sensitive_key(key: str) -> bool:
+    """True when a field name marks a credential (password, token, cookie, …).
+
+    Shared with the Langfuse trace mask, so logs and traces redact the same fields.
+    """
     lowered = key.lower()
     return any(token in lowered for token in _SENSITIVE_FIELD_TOKENS)
 
@@ -80,7 +84,11 @@ def _stable_hash(value: Any) -> str:
     return f"h:{digest[:16]}"
 
 
-def _hash_identifier(value: Any) -> str:
+def hash_identifier(value: Any) -> str:
+    """The keyed ``h:<16hex>`` pseudonym of an identifier (same as the bridge's).
+
+    Used for the client IP in logs and for the user id sent to Langfuse.
+    """
     # Idempotent: a value already in canonical h:<16hex> form (e.g. a session
     # hash forwarded from a peer service) is passed through, so the same id
     # yields the same token across services. The match is strict — an
@@ -93,7 +101,7 @@ def sanitize_context_value(key: str, value: Any) -> Any:
     if value is None:
         return None
     if key in _HASHED_CONTEXT_FIELDS and value not in _BLANK_IDENTIFIERS:
-        return _hash_identifier(value)
+        return hash_identifier(value)
     return sanitize_for_logging(value, key=key)
 
 
@@ -102,9 +110,9 @@ def sanitize_for_logging(value: Any, *, key: str | None = None) -> Any:
         return "[OMITTED]"
 
     if key and _should_hash_field(key) and value not in _BLANK_IDENTIFIERS:
-        return _hash_identifier(value)
+        return hash_identifier(value)
 
-    if key and _is_sensitive_key(key):
+    if key and is_sensitive_key(key):
         return "[REDACTED]"
 
     if isinstance(value, dict):

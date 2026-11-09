@@ -46,7 +46,7 @@ class _FakeAsyncChain:
         self._result = result
         self._error = error
 
-    async def ainvoke(self, _user_input):
+    async def ainvoke(self, _user_input, config=None):
         if self._error is not None:
             raise self._error
         return self._result

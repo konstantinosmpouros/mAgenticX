@@ -11,6 +11,7 @@ from core.logging import get_logger
 from core.settings import settings
 from harness.checkpointer import get_checkpointer
 from harness.commands import CommandSpec, lookup_command
+from harness.observability import trace_run_config
 from harness.tools.gates import approval_map, key_set
 from harness.personalization import Personalization, parse_personalization
 from utils import (
@@ -352,6 +353,27 @@ class BaseAgent:
         return config
 
 
+    def _traced_config(self) -> Mapping[str, Any]:
+        """``_stream_config()`` plus this run's Langfuse trace — the same config
+        when tracing is off.
+
+        A conversation's turns share one Langfuse session (the conversation),
+        and a background sub-agent's run lands in its parent's session, tagged
+        ``subagent``. LangChain carries the handler into every sub-agent,
+        middleware and model call the run makes.
+        """
+        ctx = self.context
+        thread_id = self.run_config.get("configurable", {}).get("thread_id")
+        return trace_run_config(
+            self._stream_config(),
+            kind="subagent" if ctx.get("async_task_id") else "chat",
+            name=self.name,
+            session_id=ctx.get("conversation_id") or thread_id,
+            user_id=ctx.get("user_id"),
+            tags=(self.name,),
+        )
+
+
     def _pending_frames(self) -> list[bytes]:
         """AG-UI frames produced beside the graph's own stream, drained between
         chunks — none by default (a LangGraph agent's ``TOKEN_USAGE`` and
@@ -394,7 +416,7 @@ class BaseAgent:
             stream_input: Any = command if command is not None else payload
             async for chunk in self.compiled.astream(
                 stream_input,
-                config=self._stream_config(),
+                config=self._traced_config(),
                 stream_mode=self.stream_mode,
                 **self._stream_kwargs(),
             ):

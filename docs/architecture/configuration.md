@@ -351,6 +351,10 @@ LangGraph + DeepAgents runtime. Configuration splits into runtime infra, the dur
 | `RAG_CONNECT_TIMEOUT_SECONDS` | `15` | Connect timeout for rag calls. |
 | `MCP_GATEWAY_URL` | `""` (MCP off) | MCP gateway SSE endpoint (plaintext — the dind gateway can't terminate TLS). **Empty = MCP off**: runs use the agent's own tools only, `GET /tools` returns `[]`, and declared MCP tools list as unavailable. Local passes `${MCP_GATEWAY_URL:-}` — empty unless `magenticx/.env` sets `http://mcp_gateway:8005/sse`, because the gateway is a sibling project ([mcp_gateway](https://github.com/konstantinosmpouros/mcp_gateway)) that may not be running; `docker-compose-denis.yaml` sets it. |
 | `MCP_CONNECT_TIMEOUT_SECONDS` | `10` | Deadline (0 < x ≤ 120) for connecting to the gateway **plus** the MCP handshake, for both run sessions and catalog fetches. A run whose gateway misses it carries on without MCP tools (`mcp_session_unavailable`); a failed catalog fetch is not retried for 30 s. The deadline is lifted once the session is up. |
+| `LANGFUSE_BASE_URL` | `""` (tracing off) | Langfuse's internal URL, `http://langfuse-web:3000` on the `langfuse` network — never the public host. Tracing is on only with this **and** both keys set. Both composes set it (local: `${LANGFUSE_BASE_URL:-http://langfuse-web:3000}`, so `LANGFUSE_BASE_URL=` in `.env` turns it off). See [observability.md § Agent traces](../development/observability.md#agent-traces--langfuse-a-sibling-project-opt-in). |
+| `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` | (secret, optional) | Keys of the Langfuse project `magenticx`, via `*_FILE`. An unreadable key file turns tracing off instead of stopping the service. |
+| `LANGFUSE_SAMPLE_RATE` | `1.0` | Share of runs traced (0–1). |
+| `LANGFUSE_TIMEOUT_SECONDS` | `5` | Per export request (1–30); exports run in a background thread either way. |
 | `MCP_MANIFEST_CACHE_ENABLED` | `true` | Cache the MCP tool manifest for the catalog / Agents tab instead of refetching it per listing. Runs never use it — each run loads the live tools from its own session. |
 
 ### Internal TLS client

@@ -42,6 +42,7 @@ from langgraph.errors import GraphRecursionError
 from langgraph.types import Command
 
 from core.logging import get_logger
+from harness.observability import trace_run_config
 from harness.workflows.compiler import CompiledWorkflow
 from harness.workflows.errors import WorkflowNodeError
 from harness.workflows.events import WorkflowEmitter, WorkflowEnvelope
@@ -238,7 +239,7 @@ async def prepare_run(
     fire sends none, so it runs on the defaults alone.
     """
     trigger = trigger or RunTrigger()
-    config = {
+    config: dict[str, Any] = {
         "configurable": {
             "thread_id": thread_id,
             "workflow_run_id": run_id,
@@ -250,6 +251,17 @@ async def prepare_run(
         },
         "recursion_limit": compiled.recursion_limit,
     }
+    # Langfuse (when on): one session per run, so a run and its resume after an
+    # approval sit together; the workflow and how it fired are tags. The llm
+    # and tool nodes inherit the handler through the run's config.
+    config = dict(trace_run_config(
+        config,
+        kind="workflow",
+        name="workflow",
+        session_id=run_id,
+        user_id=owner_user_id,
+        tags=(f"workflow:{workflow_id}", f"trigger:{trigger.kind}"),
+    ))
     if resume is not None:
         snapshot = await compiled.graph.aget_state(config)
         pending = _pending_approval(snapshot)
