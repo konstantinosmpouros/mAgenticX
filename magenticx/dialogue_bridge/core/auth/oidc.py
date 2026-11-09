@@ -14,13 +14,23 @@ the code redemption (token endpoint + JWKS) — is dispatched to a worker thread
 with ``asyncio.to_thread`` to avoid blocking the event loop.
 
 The per-login ``state``/``nonce``/PKCE material is held in the MSAL "flow" dict,
-stored single-use in Redis keyed by ``state`` (10-min TTL). That is the CSRF and
-replay defense for the redirect: a callback whose ``state`` is unknown/expired,
-or already consumed, is rejected.
+stored single-use in Redis keyed by ``state`` (10-min TTL). That is the replay
+defense for the redirect: a callback whose ``state`` is unknown/expired, or
+already consumed, is rejected.
+
+A valid ``state`` alone does not prove *this browser* started the sign-in: an
+attacker could start one, stop before their own callback and send that link to
+a victim, who would then be signed in to the attacker's account (login CSRF).
+So every sign-in is also **bound to the browser**: ``/oidc/login`` sets a random
+binding cookie and its SHA-256 is stored against the state; the callback must
+present the matching cookie (:func:`consume_login_binding`, constant-time, single
+use) before the code is redeemed.
 """
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import hmac
 import json
 
 import msal
@@ -41,6 +51,14 @@ _FLOW_TTL_SECONDS = 600  # 10 minutes to complete the redirect round-trip
 _PARK_KEY_PREFIX = "auth:oidc:park:"
 # Which user a re-authentication (plan 32) was started for, keyed by the flow state.
 _REAUTH_KEY_PREFIX = "auth:oidc:reauth:"
+# The SHA-256 of the browser binding a sign-in was started with, keyed by the flow state.
+_BIND_KEY_PREFIX = "auth:oidc:bind:"
+#: How long a started sign-in (and its browser binding cookie) stays valid.
+OIDC_FLOW_TTL_SECONDS = _FLOW_TTL_SECONDS
+
+
+def _binding_digest(binding: str) -> str:
+    return hashlib.sha256(binding.encode("utf-8")).hexdigest()
 
 
 class EntraOIDCError(Exception):
@@ -109,7 +127,13 @@ async def _get_redis() -> aioredis.Redis:
 # ---------------------------------------------------------------------------
 # Flow
 # ---------------------------------------------------------------------------
-async def begin_login(redirect_uri: str, *, park: bool = False, reauth_user_id: str | None = None) -> str:
+async def begin_login(
+    redirect_uri: str,
+    *,
+    binding: str,
+    park: bool = False,
+    reauth_user_id: str | None = None,
+) -> str:
     """Start the auth-code flow: build the Entra authorize URL, persist the flow
     (state/nonce/PKCE) single-use in Redis, and return the URL to redirect to.
 
@@ -118,7 +142,12 @@ async def begin_login(redirect_uri: str, *, park: bool = False, reauth_user_id: 
 
     ``reauth_user_id`` makes it a re-authentication (plan 32): Microsoft is asked
     for the credentials again (``prompt=login``, no silent single sign-on), and
-    the callback must resolve to this same user — :func:`consume_reauth_intent`."""
+    the callback must resolve to this same user — :func:`consume_reauth_intent`.
+
+    ``binding`` is the random value the router puts in this browser's binding
+    cookie; only its hash is stored (:func:`consume_login_binding`)."""
+    if not binding:
+        raise EntraOIDCError("A sign-in must be bound to the browser that starts it.")
     app = await _get_app()
     # prompt=select_account lets the user pick which Microsoft account to use;
     # prompt=login forces a fresh credential entry for a re-authentication.
@@ -134,11 +163,42 @@ async def begin_login(redirect_uri: str, *, park: bool = False, reauth_user_id: 
         raise EntraOIDCError("MSAL did not return a usable authorization request.")
     client = await _get_redis()
     await client.set(f"{_FLOW_KEY_PREFIX}{state}", json.dumps(flow), ex=_FLOW_TTL_SECONDS)
+    await client.set(f"{_BIND_KEY_PREFIX}{state}", _binding_digest(binding), ex=_FLOW_TTL_SECONDS)
     if reauth_user_id:
         await client.set(f"{_REAUTH_KEY_PREFIX}{state}", reauth_user_id, ex=_FLOW_TTL_SECONDS)
     elif park:
         await client.set(f"{_PARK_KEY_PREFIX}{state}", "1", ex=_FLOW_TTL_SECONDS)
     return auth_uri
+
+
+async def consume_login_binding(state: str | None, binding: str | None) -> bool:
+    """Whether this callback comes from the browser that started the sign-in.
+
+    Compares the browser's binding cookie with the hash stored for ``state``
+    (constant-time) and deletes the stored hash either way, so a link can be
+    tried once. Fails closed: no state, no cookie, nothing stored, or a Redis
+    error all answer ``False`` — the sign-in is refused before the code is
+    redeemed.
+    """
+    if not state:
+        return False
+    try:
+        client = await _get_redis()
+        key = f"{_BIND_KEY_PREFIX}{state}"
+        stored = await client.get(key)
+        if stored is not None:
+            await client.delete(key)
+    except Exception:
+        logger.warning(
+            "oidc_login_binding_unavailable",
+            "Could not read the sign-in's browser binding; refusing the sign-in",
+            failure_reason="binding_unavailable",
+        )
+        return False
+    if stored is None or not binding:
+        return False
+    expected = stored.decode() if isinstance(stored, bytes) else str(stored)
+    return hmac.compare_digest(expected, _binding_digest(binding))
 
 
 async def consume_reauth_intent(state: str | None) -> str | None:

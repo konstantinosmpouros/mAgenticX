@@ -125,6 +125,10 @@ class SessionSettings(BaseSettings):
     multi_account_enabled: bool = Field(True, validation_alias="MULTI_ACCOUNT_ENABLED")
     # Names the browser's parked-session index. Opaque random id, never a user id.
     device_cookie_name: str | None = Field(None, validation_alias="SESSION_DEVICE_COOKIE_NAME")
+    # Ties a Microsoft sign-in to the browser that started it (login-CSRF defence):
+    # a random value set at /oidc/login, whose hash rides with the flow state and
+    # must come back with the callback.
+    oidc_binding_cookie_name: str | None = Field(None, validation_alias="SESSION_OIDC_BINDING_COOKIE_NAME")
     # Hard ceiling on concurrently signed-in accounts. Each entry is a live bearer
     # credential, so this is a security bound, not a UI nicety — keep it as low as
     # the product allows. Two covers the common personal + work case; asking for a
@@ -170,6 +174,7 @@ class SessionSettings(BaseSettings):
             "refresh_cookie_name": "__Host-mx_refresh" if host_locked else "mx_refresh",
             "csrf_cookie_name": "__Host-mx_csrf" if host_locked else "mx_csrf",
             "device_cookie_name": "__Host-mx_device" if host_locked else "mx_device",
+            "oidc_binding_cookie_name": "__Host-mx_oidc" if host_locked else "mx_oidc",
         }
         for field_name, default in defaults.items():
             if getattr(self, field_name) is None:

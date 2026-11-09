@@ -107,7 +107,7 @@ _sdk_pool_state._async_client = _sdk_fake_redis
 bridge_app.state._redis = _sdk_pool_state
 import core.auth.oidc as oidc_module
 from core.auth.parked import parked_sessions
-from core.auth.session import logout_denylist, refresh_guard, session_revocation
+from core.auth.session import OIDC_BINDING_COOKIE_NAME, logout_denylist, refresh_guard, session_revocation
 from utils.compaction_lock import compaction_locks
 from utils.event_log import event_log as run_event_log
 from utils.trial_drafts import trial_drafts
@@ -260,7 +260,25 @@ async def client(app):
 
 
 @pytest.fixture
-def sso_login(client, monkeypatch):
+def bind_sign_in(client):
+    """Bind a sign-in state to the test client the way ``/oidc/login`` does:
+    the binding's hash stored against ``state``, the binding in the client's
+    cookie. The callback then passes the login-CSRF check for real."""
+
+    async def bind(state: str, binding: str = "b" * 43) -> str:
+        await _app_redis.set(
+            f"{oidc_module._BIND_KEY_PREFIX}{state}",
+            oidc_module._binding_digest(binding),
+            ex=oidc_module.OIDC_FLOW_TTL_SECONDS,
+        )
+        client.cookies.set(OIDC_BINDING_COOKIE_NAME, binding)
+        return binding
+
+    return bind
+
+
+@pytest.fixture
+def sso_login(client, monkeypatch, bind_sign_in):
     """Sign the test client in the only way production can: the Entra callback.
 
     Only Microsoft's half is stubbed — ``complete_login`` returns a fixed
@@ -303,6 +321,7 @@ def sso_login(client, monkeypatch):
         monkeypatch.setattr(auth_router_module, "complete_login", complete_login)
         monkeypatch.setattr(auth_router_module, "consume_park_intent", consume_park_intent)
         monkeypatch.setattr(auth_router_module, "consume_reauth_intent", consume_reauth_intent)
+        await bind_sign_in("test-state")
         return await client.get("/v1/auth/oidc/callback", params={"state": "test-state", "code": "test-code"})
 
     return login

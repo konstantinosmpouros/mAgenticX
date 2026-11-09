@@ -208,13 +208,13 @@ async def test_starting_a_reauth_needs_a_session_and_names_its_user(client, sso_
     uid = await _signed_in(client, sso_login)
     seen = {}
 
-    async def begin_login(_redirect_uri, *, park=False, reauth_user_id=None):
-        seen.update(park=park, reauth_user_id=reauth_user_id)
+    async def begin_login(_redirect_uri, *, binding, park=False, reauth_user_id=None):
+        seen.update(park=park, reauth_user_id=reauth_user_id, bound=bool(binding))
         return "https://login.example/authorize"
 
     monkeypatch.setattr(auth_router_module, "begin_login", begin_login)
     resp = await client.get("/v1/auth/oidc/login", params={"reauth": "true", "park": "true"})
-    assert resp.status_code == 302 and seen == {"park": False, "reauth_user_id": uid}
+    assert resp.status_code == 302 and seen == {"park": False, "reauth_user_id": uid, "bound": True}
 
 
 # -- what a pending deletion freezes ---------------------------------------------

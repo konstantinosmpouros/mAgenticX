@@ -44,11 +44,12 @@ sequenceDiagram
 
     B->>Bridge: GET /v1/auth/oidc/login
     Note over Bridge: rate-limit check (per client IP)
-    Bridge->>Redis: store {state, nonce, PKCE} (10 min, single use)
-    Bridge-->>B: 302 → Microsoft
+    Bridge->>Redis: store {state, nonce, PKCE} + SHA-256(binding) (10 min, single use)
+    Bridge-->>B: Set-Cookie: binding (mx_oidc, 10 min) · 302 → Microsoft
     B->>E: sign in (password, MFA — at Microsoft)
     E-->>B: 302 → /v1/auth/oidc/callback?code&state
-    B->>Bridge: callback
+    B->>Bridge: callback + binding cookie
+    Bridge->>Redis: take + delete binding(state) — must match the cookie, else refused
     Bridge->>Redis: take + delete flow(state)
     Bridge->>E: redeem code → id_token (MSAL validates it)
     Bridge->>Bridge: group gate → resolve user by oid → check is_active
@@ -104,7 +105,7 @@ sequenceDiagram
 
 `GET /v1/auth/config` still answers `{"oidcEnabled": true}`. The current login page never asks; it exists so a browser still running the SPA from before this change — a tab left open across the deploy — keeps rendering the Microsoft button.
 
-**Refusals** redirect to `/login?sso=<reason>` with no cookies set: `failed` (unknown/replayed state, token exchange error), `denied` (group gate), `conflict` (Phase 2), `disabled` (`is_active=false`).
+**Refusals** redirect to `/login?sso=<reason>` with no cookies set: `failed` (unknown/replayed state, a callback from a browser that did not start the sign-in, token exchange error), `denied` (group gate), `conflict` (Phase 2), `disabled` (`is_active=false`).
 
 **A refused "add another account" keeps its context: `/login?sso=<reason>&add=1`.** The callback reads the add-account intent (`consume_park_intent`) *before* validating the sign-in, so a refusal can carry it. Without `add=1` the login page is not in add mode, finds the first account's session still valid, restores it and reloads into the app — which wiped the error toast within a few hundred milliseconds, so a refused second account looked like "add account" silently did nothing. The login page strips only `sso` from the URL after showing the message (never `add`), and add mode shows a **Cancel — back to my workspace** link, because the user is still signed in there and must never be stranded on the login screen.
 
@@ -114,7 +115,7 @@ sequenceDiagram
 
 ### Security notes
 
-Real authorization-code + **PKCE**; `state`/`nonce`/PKCE held single-use in Redis (10-min TTL) as CSRF/replay defense; full id_token validation (signature vs Entra JWKS, `iss`/`aud`/`nonce`/`exp`) by MSAL. **Entra's own tokens are never stored** — the id_token authenticates once and is discarded; only the bridge's session JWT persists. The client secret is a file-backed `SecretStr` (`magenticx_entra_client_secret`) and **expires** — its date belongs in `docs/architecture/secrets.md`, because an expired secret is now a full login outage. MSAL is synchronous, so all of its network calls run via `asyncio.to_thread`. The bridge needs outbound HTTPS to the Microsoft identity platform.
+Real authorization-code + **PKCE**; `state`/`nonce`/PKCE held single-use in Redis (10-min TTL) as replay defense; **login CSRF** (an attacker's own half-finished sign-in link opened by a victim, signing the victim in to the attacker's account) is stopped by binding each sign-in to the browser that started it — a random value in the `mx_oidc` cookie, its SHA-256 stored against the state, compared constant-time and consumed by `consume_login_binding` *before* the code is redeemed; no cookie, a wrong one, a reused state or a Redis error refuses the sign-in (`failed`). A second tab signing in reuses the browser's binding, so both callbacks match; full id_token validation (signature vs Entra JWKS, `iss`/`aud`/`nonce`/`exp`) by MSAL. **Entra's own tokens are never stored** — the id_token authenticates once and is discarded; only the bridge's session JWT persists. The client secret is a file-backed `SecretStr` (`magenticx_entra_client_secret`) and **expires** — its date belongs in `docs/architecture/secrets.md`, because an expired secret is now a full login outage. MSAL is synchronous, so all of its network calls run via `asyncio.to_thread`. The bridge needs outbound HTTPS to the Microsoft identity platform.
 
 **Local development** signs in with the same Entra app: its redirect URI list includes `http://localhost:8050/api/v1/auth/oidc/callback` (Entra allows `http://localhost` without TLS), and the `ENTRA_*` values live in `magenticx/.env`. There is deliberately no dev bypass — a flag whose only purpose is to skip authentication eventually gets set in production.
 
@@ -228,6 +229,7 @@ flowchart TD
 | `mx_refresh` (or `__Host-mx_refresh`) | Yes | rolling refresh TTL (≤ absolute cap, 20 d) | refresh JWT |
 | `mx_csrf` (or `__Host-mx_csrf`) | **No** | rolling refresh TTL | CSRF double-submit value |
 | `mx_device` (or `__Host-mx_device`) | Yes | absolute refresh TTL (20 d) | opaque id indexing this browser's *parked* sessions — only issued when multi-account is enabled (Phase 10) |
+| `mx_oidc` (or `__Host-mx_oidc`) | Yes | 10 min (one sign-in round-trip) | **login-CSRF binding**: set by `/oidc/login` (`issue_oidc_binding_cookie`), cleared by the callback; always `SameSite=Lax` so it survives Microsoft's redirect |
 
 `__Host-` prefixing applies when `SESSION_COOKIE_SECURE=true` and no `SESSION_COOKIE_DOMAIN` is set. The access JWT lives in an HttpOnly cookie — JavaScript cannot read it (XSS-safe), and it is still verified with **zero** server state.
 

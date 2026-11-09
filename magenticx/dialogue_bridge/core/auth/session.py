@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -274,6 +275,9 @@ SESSION_ACCESS_COOKIE_NAME = settings.session.access_cookie_name
 SESSION_REFRESH_COOKIE_NAME = settings.session.refresh_cookie_name
 CSRF_COOKIE_NAME = settings.session.csrf_cookie_name
 DEVICE_COOKIE_NAME = settings.session.device_cookie_name
+OIDC_BINDING_COOKIE_NAME = settings.session.oidc_binding_cookie_name
+#: A login binding is URL-safe base64 of 32 random bytes; anything else is ignored.
+_OIDC_BINDING_PATTERN = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
 CSRF_HEADER_NAME = settings.session.csrf_header_name
 
 
@@ -410,6 +414,36 @@ def issue_device_cookie(response: Response, device_id: str) -> None:
 
 def clear_device_cookie(response: Response) -> None:
     response.delete_cookie(key=DEVICE_COOKIE_NAME, path="/", domain=_cookie_domain())
+
+
+def get_oidc_binding(request: Request) -> str | None:
+    """This browser's sign-in binding (login-CSRF defence), if it carries a well-formed one."""
+    raw = (request.cookies.get(OIDC_BINDING_COOKIE_NAME) or "").strip()
+    return raw if _OIDC_BINDING_PATTERN.match(raw) else None
+
+
+def issue_oidc_binding_cookie(response: Response, binding: str, max_age: int) -> None:
+    """Remember the sign-in binding until the Microsoft round-trip returns.
+
+    Same hardening as the session cookies (httpOnly, Secure, ``__Host-`` in
+    production), but always ``SameSite=Lax`` whatever the session setting: the
+    callback is a top-level GET *from Microsoft*, which a ``Strict`` cookie
+    would not survive — and a missing binding fails the sign-in.
+    """
+    response.set_cookie(
+        key=OIDC_BINDING_COOKIE_NAME,
+        value=binding,
+        max_age=max_age,
+        httponly=True,
+        secure=SESSION_COOKIE_SECURE,
+        samesite="lax",
+        domain=_cookie_domain(),
+        path="/",
+    )
+
+
+def clear_oidc_binding_cookie(response: Response) -> None:
+    response.delete_cookie(key=OIDC_BINDING_COOKIE_NAME, path="/", domain=_cookie_domain())
 
 
 def _parse_bearer_token(request: Request) -> Optional[str]:

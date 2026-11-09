@@ -16,9 +16,11 @@ from fastapi.dependencies.utils import get_dependant
 from pydantic import ValidationError
 from sqlalchemy import select
 
+import core.auth.oidc as oidc_module_for_tests
 import router.auth as auth_router_module
 from core.auth.oidc import EntraAccessDeniedError, EntraOIDCError
-from core.auth.session import require_current_user
+from core.auth.providers import AuthIdentity
+from core.auth.session import OIDC_BINDING_COOKIE_NAME, require_current_user
 from core.database import UserTable, get_db
 from core.settings import EntraSettings, Settings
 
@@ -112,11 +114,12 @@ def test_authenticating_a_request_never_opens_a_database_session():
 # ---------------------------------------------------------------------------
 # Refusals land back on the login page, with no session
 # ---------------------------------------------------------------------------
-async def test_a_user_outside_the_allowed_group_is_refused(client, monkeypatch):
+async def test_a_user_outside_the_allowed_group_is_refused(client, monkeypatch, bind_sign_in):
     async def denied(_auth_response):
         raise EntraAccessDeniedError("not in an allowed group")
 
     monkeypatch.setattr(auth_router_module, "complete_login", denied)
+    await bind_sign_in("s")
     response = await client.get("/v1/auth/oidc/callback", params={"state": "s", "code": "c"})
 
     assert response.status_code == 302
@@ -124,7 +127,7 @@ async def test_a_user_outside_the_allowed_group_is_refused(client, monkeypatch):
     assert _access_cookie(client) is None
 
 
-async def test_a_refused_add_account_returns_to_the_add_account_screen(client, sso_login, monkeypatch):
+async def test_a_refused_add_account_returns_to_the_add_account_screen(client, sso_login, monkeypatch, bind_sign_in):
     # Regression: the refusal used to drop the add-account context. The login
     # page then restored the still-valid first session and reloaded into the app,
     # hiding the reason — "add account" looked like it silently did nothing.
@@ -138,6 +141,7 @@ async def test_a_refused_add_account_returns_to_the_add_account_screen(client, s
 
     monkeypatch.setattr(auth_router_module, "complete_login", denied)
     monkeypatch.setattr(auth_router_module, "consume_park_intent", was_add_account)
+    await bind_sign_in("s")
     response = await client.get("/v1/auth/oidc/callback", params={"state": "s", "code": "c"})
 
     assert response.headers["location"] == "/login?sso=denied&add=1"
@@ -145,7 +149,7 @@ async def test_a_refused_add_account_returns_to_the_add_account_screen(client, s
     assert (await client.get("/v1/auth/session")).json()["user"]["username"] == "alice"
 
 
-async def test_a_plain_refusal_does_not_claim_add_account_mode(client, monkeypatch):
+async def test_a_plain_refusal_does_not_claim_add_account_mode(client, monkeypatch, bind_sign_in):
     async def denied(_auth_response):
         raise EntraAccessDeniedError("not in an allowed group")
 
@@ -154,16 +158,18 @@ async def test_a_plain_refusal_does_not_claim_add_account_mode(client, monkeypat
 
     monkeypatch.setattr(auth_router_module, "complete_login", denied)
     monkeypatch.setattr(auth_router_module, "consume_park_intent", not_add_account)
+    await bind_sign_in("s")
     response = await client.get("/v1/auth/oidc/callback", params={"state": "s", "code": "c"})
 
     assert response.headers["location"] == "/login?sso=denied"
 
 
-async def test_a_failed_or_replayed_callback_is_refused(client, monkeypatch):
+async def test_a_failed_or_replayed_callback_is_refused(client, monkeypatch, bind_sign_in):
     async def failed(_auth_response):
         raise EntraOIDCError("Unknown or expired authorization state.")
 
     monkeypatch.setattr(auth_router_module, "complete_login", failed)
+    await bind_sign_in("s")
     response = await client.get("/v1/auth/oidc/callback", params={"state": "s", "code": "c"})
 
     assert response.headers["location"] == "/login?sso=failed"
@@ -245,3 +251,94 @@ async def test_a_linked_account_keeps_its_history_row(client, sso_login, session
     await sso_login("heidi@example.com", subject="oid-heidi", email="heidi@example.com")
 
     assert (await client.get("/v1/auth/session")).json()["user_id"] == row_id
+
+
+# ---------------------------------------------------------------------------
+# Login CSRF: a sign-in only completes in the browser that started it
+# ---------------------------------------------------------------------------
+def _signed_in_as(username: str):
+    async def complete_login(_auth_response):
+        return AuthIdentity(subject=f"oid::{username}", username=username, provider="entra")
+
+    return complete_login
+
+
+async def test_starting_a_sign_in_binds_it_to_this_browser(client, monkeypatch):
+    seen = {}
+
+    async def begin_login(_redirect_uri, *, binding, park=False, reauth_user_id=None):
+        seen["binding"] = binding
+        return "https://login.example/authorize"
+
+    monkeypatch.setattr(auth_router_module, "begin_login", begin_login)
+    first = await client.get("/v1/auth/oidc/login")
+    assert first.status_code == 302
+    cookie = first.headers["set-cookie"]
+    assert cookie.startswith(f"{OIDC_BINDING_COOKIE_NAME}={seen['binding']}")
+    assert "httponly" in cookie.lower() and "samesite=lax" in cookie.lower()
+    assert len(seen["binding"]) >= 32
+
+    # A second tab reuses this browser's binding, so both callbacks match.
+    second_binding = seen["binding"]
+    await client.get("/v1/auth/oidc/login")
+    assert seen["binding"] == second_binding
+
+
+async def test_a_callback_from_a_browser_that_did_not_start_the_sign_in_is_refused(client, monkeypatch):
+    # The attacker's own half-finished sign-in, its link opened by the victim:
+    # the state is real and unused, but the victim's browser has no binding.
+    await oidc_module_for_tests._redis.set(
+        f"{oidc_module_for_tests._BIND_KEY_PREFIX}attacker-state",
+        oidc_module_for_tests._binding_digest("a" * 43),
+    )
+    redeemed = []
+
+    async def complete_login(auth_response):
+        redeemed.append(auth_response)
+        return AuthIdentity(subject="oid::mallory", username="mallory", provider="entra")
+
+    monkeypatch.setattr(auth_router_module, "complete_login", complete_login)
+    response = await client.get("/v1/auth/oidc/callback", params={"state": "attacker-state", "code": "c"})
+
+    assert response.headers["location"] == "/login?sso=failed"
+    assert _access_cookie(client) is None
+    assert redeemed == []  # refused before the code is redeemed
+
+
+async def test_a_wrong_or_reused_binding_is_refused(client, bind_sign_in, monkeypatch):
+    monkeypatch.setattr(auth_router_module, "complete_login", _signed_in_as("mallory"))
+    await bind_sign_in("st-1", binding="a" * 43)
+    client.cookies.set(OIDC_BINDING_COOKIE_NAME, "z" * 43)  # another browser's binding
+    response = await client.get("/v1/auth/oidc/callback", params={"state": "st-1", "code": "c"})
+    assert response.headers["location"] == "/login?sso=failed"
+
+    # Single use: the right binding cannot retry a state already tried.
+    client.cookies.set(OIDC_BINDING_COOKIE_NAME, "a" * 43)
+    response = await client.get("/v1/auth/oidc/callback", params={"state": "st-1", "code": "c"})
+    assert response.headers["location"] == "/login?sso=failed"
+    assert _access_cookie(client) is None
+
+
+async def test_a_bound_sign_in_completes_and_spends_its_binding(client, bind_sign_in, monkeypatch):
+    monkeypatch.setattr(auth_router_module, "complete_login", _signed_in_as("alice"))
+    await bind_sign_in("st-2")
+    response = await client.get("/v1/auth/oidc/callback", params={"state": "st-2", "code": "c"})
+
+    assert response.status_code == 302 and response.headers["location"] == "/"
+    assert _access_cookie(client) is not None
+    # The binding is spent: the callback tells the browser to drop it.
+    cleared = [
+        header
+        for header in response.headers.get_list("set-cookie")
+        if header.startswith(f"{OIDC_BINDING_COOKIE_NAME}=")
+    ]
+    assert cleared and "max-age=0" in cleared[0].lower()
+
+
+async def test_the_binding_check_fails_closed_without_redis(monkeypatch):
+    async def broken():
+        raise ConnectionError("redis down")
+
+    monkeypatch.setattr(oidc_module_for_tests, "_get_redis", broken)
+    assert await oidc_module_for_tests.consume_login_binding("s", "a" * 43) is False
+    assert await oidc_module_for_tests.consume_login_binding(None, "a" * 43) is False

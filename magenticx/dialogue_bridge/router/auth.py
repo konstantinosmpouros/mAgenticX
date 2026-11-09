@@ -1,3 +1,4 @@
+import secrets
 from datetime import datetime, timezone
 from urllib.parse import urlencode
 
@@ -17,8 +18,11 @@ from core.settings import settings
 from core.auth.session import (
     AuthContext,
     clear_device_cookie,
+    clear_oidc_binding_cookie,
     get_device_id,
+    get_oidc_binding,
     issue_device_cookie,
+    issue_oidc_binding_cookie,
     resolve_parked_refresh,
     access_ttl_for_session,
     build_auth_response,
@@ -49,8 +53,10 @@ from utils.auth import (
     require_multi_account,
 )
 from core.auth.oidc import (
+    OIDC_FLOW_TTL_SECONDS,
     begin_login,
     complete_login,
+    consume_login_binding,
     consume_park_intent,
     consume_reauth_intent,
     EntraOIDCError,
@@ -533,6 +539,10 @@ async def oidc_login(request: Request, park: bool = False, reauth: bool = False)
     ``?reauth=true`` asks the *signed-in* user to prove it is still them (plan 32:
     deleting the account needs a recent sign-in). Microsoft is told to ask for the
     credentials again, and the callback accepts only the same account.
+
+    Every sign-in is bound to this browser (login-CSRF defence): a random binding
+    goes in an httpOnly cookie, its hash with the flow. A browser that already
+    holds one (a second tab signing in) reuses it, so both tabs' callbacks match.
     """
     if not settings.entra.enabled:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SSO is not enabled.")
@@ -541,9 +551,13 @@ async def oidc_login(request: Request, park: bool = False, reauth: bool = False)
         reauth_user_id = (await require_session(request)).user_id
     elif park:
         await guard_add_account(request)
+    binding = get_oidc_binding(request) or secrets.token_urlsafe(32)
     try:
         auth_uri = await begin_login(
-            oidc_redirect_uri(request), park=park and not reauth, reauth_user_id=reauth_user_id
+            oidc_redirect_uri(request),
+            binding=binding,
+            park=park and not reauth,
+            reauth_user_id=reauth_user_id,
         )
     except EntraOIDCError as exc:
         logger.error(
@@ -555,7 +569,9 @@ async def oidc_login(request: Request, park: bool = False, reauth: bool = False)
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Could not start Microsoft sign-in. Please try again.",
         ) from exc
-    return RedirectResponse(auth_uri, status_code=status.HTTP_302_FOUND)
+    redirect = RedirectResponse(auth_uri, status_code=status.HTTP_302_FOUND)
+    issue_oidc_binding_cookie(redirect, binding, OIDC_FLOW_TTL_SECONDS)
+    return redirect
 
 
 @router.get("/oidc/callback")
@@ -567,7 +583,14 @@ async def oidc_callback(
     the session cookies, and land the browser in the SPA. The only sign-in path.
 
     On any failure we redirect back to the login screen with an ``sso`` reason
-    query rather than leaking an error page — no session cookies are set."""
+    query rather than leaking an error page — no session cookies are set. The
+    browser's sign-in binding is spent either way: its cookie is cleared."""
+    response = await _complete_oidc_callback(request, db)
+    clear_oidc_binding_cookie(response)
+    return response
+
+
+async def _complete_oidc_callback(request: Request, db: AsyncSession) -> RedirectResponse:
     if not settings.entra.enabled:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SSO is not enabled.")
 
@@ -595,6 +618,17 @@ async def oidc_callback(
         base = settings.entra.login_error_redirect
         separator = "&" if "?" in base else "?"
         return RedirectResponse(f"{base}{separator}{urlencode(query)}", status_code=status.HTTP_302_FOUND)
+
+    # Login CSRF: the state must have been started by *this* browser (its binding
+    # cookie), checked before the code is redeemed. A link someone else started —
+    # say an attacker's own half-finished sign-in — is refused here.
+    if not await consume_login_binding(request.query_params.get("state"), get_oidc_binding(request)):
+        logger.warning(
+            "oidc_login_binding_mismatch",
+            "A sign-in callback came from a browser that did not start it",
+            failure_reason="login_binding_mismatch",
+        )
+        return _deny("failed")
 
     try:
         identity = await complete_login(dict(request.query_params))
