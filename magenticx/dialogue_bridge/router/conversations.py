@@ -1,3 +1,4 @@
+import asyncio
 from secrets import token_urlsafe
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -269,7 +270,9 @@ async def exportConversationPdf(
     if not messages:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found in conversation.")
 
-    pdf_bytes = render_conversation_pdf(current_conv, messages, payload.mode)
+    # CPU-heavy and synchronous: on the event loop it would stall every other
+    # user's streams and requests while it renders.
+    pdf_bytes = await asyncio.to_thread(render_conversation_pdf, current_conv, messages, payload.mode)
     filename = conversation_pdf_filename(current_conv, payload.mode)
     logger.info(
         "conversation_pdf_exported",

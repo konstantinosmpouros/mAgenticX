@@ -13,7 +13,12 @@ from schema import (
     InferenceRunResumeIn,
     QueuedStartResponse,
 )
-from core.auth.session import AuthUser, authenticate_websocket_user, require_csrf_protection
+from core.auth.session import (
+    AuthUser,
+    authenticate_websocket_user,
+    require_csrf_protection,
+    websocket_origin_allowed,
+)
 from core.security.rate_limit import allow_ws_connect, inference_rate_limit
 from utils import validate_userId
 from utils.inference_runs import (
@@ -136,6 +141,10 @@ async def inference_run_websocket(
               stream entry was lost on this socket. Server closes cleanly
               afterwards.
     """
+    if not websocket_origin_allowed(websocket.headers):
+        await websocket.close(code=_WS_FORBIDDEN, reason="Origin not allowed")
+        return
+
     user = await authenticate_websocket_user(websocket.cookies, user_id)
     if user is None:
         await websocket.close(code=_WS_UNAUTHORIZED, reason="Authentication required")

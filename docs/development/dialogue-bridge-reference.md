@@ -162,7 +162,7 @@ Groups (env alias → default):
 - **Workflows** (`WorkflowSettings`, plan 38) — `WORKFLOW_APPROVAL_TTL_HOURS`→24, `WORKFLOW_RUN_STREAM_IDLE_TIMEOUT_SECONDS`→900 (also the leg's read timeout), `WORKFLOW_RUN_STREAM_MAX_SECONDS`→3600 (wall clock per leg), `WORKFLOW_RUN_WATCHDOG_INTERVAL_SECONDS`→60, `WORKFLOW_MAX_RUNS_PER_WORKFLOW`→200, `WORKFLOW_MAX_ACTIVE_RUNS_PER_USER`→5, `WORKFLOW_RUN_MAX_EVENTS`→20000, `WORKFLOW_RUN_MAX_EVENT_BYTES`→65536, `WORKFLOW_RUN_MAX_INPUT_BYTES`→65536, `WORKFLOW_MAX_SPEC_BYTES`→524288, `WORKFLOW_RUN_PERSIST_BATCH`→50, `WORKFLOW_RUN_PERSIST_INTERVAL_MS`→250, `WORKFLOW_RUNS_PAGE_SIZE`→20, `WORKFLOW_RUN_STREAM_HEARTBEAT_SECONDS`→15.
 - **Scheduler** — `SCHEDULER_ENABLED`→True, poll 30s, claim batch 10, `run_timeout_seconds`→600 (headless HITL watchdog), max 50 tasks/user, `min_interval_seconds`→300.
 - **Logging** — `LOG_LEVEL`→INFO, `LOG_FORMAT`→console, `LOG_TIMEZONE`/`TZ`→Europe/Athens, `LOG_REDACTION_SECRET`.
-- **CORS** — `CORS_ALLOWED_ORIGINS`→localhost:8080/8050 + 127.0.0.1:8080/8050, credentials True (**wildcard + credentials = startup error**), methods `GET,POST,PUT,PATCH,DELETE`, computed default headers, exposed download/range headers, max-age 600.
+- **CORS** — `CORS_ALLOWED_ORIGINS`→localhost:8080/8050 + 127.0.0.1:8080/8050, credentials True (**wildcard + credentials = startup error**; outside development/test only `https` public-host origins, else startup error), methods `GET,POST,PUT,PATCH,DELETE`, computed default headers, exposed download/range headers, max-age 600.
 
 **Boot validators (`_finalize_secrets`, refuse to start):** (1) empty `TRUSTED_PROXY_SECRET` → raise (all envs); (2) Entra not fully configured → raise (all envs — it is the only way in); (2b) `SESSION_SIGNING_BACKEND=file` outside dev/test → raise, and an incomplete signing config → raise (all envs); (3) outside dev/test, empty `SESSION_TOKEN_SECRET` → raise (dev generates a random one); (4) redaction-secret fallback to token_secret (never fails). Plus: missing `DATABASE_URL`, out-of-range JWT durations, credentialed CORS wildcard, a failed `alembic upgrade head`, or an unreadable `*_FILE` path all abort startup.
 
@@ -393,7 +393,7 @@ The detached task produces into Redis whether or not any browser is attached —
 
 **WebSocket endpoint** `WS /v1/inference/runs/{user_id}/{run_id}/ws` (`router/inference.py`):
 
-1. `authenticate_websocket_user` (access cookie); failure → close `4401`. Codes `4401`/`4403`/`4404`/`4400` mirror HTTP.
+1. `websocket_origin_allowed` (`Origin` must be in `CORS_ALLOWED_ORIGINS`; absent = not a browser, allowed) → else close `4403`. Then `authenticate_websocket_user` (access cookie); failure → close `4401`. Codes `4401`/`4403`/`4404`/`4400` mirror HTTP.
 2. `get_active_run_for_user` (owner-scoped); missing → `4404`.
 3. `accept()`, then wait ≤`INFERENCE_WS_SUBSCRIBE_TIMEOUT_SECONDS` (10s) for the first frame `{"type":"subscribe","since":"<seq>"|null}`.
 4. `async for seq, event in stream_run_events(run_id, since)`: `SNAPSHOT_SEQ_SENTINEL` → `{"type":"snapshot","payload":...}`; else `{"type":"event","seq":seq,"payload":...}`.
@@ -463,7 +463,8 @@ terminal → _finish_run writes content+raw_events+checkpoint_id; event_log.mark
 ## 16. Sharing & export
 
 - **Share** — `POST …/share` selects a scoped message set (`full`/`branch`/`message` mode + optional `branchPath`), builds a frozen `snapshot_json`, resolves `expires_at` against `share.default_ttl_days`/`max_ttl_days` (422 if too far), inserts `ConversationShareTable` with `token = token_urlsafe(32)`. `GET /v1/shared-conversations/{token}` is **public**, checks active/not-revoked/not-expired, and renders `SharedConversationDetail` from the snapshot. `DELETE …/share/{id}` sets `is_active=false`+`revoked_at`.
-- **PDF export** — `POST …/share/export-pdf` renders the scoped messages to a PDF and returns raw `application/pdf` (not persisted).
+- **PDF export** — `POST …/share/export-pdf` renders the scoped messages to a PDF and returns raw `application/pdf` (not persisted). The render is CPU-heavy and synchronous, so it runs in a worker thread (`asyncio.to_thread`): on the event loop it would stall every user's streams.
+- **API docs** — `/docs`, `/redoc` and `/openapi.json` exist only when `APP_ENV` is `development` or `test` (`API_DOCS_ENABLED` in `main.py`); the UI's nginx also answers `404` for `/api/docs`, `/api/redoc` and `/api/openapi.json`, so they never reach the edge.
 - **Shared-continue** — the `shared_continue` inference mode clones a shared conversation into the viewer's account.
 
 ---

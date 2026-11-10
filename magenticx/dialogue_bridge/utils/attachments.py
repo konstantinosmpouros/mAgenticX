@@ -113,6 +113,20 @@ def encode_disposition(name: str | None, disposition: str) -> str:
     return f'{disposition}; filename="{ascii_name}"; filename*=UTF-8\'\'{encoded_name}'
 
 
+#: MIME types a browser executes or renders as a document: never served inline.
+ACTIVE_CONTENT_MIMES = frozenset({
+    "text/html",
+    "application/xhtml+xml",
+    "image/svg+xml",
+    "text/javascript",
+    "application/javascript",
+    "application/ecmascript",
+    "text/ecmascript",
+    "application/xml",
+    "text/xml",
+})
+
+
 async def stream_blob_response(
     *,
     user_id: str,
@@ -163,14 +177,22 @@ async def stream_blob_response(
             detail="The attachment could not be prepared for download. Please try again.",
         )
 
+    inline = disposition == "inline"
+    # A type a browser would run (HTML, JS, XML) is never served inline: the
+    # stored MIME is the uploader's word, or derived from an agent's file name.
+    if inline and (mime or "").split(";")[0].strip().lower() in ACTIVE_CONTENT_MIMES:
+        disposition = "attachment"
     base_headers = {
         "Accept-Ranges": "bytes",
         "Content-Disposition": encode_disposition(file_name, disposition),
         # nginx sets it too; the bridge does not rely on the proxy for it.
         "X-Content-Type-Options": "nosniff",
     }
-    if disposition == "inline":
+    if inline:
         base_headers["Cache-Control"] = f"private, max-age={settings.attachments.inline_cache_max_age_seconds}"
+        # The UI only fetch()es a preview and renders the bytes itself; opened
+        # directly as a page it runs nothing and loads nothing on the app origin.
+        base_headers["Content-Security-Policy"] = "sandbox; default-src 'none'"
 
     chunk_size = settings.attachments.stream_chunk_bytes
 

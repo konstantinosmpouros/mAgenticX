@@ -189,13 +189,17 @@ async def lifespan(app: FastAPI):
     logger.info("service_shutdown", "Dialogue bridge shutdown completed")
 
 
+# The interactive API docs and the OpenAPI schema map every route for anyone
+# who can reach the bridge, so they exist only in development and test.
+API_DOCS_ENABLED = settings.app.env in {"development", "test"}
+
 # Initialize FastAPI app
 app = FastAPI(
     title="Bridge Service",
     description="A service that bridges the gap between various dialogue systems and applications.",
-    docs_url="/docs",
-    redoc_url="/redoc",
-    openapi_url="/openapi.json",
+    docs_url="/docs" if API_DOCS_ENABLED else None,
+    redoc_url="/redoc" if API_DOCS_ENABLED else None,
+    openapi_url="/openapi.json" if API_DOCS_ENABLED else None,
     lifespan=lifespan
 )
 

@@ -20,7 +20,7 @@ from typing import Any, AsyncIterator, Optional
 
 from fastapi import WebSocket, WebSocketDisconnect
 
-from core.auth.session import authenticate_websocket_user
+from core.auth.session import authenticate_websocket_user, websocket_origin_allowed
 from core.database import SessionLocal
 from core.logging import get_logger
 from core.security.rate_limit import allow_ws_connect
@@ -32,6 +32,7 @@ logger = get_logger(__name__)
 
 # The run socket's close codes (RFC 6455 application range, HTTP-like).
 WS_UNAUTHORIZED = 4401
+WS_FORBIDDEN = 4403
 WS_NOT_FOUND = 4404
 WS_BAD_REQUEST = 4400
 WS_RATE_LIMITED = 4429
@@ -41,7 +42,10 @@ _MAX_SINCE_LENGTH = 64
 
 
 async def authenticate_socket(websocket: WebSocket, user_id: str) -> bool:
-    """Session and connect-rate checks of the run socket; closes on failure."""
+    """Origin, session and connect-rate checks of the socket; closes on failure."""
+    if not websocket_origin_allowed(websocket.headers):
+        await websocket.close(code=WS_FORBIDDEN, reason="Origin not allowed")
+        return False
     if await authenticate_websocket_user(websocket.cookies, user_id) is None:
         await websocket.close(code=WS_UNAUTHORIZED, reason="Authentication required")
         return False

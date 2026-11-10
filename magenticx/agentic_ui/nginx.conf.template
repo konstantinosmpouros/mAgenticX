@@ -188,6 +188,14 @@ server {
     proxy_send_timeout 3600s;
   }
 
+  # The bridge's API docs and OpenAPI schema never leave the server: they map
+  # every route. The bridge only serves them in development anyway; this keeps
+  # them off the edge even if that ever changes. (A regex location wins over
+  # the plain /api/ prefix below.)
+  location ~ ^/api/(docs|redoc|openapi\.json)(/|$) {
+    return 404;
+  }
+
   # Service-to-service-only endpoints. The bridge guards these with the internal
   # proxy secret, but nginx injects that same secret on browser traffic — so we
   # MUST block the path at the edge or a browser could reach it. The agents

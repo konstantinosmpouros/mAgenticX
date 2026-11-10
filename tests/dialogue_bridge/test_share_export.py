@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -7,6 +8,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+import router.conversations as conversations_router
 import utils.share_export as share_export
 from core.database import AgentTable, AttachmentTable, ConversationTable, MessageTable
 from utils.share_export import (
@@ -532,6 +534,26 @@ async def test_export_pdf_endpoint_full_mode(client, session_factory, seeded_use
     assert response.content.startswith(b"%PDF")
     assert int(response.headers["content-length"]) == len(response.content)
     assert "attachment" in response.headers["content-disposition"]
+
+
+async def test_export_pdf_renders_off_the_event_loop(client, session_factory, seeded_user, seeded_agent, monkeypatch):
+    # A render on the event loop would stall every other user's streams.
+    ids = await _seed_endpoint_conversation(session_factory, seeded_user, seeded_agent, content="Body.")
+    loop_thread = threading.get_ident()
+    render_threads = []
+    real_render = conversations_router.render_conversation_pdf
+
+    def render(*args):
+        render_threads.append(threading.get_ident())
+        return real_render(*args)
+
+    monkeypatch.setattr(conversations_router, "render_conversation_pdf", render)
+    response = await client.post(
+        f"/v1/conversations/{seeded_user.id}/{ids['conversation_id']}/share/export-pdf",
+        json={"mode": "full", "messageId": ids["ai_message_id"]},
+    )
+    assert response.status_code == 200 and response.content.startswith(b"%PDF")
+    assert render_threads and render_threads[0] != loop_thread
 
 
 async def test_export_pdf_endpoint_branch_mode(client, session_factory, seeded_user, seeded_agent):

@@ -16,7 +16,7 @@ jobs:
     steps:
       # Checkout the code at the PR head or the current commit for workflow_dispatch
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 1
@@ -24,7 +24,7 @@ jobs:
       # Run the Claude code quality review action
       - name: Claude code quality review
         id: review
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@d70510b174a1244958df0b03166a54912811f3e6 # v1.0.264
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_args: |
@@ -179,7 +179,7 @@ jobs:
       # If file writing fails, still post the comment.
       - name: Upload review as artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: code-review-results
           path: code-review.md

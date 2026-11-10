@@ -705,6 +705,27 @@ async def authenticate_websocket_user(
     return AuthUser(id=claims["sub"], is_active=bool(claims.get("act", True)))
 
 
+def websocket_origin_allowed(websocket_headers: object) -> bool:
+    """Whether a WebSocket handshake may proceed, by its ``Origin``.
+
+    Browsers apply no CORS to WebSocket handshakes and send the session cookie
+    to any same-site page, so a page on a sibling subdomain could otherwise open
+    a user's sockets (cross-site WebSocket hijacking). A browser always sends
+    ``Origin``: one outside ``CORS_ALLOWED_ORIGINS`` (``null`` included) is
+    refused. A handshake without one is no browser, so it cannot ride a
+    victim's cookie, and the session check alone decides it.
+    """
+    get = getattr(websocket_headers, "get", None)
+    origin = (get("origin") if get is not None else None) or ""
+    if not origin:
+        return True
+    allowed = {o.rstrip("/").lower() for o in settings.cors.allowed_origins}
+    if origin.rstrip("/").lower() in allowed:
+        return True
+    logger.warning("ws_origin_refused", "WebSocket handshake from a disallowed origin", origin=origin[:200])
+    return False
+
+
 async def require_csrf_protection(request: Request) -> None:
     if request.method.upper() in {"GET", "HEAD", "OPTIONS"}:
         return

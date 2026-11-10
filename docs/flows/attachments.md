@@ -139,7 +139,7 @@ Streams the blob with `Content-Disposition: attachment`. Supports the HTTP `Rang
 
 ### `GET /v1/attachments/preview/{userId}/{convId}/{msgId}/{blobId}`
 
-Same as download but `Content-Disposition: inline`. Used for in-browser rendering (PDF viewer, `<iframe>`, `<img>`).
+Same as download but `Content-Disposition: inline`, for the UI's in-browser renderers: the UI `fetch()`es the bytes and renders them from a `blob:` URL (PDF viewer, text), it never navigates to this URL. So the response carries `Content-Security-Policy: sandbox; default-src 'none'` (opened directly as a page it runs and loads nothing on the app origin), and a type a browser would execute (`ACTIVE_CONTENT_MIMES`: HTML, XHTML, SVG, JavaScript, XML) is served as `attachment` even here, since the stored MIME is the uploader's word or derived from an agent's file name. Images are refused (they come through the batch `/images` route).
 
 ### `GET /v1/attachments/preview-token/{userId}/{convId}/{msgId}/{blobId}`
 

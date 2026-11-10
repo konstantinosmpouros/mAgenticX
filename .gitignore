@@ -39,3 +39,7 @@ magenticx/secrets/
 
 # pytest-cov data file (local and CI test runs)
 .coverage
+
+# Draft notes and research: local only, never committed (the repo is public).
+# Files tracked before this rule stay tracked until removed with `git rm --cached`.
+docs/draft/

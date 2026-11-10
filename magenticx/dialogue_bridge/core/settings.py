@@ -4,7 +4,7 @@ import os
 import secrets
 from pathlib import Path
 from typing import Literal
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 import httpx
 from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
@@ -53,6 +53,13 @@ def _split_csv(raw: object) -> tuple[str, ...]:
         if candidate:
             items.append(candidate)
     return tuple(items)
+
+
+def _is_public_https_origin(origin: str) -> bool:
+    """``https://host[:port]`` on a host that is not loopback."""
+    parsed = urlsplit(origin.strip())
+    host = (parsed.hostname or "").lower()
+    return parsed.scheme == "https" and bool(host) and host not in {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
 
 
 class AppSettings(BaseSettings):
@@ -1417,6 +1424,18 @@ class Settings(BaseSettings):
                 "SESSION_SIGNING_BACKEND=file is for local development only; "
                 f"APP_ENV={self.app.env!r} must sign with OCI KMS."
             )
+
+        # CORS (and the WebSocket Origin check, which reads the same list)
+        # trusts browsers on these origins with credentials. Outside
+        # development only https origins on real hosts: the localhost defaults
+        # would otherwise follow the bridge into production.
+        if self.app.env not in {"development", "test"}:
+            local = [o for o in self.cors.allowed_origins if not _is_public_https_origin(o)]
+            if local:
+                raise ValueError(
+                    f"CORS_ALLOWED_ORIGINS must list only https origins on public hosts when APP_ENV={self.app.env!r}; "
+                    f"refusing {local}."
+                )
 
         if not self.session.token_secret.get_secret_value():
             if self.app.env not in {"development", "test"}:

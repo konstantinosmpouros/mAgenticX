@@ -15,14 +15,14 @@ jobs:
     steps:
       # Checkout the code to analyze the changes in the pull request
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 2
 
       - name: Claude security review for PR
         if: github.event_name == 'pull_request'
-        uses: anthropics/claude-code-security-review@main
+        uses: anthropics/claude-code-security-review@0c6a49f1fa56a1d472575da86a94dbc1edb78eda # main on 2026-02-11 (no release tags)
         with:
           claude-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude-model: claude-sonnet-4-5-20250929
@@ -35,7 +35,7 @@ jobs:
 
       - name: Claude security review for workflow dispatch
         if: github.event_name != 'pull_request'
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@d70510b174a1244958df0b03166a54912811f3e6 # v1.0.264
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: |
@@ -86,7 +86,7 @@ jobs:
 
       - name: Upload security report as artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: claude-security-review
           path: security-report.md

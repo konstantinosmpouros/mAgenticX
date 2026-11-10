@@ -356,7 +356,7 @@ Frames are O(chunk), not O(run) — the old cumulative `update` snapshots are go
 
 ## Phase 4 - WebSocket Observation
 
-`WS /v1/inference/runs/{user_id}/{run_id}/ws` opens the observer connection. The handler authenticates the session cookie (`authenticate_websocket_user`), accepts the upgrade, awaits the client's first frame `{"type":"subscribe","since":<seq>|null}`, then drives `stream_run_events(run_id, since=since)`. Close codes are app-defined in the 4xxx range: `4401` unauthenticated, `4403` not yours, `4404` no such run, `4400` malformed handshake.
+`WS /v1/inference/runs/{user_id}/{run_id}/ws` opens the observer connection. The handler refuses a browser `Origin` outside `CORS_ALLOWED_ORIGINS` (`websocket_origin_allowed`, close `4403`; browsers apply no CORS to WebSocket handshakes, so this stops a page on a sibling subdomain from opening a user's socket), authenticates the session cookie (`authenticate_websocket_user`), accepts the upgrade, awaits the client's first frame `{"type":"subscribe","since":<seq>|null}`, then drives `stream_run_events(run_id, since=since)`. Close codes are app-defined in the 4xxx range: `4401` unauthenticated, `4403` foreign origin or not yours, `4404` no such run, `4400` malformed handshake.
 
 ```mermaid
 sequenceDiagram

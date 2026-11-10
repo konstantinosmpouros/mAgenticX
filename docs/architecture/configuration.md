@@ -324,7 +324,7 @@ Per-destination `httpx` timeouts, in seconds. Each destination has four knobs: `
 
 | Env var | Default | What it does |
 | --- | --- | --- |
-| `CORS_ALLOWED_ORIGINS` | `localhost:8080/8050` + `127.0.0.1:8080/8050` (CSV) | Allowed origins. **Cannot contain `*` while credentials are on** (raises at startup). |
+| `CORS_ALLOWED_ORIGINS` | `localhost:8080/8050` + `127.0.0.1:8080/8050` (CSV) | Allowed browser origins, for CORS **and** the WebSocket `Origin` check. **Cannot contain `*` while credentials are on**, and outside `APP_ENV=development`/`test` only `https` origins on public hosts (the localhost defaults raise at startup). Dennis sets `https://agents.magenticx.com`. |
 | `CORS_ALLOW_CREDENTIALS` | `true` | Allow cookies on cross-origin requests. |
 | `CORS_ALLOW_METHODS` | `GET,POST,PUT,PATCH,DELETE` (CSV) | Allowed methods. |
 | `CORS_ALLOW_HEADERS` | auto | Defaults to `Accept, Content-Type, Authorization, Range, If-Range, <csrf header>` if unset. |
@@ -587,7 +587,7 @@ These flip behavior at boot; all are **fail-closed by default** (secure unless e
 - **`*_FILE` unreadable is fail-loud; `*_FILE` unset is a silent fallback.** A set-but-unreadable secret path raises at startup (so a permission slip is loud), but an *unset* `*_FILE` quietly falls back to the plain env var — which is exactly what local `.env` dev relies on.
 - **`LOG_FORMAT` defaults to `console`.** Prod must run `json` (the production compose sets it on all three) or Alloy can't extract the `level` label and the Loki dashboards/error alerts break.
 - **The redaction secret only affects `client_ip`** now (`user_id`/`session_id` are logged raw to match the DB — see [observability.md](../development/observability.md)). Without the shared secret, `client_ip` correlation degrades to per-process; it never leaks the raw IP.
-- **JWT TTLs and CORS are validated.** Out-of-range JWT durations raise; `CORS_ALLOWED_ORIGINS` containing `*` with credentials on raises. These are startup failures, not silent clamps.
+- **JWT TTLs and CORS are validated.** Out-of-range JWT durations raise; `CORS_ALLOWED_ORIGINS` containing `*` with credentials on raises, and so does a non-`https` or loopback origin outside development/test. These are startup failures, not silent clamps.
 - **Cookie names auto-prefix `__Host-`** when `SESSION_COOKIE_SECURE=true` and no `SESSION_COOKIE_DOMAIN` is set. Set a domain only if you genuinely need cross-subdomain cookies — it drops the `__Host-` hardening.
 - **agents reads two databases.** `DATABASE_*` (bridge) and `AGENT_RUNTIME_DATABASE_*` (agents checkpointer) are different DBs on the same Postgres instance, and the latter is a **raw psycopg** conninfo (`postgresql://`), not the bridge's `postgresql+asyncpg://`.
 - **A bad `MODEL_PRICES_JSON` is a start failure**, not a silent fallback to the defaults: the bridge refuses to boot rather than price every answer wrong.
