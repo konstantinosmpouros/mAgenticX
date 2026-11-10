@@ -82,6 +82,51 @@ def release_namespace_bindings(thread_id: str) -> None:
 def _now_ms() -> int:
     return int(time.time() * 1000)
 
+
+def reasoning_parts(msg: Any) -> List[Tuple[str, str]]:
+    """The reasoning text in an AI message (chunk), as ``(part key, text)`` in order.
+
+    A streamed chunk carries a piece of one part; a final message, every part
+    whole. Shapes: OpenAI's Responses API summary (``{"type": "reasoning",
+    "summary": [{"index", "text"}]}`` — its encrypted reasoning carries no
+    text and yields nothing), LangChain's v1 standard block (``{"type":
+    "reasoning", "reasoning": "..."}``) and Anthropic's extended thinking
+    (``{"type": "thinking", "thinking": "..."}``). The key tells one part from
+    the next: the content block's index, plus the summary part's.
+    """
+    content = getattr(msg, "content", None)
+    if not isinstance(content, list):
+        return []
+    parts: List[Tuple[str, str]] = []
+    for block in content:
+        if not isinstance(block, Mapping):
+            continue
+        block_type = block.get("type")
+        block_index = str(block.get("index", ""))
+        if block_type == "reasoning":
+            summary = block.get("summary")
+            if isinstance(summary, list):
+                for part in summary:
+                    text = part.get("text") if isinstance(part, Mapping) else None
+                    if isinstance(text, str) and text:
+                        parts.append((f"{block_index}:{part.get('index', '')}", text))
+            elif isinstance(block.get("reasoning"), str) and block["reasoning"]:
+                parts.append((block_index, block["reasoning"]))
+        elif block_type == "thinking" and isinstance(block.get("thinking"), str) and block["thinking"]:
+            parts.append((block_index, block["thinking"]))
+    return parts
+
+
+def _merge_parts(parts: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
+    """Join consecutive pieces of the same part."""
+    merged: List[Tuple[str, str]] = []
+    for key, text in parts:
+        if merged and merged[-1][0] == key:
+            merged[-1] = (key, merged[-1][1] + text)
+        else:
+            merged.append((key, text))
+    return merged
+
 class AGUIStreamNormalizer:
     """
     Combined streaming normalizer for LangGraph:
@@ -110,6 +155,14 @@ class AGUIStreamNormalizer:
 
         # --- streaming state (per actor: orchestrator/sub-agent) ---
         self._stream_state: Dict[str, Dict[str, bool]] = {}
+
+        # --- reasoning summary (per actor, keyed by raw namespace) ---
+        # The summary part streaming now, held until it is complete: each part
+        # goes out as ONE thought (the bridge never coalesces thoughts, so a
+        # thought per token would render as a thought per token). ``streamed``
+        # marks that this model call's parts came over "messages", so the
+        # final message in "updates" must not send them again.
+        self._thoughts: Dict[tuple, Dict[str, Any]] = {}
 
         # --- tool correlation ---
         self._pending_tool_call_ids: set[str] = set()     # start/args emitted; waiting ToolMessage result
@@ -349,12 +402,16 @@ class AGUIStreamNormalizer:
             self._emit_tool_message_result(out, payload, ns_label)
             return out
 
-        # 2) AI message => assistant text chunks only
+        # 2) AI message => reasoning-summary thoughts, then assistant text chunks
         if kind == "ai":
+            for part_key, text in reasoning_parts(payload):
+                self._buffer_thought(out, namespace, ns_label, part_key, text)
             delta = self._extract_text_delta(payload)
             if not delta:
                 return out
 
+            # The reply begins: the reasoning before it is complete.
+            self._flush_thought(out, namespace, ns_label)
             # First content => thinking_end + response_start + first chunk
             self._end_thinking_if_needed(out, ns_label)
             state = self._get_state(ns_label)
@@ -484,6 +541,12 @@ class AGUIStreamNormalizer:
                 # usage went out then. Only its tool calls can be new here (the
                 # calls an approval let through).
                 reemitted = isinstance(node_name, str) and "." in node_name
+
+                # The model call settled: its reasoning goes out before its text
+                # and tool calls — the rest of a part streamed over "messages",
+                # or, on an updates-only stream, every part from this message.
+                if not reemitted:
+                    self._settle_thoughts(out, msg, namespace, ns_label)
 
                 # If updates stream contains final AI content:
                 # - With messages-mode chunks already seen: only close response.
@@ -1015,6 +1078,51 @@ class AGUIStreamNormalizer:
             return "".join(parts)
 
         return ""
+
+
+    def _thought_state(self, namespace: Optional[tuple]) -> Dict[str, Any]:
+        """The reasoning-summary buffer of one actor (orchestrator or a sub-agent)."""
+        key = tuple(namespace) if namespace else ()
+        if key not in self._thoughts:
+            self._thoughts[key] = {"part": None, "text": "", "streamed": False}
+        return self._thoughts[key]
+
+
+    def _buffer_thought(
+        self, out: List[bytes], namespace: Optional[tuple], ns_label: Optional[str], part_key: str, text: str,
+    ) -> None:
+        """Add a streamed piece of a summary part; a new part sends the previous one."""
+        state = self._thought_state(namespace)
+        if state["part"] is not None and state["part"] != part_key:
+            self._flush_thought(out, namespace, ns_label)
+        state["part"] = part_key
+        state["text"] += text
+        state["streamed"] = True
+
+
+    def _flush_thought(self, out: List[bytes], namespace: Optional[tuple], ns_label: Optional[str]) -> None:
+        """Send the summary part held so far as one thought."""
+        state = self._thought_state(namespace)
+        text = state["text"].strip()
+        state["part"], state["text"] = None, ""
+        if text:
+            self._push(out, self.emitter.thought(text, namespace=ns_label))
+
+
+    def _settle_thoughts(self, out: List[bytes], msg: Any, namespace: Optional[tuple], ns_label: Optional[str]) -> None:
+        """A model call's final message: its reasoning goes out before its text and tool calls.
+
+        Streamed over "messages", only the part still held is left to send. On
+        an updates-only stream nothing was, so every part comes from the message.
+        """
+        state = self._thought_state(namespace)
+        if state["streamed"]:
+            self._flush_thought(out, namespace, ns_label)
+        else:
+            for _part_key, text in _merge_parts(reasoning_parts(msg)):
+                if text.strip():
+                    self._push(out, self.emitter.thought(text.strip(), namespace=ns_label))
+        state["streamed"] = False
 
 
     def _end_thinking_if_needed(self, out: List[bytes], namespace: Optional[str]) -> None:

@@ -25,6 +25,7 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from harness.agui import AGUIEmitter, AGUIStreamNormalizer
 from harness.abstractions.base_agent import AgentType, BaseAgent
+from harness.models import register_reasoning_summaries
 from harness.abstractions.subagent_tree import SUBAGENTS_KEY, validate_subagent_tree
 from harness.async_tasks.client import AsyncTaskMiddleware
 from harness.async_tasks.specs import (
@@ -75,6 +76,24 @@ logger = get_logger(__name__)
 
 STREAMING_MODES = Literal["updates", "messages", "tasks"]
 SubAgentsT = Sequence[Any] | Mapping[str, Any] | None
+
+
+def model_specs(model: Any, subagents: SubAgentsT) -> set[str]:
+    """Every string model spec in an agent's tree: its own and each sub-agent's, at any depth."""
+    specs: set[str] = {model} if isinstance(model, str) and model else set()
+
+    def walk(nodes: Any) -> None:
+        items = nodes.values() if isinstance(nodes, Mapping) else nodes if isinstance(nodes, (list, tuple)) else ()
+        for node in items:
+            if not isinstance(node, Mapping):
+                continue  # a pre-compiled runnable: its model is already built
+            node_model = node.get("model")
+            if isinstance(node_model, str) and node_model:
+                specs.add(node_model)
+            walk(node.get(SUBAGENTS_KEY))
+
+    walk(subagents)
+    return specs
 
 
 def _without_ask_user(tools: Sequence[Any] | None) -> list[Any]:
@@ -570,13 +589,14 @@ class DeepAgent(BaseAgent, ABC):
         ring read a model's window from its LangChain profile. A model released
         after the pinned ``langchain-openai`` (``gpt-6-luna``) has no profile
         entry, so it would run with no window. Upgrading for one data row drags
-        langchain-core and deepagents along, so the window comes from
-        ``MODEL_CONTEXT_WINDOWS`` instead, handed to the model through
+        langchain-core and deepagents along, so the window comes from the
+        model's ``context_window`` in ``ALLOWED_AGENT_MODELS`` instead, handed to the model through
         deepagents' ``ProviderProfile`` when it resolves the string spec — which
         is why this runs before anything in the build resolves a model.
         """
-        for spec, window in settings.model_profiles.context_windows.items():
-            if spec in cls._windows_registered:
+        for spec, info in settings.registry.allowed_agent_models.items():
+            window = info.context_window
+            if window is None or spec in cls._windows_registered:
                 continue
             register_provider_profile(spec, ProviderProfile(init_kwargs={"profile": {"max_input_tokens": window}}))
             cls._windows_registered.add(spec)
@@ -609,8 +629,10 @@ class DeepAgent(BaseAgent, ABC):
         auto-compaction).
         """
         # Before anything resolves the model (the summarizer below, the
-        # sub-agents inside create_deep_agent): the window rides the profile.
+        # sub-agents inside create_deep_agent): the window rides the profile,
+        # and so does a reasoning model's request for its reasoning summary.
         self.register_model_windows()
+        register_reasoning_summaries(model_specs(model, subagents))
         backend = self._build_composite_backend()
 
         # Selection already happened in _filter_live_tools; builtins are appended

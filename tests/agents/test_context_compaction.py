@@ -345,4 +345,4 @@ def test_a_model_newer_than_langchain_gets_its_declared_window():
     # declared window, compaction and the context ring would have none.
     DeepAgent.register_model_windows()
     model = resolve_model("openai:gpt-6-luna")
-    assert context_window(model) == settings.model_profiles.context_windows["openai:gpt-6-luna"]
+    assert context_window(model) == settings.registry.allowed_agent_models["openai:gpt-6-luna"].context_window

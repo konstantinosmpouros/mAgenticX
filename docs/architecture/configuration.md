@@ -395,6 +395,7 @@ LangGraph + DeepAgents runtime. Configuration splits into runtime infra, the dur
 | Env var | Default | What it does |
 | --- | --- | --- |
 | `DISABLED_AGENT_SLUGS` | (empty, CSV) | Agent slugs to hide from discovery (normalized lowercase, de-duped). |
+| `ALLOWED_AGENT_MODELS` | `gpt-6-luna`, `gpt-5`, `gpt-4o`, `gpt-4o-mini` (all `openai:`) | The platform's models, `provider:model` → facts, as JSON — see **Models** below. |
 | `TITLE_CANDIDATE_COUNT` | `4` | Title candidates generated. |
 | `TITLE_MIN_CANDIDATES` | `3` | Min acceptable title candidates. |
 | `TITLE_MAX_LEN` | `120` | Max title length. |
@@ -435,7 +436,26 @@ Each built-in workflow agent picks its models per node. All accept `openai:<mode
 
 **Omni deep agent** (`OMNI_*`): `OMNI_MAIN_MODEL`, `OMNI_RESEARCHER_MODEL` and `OMNI_WRITER_MODEL` all default to `openai:gpt-6-luna`.
 
-**Model windows** (`MODEL_CONTEXT_WINDOWS`, JSON, default `{"openai:gpt-6-luna": 1050000}`): the context window of a model the pinned `langchain-openai` has no profile for. Compaction and the composer's context ring need it; without it a model runs with no window. Registered through deepagents' `ProviderProfile` before an agent builds its model (`DeepAgent.register_model_windows` in `harness/abstractions/deep_agent.py`).
+**Models** (`ALLOWED_AGENT_MODELS`): the one list of the platform's models, each `provider:model` key with what to know about it (`ModelInfo`). The order is the builder's.
+
+```json
+{
+  "openai:gpt-6-luna":  {"reasoning": true,  "context_window": 1050000},
+  "openai:gpt-5":       {"reasoning": true},
+  "openai:gpt-4o":      {"reasoning": false},
+  "openai:gpt-4o-mini": {"reasoning": false}
+}
+```
+
+| Fact | Used for | Unset |
+| --- | --- | --- |
+| *(the key)* | The only models a user-authored agent or a workflow LLM node may select (built-ins are not constrained by it) | — |
+| `reasoning` | Asked for its reasoning summary (**Reasoning summaries** below); a non-reasoning model would reject that parameter | The pinned `langchain-openai`'s table decides (gpt-5, o3, o4-mini → yes; gpt-4o, gpt-4.1 → no; unknown → no) |
+| `context_window` | Compaction and the composer's context ring; registered through deepagents' `ProviderProfile` before an agent builds its model (`DeepAgent.register_model_windows`) | The table's window; a model newer than it (gpt-6-luna) then has none |
+
+A model newer than the pinned `langchain-openai` needs both facts stated. An unknown fact is refused at startup. A bare list (`["openai:a", "openai:b"]`, or `openai:a,openai:b`) still works, every fact then unset.
+
+**Reasoning summaries** (`REASONING_SUMMARY`, default `auto`; `concise` / `detailed` / `off`): deep agents ask every OpenAI reasoning model in the tree for its summary of its reasoning, which streams into the chat's CoT as thoughts and shows in Langfuse. `off` asks for none — OpenAI may require a verified organization for summaries. Which models reason: their `reasoning` in `ALLOWED_AGENT_MODELS`, else the table (see **Models** above). See `harness/models/reasoning_summary.py`.
 
 ### Deep-agent filesystem, conversation files & summarization
 
@@ -451,7 +471,7 @@ Each built-in workflow agent picks its models per node. All accept `openai:<mode
 | `SANDBOX_RUNNER_URL` | `""` (no `execute`) | The sandbox runner's base URL (sibling project [sandbox](https://github.com/konstantinosmpouros/sandbox)). `execute` exists only when this is set **and** `SANDBOX_EXECUTION_ENABLED` is true. Locally `${SANDBOX_RUNNER_URL:-}`; set `http://sandbox_runner:8090` in `magenticx/.env` when the runner runs. `docker-compose-denis.yaml` sets `https://sandbox_runner:8090` (mTLS over the `sandbox` overlay). |
 | `SANDBOX_RUNNER_TIMEOUT_SECONDS` | `330` | HTTP read timeout for one `execute` call (0 < x ≤ 3600). Must exceed the runner's own 300 s wall-clock kill, so a slow command comes back as the runner's `timeout` result rather than a client error. |
 | `SANDBOX_RUNNER_CONNECT_TIMEOUT_SECONDS` | `10` | Connect timeout to the runner (0 < x ≤ 120). |
-| `SUMMARIZATION_TRIGGER_FRACTION` | `0.95` | Compact automatically when the context reaches this fraction of a model's window (models with a known window — see `MODEL_CONTEXT_WINDOWS`). |
+| `SUMMARIZATION_TRIGGER_FRACTION` | `0.95` | Compact automatically when the context reaches this fraction of a model's window (models with a known window — see **Models**, `context_window`). |
 | `SUMMARIZATION_KEEP_FRACTION` | `0.30` | Only bounds deepagents' overflow clipping: every compaction, automatic or manual, folds everything before the latest question. |
 | `SUMMARIZATION_TRIGGER_TOKENS` | `200000` | Fallback token trigger for profile-less models. |
 | `SUMMARIZATION_KEEP_MESSAGES` | `20` | Fallback recent-message retention. |

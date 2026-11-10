@@ -118,7 +118,8 @@ def test_every_entry_says_whether_it_is_available(wf):
 
 
 def test_llm_entry_injects_the_model_allowlist(wf):
-    wf.settings.registry.allowed_agent_models = ("openai:gpt-4o-mini", "openai:gpt-5")
+    model_info = importlib.import_module("core.settings").ModelInfo
+    wf.settings.registry.allowed_agent_models = {"openai:gpt-4o-mini": model_info(), "openai:gpt-5": model_info()}
     entry = {e["kind"]: e for e in wf.catalog.node_catalog()}["llm"]
     assert (entry["label"], entry["group"], entry["available"]) == ("LLM", "ai", True)
     model = entry["configSchema"]["properties"]["model"]

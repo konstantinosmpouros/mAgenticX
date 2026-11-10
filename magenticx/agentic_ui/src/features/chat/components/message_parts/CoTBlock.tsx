@@ -19,7 +19,13 @@ import {
 } from "@/shared/ui/ai-elements/chain-of-thought";
 import { toolIcon } from "@/shared/lib/consts";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/shared/ui/collapsible";
-import { toolMeta, toolTitle, toolTitleHint } from "@/features/chat/lib/toolPresentation";
+import {
+  parseToolArgs,
+  toolMeta,
+  toolTitle,
+  toolTitleHint,
+} from "@/features/chat/lib/toolPresentation";
+import { liveCoTTitle } from "@/features/chat/lib/cotTitle";
 import { useWorkspaceStore } from "@/shared/stores/workspaceStore";
 import { ToolCallArgsView, ToolCallResultView } from "./ToolCallViews";
 import { ShimmeringText } from "@/shared/ui/shadcn-io/shimmering-text";
@@ -69,23 +75,6 @@ const toolDurationLabel = (tool: TimelineToolExecution): string | undefined => {
   if (ms < 0) return undefined;
   if (ms < 1000) return `${Math.round(ms)}ms`;
   return `${(ms / 1000).toFixed(ms < 10000 ? 1 : 0)}s`;
-};
-
-// TOOL_CALL_ARGS deltas concatenate into a JSON document {"name", "args"} —
-// surface just the args once the JSON is complete, the raw text while it
-// still streams.
-const parseToolArgs = (argsText: string): unknown => {
-  const trimmed = argsText.trim();
-  if (!trimmed) return null;
-  try {
-    const parsed = JSON.parse(trimmed);
-    if (parsed && typeof parsed === "object" && "args" in (parsed as Record<string, unknown>)) {
-      return (parsed as Record<string, unknown>).args;
-    }
-    return parsed;
-  } catch {
-    return trimmed;
-  }
 };
 
 const RunningToolIcon = ({ className }: { className?: string }) => (
@@ -526,6 +515,20 @@ export const CoTBlock = memo(
     const durationLabel = formatThinkingDuration(
       blockDurationSeconds(block) ?? fallbackDurationSeconds ?? null,
     );
+    // While the block runs, its header says what the latest step is doing —
+    // a thought's headline, the tool in use — the way a live chain of thought
+    // reads; "Thought for Xs" only once it is done.
+    const availableTools = useWorkspaceStore((s) => s.availableTools);
+    const liveTitle = useMemo(
+      () =>
+        isLiveActive
+          ? liveCoTTitle(
+              block.items,
+              (name) => availableTools.find((t) => t.toolName === name)?.serverId || undefined,
+            )
+          : null,
+      [isLiveActive, block.items, availableTools],
+    );
     const awaitingApproval = block.items.some(
       (item) =>
         (item.kind === "hitl" && item.status === "pending") ||
@@ -557,21 +560,25 @@ export const CoTBlock = memo(
         open={open}
         onOpenChange={onOpenChange}
       >
-        <ChainOfThoughtHeader className="text-sm md:text-[0.95rem] font-medium text-muted-foreground hover:text-foreground">
+        {/* `[&>span]:min-w-0` lets the label's flex row shrink, so a long live
+            title clips to one line instead of widening the page on phones. */}
+        <ChainOfThoughtHeader className="text-sm md:text-[0.95rem] font-medium text-muted-foreground hover:text-foreground [&>span]:min-w-0">
           {isLiveActive ? (
             <ShimmeringText
+              key={liveTitle ?? "reasoning"}
               text={
                 awaitingAnswer
                   ? "Waiting for your answer..."
                   : awaitingApproval
                     ? "Waiting for approval..."
-                    : "Reasoning..."
+                    : (liveTitle ?? "Reasoning...")
               }
               duration={1.1}
               pause={1.4}
               color="hsl(var(--muted-foreground))"
               shimmeringColor="#2b2d36"
-              className="text-sm md:text-[0.95rem] font-medium"
+              title={liveTitle ?? undefined}
+              className="min-w-0 max-w-full overflow-hidden whitespace-nowrap text-sm md:text-[0.95rem] font-medium"
             />
           ) : askedOnly ? (
             askedCount === 1 ? (

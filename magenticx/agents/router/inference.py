@@ -7,6 +7,7 @@ from langchain_mcp_adapters.tools import load_mcp_tools
 from core.security.internal_trust import require_internal_caller
 from core.logging import get_context, get_logger, set_context
 from harness.abstractions.user_agents import definition_texts, errors_of
+from harness.agui.keepalive import with_keepalive
 from harness.async_tasks.notification import normalize_payload_messages
 from harness.checkpointer import has_checkpointer_initialized
 from harness.checkpointer.fork import seed_thread_from_checkpoint
@@ -180,7 +181,8 @@ async def stream_agent(agent_slug: str, req: Request):
             except Exception:
                 agent_logger.warning("checkpoint_release_failed", "Failed to release namespace cache after stream", context=request_context, exc_info=True)
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    # A keepalive while the agent is silent, so the bridge never times out a working run.
+    return StreamingResponse(with_keepalive(event_stream()), media_type="text/event-stream")
 
 
 # ------------------------------------------------------------------
@@ -354,7 +356,8 @@ async def resume_agent(agent_slug: str, req: AgentResumeRequest):
             except Exception:
                 agent_logger.warning("checkpoint_release_failed", "Failed to release namespace cache after resume", context=request_context, exc_info=True)
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    # A keepalive while the agent is silent, so the bridge never times out a working run.
+    return StreamingResponse(with_keepalive(event_stream()), media_type="text/event-stream")
 
 
 # ------------------------------------------------------------------

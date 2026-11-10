@@ -171,7 +171,7 @@ def test_a_user_agent_prompt_reference_is_checked_at_every_depth(agents_service,
     ).model_dump()
     payload["prompt"] = "./AGENT.md"
     files = [schema.AgentFile(path="AGENT.md", content="x"), schema.AgentFile(path="subagents/researcher.md", content="x")]
-    monkey_models = [MODEL]
+    monkey_models = {MODEL: importlib.import_module("core.settings").ModelInfo()}
     original = user_agents.settings.registry.allowed_agent_models
     user_agents.settings.registry.allowed_agent_models = monkey_models
     try:
@@ -200,7 +200,7 @@ def test_a_user_agent_prompt_is_at_most_64_kib_at_every_depth(agents_service, sp
         schema.AgentFile(path="guides/long.md", content="x" * (200 * 1024)),
     ]
     original = user_agents.settings.registry.allowed_agent_models
-    user_agents.settings.registry.allowed_agent_models = [MODEL]
+    user_agents.settings.registry.allowed_agent_models = {MODEL: importlib.import_module("core.settings").ModelInfo()}
     try:
         spec, errors = user_agents.validate_write(
             "u1", payload, files, reserved_slugs=frozenset(), known_skills=frozenset()

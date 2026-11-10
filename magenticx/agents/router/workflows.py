@@ -23,6 +23,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from core.logging import get_logger, set_context
 from core.security.internal_trust import require_internal_caller
+from harness.agui.keepalive import with_keepalive
 from harness.checkpointer import has_checkpointer_initialized
 from harness.workflows.catalog import node_catalog, tool_catalog
 from harness.workflows.runner import RunRefused
@@ -121,7 +122,8 @@ async def stream_workflow_run(req: WorkflowRunRequest):
         raise _not_found() from exc
     except RunRefused as exc:
         return JSONResponse(status_code=exc.status, content={"detail": {"message": exc.message, "errors": exc.errors}})
-    return StreamingResponse(prepared.stream(), media_type="text/event-stream")
+    # A keepalive while a step is silent, so the bridge never times out a working run.
+    return StreamingResponse(with_keepalive(prepared.stream()), media_type="text/event-stream")
 
 
 @router.get("/workflows/{owner_user_id}", response_model=list[WorkflowSummary])

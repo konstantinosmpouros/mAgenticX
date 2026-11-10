@@ -619,6 +619,7 @@ The original shared conversation is not mutated. The copied conversation belongs
 
 ## Sharp Edges and Behavioral Notes
 
+- **A silent agent sends keepalives.** The bridge reads the agents stream with a 180 s read timeout (`HTTP_INFERENCE_READ_SECONDS`) and fails the run with `httpx.ReadTimeout` when no byte arrives for that long. A working agent can be silent longer — a reasoning model thinking before a long tool call, a slow tool — so `/stream`, `/resume` and the workflow stream go through `with_keepalive()` (`harness/agui/keepalive.py`): after every 15 s of silence it sends `: keepalive`, an SSE comment `_parse_sse_bytes` skips. Only an agent that is truly gone times out. The stream runs in one task of its own (the MCP session's anyio scopes and the context variables need that), feeding a queue the response reads; a client that goes away cancels it.
 - **Start is atomic; launch is not part of the DB transaction.** The AI placeholder commits before `launch()`. If launch fails, the bridge marks the message `streaming_status='failed'` so the conversation is not left active.
 - **The run id is the assistant message id.** There is no separate `inference_runs` table — every reference to `run_id` in URLs, WebSocket frames, Redis stream keys, and runtime caches is the AI `messages.id`. The LangGraph checkpoint key is a **different** id — the branch-scoped `checkpoint_thread_id` — shared across a branch's runs.
 

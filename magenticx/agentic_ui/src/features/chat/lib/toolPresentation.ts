@@ -105,6 +105,25 @@ export const subagentName = (type: string): string =>
     .replace(/[-\s]?(sub[-\s]?)?agent$/i, "")
     .trim() || type;
 
+/**
+ * A step's arguments from its streamed `argsText`. TOOL_CALL_ARGS deltas
+ * concatenate into a JSON document `{"name", "args"}` — just the args once the
+ * JSON is complete, the raw text while it still streams.
+ */
+export const parseToolArgs = (argsText: string): unknown => {
+  const trimmed = argsText.trim();
+  if (!trimmed) return null;
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed && typeof parsed === "object" && "args" in (parsed as Record<string, unknown>)) {
+      return (parsed as Record<string, unknown>).args;
+    }
+    return parsed;
+  } catch {
+    return trimmed;
+  }
+};
+
 /** A title built from the call's arguments, for the tools we know; else null. */
 export const titleFromArgs = (name: string, args: unknown): string | null =>
   TITLES[name]?.(asToolArgs(args)) || null;

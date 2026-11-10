@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 import secrets
 from pathlib import Path
+from typing import Annotated
 from urllib.parse import quote
 
 import httpx
-from pydantic import AliasChoices, BaseModel, Field, SecretStr, field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 _BASE_MODEL_CONFIG = SettingsConfigDict(
@@ -269,6 +271,23 @@ class LoggingSettings(BaseSettings):
         return resolved or _DEFAULT_REDACTION_SECRET
 
 
+class ModelInfo(BaseModel):
+    """What the platform knows about one model, beside what LangChain knows.
+
+    A fact left unset falls back to the pinned langchain-openai's model table,
+    which knows the models older than it; a model newer than it (gpt-6-luna)
+    needs its facts stated here.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    # A reasoning model (gpt-5, o3, …): it is asked for its reasoning summary.
+    # A non-reasoning model would reject that parameter.
+    reasoning: bool | None = None
+    # Max input tokens: compaction and the composer's context ring need it.
+    context_window: int | None = Field(None, gt=0)
+
+
 class AgentRegistrySettings(BaseSettings):
     model_config = _BASE_MODEL_CONFIG
 
@@ -276,34 +295,40 @@ class AgentRegistrySettings(BaseSettings):
         default=(), validation_alias="DISABLED_AGENT_SLUGS"
     )
 
-    # Models a *user-authored* agent may select. Deliberately a short curated
+    # The platform's models, `provider:model` -> what to know about it (in
+    # order: the builder lists them so). A *user-authored* agent and a
+    # workflow's LLM node may select only these: a deliberately short curated
     # allowlist rather than the loose `provider:model` shape accepted for
-    # built-ins: a user picking a nonexistent model would produce an agent that
-    # fails at run time, and an unbounded choice is a cost surface. Built-in
-    # agents are reviewed code and are not constrained by this.
-    allowed_agent_models: tuple[str, ...] = Field(
-        default=("openai:gpt-6-luna", "openai:gpt-5", "openai:gpt-4o", "openai:gpt-4o-mini"),
+    # built-ins — a user picking a nonexistent model would produce an agent
+    # that fails at run time, and an unbounded choice is a cost surface.
+    # Built-in agents are reviewed code and are not constrained by it, but
+    # their models' facts live here too. JSON in the env; a bare list (or a
+    # comma-separated string) of specs is accepted, every fact then unset.
+    allowed_agent_models: Annotated[dict[str, ModelInfo], NoDecode] = Field(
+        default_factory=lambda: {
+            "openai:gpt-6-luna": ModelInfo(reasoning=True, context_window=1_050_000),
+            "openai:gpt-5": ModelInfo(reasoning=True),
+            "openai:gpt-4o": ModelInfo(reasoning=False),
+            "openai:gpt-4o-mini": ModelInfo(reasoning=False),
+        },
         validation_alias="ALLOWED_AGENT_MODELS",
     )
 
     @field_validator("allowed_agent_models", mode="before")
     @classmethod
     def _parse_models(cls, value: object) -> object:
-        """Accept a list or a comma-separated string (env-friendly), de-duped."""
+        """A JSON object of ``spec -> facts``, or a list / comma-separated string of specs."""
+        if value is None:
+            return {}
+        if isinstance(value, str):
+            text = value.strip()
+            if text.startswith(("{", "[")):
+                value = json.loads(text)
+            else:
+                value = text.split(",")
         if isinstance(value, (list, tuple)):
-            candidates = [str(item).strip() for item in value]
-        elif value is None:
-            return ()
-        else:
-            candidates = [part.strip() for part in str(value).split(",")]
-        items: list[str] = []
-        seen: set[str] = set()
-        for candidate in candidates:
-            if not candidate or candidate in seen:
-                continue
-            seen.add(candidate)
-            items.append(candidate)
-        return tuple(items)
+            return {str(item).strip(): {} for item in value if str(item).strip()}
+        return value
 
     @field_validator("disabled_agent_slugs", mode="before")
     @classmethod
@@ -456,12 +481,13 @@ class OmniDeepAgentSettings(BaseSettings):
 class ModelProfileSettings(BaseSettings):
     model_config = _BASE_MODEL_CONFIG
 
-    # Context windows (max input tokens) for models the pinned langchain-openai
-    # has no profile for — see DeepAgent.register_model_windows. Keyed by
-    # the exact `provider:model` spec an agent uses. JSON in the env.
-    context_windows: dict[str, int] = Field(
-        default_factory=lambda: {"openai:gpt-6-luna": 1_050_000},
-        validation_alias="MODEL_CONTEXT_WINDOWS",
+    # OpenAI never returns a reasoning model's reasoning, only (when asked) its
+    # own summary of it: streamed to the chat's CoT as thoughts and traced to
+    # Langfuse. auto / concise / detailed pick its length; off asks for none
+    # (OpenAI may require a verified organization for summaries). Which models
+    # reason: `ALLOWED_AGENT_MODELS`. See harness/models/reasoning_summary.py.
+    reasoning_summary: str = Field(
+        "auto", pattern=r"^(auto|concise|detailed|off)$", validation_alias="REASONING_SUMMARY"
     )
 
 

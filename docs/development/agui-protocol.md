@@ -68,7 +68,7 @@ All events are SSE frames with a `data:` prefix containing a JSON object. Every 
 | `RUN_STARTED` | `thread_id`, `run_id` | Before any output — run is now active |
 | `RUN_FINISHED` | `thread_id`, `run_id` | After all output — run is done |
 | `THINKING_START` | — | Agent enters a reasoning/thinking phase |
-| `THINKING_TEXT_MESSAGE_CONTENT` | `delta: str` | One chunk of inner-monologue text |
+| `THINKING_TEXT_MESSAGE_CONTENT` | `delta: str` | One discrete thought step: a step a LangGraph agent narrates, or one part of a reasoning model's summary (see **Reasoning summaries**) |
 | `THINKING_END` | — | Reasoning phase complete |
 | `TEXT_MESSAGE_START` | `message_id: str` | Agent begins producing a text response |
 | `TEXT_MESSAGE_CHUNK` | `message_id`, `delta: str` | One incremental text chunk (streaming) |
@@ -315,6 +315,10 @@ flowchart TD
     J --> K["set saw_messages_chunk=True"]
     B -->|"other"| L["return []"]
 ```
+
+**Reasoning summaries.** OpenAI never returns a reasoning model's reasoning (through the Responses API it is an encrypted item, sent back unread next turn), only — when asked — its own summary of it, in parts (`**Title**
+
+body`). Deep agents ask for it on every reasoning model in the tree (`harness/models/reasoning_summary.py`: `reasoning={"summary": REASONING_SUMMARY}` through deepagents' `ProviderProfile`; which models reason: their `reasoning` in `ALLOWED_AGENT_MODELS`, else langchain-openai's table). The normalizer turns each part into **one** `THINKING_TEXT_MESSAGE_CONTENT` (`reasoning_parts()`): a streamed piece is held per actor until its part is complete — the next part, the first text delta, or the model call's final message in `updates` sends it — because the bridge never coalesces thoughts, so a thought per token would render as a thought per token. The final message then sends nothing again (`streamed` flag); on an updates-only stream it sends every part, before the message's text and tool calls. The UI needs nothing new: a thought is a markdown step in the same CoT as the tool calls, in order, and inside a sub-agent's card for a sub-agent's reasoning. Encrypted reasoning alone yields nothing; LangChain v1 `reasoning` blocks and Anthropic `thinking` blocks are read the same way.
 
 `_msg_kind()` classifies messages by duck-typing — it checks for `tool_call_id` attribute, `role`, `type`, and class name substrings to identify `ToolMessage`, `AIMessage`, or unknown.
 
@@ -664,6 +668,8 @@ Block semantics (`reduceTimelineEvents`):
 | `BRIDGE_HITL_RESOLVED` | Flips the matching approval to approved/rejected. On approve it arms a single-shot `pendingRetool` marker: the resumed graph re-executes the tool under a **fresh `toolCallId`**, and the next matching `TOOL_CALL_START` merges into the stalled item (args re-stream, result lands there) instead of creating a duplicate step |
 | `PLAN_SNAPSHOT` | Replaces `timeline.plan` (not a block) |
 
+**Live header.** While a Thinking block runs, its header names the latest step (`liveCoTTitle()` in `features/chat/lib/cotTitle.ts`): a thought's bold headline (a reasoning summary part opens with one) or first line, a known tool's step title (`Read report.pdf`) or `Using <tool>`, a hand-off (`Delegating to the … sub-agent`); `Reasoning...` before any step, and the approval/answer wording while the run waits on a person. Once the block is done it reads `Thought for Xs`.
+
 The **Done sentinel** (`finalizeTimeline`) closes all open blocks and stamps `terminal`/`terminalStatus` — it fires **only** from a terminal run status (completed/cancelled/failed), never from `THINKING_END`, so a HITL-paused run keeps an open, done-less timeline. Rendering lives in `message_parts/TimelineBlocks.tsx` behind `AgentRunTimeline.tsx`: the Thinking block interior is a claude.ai-style vertical step flow (icon column + connector line), where thoughts are dot steps and each tool call is one compact clickable row that expands inline to its Parameters/Result code blocks. A HITL-gated tool carries its whole approval lifecycle on that one row — amber "Needs approval" while pending (the composer takeover is the approval surface), an emerald "Approved" trace plus the result once re-executed, or an orange "Rejected" with the reason (the tool never ran). Closed Thinking blocks end with a green Done step; the run's last block carries the terminal status (Done/Stopped/Failed). Once terminal, the plan card and sub-agent panels leave the body for two AI-action-bar buttons that open right-side panels (`RunSidePanels.tsx`); the pending HITL approval takes over the composer (`HitlInputTakeover.tsx`).
 
 Legacy messages persisted before the full-log change carry CUSTOM-only logs; `foldTimeline` detects the absence of text/thinking/tool events and reconstructs a coarse `[Thinking, …subagents…, Content]` timeline from the aggregated `content`/`thinking` columns instead.
@@ -725,6 +731,8 @@ Frames sent while the socket was down are not replayed, so every (re)connect re-
 
 - **`THINKING_END` is not always explicit.** The normalizer emits `THINKING_END` lazily in `_end_thinking_if_needed()` — it fires the first time a non-thinking event (text chunk or tool result) arrives while `thinking_started=true`. An agent that never produces output after thinking will leave the thinking phase open until the stream ends. The bridge handles this by storing `thinking_end = 0.0` and using `perf_counter()` as the end time in `thinking_duration_seconds()` if `thinking_end` is not set.
 
+- **A reasoning-summary thought appears when its part is complete, not token by token.** Each part is one discrete thought (see **Reasoning summaries**), so the CoT gains a whole paragraph at a time. A run cancelled mid-part loses that part.
+
 - **`TEXT_MESSAGE_CONTENT` and `TEXT_MESSAGE_CHUNK` both accumulate to `content`.** The bridge accumulates both event types via `content += delta`. A well-behaved agent emits one or the other, not both — but the accumulator does not prevent double-counting if a buggy agent emits both for the same text.
 
 - **The `message_id` in `TEXT_MESSAGE_START` is the per-run `run_id`, not a per-text-message UUID.** `AGUIStreamNormalizer` is constructed with `context.run_id` (the assistant message id) — its constructor parameter is still named `thread_id`, but the bridge now feeds it `run_id`, **not** the branch-scoped checkpoint `thread_id` (the latter rides `RUN_STARTED`/`RUN_FINISHED` as their own `thread_id` field). All text events in one run share this single `message_id`. Consumers that expect a unique per-message ID will be surprised; the bridge's log coalescing leans on it as part of the text merge key.
@@ -771,6 +779,7 @@ Frames sent while the socket was down are not replayed, so every (re)connect re-
 | LangGraph → AG-UI translation | [magenticx/agents/harness/agui/normalizer.py](../../magenticx/agents/harness/agui/normalizer.py) | `AGUIStreamNormalizer.handle_chunk()` |
 | Envelope unwrapping | [magenticx/agents/harness/agui/normalizer.py](../../magenticx/agents/harness/agui/normalizer.py) | `_unwrap_envelope()` |
 | Messages mode handling | [magenticx/agents/harness/agui/normalizer.py](../../magenticx/agents/harness/agui/normalizer.py) | `_handle_messages_payload()` |
+| Reasoning-summary thoughts | [magenticx/agents/harness/agui/normalizer.py](../../magenticx/agents/harness/agui/normalizer.py), [harness/models/reasoning_summary.py](../../magenticx/agents/harness/models/reasoning_summary.py) | `reasoning_parts()`, `_buffer_thought()` / `_flush_thought()` / `_settle_thoughts()`; `register_reasoning_summaries()`, `is_reasoning_model()` |
 | Updates mode handling | [magenticx/agents/harness/agui/normalizer.py](../../magenticx/agents/harness/agui/normalizer.py) | `_handle_updates_payload()` |
 | Tool call correlation sets | [magenticx/agents/harness/agui/normalizer.py](../../magenticx/agents/harness/agui/normalizer.py) | `_pending_tool_call_ids`, `_started_tool_call_ids`, `_finished_tool_call_ids`, `_ignored_tool_call_ids` |
 | Plan snapshot deduplication | [magenticx/agents/harness/agui/normalizer.py](../../magenticx/agents/harness/agui/normalizer.py) | `_fingerprint()`, `_last_plan_fingerprint` |
