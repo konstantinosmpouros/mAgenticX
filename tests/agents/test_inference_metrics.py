@@ -41,7 +41,7 @@ from langgraph.types import Command
 from harness.abstractions import deep_agent as deep_agent_module
 from harness.abstractions.deep_agent import DeepAgent
 from harness.abstractions.langgraph_agent import LangGraphAgent
-from harness.agui.emitter import AGUIEmitter
+from harness.agui.emitter import AGUIEmitter, encode
 from harness.agui.normalizer import AGUIStreamNormalizer
 from harness.agui.usage_callback import UsageMetricsCallback
 from harness.middlewares import (
@@ -163,9 +163,9 @@ def test_the_callback_stamps_only_the_run_its_call_started():
 
 def test_ttft_rides_the_token_usage_event():
     event = AGUIEmitter().token_usage(USAGE, message_id="m1", metrics={"model": "gpt-5", "latency_ms": 900, "ttft_ms": 250})
-    [payload] = _frames([event])
+    [payload] = _frames([encode(event)])
     assert payload["value"]["ttft_ms"] == 250
-    [without] = _frames([AGUIEmitter().token_usage(USAGE, message_id="m2", metrics={"latency_ms": 9})])
+    [without] = _frames([encode(AGUIEmitter().token_usage(USAGE, message_id="m2", metrics={"latency_ms": 9}))])
     assert "ttft_ms" not in without["value"]
 
 

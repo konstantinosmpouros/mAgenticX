@@ -24,6 +24,10 @@ def _payloads(frames):
     return out
 
 
+def _thoughts(events):
+    return [e["delta"] for e in events if e["type"] == "THINKING_TEXT_MESSAGE_CONTENT"]
+
+
 def _summary_chunk(part: int, text: str, *, block: int = 0) -> AIMessageChunk:
     """A Responses-API reasoning-summary delta, as langchain-openai streams it."""
     return AIMessageChunk(content=[{
@@ -160,11 +164,16 @@ def test_streamed_summary_parts_become_one_thought_each_before_the_reply():
     ):
         frames += norm.handle_chunk(("messages", chunk))
     events = _payloads(frames)
+    # One thinking phase, each part a complete thinking text message, ended
+    # right before the reply's text message starts.
     assert [e["type"] for e in events] == [
-        "THINKING_TEXT_MESSAGE_CONTENT", "THINKING_TEXT_MESSAGE_CONTENT", "TEXT_MESSAGE_START", "TEXT_MESSAGE_CHUNK",
+        "THINKING_START",
+        "THINKING_TEXT_MESSAGE_START", "THINKING_TEXT_MESSAGE_CONTENT", "THINKING_TEXT_MESSAGE_END",
+        "THINKING_TEXT_MESSAGE_START", "THINKING_TEXT_MESSAGE_CONTENT", "THINKING_TEXT_MESSAGE_END",
+        "THINKING_END",
+        "TEXT_MESSAGE_START", "TEXT_MESSAGE_CHUNK",
     ]
-    assert events[0]["delta"] == "**Plan**\n\nLook it up."
-    assert events[1]["delta"] == "**Answer**\n\nShort."
+    assert _thoughts(events) == ["**Plan**\n\nLook it up.", "**Answer**\n\nShort."]
 
     # The final message repeats the summary: it must not be sent again.
     final = AIMessage(content=[
@@ -183,9 +192,11 @@ def test_a_streamed_thought_goes_out_before_the_tool_call_it_led_to():
                       tool_calls=[{"id": "tc-1", "name": "search", "args": {"q": "docs"}}])
     events = _payloads(norm.handle_chunk(("updates", {"model": {"messages": [final]}})))
     types = [e["type"] for e in events]
-    assert types[:3] == ["THINKING_TEXT_MESSAGE_CONTENT", "TOOL_CALL_START", "TOOL_CALL_ARGS"]
-    assert events[0]["delta"] == "**Search**\n\nI need the docs."
-    assert types.count("THINKING_TEXT_MESSAGE_CONTENT") == 1
+    assert types[:6] == [
+        "THINKING_START", "THINKING_TEXT_MESSAGE_START", "THINKING_TEXT_MESSAGE_CONTENT", "THINKING_TEXT_MESSAGE_END",
+        "TOOL_CALL_START", "TOOL_CALL_ARGS",
+    ]
+    assert _thoughts(events) == ["**Search**\n\nI need the docs."]
 
 
 def test_updates_only_streams_send_every_part_from_the_final_message():

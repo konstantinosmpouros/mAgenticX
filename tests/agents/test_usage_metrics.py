@@ -30,7 +30,7 @@ from langgraph.graph import END, START
 from harness.abstractions.deep_agent import DeepAgent
 from harness.abstractions.langgraph_agent import LangGraphAgent
 from harness.agui.usage_callback import UsageMetricsCallback, usage_from_result
-from harness.agui.emitter import AGUIEmitter
+from harness.agui.emitter import AGUIEmitter, encode
 from harness.middlewares import ConfigurableSummarizationMiddleware, UsageMetricsMiddleware
 from harness.middlewares.usage_metrics import METRICS_KEY, context_window, model_name
 
@@ -96,8 +96,8 @@ def test_the_metrics_ride_the_token_usage_event():
         metrics={"model": "gpt-5", "latency_ms": 900, "context_window": 272_000,
                  "context_tokens": 117_000, "context_percent": 43.0, "compaction_percent": 92.0},
     )
-    # Without a writer the emitter returns the SSE frame: `data: {...}`.
-    frame = event.decode() if isinstance(event, (bytes, bytearray)) else str(event)
+    # The emitter returns the event; its SSE frame is `data: {...}`.
+    frame = encode(event).decode()
     payload = json.loads(frame.split("data:", 1)[1].strip())
     value = payload["value"]
     assert payload["name"] == "TOKEN_USAGE"

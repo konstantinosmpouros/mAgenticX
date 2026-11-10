@@ -27,7 +27,7 @@ from langchain_core.messages import AIMessage
 from langchain_core.outputs import ChatGeneration, LLMResult
 
 from harness.abstractions.deep_agent import DeepAgent
-from harness.agui.emitter import AGUIEmitter
+from harness.agui.emitter import AGUIEmitter, encode
 from harness.agui.usage_callback import UsageMetricsCallback, finish_reason_from_result
 from harness.middlewares import (
     RetryOnRateLimitMiddleware,
@@ -206,8 +206,8 @@ def test_finish_reason_and_truncation_reach_the_token_usage_event():
     reply = _reply(finish_reason="length")
     metrics = _stamp(reply)
     event = AGUIEmitter().token_usage(reply.usage_metadata, message_id="m1", metrics=metrics)
-    # Without a writer the emitter returns the SSE frame: `data: {...}`.
-    frame = event.decode() if isinstance(event, (bytes, bytearray)) else str(event)
+    # The emitter returns the event; its SSE frame is `data: {...}`.
+    frame = encode(event).decode()
     payload = json.loads(frame.split("data:", 1)[1].strip())["value"]
     assert payload["finish_reason"] == "length"
     assert payload["truncated"] is True

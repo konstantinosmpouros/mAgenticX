@@ -39,6 +39,7 @@ from langgraph.errors import GraphBubbleUp, GraphInterrupt
 from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
 from core.logging import get_logger
+from harness.agui.emitter import send
 from harness.workflows.errors import NodeExecutionError, TemplateError, WorkflowNodeError
 from harness.workflows.events import APPROVAL_INTERRUPT_SOURCE, WorkflowEmitter, WorkflowEnvelope
 from harness.workflows.spec import NodeSpec, WorkflowSpec
@@ -328,13 +329,13 @@ class WorkflowNode(ABC):
         )
         started = time.monotonic()
         input_sent = False
-        emitter.step_started(self.id, writer)
+        send(writer, emitter.step_started(self.id))
         try:
             scope = self.scope_of(state)
             template = self.config_template()
             rendered = render(template, scope, roots=BASE_ROOTS) if self.templated else template
             rendered = {**rendered, **self.config_literals()}
-            emitter.node_input(config=self.input_view(rendered), iteration=iteration, writer=writer)
+            send(writer, emitter.node_input(config=self.input_view(rendered), iteration=iteration))
             input_sent = True
             typed = self.Config.model_validate(rendered)
             ctx = NodeContext(
@@ -355,15 +356,14 @@ class WorkflowNode(ABC):
                 raise NodeExecutionError(f"Produced an unknown branch '{result.branch}'.", code="branch")
             if result.vars_update and not set(result.vars_update) <= set(self.spec.variables()):
                 raise NodeExecutionError("Wrote a name that is not a variable.", code="internal")
-            emitter.node_output(
+            send(writer, emitter.node_output(
                 output=result.output,
                 branch=result.branch,
                 duration_ms=_elapsed_ms(started),
                 error=None,
-                writer=writer,
-            )
-            emitter.state_delta(variables_patch(result.vars_update), writer)
-            emitter.step_finished(self.id, writer)
+            ))
+            send(writer, emitter.state_delta(variables_patch(result.vars_update)))
+            send(writer, emitter.step_finished(self.id))
         except GraphBubbleUp as exc:
             # Not a failure: LangGraph control flow. An interrupt pauses the run
             # here; tell the client what it is waiting for, then let it unwind.
@@ -373,15 +373,14 @@ class WorkflowNode(ABC):
         except Exception as exc:
             error = _describe(exc)
             if not input_sent:
-                emitter.node_input(config=None, iteration=iteration, writer=writer)
-            emitter.node_output(
+                send(writer, emitter.node_input(config=None, iteration=iteration))
+            send(writer, emitter.node_output(
                 output=None,
                 branch=None,
                 duration_ms=_elapsed_ms(started),
                 error=error,
-                writer=writer,
-            )
-            emitter.step_finished(self.id, writer)
+            ))
+            send(writer, emitter.step_finished(self.id))
             # Ids and the error code only — never the config or any data.
             logger.warning(
                 "workflow_node_failed",
@@ -424,7 +423,7 @@ class WorkflowNode(ABC):
         """One ``HITL_INTERRUPT`` per pending interrupt, in the shape agent runs use."""
         interrupts = exc.args[0] if exc.args else ()
         for item in interrupts or ():
-            emitter.hitl_interrupt(
+            send(writer, emitter.hitl_interrupt(
                 thread_id=run.thread_id,
                 interrupt={"id": getattr(item, "id", None), "value": getattr(item, "value", item)},
                 metadata={
@@ -433,8 +432,7 @@ class WorkflowNode(ABC):
                     "nodeId": self.id,
                     "executionId": execution_id,
                 },
-                writer=writer,
-            )
+            ))
 
 
 def _elapsed_ms(started: float) -> int:

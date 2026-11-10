@@ -58,17 +58,9 @@ class _Scripted(FakeMessagesListChatModel):
 @pytest.fixture
 def normalizer(agents_service):
     mod = agents_service.normalizer
-    stores = (
-        mod._THREAD_NAMESPACE_BINDINGS,
-        mod._THREAD_TASK_STARTED_AT,
-        mod._THREAD_TASK_COMPLETED,
-        mod._THREAD_TASKS_LAUNCHED,
-    )
-    for store in stores:
-        store.clear()
+    mod._RUNS.clear()
     yield mod
-    for store in stores:
-        store.clear()
+    mod._RUNS.clear()
 
 
 @pytest.fixture

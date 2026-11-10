@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from core.logging import get_logger
+from harness.agui.emitter import encode
 from harness.agui.normalizer import release_namespace_bindings
 
 logger = get_logger(__name__)
@@ -55,7 +56,7 @@ async def emit_checkpoint_committed(
         snapshot = await aget_state(agent.run_config)
         cfg = getattr(snapshot, "config", None) or {}
         checkpoint_id = (cfg.get("configurable") or {}).get("checkpoint_id")
-        return agent.agui_emitter.checkpoint_committed(thread_id=thread_id, checkpoint_id=checkpoint_id)
+        return encode(agent.agui_emitter.checkpoint_committed(thread_id=thread_id, checkpoint_id=checkpoint_id))
     except Exception:
         agent_logger.warning(
             "checkpoint_commit_emit_failed",

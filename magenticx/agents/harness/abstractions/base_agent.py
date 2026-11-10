@@ -9,6 +9,7 @@ from langgraph.types import Command
 from core.error_handling import agent_stream_error_handler
 from core.logging import get_logger
 from core.settings import settings
+from harness.agui.emitter import encode, is_agui_events
 from harness.checkpointer import get_checkpointer
 from harness.commands import CommandSpec, lookup_command
 from harness.observability import trace_run_config
@@ -422,6 +423,11 @@ class BaseAgent:
             ):
                 if isinstance(chunk, (str, bytes)):
                     yield chunk.encode("utf-8") if isinstance(chunk, str) else chunk
+                elif is_agui_events(chunk):
+                    # A LangGraph node wrote emitter events to its stream writer
+                    # unencoded (``send`` would have encoded them already).
+                    for event in chunk if isinstance(chunk, list) else [chunk]:
+                        yield encode(event)
                 else:
                     for agui_event in self.agui_normalizer.handle_chunk(chunk):
                         yield agui_event

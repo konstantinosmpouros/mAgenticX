@@ -30,6 +30,7 @@ from typing import Any, Literal
 from langchain_mcp_adapters.tools import load_mcp_tools
 from pydantic import BaseModel, ConfigDict, Field
 
+from harness.agui.emitter import send
 from harness.tools.registry import NATIVE_TOOLS, NativeToolContext, resolve_native_tool
 from harness.workflows.errors import NodeExecutionError
 from harness.workflows.nodes.base import (
@@ -112,8 +113,7 @@ class ToolNode(WorkflowNode):
         cfg: ToolConfig = ctx.config
         name = cfg.tool.name
         call_id = f"{ctx.run.run_id}:{ctx.execution_id}"
-        ctx.emitter.tool_call_start(call_id, name, ctx.writer)
-        ctx.emitter.tool_call_args(call_id, name, cfg.args, ctx.writer)
+        send(ctx.writer, [ctx.emitter.tool_call_start(call_id, name), ctx.emitter.tool_call_args(call_id, name, cfg.args)])
         try:
             async with asyncio.timeout(cfg.timeout_seconds):
                 if cfg.tool.source == "native":
@@ -133,14 +133,14 @@ class ToolNode(WorkflowNode):
             # Tool implementations raise anything; the run sees one safe reason.
             self._fail(call_id, ctx)
             raise NodeExecutionError(f"The tool call failed ({type(exc).__name__}).", code="tool_failed") from exc
-        ctx.emitter.tool_call_result(call_id, result if isinstance(result, (str, dict)) else json.dumps(result), ctx.writer)
-        ctx.emitter.tool_call_end(call_id, ctx.writer)
+        output = result if isinstance(result, (str, dict)) else json.dumps(result)
+        send(ctx.writer, [ctx.emitter.tool_call_result(call_id, output), ctx.emitter.tool_call_end(call_id)])
         return NodeResult(output={"result": result})
 
     @staticmethod
     def _fail(call_id: str, ctx: NodeContext) -> None:
-        ctx.emitter.tool_call_result(call_id, "The tool call failed.", ctx.writer, error=True)
-        ctx.emitter.tool_call_end(call_id, ctx.writer)
+        send(ctx.writer, [ctx.emitter.tool_call_result(call_id, "The tool call failed.", error=True),
+                          ctx.emitter.tool_call_end(call_id)])
 
     @staticmethod
     async def _call_native(name: str, args: dict[str, Any], ctx: NodeContext) -> Any:

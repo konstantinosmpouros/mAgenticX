@@ -23,8 +23,10 @@ frames (``RUN_STARTED`` / ``RUN_FINISHED`` / ``RUN_ERROR`` and the
 ``workflow.run`` info event) carry ``nodeId`` and the rest as ``null``.
 
 The envelope is injected by the same mechanism that stamps ``namespace`` on
-every agent frame (``AGUIEmitter._extra_fields``), so a node's own events —
-emitted through ``ctx.emitter`` — carry it without any call site adding it.
+every agent event (``AGUIEmitter._extra_fields``), so a node's own events —
+built by ``ctx.emitter`` and written with ``harness.agui.emitter.send`` — carry
+it without any call site adding it. Like every ``AGUIEmitter`` method, the ones
+here return the event as a dict; the caller encodes it at the edge.
 """
 from __future__ import annotations
 
@@ -32,7 +34,6 @@ from dataclasses import dataclass
 from typing import Any
 
 from ag_ui.core import (
-    CustomEvent,
     EventType,
     RunErrorEvent,
     RunFinishedEvent,
@@ -41,7 +42,7 @@ from ag_ui.core import (
     StepStartedEvent,
 )
 
-from harness.agui.emitter import AGUIEmitter
+from harness.agui.emitter import AGUIEmitter, Event
 
 #: Custom event names. ``node_input`` / ``node_output`` bracket a node's own
 #: events; ``run`` identifies what is running (workflow id, pinned version).
@@ -87,21 +88,21 @@ class WorkflowEmitter(AGUIEmitter):
         return {"workflow": self.envelope.as_payload()}
 
     # ---------- Steps ----------
-    def step_started(self, step_name: str, writer: Any = None) -> bytes | None:
-        return self._emit(StepStartedEvent(type=EventType.STEP_STARTED, step_name=step_name), writer)
+    def step_started(self, step_name: str) -> Event:
+        return self.event(StepStartedEvent(type=EventType.STEP_STARTED, step_name=step_name))
 
-    def step_finished(self, step_name: str, writer: Any = None) -> bytes | None:
-        return self._emit(StepFinishedEvent(type=EventType.STEP_FINISHED, step_name=step_name), writer)
+    def step_finished(self, step_name: str) -> Event:
+        return self.event(StepFinishedEvent(type=EventType.STEP_FINISHED, step_name=step_name))
 
-    def state_delta(self, patch: list[dict[str, Any]], writer: Any = None) -> bytes | None:
+    def state_delta(self, patch: list[dict[str, Any]]) -> Event:
         """A JSON Patch (RFC 6902) against the run's variables document (``{name: value}``)."""
-        return self._emit(StateDeltaEvent(type=EventType.STATE_DELTA, delta=patch), writer)
+        return self.event(StateDeltaEvent(type=EventType.STATE_DELTA, delta=patch))
 
     # ---------- Node bracket ----------
-    def node_input(self, *, config: Any, iteration: int, writer: Any = None) -> bytes | None:
+    def node_input(self, *, config: Any, iteration: int) -> Event:
         """What the node is about to run with: its config with templates resolved
         (``None`` when resolving failed)."""
-        return self._custom(NODE_INPUT_EVENT, {"config": config, "iteration": iteration}, writer)
+        return self.custom(NODE_INPUT_EVENT, {"config": config, "iteration": iteration})
 
     def node_output(
         self,
@@ -110,35 +111,29 @@ class WorkflowEmitter(AGUIEmitter):
         branch: str | None,
         duration_ms: int,
         error: dict[str, str] | None,
-        writer: Any = None,
-    ) -> bytes | None:
+    ) -> Event:
         """What the node produced — or ``error`` ``{code, message}`` when it failed."""
-        return self._custom(
+        return self.custom(
             NODE_OUTPUT_EVENT,
             {"output": output, "branch": branch, "durationMs": duration_ms, "error": error},
-            writer,
         )
 
     # ---------- Run level ----------
-    def run_info(self, *, workflow_id: str, version_no: int, resumed: bool) -> bytes | None:
+    def run_info(self, *, workflow_id: str, version_no: int, resumed: bool) -> Event:
         """Which workflow and pinned version this run executes (history shows "v7")."""
-        return self._custom(
+        return self.custom(
             RUN_INFO_EVENT,
             {"workflowId": workflow_id, "versionNo": version_no, "resumed": resumed},
-            None,
         )
 
-    def run_finished(self, thread_id: str, run_id: str, result: dict[str, Any]) -> bytes | None:
+    def run_finished(self, thread_id: str, run_id: str, result: dict[str, Any]) -> Event:
         """``RUN_FINISHED`` of a completed run (a paused run ends on its interrupt)."""
-        return self._emit(
+        return self.event(
             RunFinishedEvent(type=EventType.RUN_FINISHED, thread_id=thread_id, run_id=run_id, result=result)
         )
 
-    def run_error(self, message: str, code: str) -> bytes | None:
-        return self._emit(RunErrorEvent(type=EventType.RUN_ERROR, message=message, code=code))
-
-    def _custom(self, name: str, value: Any, writer: Any) -> bytes | None:
-        return self._emit(CustomEvent(type=EventType.CUSTOM, name=name, value=value), writer)
+    def run_error(self, message: str, code: str) -> Event:
+        return self.event(RunErrorEvent(type=EventType.RUN_ERROR, message=message, code=code))
 
 
 __all__ = [

@@ -61,6 +61,7 @@ from pydantic import Field, ValidationInfo, field_validator
 from core.logging import get_logger
 from core.settings import settings
 from harness.abstractions.user_agents import agent_model_options
+from harness.agui.emitter import send
 from harness.workflows import nodes as node_catalog
 from harness.workflows.context import (
     StepContext,
@@ -327,16 +328,16 @@ class LlmNode(WorkflowNode):
         model = make_chat_model(cfg.model, cfg.max_output_tokens)
         message_id = f"{ctx.run.run_id}:{ctx.execution_id}"
         parts: list[str] = []
-        ctx.emitter.response_start(message_id, ctx.writer)
+        send(ctx.writer, ctx.emitter.response_start(message_id))
         try:
             async for chunk in model.astream(messages):
                 delta = chunk.text
                 if delta:  # AG-UI refuses an empty content delta
                     parts.append(delta)
-                    ctx.emitter.response_content(message_id, delta, ctx.writer)
+                    send(ctx.writer, ctx.emitter.response_content(message_id, delta))
         finally:
             # Closed on failure too, so the run view never shows a dangling message.
-            ctx.emitter.response_end(message_id, ctx.writer)
+            send(ctx.writer, ctx.emitter.response_end(message_id))
         return "".join(parts)
 
     async def _call_json(self, cfg: LlmConfig, messages: list[BaseMessage]) -> dict[str, Any]:

@@ -1,3 +1,5 @@
+"""The AG-UI emitter: every method returns its event as a dict; ``encode`` makes
+the SSE frame and ``send`` writes events to a LangGraph stream writer."""
 import json
 
 
@@ -5,8 +7,14 @@ import json
 # ----------------------------------------------------------------------
 # Helpers
 # ----------------------------------------------------------------------
-def _decode(frame: bytes) -> dict:
-    """Parse the JSON payload out of an SSE `data:` frame produced by the emitter."""
+_ENCODE = {}
+
+
+def _decode(frame: dict | bytes) -> dict:
+    """The JSON payload of an event's SSE frame: an event dict goes over the wire
+    (``encode``) first, so every test checks what the client receives."""
+    if isinstance(frame, dict):
+        frame = _ENCODE["encode"](frame)
     assert isinstance(frame, bytes), f"expected bytes, got {type(frame)}"
     text = frame.decode("utf-8")
     data_line = None
@@ -29,16 +37,21 @@ class _Writer:
 
 
 def _emitter(agents_service):
+    _ENCODE["encode"] = agents_service.emitter.encode
     return agents_service.emitter.AGUIEmitter()
+
+
+def _send(agents_service, writer, events):
+    return agents_service.emitter.send(writer, events)
 
 
 # ----------------------------------------------------------------------
 # Run lifecycle
 # ----------------------------------------------------------------------
-def test_run_start_returns_bytes(agents_service):
+def test_run_start_returns_an_event(agents_service):
     frame = _emitter(agents_service).run_start(thread_id="t1", run_id="r1")
-    assert isinstance(frame, bytes)
-    assert b"RUN_STARTED" in frame
+    assert isinstance(frame, dict)
+    assert frame["type"] == "RUN_STARTED"
     payload = _decode(frame)
     assert payload["type"] == "RUN_STARTED"
     assert payload["threadId"] == "t1"
@@ -48,7 +61,7 @@ def test_run_start_returns_bytes(agents_service):
 
 def test_run_start_with_writer_returns_none(agents_service):
     writer = _Writer()
-    result = _emitter(agents_service).run_start(thread_id="t1", run_id="r1", writer=writer)
+    result = _send(agents_service, writer, _emitter(agents_service).run_start(thread_id="t1", run_id="r1"))
     assert result is None
     assert len(writer.frames) == 1
     payload = _decode(writer.frames[0])
@@ -56,7 +69,7 @@ def test_run_start_with_writer_returns_none(agents_service):
     assert payload["threadId"] == "t1"
 
 
-def test_run_end_returns_bytes(agents_service):
+def test_run_end_returns_an_event(agents_service):
     frame = _emitter(agents_service).run_end(thread_id="t2", run_id="r2")
     payload = _decode(frame)
     assert payload["type"] == "RUN_FINISHED"
@@ -66,51 +79,54 @@ def test_run_end_returns_bytes(agents_service):
 
 def test_run_end_with_writer(agents_service):
     writer = _Writer()
-    assert _emitter(agents_service).run_end(thread_id="t2", run_id="r2", writer=writer) is None
+    assert _send(agents_service, writer, _emitter(agents_service).run_end(thread_id="t2", run_id="r2")) is None
     assert _decode(writer.frames[0])["type"] == "RUN_FINISHED"
 
 
 # ----------------------------------------------------------------------
 # Thinking
 # ----------------------------------------------------------------------
-def test_thinking_start_returns_bytes(agents_service):
+def test_thinking_start_returns_an_event(agents_service):
     payload = _decode(_emitter(agents_service).thinking_start())
     assert payload["type"] == "THINKING_START"
 
 
 def test_thinking_start_with_writer(agents_service):
     writer = _Writer()
-    assert _emitter(agents_service).thinking_start(writer=writer) is None
+    assert _send(agents_service, writer, _emitter(agents_service).thinking_start()) is None
     assert _decode(writer.frames[0])["type"] == "THINKING_START"
 
 
-def test_thinking_end_returns_bytes(agents_service):
+def test_thinking_end_returns_an_event(agents_service):
     payload = _decode(_emitter(agents_service).thinking_end())
     assert payload["type"] == "THINKING_END"
 
 
 def test_thinking_end_with_writer(agents_service):
     writer = _Writer()
-    assert _emitter(agents_service).thinking_end(writer=writer) is None
+    assert _send(agents_service, writer, _emitter(agents_service).thinking_end()) is None
     assert _decode(writer.frames[0])["type"] == "THINKING_END"
 
 
-def test_thought_returns_bytes(agents_service):
-    payload = _decode(_emitter(agents_service).thought(content="pondering"))
-    assert payload["type"] == "THINKING_TEXT_MESSAGE_CONTENT"
-    assert payload["delta"] == "pondering"
+def test_thought_is_one_complete_thinking_text_message(agents_service):
+    events = [_decode(e) for e in _emitter(agents_service).thought(content="pondering")]
+    assert [e["type"] for e in events] == [
+        "THINKING_TEXT_MESSAGE_START", "THINKING_TEXT_MESSAGE_CONTENT", "THINKING_TEXT_MESSAGE_END",
+    ]
+    assert events[1]["delta"] == "pondering"
 
 
 def test_thought_with_writer(agents_service):
     writer = _Writer()
-    assert _emitter(agents_service).thought(content="x", writer=writer) is None
-    assert _decode(writer.frames[0])["delta"] == "x"
+    assert _send(agents_service, writer, _emitter(agents_service).thought(content="x")) is None
+    assert len(writer.frames) == 3
+    assert _decode(writer.frames[1])["delta"] == "x"
 
 
 # ----------------------------------------------------------------------
 # Response / text message streaming
 # ----------------------------------------------------------------------
-def test_response_start_returns_bytes(agents_service):
+def test_response_start_returns_an_event(agents_service):
     payload = _decode(_emitter(agents_service).response_start(message_id="m1"))
     assert payload["type"] == "TEXT_MESSAGE_START"
     assert payload["messageId"] == "m1"
@@ -118,11 +134,11 @@ def test_response_start_returns_bytes(agents_service):
 
 def test_response_start_with_writer(agents_service):
     writer = _Writer()
-    assert _emitter(agents_service).response_start(message_id="m1", writer=writer) is None
+    assert _send(agents_service, writer, _emitter(agents_service).response_start(message_id="m1")) is None
     assert _decode(writer.frames[0])["messageId"] == "m1"
 
 
-def test_response_chunk_returns_bytes(agents_service):
+def test_response_chunk_returns_an_event(agents_service):
     payload = _decode(_emitter(agents_service).response_chunk(message_id="m1", delta="hel"))
     assert payload["type"] == "TEXT_MESSAGE_CHUNK"
     assert payload["messageId"] == "m1"
@@ -131,11 +147,11 @@ def test_response_chunk_returns_bytes(agents_service):
 
 def test_response_chunk_with_writer(agents_service):
     writer = _Writer()
-    assert _emitter(agents_service).response_chunk(message_id="m1", delta="lo", writer=writer) is None
+    assert _send(agents_service, writer, _emitter(agents_service).response_chunk(message_id="m1", delta="lo")) is None
     assert _decode(writer.frames[0])["delta"] == "lo"
 
 
-def test_response_content_returns_bytes(agents_service):
+def test_response_content_returns_an_event(agents_service):
     payload = _decode(_emitter(agents_service).response_content(message_id="m2", delta="full"))
     assert payload["type"] == "TEXT_MESSAGE_CONTENT"
     assert payload["messageId"] == "m2"
@@ -144,11 +160,11 @@ def test_response_content_returns_bytes(agents_service):
 
 def test_response_content_with_writer(agents_service):
     writer = _Writer()
-    assert _emitter(agents_service).response_content(message_id="m2", delta="full", writer=writer) is None
+    assert _send(agents_service, writer, _emitter(agents_service).response_content(message_id="m2", delta="full")) is None
     assert _decode(writer.frames[0])["delta"] == "full"
 
 
-def test_response_end_returns_bytes(agents_service):
+def test_response_end_returns_an_event(agents_service):
     payload = _decode(_emitter(agents_service).response_end(message_id="m3"))
     assert payload["type"] == "TEXT_MESSAGE_END"
     assert payload["messageId"] == "m3"
@@ -156,14 +172,14 @@ def test_response_end_returns_bytes(agents_service):
 
 def test_response_end_with_writer(agents_service):
     writer = _Writer()
-    assert _emitter(agents_service).response_end(message_id="m3", writer=writer) is None
+    assert _send(agents_service, writer, _emitter(agents_service).response_end(message_id="m3")) is None
     assert _decode(writer.frames[0])["messageId"] == "m3"
 
 
 # ----------------------------------------------------------------------
 # Tool calls
 # ----------------------------------------------------------------------
-def test_tool_call_start_returns_bytes(agents_service):
+def test_tool_call_start_returns_an_event(agents_service):
     payload = _decode(_emitter(agents_service).tool_call_start(tool_call_id="tc1", name="search"))
     assert payload["type"] == "TOOL_CALL_START"
     assert payload["toolCallId"] == "tc1"
@@ -172,7 +188,7 @@ def test_tool_call_start_returns_bytes(agents_service):
 
 def test_tool_call_start_with_writer(agents_service):
     writer = _Writer()
-    assert _emitter(agents_service).tool_call_start(tool_call_id="tc1", name="search", writer=writer) is None
+    assert _send(agents_service, writer, _emitter(agents_service).tool_call_start(tool_call_id="tc1", name="search")) is None
     assert _decode(writer.frames[0])["toolCallName"] == "search"
 
 
@@ -196,9 +212,9 @@ def test_tool_call_args_with_none_uses_empty_dict(agents_service):
 
 def test_tool_call_args_with_writer(agents_service):
     writer = _Writer()
-    assert _emitter(agents_service).tool_call_args(
-        tool_call_id="tc1", name="search", args={"q": "1"}, writer=writer
-    ) is None
+    assert _send(agents_service, writer, _emitter(agents_service).tool_call_args(
+        tool_call_id="tc1", name="search", args={"q": "1"}
+    )) is None
     inner = json.loads(_decode(writer.frames[0])["delta"])
     assert inner["args"] == {"q": "1"}
 
@@ -231,13 +247,13 @@ def test_tool_call_result_with_thread_id_overrides_message_id(agents_service):
 
 def test_tool_call_result_with_writer(agents_service):
     writer = _Writer()
-    assert _emitter(agents_service).tool_call_result(
-        tool_call_id="tc1", output="ok", writer=writer
-    ) is None
+    assert _send(agents_service, writer, _emitter(agents_service).tool_call_result(
+        tool_call_id="tc1", output="ok"
+    )) is None
     assert _decode(writer.frames[0])["content"] == "ok"
 
 
-def test_tool_call_end_returns_bytes(agents_service):
+def test_tool_call_end_returns_an_event(agents_service):
     payload = _decode(_emitter(agents_service).tool_call_end(tool_call_id="tc1"))
     assert payload["type"] == "TOOL_CALL_END"
     assert payload["toolCallId"] == "tc1"
@@ -245,7 +261,7 @@ def test_tool_call_end_returns_bytes(agents_service):
 
 def test_tool_call_end_with_writer(agents_service):
     writer = _Writer()
-    assert _emitter(agents_service).tool_call_end(tool_call_id="tc1", writer=writer) is None
+    assert _send(agents_service, writer, _emitter(agents_service).tool_call_end(tool_call_id="tc1")) is None
     assert _decode(writer.frames[0])["toolCallId"] == "tc1"
 
 
@@ -279,14 +295,14 @@ def test_plan_snapshot_with_dict_items_and_no_metadata(agents_service):
 
 def test_plan_snapshot_with_writer(agents_service):
     writer = _Writer()
-    assert _emitter(agents_service).plan_snapshot([], writer=writer) is None
+    assert _send(agents_service, writer, _emitter(agents_service).plan_snapshot([])) is None
     assert _decode(writer.frames[0])["name"] == "PLAN_SNAPSHOT"
 
 
 # ----------------------------------------------------------------------
 # Task -> sub-agent (custom event)
 # ----------------------------------------------------------------------
-def test_task_subagent_returns_bytes(agents_service):
+def test_task_subagent_returns_an_event(agents_service):
     frame = _emitter(agents_service).task_subagent(
         task_id="task-1", subagent_type="researcher", description="dig"
     )
@@ -302,16 +318,16 @@ def test_task_subagent_returns_bytes(agents_service):
 
 def test_task_subagent_with_writer(agents_service):
     writer = _Writer()
-    assert _emitter(agents_service).task_subagent(
-        task_id="t", subagent_type="s", description="d", writer=writer
-    ) is None
+    assert _send(agents_service, writer, _emitter(agents_service).task_subagent(
+        task_id="t", subagent_type="s", description="d"
+    )) is None
     assert _decode(writer.frames[0])["value"]["task_id"] == "t"
 
 
 # ----------------------------------------------------------------------
 # HITL interrupt (custom event)
 # ----------------------------------------------------------------------
-def test_hitl_interrupt_returns_bytes(agents_service):
+def test_hitl_interrupt_returns_an_event(agents_service):
     frame = _emitter(agents_service).hitl_interrupt(
         thread_id="thread-1",
         interrupt={"q": "approve?"},
@@ -333,16 +349,16 @@ def test_hitl_interrupt_metadata_defaults_to_empty_dict(agents_service):
 
 def test_hitl_interrupt_with_writer(agents_service):
     writer = _Writer()
-    assert _emitter(agents_service).hitl_interrupt(
-        thread_id="t", interrupt="x", writer=writer
-    ) is None
+    assert _send(agents_service, writer, _emitter(agents_service).hitl_interrupt(
+        thread_id="t", interrupt="x"
+    )) is None
     assert _decode(writer.frames[0])["name"] == "HITL_INTERRUPT"
 
 
 # ----------------------------------------------------------------------
 # Sub-agent envelope (custom event)
 # ----------------------------------------------------------------------
-def test_subagent_event_returns_bytes(agents_service):
+def test_subagent_event_returns_an_event(agents_service):
     frame = _emitter(agents_service).subagent_event(
         task_id="task-9",
         subagent_namespace=["root", "child"],
@@ -367,16 +383,16 @@ def test_subagent_event_coerces_namespace_sequence(agents_service):
 
 def test_subagent_event_with_writer(agents_service):
     writer = _Writer()
-    assert _emitter(agents_service).subagent_event(
-        task_id="t", subagent_namespace=["a"], event={}, writer=writer
-    ) is None
+    assert _send(agents_service, writer, _emitter(agents_service).subagent_event(
+        task_id="t", subagent_namespace=["a"], event={}
+    )) is None
     assert _decode(writer.frames[0])["name"] == "SUBAGENT_EVENT"
 
 
 # ----------------------------------------------------------------------
 # Before-agent (custom event)
 # ----------------------------------------------------------------------
-def test_before_agent_event_returns_bytes(agents_service):
+def test_before_agent_event_returns_an_event(agents_service):
     frame = _emitter(agents_service).before_agent_event(
         message="delegated work", metadata={"caller": "x"}
     )
@@ -394,12 +410,12 @@ def test_before_agent_event_metadata_defaults_to_empty_dict(agents_service):
 
 def test_before_agent_event_with_writer(agents_service):
     writer = _Writer()
-    assert _emitter(agents_service).before_agent_event(message="m", writer=writer) is None
+    assert _send(agents_service, writer, _emitter(agents_service).before_agent_event(message="m")) is None
     assert _decode(writer.frames[0])["value"]["message"] == "m"
 
 
 # ----------------------------------------------------------------------
-# _attach_namespace
+# namespace and wire encoding
 # ----------------------------------------------------------------------
 def test_namespace_injected_into_payload(agents_service):
     frame = _emitter(agents_service).run_start(thread_id="t1", run_id="r1", namespace="ns-1")
@@ -415,8 +431,7 @@ def test_namespace_injected_for_custom_event(agents_service):
 
 
 def test_namespace_default_none_not_injected_as_value(agents_service):
-    # When no namespace is passed the field is still injected (None) because
-    # _attach_namespace always runs; verify it is present and null.
+    # When no namespace is passed the field is still there, null.
     frame = _emitter(agents_service).run_start(thread_id="t", run_id="r")
     payload = _decode(frame)
     assert payload.get("namespace", "MISSING") is None
@@ -424,31 +439,29 @@ def test_namespace_default_none_not_injected_as_value(agents_service):
 
 def test_namespace_with_writer(agents_service):
     writer = _Writer()
-    _emitter(agents_service).run_start(thread_id="t", run_id="r", writer=writer, namespace="nsw")
+    _send(agents_service, writer, _emitter(agents_service).run_start(thread_id="t", run_id="r", namespace="nsw"))
     assert _decode(writer.frames[0])["namespace"] == "nsw"
 
 
-def test_attach_namespace_fallback_when_no_data_line(agents_service):
-    emitter = _emitter(agents_service)
-    # Encoder returns an SSE-like string with no `data:` line -> `applied` stays
-    # False -> _attach_namespace returns the original bytes unchanged.
-    emitter._encoder.encode = lambda event: "event: ping\n\n"
-    frame = emitter.run_start(thread_id="t", run_id="r", namespace="ns")
-    assert frame == b"event: ping\n\n"
-
-
-def test_attach_namespace_fallback_on_invalid_json(agents_service):
-    emitter = _emitter(agents_service)
-    # `data:` present but body is not valid JSON -> json.loads raises ->
-    # except branch returns the original (byte-coerced) sse.
-    emitter._encoder.encode = lambda event: "data: not-json\n\n"
-    frame = emitter.run_start(thread_id="t", run_id="r", namespace="ns")
-    assert frame == b"data: not-json\n\n"
-
-
-def test_attach_namespace_handles_str_encoder_output_coerced_to_bytes(agents_service):
-    # The encoder already returns str; confirm _emit coerces to bytes and the
-    # namespace path still produces valid bytes output.
-    frame = _emitter(agents_service).thinking_start(namespace="ns")
-    assert isinstance(frame, bytes)
+def test_namespace_survives_encoding(agents_service):
+    event = _emitter(agents_service).thinking_start(namespace="ns")
+    frame = agents_service.emitter.encode(event)
+    assert isinstance(frame, bytes) and frame.startswith(b"data: ") and frame.endswith(b"\n\n")
     assert _decode(frame)["namespace"] == "ns"
+
+
+def test_encode_keeps_non_ascii_text(agents_service):
+    frame = agents_service.emitter.encode(_emitter(agents_service).response_content(message_id="m", delta="Καλημέρα"))
+    assert "Καλημέρα".encode() in frame
+
+
+def test_is_agui_events_tells_emitter_events_from_other_values(agents_service):
+    is_events = agents_service.emitter.is_agui_events
+    emitter = _emitter(agents_service)
+    assert is_events(emitter.thinking_start())
+    assert is_events(emitter.thought("x"))
+    assert not is_events([])
+    assert not is_events({"agent": {"messages": []}})  # an "updates" payload
+    assert not is_events({"type": "NOT_AN_EVENT"})
+    assert not is_events([emitter.thinking_start(), {"agent": {}}])
+    assert not is_events(b"data: {}\n\n")

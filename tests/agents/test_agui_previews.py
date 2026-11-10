@@ -168,7 +168,7 @@ def test_the_emitter_leaves_the_tool_output_object_alone(agents_service):
     output = _payload(_png())
     before = output
 
-    emitter.tool_call_result("call-1", output, writer=None)
+    emitter.tool_call_result("call-1", output)
 
     # The string handed in is what the model already received; shrinking it in
     # place would remove the image from the agent's own context.

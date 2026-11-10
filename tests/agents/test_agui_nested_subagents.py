@@ -80,16 +80,9 @@ def _decode(frame) -> dict:
 
 @pytest.fixture(autouse=True)
 def _clear_namespace_bindings(agents_service):
-    stores = (
-        agents_service.normalizer._THREAD_NAMESPACE_BINDINGS,
-        agents_service.normalizer._THREAD_TASK_STARTED_AT,
-        agents_service.normalizer._THREAD_TASK_COMPLETED,
-    )
-    for store in stores:
-        store.clear()
+    agents_service.normalizer._RUNS.clear()
     yield
-    for store in stores:
-        store.clear()
+    agents_service.normalizer._RUNS.clear()
 
 
 def _run_nested(agents_service) -> list[dict]:
@@ -170,7 +163,7 @@ def test_nested_subagent_binds_to_its_callers_task_not_a_waiting_sibling(agents_
     norm.handle_chunk((("tools:a", "tools:a1"), "updates", marker))
     norm.handle_chunk((("tools:b",), "updates", marker))
 
-    assert norm._namespace_task_labels == {
+    assert norm._run.bindings == {
         ("tools:a",): "call-a",
         ("tools:a", "tools:a1"): "call-a1",
         ("tools:b",): "call-b",
@@ -328,7 +321,7 @@ def test_a_tool_call_wrapped_with_its_context_binds_too(agents_service):
     norm.handle_chunk((("tools:nb",), "updates", {"model": {"messages": [AIMessage(content="b says")]}}))
     norm.handle_chunk((("tools:na",), "updates", {"model": {"messages": [AIMessage(content="a says")]}}))
 
-    assert norm._namespace_task_labels == {("tools:nb",): "call-b", ("tools:na",): "call-a"}
+    assert norm._run.bindings == {("tools:nb",): "call-b", ("tools:na",): "call-a"}
 
 
 def test_a_nested_task_across_a_resume_completes_once_under_its_own_call(agents_service):

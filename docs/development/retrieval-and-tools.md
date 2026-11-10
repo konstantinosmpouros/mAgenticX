@@ -379,7 +379,7 @@ This is the only point in the pipeline where blob storage is accessed for infere
 | LangGraph agent build & stream | [magenticx/agents/harness/abstractions/langgraph_agent.py](../../magenticx/agents/harness/abstractions/langgraph_agent.py) | `build()`, `astream()` |
 | Deep agent build lifecycle | [magenticx/agents/harness/abstractions/deep_agent.py](../../magenticx/agents/harness/abstractions/deep_agent.py) | `build()`, `register_agent()`, asset discovery |
 | Tool call lifecycle events | [magenticx/agents/harness/agui/emitter.py](../../magenticx/agents/harness/agui/emitter.py) | `tool_call_start()`, `tool_call_args()`, `tool_call_result()`, `tool_call_end()` |
-| Stream normalization & routing | [magenticx/agents/harness/agui/normalizer.py](../../magenticx/agents/harness/agui/normalizer.py) | `handle_chunk()`, `_handle_updates_payload()`, `_handle_messages_payload()` |
+| Stream normalization & routing | [magenticx/agents/harness/agui/normalizer.py](../../magenticx/agents/harness/agui/normalizer.py) | `handle_chunk()`, `_on_updates()`, `_on_message()` |
 | Special tool handling | [magenticx/agents/harness/agui/normalizer.py](../../magenticx/agents/harness/agui/normalizer.py) | `write_todos` branch, `task` branch, `__interrupt__` priority check |
 | HITL, plan, sub-agent event models | [magenticx/agents/harness/agui/events.py](../../magenticx/agents/harness/agui/events.py) | `HITLInterruptEvent`, `PlanSnapshot`, `TaskSubAgentEvent`, `SubAgentEvent` |
 | Agent stream endpoint | [magenticx/agents/main.py](../../magenticx/agents/main.py) | `POST /agents/{agent_slug}/stream` |

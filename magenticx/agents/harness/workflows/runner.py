@@ -42,6 +42,7 @@ from langgraph.errors import GraphRecursionError
 from langgraph.types import Command
 
 from core.logging import get_logger
+from harness.agui.emitter import encode
 from harness.observability import trace_run_config
 from harness.workflows.compiler import CompiledWorkflow
 from harness.workflows.errors import WorkflowNodeError
@@ -115,8 +116,8 @@ class PreparedRun:
         """Execute the graph and yield its AG-UI frames (see the module docstring)."""
         emitter = WorkflowEmitter(WorkflowEnvelope(run_id=self.run_id))
         graph = self.compiled.graph
-        yield emitter.run_start(self.thread_id, self.run_id)
-        yield emitter.run_info(workflow_id=self.workflow_id, version_no=self.version_no, resumed=self.resumed)
+        yield encode(emitter.run_start(self.thread_id, self.run_id))
+        yield encode(emitter.run_info(workflow_id=self.workflow_id, version_no=self.version_no, resumed=self.resumed))
         log = logger.bind(workflow_id=self.workflow_id, version_no=self.version_no, run_id=self.run_id)
         log.info("workflow_run_started", "Workflow run started", resumed=self.resumed)
         queue: asyncio.Queue = asyncio.Queue(maxsize=256)
@@ -148,31 +149,31 @@ class PreparedRun:
                     yield item.encode("utf-8")
             snapshot = await graph.aget_state(self.config)
             checkpoint_id = ((snapshot.config or {}).get("configurable") or {}).get("checkpoint_id")
-            yield emitter.checkpoint_committed(thread_id=self.thread_id, checkpoint_id=checkpoint_id)
+            yield encode(emitter.checkpoint_committed(thread_id=self.thread_id, checkpoint_id=checkpoint_id))
             if list(snapshot.interrupts or []):
                 log.info("workflow_run_paused", "Workflow run paused for approval")
                 return
             values = snapshot.values or {}
             await self._persist(values)
             log.info("workflow_run_completed", "Workflow run completed")
-            yield emitter.run_finished(
+            yield encode(emitter.run_finished(
                 self.thread_id, self.run_id, {"status": "completed", "output": _final_output(values)}
-            )
+            ))
         except asyncio.CancelledError:
             log.info("workflow_run_cancelled", "Workflow run cancelled")
             raise
         except WorkflowNodeError as exc:
             log.info("workflow_run_failed", "Workflow run failed in a node", node_id=exc.node_id, error_code=exc.code)
-            yield emitter.run_error(str(exc), "node_failed")
+            yield encode(emitter.run_error(str(exc), "node_failed"))
         except GraphRecursionError:
             log.warning("workflow_run_step_limit", "Workflow run hit its step limit")
-            yield emitter.run_error("The workflow exceeded its step limit.", "step_limit")
+            yield encode(emitter.run_error("The workflow exceeded its step limit.", "step_limit"))
         except Exception as exc:
             # Anything else is our bug or an infrastructure failure (the
             # checkpointer, the store); the owner sees a generic message and the
             # log has the traceback — never node data.
             log.error("workflow_run_error", "Workflow run failed", exc_info=True, exception_type=type(exc).__name__)
-            yield emitter.run_error("The workflow could not complete this run.", "run_failed")
+            yield encode(emitter.run_error("The workflow could not complete this run.", "run_failed"))
         finally:
             if not task.done():
                 # Client gone (or the stream closed early): stop the graph.

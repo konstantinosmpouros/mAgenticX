@@ -211,14 +211,14 @@ async def _generate(state: MyAgentState, config) -> dict:
     writer = get_stream_writer()
     thread_id = config["configurable"].get("thread_id", "")
 
-    self.agui.thinking_start(writer)
-    self.agui.thought("Planning response...", writer)
-    self.agui.thinking_end(writer)
+    send(writer, self.agui.thinking_start())
+    send(writer, self.agui.thought("Planning response..."))
+    send(writer, self.agui.thinking_end())
 
-    self.agui.response_start(thread_id, writer)
+    send(writer, self.agui.response_start(thread_id))
     async for chunk in self.generate_chain.astream(state.messages):
-        self.agui.response_chunk(thread_id, chunk.content, writer)
-    self.agui.response_end(thread_id, writer)
+        send(writer, self.agui.response_chunk(thread_id, chunk.content))
+    send(writer, self.agui.response_end(thread_id))
 
     return {"messages": [chunk]}
 
@@ -682,28 +682,26 @@ async def my_node(state, config):
     thread_id = config["configurable"].get("thread_id", "")
     agui: AGUIEmitter = ...  # threaded in via closure
 
-    # Thinking phase
-    agui.thinking_start(writer)
-    agui.thought("Analyzing request...", writer)
-    agui.thinking_end(writer)
+    # Thinking phase (a thought is three events: its start, content and end)
+    send(writer, agui.thinking_start())
+    send(writer, agui.thought("Analyzing request..."))
+    send(writer, agui.thinking_end())
 
     # Tool call
-    agui.tool_call_start("tc_001", "my_tool", writer)
-    agui.tool_call_args("tc_001", "my_tool", {"query": "..."}, writer)
+    send(writer, [agui.tool_call_start("tc_001", "my_tool"), agui.tool_call_args("tc_001", "my_tool", {"query": "..."})])
     result = await run_tool(...)
-    agui.tool_call_result("tc_001", result, writer, thread_id=thread_id)
-    agui.tool_call_end("tc_001", writer)
+    send(writer, [agui.tool_call_result("tc_001", result, thread_id=thread_id), agui.tool_call_end("tc_001")])
 
     # Text response
-    agui.response_start(thread_id, writer)
+    send(writer, agui.response_start(thread_id))
     async for chunk in llm.astream(messages):
-        agui.response_chunk(thread_id, chunk.content, writer)
-    agui.response_end(thread_id, writer)
+        send(writer, agui.response_chunk(thread_id, chunk.content))
+    send(writer, agui.response_end(thread_id))
 
     return updated_state
 ```
 
-**Writer vs return** — pass `writer` when inside a node (streaming mode). Omit `writer` to receive bytes as a return value (batch collection, testing).
+**Events, then the writer** — every `AGUIEmitter` method returns its event as a dict (`from harness.agui import AGUIEmitter, send, encode`). Inside a node, `send(writer, events)` writes an event or a list of them as SSE frames; `encode(event)` gives one frame's bytes (tests, batch collection). Writing the dict itself (`writer(agui.thinking_start())`) also works — `BaseAgent.astream` encodes emitter events it finds on the custom stream — but `send` is the form the shipped agents use.
 
 ### Plan Snapshots
 
@@ -712,14 +710,13 @@ Emit a plan when the agent has a structured task list to show the user:
 ```python
 from harness.protocols.agui.events import PlanItem
 
-agui.plan_snapshot(
+send(writer, agui.plan_snapshot(
     items=[
         PlanItem(content="Research topic", status="completed"),
         PlanItem(content="Write summary",  status="in_progress"),
         PlanItem(content="Send email",     status="pending"),
     ],
-    writer=writer,
-)
+))
 ```
 
 In `["messages", "updates"]` mode, call the `write_todos` tool instead — the normalizer converts it to a `PLAN_SNAPSHOT` event automatically.
@@ -743,11 +740,10 @@ result = interrupt({"question": "Do you want to proceed?"})
 In custom stream mode, emit the interrupt manually:
 
 ```python
-agui.hitl_interrupt(
+send(writer, agui.hitl_interrupt(
     thread_id=thread_id,
     interrupt={"question": "Approve this action?"},
-    writer=writer,
-)
+))
 ```
 
 #### DeepAgent: gating tools with `interrupt_on`
@@ -801,7 +797,7 @@ Each `/stream` and `/resume` request creates a fresh agent instance (`cls(config
 **`thread_id` and `run_id` are now two distinct ids.** Previously a single `run.id` was the checkpoint key, the AG-UI `message_id`, and the namespace-binding key. They are now split:
 
 - **`run_config.configurable.thread_id`** is a **branch-scoped `checkpoint_thread_id`** — durable and **shared across every run on a branch** (a continue resumes the same thread; an edit/retry mints a fresh one). This is the LangGraph checkpoint key.
-- **`context.run_id`** is the per-run assistant-message id. The normalizer uses it for the AG-UI `message_id` and for the in-process `_THREAD_NAMESPACE_BINDINGS` key.
+- **`context.run_id`** is the per-run assistant-message id. The normalizer uses it for the AG-UI `message_id` and for the in-process `_RUNS` key (the run's sub-agent bindings).
 
 **Copy-on-fork for edit/retry.** A fresh thread does not start empty: the bridge passes `fork_from: {thread_id, checkpoint_id}` in the stream config, and `/stream` seeds the new thread from the parent branch's committed checkpoint via [`harness/checkpointer/fork.py`](../../magenticx/agents/harness/checkpointer/fork.py) `seed_thread_from_checkpoint()` (`aget_state` → `aupdate_state`) before running — so the new branch inherits the parent's state without mutating it.
 
@@ -882,7 +878,7 @@ Each lifecycle hook runs exactly once per instance. Exceptions in `register_agen
 
 - **`run_config.configurable.thread_id` is the branch-scoped checkpoint key, not the run id.** The bridge sends a durable **`checkpoint_thread_id`** that is shared by every run on a branch, so HITL resume rehydrates the same paused state and a continue resumes the branch's prior turns. Edit/retry mint a fresh thread (seeded copy-on-fork). If a custom client omits `run_config`, `build()` falls back to an ephemeral `InMemorySaver` and the run has no durable memory of prior turns. The per-run identity the normalizer needs (AG-UI `message_id`, namespace bindings) comes from a separate `context.run_id`, **not** from `thread_id`.
 
-- **The normalizer keys AG-UI ids on `run_id`, not the checkpoint `thread_id`.** `AGUIStreamNormalizer` takes the per-run `run_id` (the assistant message id) at construction and uses it for the `message_id` it stamps on text events and as the `_THREAD_NAMESPACE_BINDINGS` key. Because the checkpoint `thread_id` is now shared across a branch's runs, it would be the wrong key for per-run AG-UI identity — that is exactly why the two ids were split.
+- **The normalizer keys AG-UI ids on `run_id`, not the checkpoint `thread_id`.** `AGUIStreamNormalizer` takes the per-run `run_id` (the assistant message id) at construction and uses it for the `message_id` it stamps on text events and as the `_RUNS` key. Because the checkpoint `thread_id` is now shared across a branch's runs, it would be the wrong key for per-run AG-UI identity — that is exactly why the two ids were split.
 
 - **`stream_mode="custom"` bypasses the normalizer entirely.** In custom mode, `astream()` forwards str/bytes chunks directly as SSE. If you emit AG-UI events via the writer in custom mode, they go directly to the bridge. If you also return structured dicts (e.g., LangGraph `add_messages` reducer output), they are encoded as bytes and forwarded verbatim — they will not be parsed as AG-UI events.
 

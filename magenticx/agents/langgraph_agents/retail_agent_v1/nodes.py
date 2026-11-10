@@ -15,7 +15,7 @@ from langgraph_agents.retail_agent_v1.prompt_templates import (
     schema_help_template,
     answer_gen_template,
 )
-from harness.agui import AGUIEmitter
+from harness.agui import AGUIEmitter, send
 from langchain_core.messages.ai import AIMessageChunk
 from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_stream_writer
@@ -68,8 +68,8 @@ def build_retail_nodes(*, agents: RetailAgents, agui: AGUIEmitter) -> RetailNode
     async def analysis(state: RetailV1_State, config: RunnableConfig):
         writer = get_stream_writer()
         message_id = state["message_id"] or str(uuid4())
-        agui.thinking_start(writer)
-        agui.thought("Analyzing user input to determine intent and reasoning…", writer)
+        send(writer, agui.thinking_start())
+        send(writer, agui.thought("Analyzing user input to determine intent and reasoning…"))
 
         user_msg = state["messages"]
         analysis_results = await agents.analysis_agent.ainvoke(user_msg, config)
@@ -82,11 +82,10 @@ def build_retail_nodes(*, agents: RetailAgents, agui: AGUIEmitter) -> RetailNode
         )
 
         tcid = str(uuid4())
-        agui.tool_call_start(
+        send(writer, agui.tool_call_start(
             tcid,
             name="schema_backend.fetch",
-            writer=writer,
-        )
+        ))
         try:
             request_id = get_context().get("request_id")
             headers = internal_service_headers(request_id)
@@ -94,12 +93,12 @@ def build_retail_nodes(*, agents: RetailAgents, agui: AGUIEmitter) -> RetailNode
                 response = await client.get(SCHEMA_ENDPOINT, headers=headers)
                 response.raise_for_status()
                 db_schema_json = response.json()
-                agui.tool_call_result(tcid, "Retrieved database schema.", writer)
+                send(writer, agui.tool_call_result(tcid, "Retrieved database schema."))
         except Exception:
-            agui.tool_call_result(tcid, "Failed to retrieve db schema.", writer)
+            send(writer, agui.tool_call_result(tcid, "Failed to retrieve db schema."))
             raise
         finally:
-            agui.tool_call_end(tcid, writer)
+            send(writer, agui.tool_call_end(tcid))
 
         return {
             "analysis_results": analysis_results,
@@ -125,14 +124,14 @@ def build_retail_nodes(*, agents: RetailAgents, agui: AGUIEmitter) -> RetailNode
         response = ""
         last_tool_call_id: str | None = None
 
-        agui.thinking_end(writer)
-        agui.response_start(state["message_id"], writer)
+        send(writer, agui.thinking_end())
+        send(writer, agui.response_start(state["message_id"]))
 
         async for mode, chunk in agents.simple_gen_agent.astream(prompt, stream_mode=["messages", "updates"]):
             if mode == "messages":
                 message_chunk, _ = chunk
                 if getattr(message_chunk, "content", None) and isinstance(message_chunk, AIMessageChunk):
-                    agui.response_chunk(state["message_id"], message_chunk.content, writer)
+                    send(writer, agui.response_chunk(state["message_id"], message_chunk.content))
                     response += message_chunk.content
             elif mode == "updates":
                 if "agent" in chunk:
@@ -140,28 +139,26 @@ def build_retail_nodes(*, agents: RetailAgents, agui: AGUIEmitter) -> RetailNode
                     if getattr(agent_msg, "tool_calls", None):
                         for tool_call in agent_msg.tool_calls:
                             last_tool_call_id = tool_call["id"]
-                            agui.tool_call_start(
+                            send(writer, agui.tool_call_start(
                                 tool_call["id"],
                                 tool_call.get("name"),
-                                writer,
-                            )
+                            ))
                 elif "tools" in chunk:
                     tool_msg = chunk["tools"]["messages"][0]
                     call_id = getattr(tool_msg, "tool_call_id", None) or last_tool_call_id
                     if call_id:
-                        agui.tool_call_result(
+                        send(writer, agui.tool_call_result(
                             call_id,
                             tool_msg.content,
-                            writer,
-                        )
+                        ))
 
-        agui.response_end(state["message_id"], writer)
+        send(writer, agui.response_end(state["message_id"]))
         return {"response": response}
 
 
     async def query_gen(state: RetailV1_State, config: RunnableConfig):
         writer = get_stream_writer()
-        agui.thought("Generating SQL query based on analysis results…", writer)
+        send(writer, agui.thought("Generating SQL query based on analysis results…"))
 
         error_message = state["error_message"]
         table_name = state["table_name"]
@@ -191,16 +188,15 @@ def build_retail_nodes(*, agents: RetailAgents, agui: AGUIEmitter) -> RetailNode
 
     async def query_execution(state: RetailV1_State):
         writer = get_stream_writer()
-        agui.thought("Executing SQL query…", writer)
+        send(writer, agui.thought("Executing SQL query…"))
 
         sql_query = state["sql_query"]
 
         tcid = str(uuid4())
-        agui.tool_call_start(
+        send(writer, agui.tool_call_start(
             tcid,
             name="sql_backend.query",
-            writer=writer,
-        )
+        ))
 
         try:
             request_id = get_context().get("request_id")
@@ -234,7 +230,7 @@ def build_retail_nodes(*, agents: RetailAgents, agui: AGUIEmitter) -> RetailNode
                 "error_message": str(exc),
             }
         finally:
-            agui.tool_call_end(tcid, writer)
+            send(writer, agui.tool_call_end(tcid))
 
         return {
             "sql_results": payload,
@@ -245,16 +241,16 @@ def build_retail_nodes(*, agents: RetailAgents, agui: AGUIEmitter) -> RetailNode
     async def check_sql_results(state: RetailV1_State) -> Literal["complex_generation", "query_gen"]:
         writer = get_stream_writer()
         if state["error_message"] is not None and state["sql_cycle"] < 2:
-            agui.thought("❌ Error executing SQL query. Will retry with error-aware generator…", writer)
+            send(writer, agui.thought("❌ Error executing SQL query. Will retry with error-aware generator…"))
             return "query_gen"
-        agui.thought("✅ SQL executed successfully. Moving to final answer generation…", writer)
+        send(writer, agui.thought("✅ SQL executed successfully. Moving to final answer generation…"))
         return "complex_generation"
 
 
     async def complex_generation(state: RetailV1_State, config: RunnableConfig):
         writer = get_stream_writer()
-        agui.thinking_end(writer)
-        agui.response_start(state["message_id"], writer)
+        send(writer, agui.thinking_end())
+        send(writer, agui.response_start(state["message_id"]))
 
         payload = {
             "analysis_str": state["analysis_str"],
@@ -269,7 +265,7 @@ def build_retail_nodes(*, agents: RetailAgents, agui: AGUIEmitter) -> RetailNode
             if mode == "messages":
                 message_chunk, _ = chunk
                 if getattr(message_chunk, "content", None) and isinstance(message_chunk, AIMessageChunk):
-                    agui.response_chunk(state["message_id"], message_chunk.content, writer)
+                    send(writer, agui.response_chunk(state["message_id"], message_chunk.content))
                     response += message_chunk.content
             elif mode == "updates":
                 if "agent" in chunk:
@@ -277,22 +273,20 @@ def build_retail_nodes(*, agents: RetailAgents, agui: AGUIEmitter) -> RetailNode
                     if getattr(agent_msg, "tool_calls", None):
                         for tool_call in agent_msg.tool_calls:
                             last_tool_call_id = tool_call["id"]
-                            agui.tool_call_start(
+                            send(writer, agui.tool_call_start(
                                 tool_call["id"],
                                 tool_call.get("name"),
-                                writer,
-                            )
+                            ))
                 elif "tools" in chunk:
                     tool_msg = chunk["tools"]["messages"][0]
                     call_id = getattr(tool_msg, "tool_call_id", None) or last_tool_call_id
                     if call_id:
-                        agui.tool_call_result(
+                        send(writer, agui.tool_call_result(
                             call_id,
                             tool_msg.content,
-                            writer,
-                        )
+                        ))
 
-        agui.response_end(state["message_id"], writer)
+        send(writer, agui.response_end(state["message_id"]))
         return {"response": response}
 
 

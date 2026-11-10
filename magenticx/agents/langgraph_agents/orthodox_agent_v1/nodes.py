@@ -16,7 +16,7 @@ from langgraph_agents.orthodox_agent_v1.prompt_templates import (
     nonreligious_gen_template,
     religious_gen_template,
 )
-from harness.agui import AGUIEmitter
+from harness.agui import AGUIEmitter, send
 from langchain_core.messages.ai import AIMessageChunk
 from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_stream_writer
@@ -71,7 +71,7 @@ def build_orthodox_nodes(*, agents: OrthodoxAgents, agui: AGUIEmitter) -> Orthod
         user_msg = state["messages"]
         message_id = state.message_id or str(uuid4())
 
-        agui.thinking_start(writer)
+        send(writer, agui.thinking_start())
         analysis_results = await agents.analysis_agent.ainvoke(user_msg, config)
 
         analysis_str = (
@@ -81,7 +81,7 @@ def build_orthodox_nodes(*, agents: OrthodoxAgents, agui: AGUIEmitter) -> Orthod
             f"***Overall complexity***: {analysis_results.query_complexity}.  \n"
             f"***Reasoning***: {analysis_results.reasoning}"
         )
-        agui.thought(analysis_str, writer)
+        send(writer, agui.thought(analysis_str))
         return {
             "analysis_results": analysis_results,
             "analysis_str": analysis_str,
@@ -93,8 +93,8 @@ def build_orthodox_nodes(*, agents: OrthodoxAgents, agui: AGUIEmitter) -> Orthod
 
     async def simple_generation(state: OrthodoxV1_State, config: RunnableConfig):
         writer = get_stream_writer()
-        agui.thinking_end(writer)
-        agui.response_start(state["message_id"], writer)
+        send(writer, agui.thinking_end())
+        send(writer, agui.response_start(state["message_id"]))
 
         payload = {"analysis_results": state["analysis_str"]}
         prompt = nonreligious_gen_template.invoke(payload)
@@ -106,7 +106,7 @@ def build_orthodox_nodes(*, agents: OrthodoxAgents, agui: AGUIEmitter) -> Orthod
             if mode == "messages":
                 message_chunk, _ = chunk
                 if getattr(message_chunk, "content", None) and isinstance(message_chunk, AIMessageChunk):
-                    agui.response_chunk(state["message_id"], message_chunk.content, writer)
+                    send(writer, agui.response_chunk(state["message_id"], message_chunk.content))
                     response += message_chunk.content
             elif mode == "updates":
                 if "agent" in chunk:
@@ -114,22 +114,20 @@ def build_orthodox_nodes(*, agents: OrthodoxAgents, agui: AGUIEmitter) -> Orthod
                     if getattr(agent_msg, "tool_calls", None):
                         for tool_call in agent_msg.tool_calls:
                             last_tool_call_id = tool_call["id"]
-                            agui.tool_call_start(
+                            send(writer, agui.tool_call_start(
                                 tool_call["id"],
                                 tool_call.get("name"),
-                                writer,
-                            )
+                            ))
                 elif "tools" in chunk:
                     tool_msg = chunk["tools"]["messages"][0]
                     call_id = getattr(tool_msg, "tool_call_id", None) or last_tool_call_id
                     if call_id:
-                        agui.tool_call_result(
+                        send(writer, agui.tool_call_result(
                             call_id,
                             tool_msg.content,
-                            writer,
-                        )
+                        ))
 
-        agui.response_end(state["message_id"], writer)
+        send(writer, agui.response_end(state["message_id"]))
         return {"response": response}
 
     async def query_gen(state: OrthodoxV1_State, config: RunnableConfig):
@@ -150,7 +148,7 @@ def build_orthodox_nodes(*, agents: OrthodoxAgents, agui: AGUIEmitter) -> Orthod
         lines = ["I will perform a research in the database for the following fields:"]
         for idx, q in enumerate(response.queries, start=1):
             lines.append(f"{idx}. {q}")
-        agui.thought("\n".join(lines), writer)
+        send(writer, agui.thought("\n".join(lines)))
         return {"vector_queries": response.queries}
 
     async def retrieval(state: OrthodoxV1_State):
@@ -171,14 +169,13 @@ def build_orthodox_nodes(*, agents: OrthodoxAgents, agui: AGUIEmitter) -> Orthod
                 retrieved_docs.extend(resp.json()["documents"])
 
         queries = state["vector_queries"] or []
-        agui.tool_call_start(tcid, "vector_db.search", writer)
+        send(writer, agui.tool_call_start(tcid, "vector_db.search"))
         if queries:
             await asyncio.gather(*(fetch_single(q) for q in queries))
-        agui.tool_call_result(
+        send(writer, agui.tool_call_result(
             tcid,
             f"Gathered in total {len(retrieved_docs)} relevant documents.",
-            writer,
-        )
+        ))
 
         return {"retrieved_content": json.dumps(retrieved_docs, ensure_ascii=False, indent=2)}
 
@@ -189,7 +186,7 @@ def build_orthodox_nodes(*, agents: OrthodoxAgents, agui: AGUIEmitter) -> Orthod
             "analysis_results": state["analysis_str"],
         }
         summary = await agents.summarizer_agent.ainvoke(payload, config)
-        agui.thought(summary.content, writer)
+        send(writer, agui.thought(summary.content))
         return {"summarization": summary}
 
     async def complex_generation(state: OrthodoxV1_State, config: RunnableConfig):
@@ -208,20 +205,18 @@ def build_orthodox_nodes(*, agents: OrthodoxAgents, agui: AGUIEmitter) -> Orthod
                 message = payload["agent"]["messages"][0]
                 if getattr(message, "tool_calls", None):
                     for tool in message.tool_calls:
-                        agui.tool_call_start(
+                        send(writer, agui.tool_call_start(
                             tool.get("id"),
                             tool.get("name"),
-                            writer,
-                        )
+                        ))
                 elif getattr(message, "content", None):
                     response += message.content
             elif "tools" in payload:
                 tool_msg = payload["tools"]["messages"][0]
-                agui.tool_call_result(
+                send(writer, agui.tool_call_result(
                     tool_msg.get("id"),
                     tool_msg.get("content"),
-                    writer,
-                )
+                ))
 
         return {"response": response}
 
@@ -242,7 +237,7 @@ def build_orthodox_nodes(*, agents: OrthodoxAgents, agui: AGUIEmitter) -> Orthod
         else:
             reflection_str = "No additional retrieval is required."
 
-        agui.thought(reflection_str, writer)
+        send(writer, agui.thought(reflection_str))
         return {
             "reflection": reflection,
             "reflection_str": reflection_str,
@@ -255,11 +250,11 @@ def build_orthodox_nodes(*, agents: OrthodoxAgents, agui: AGUIEmitter) -> Orthod
         if requires_more and state["cycle_numbers"] < 1:
             return "query_gen"
 
-        agui.thinking_end(writer)
-        agui.response_start(state["message_id"], writer)
+        send(writer, agui.thinking_end())
+        send(writer, agui.response_start(state["message_id"]))
         if state["response"]:
-            agui.response_content(state["message_id"], state["response"], writer)
-        agui.response_end(state["message_id"], writer)
+            send(writer, agui.response_content(state["message_id"], state["response"]))
+        send(writer, agui.response_end(state["message_id"]))
         return "end"
 
     return OrthodoxNodes(

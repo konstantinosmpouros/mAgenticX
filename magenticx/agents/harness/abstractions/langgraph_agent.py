@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from langgraph.graph import StateGraph
 from langgraph.checkpoint.memory import InMemorySaver
 
-from harness.agui import AGUIEmitter, AGUIStreamNormalizer
+from harness.agui import AGUIEmitter, AGUIStreamNormalizer, encode
 from harness.agui.usage_callback import UsageMetricsCallback
 from harness.abstractions.base_agent import BaseAgent
 from core.logging import get_logger
@@ -166,8 +166,8 @@ class LangGraphAgent(BaseAgent, ABC):
         """One ``TOKEN_USAGE`` frame per model call and one ``TOOL_USAGE`` frame
         per tool call settled since the last drain."""
         frames = [
-            self.agui_emitter.token_usage(usage, message_id=call_id, metrics=metrics)
+            encode(self.agui_emitter.token_usage(usage, message_id=call_id, metrics=metrics))
             for usage, call_id, metrics in self.usage_callback.drain()
         ]
-        frames += [self.agui_emitter.tool_usage(**call) for call in self.usage_callback.drain_tools()]
+        frames += [encode(self.agui_emitter.tool_usage(**call)) for call in self.usage_callback.drain_tools()]
         return frames

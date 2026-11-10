@@ -87,7 +87,7 @@ magenticx/agents/
 │   ├── workflows/              ★ workflow engine (plan 38): spec, state, templating, rules, validator, compiler,
 │   │                             runner, events (envelope), ssrf, store (DDL on boot), catalog, nodes/<kind>.py
 │   ├── agui/                   ★ AG-UI protocol (NOT runtime/protocols/agui)
-│   │   ├── emitter.py          AGUIEmitter — encodes every AG-UI event to SSE bytes
+│   │   ├── emitter.py          AGUIEmitter — builds every AG-UI event as a dict; encode()/send() make SSE
 │   │   ├── events.py           Custom event Pydantic models + name constants
 │   │   ├── normalizer.py       AGUIStreamNormalizer — LangGraph chunk → AG-UI SSE
 │   │   └── usage_callback.py   UsageMetricsCallback — LangGraph agents' TOKEN_USAGE / TOOL_USAGE
@@ -371,9 +371,9 @@ Class identity attributes (overridden by subclasses as plain class attrs): `name
 
 ## 8. AG-UI streaming protocol
 
-Two halves: the **emitter** (event object → SSE bytes) and the **normalizer** (raw LangGraph chunk → 0..N emitter calls). Built on Anthropic's `ag_ui` library (`ag_ui.core` event models + `EventEncoder`) plus custom events.
+Two halves: the **emitter** (method call → event dict) and the **normalizer** (raw LangGraph chunk → 0..N event dicts, encoded once). Built on the `ag_ui` library's `ag_ui.core` event models plus custom events.
 
-**Wire format** — `AGUIEmitter._emit` stamps a ms timestamp, encodes via `EventEncoder` (standard `data: {json}\n\n`), then injects a top-level `"namespace"` field into the JSON (`None` for the orchestrator, a token for sub-agents). In `["messages","updates"]` mode the normalizer passes no writer, so every method **returns bytes** the `astream` loop yields.
+**Wire format** — every `AGUIEmitter` method returns the event as a dict: `AGUIEmitter.event()` stamps a ms timestamp, dumps the `ag_ui` model (camelCase, no nulls) and adds a top-level `"namespace"` field (`None` for the orchestrator, the `task` call id for sub-agents). `encode(event)` makes the SSE frame (`data: {json}\n\n`) at the edge: `handle_chunk` encodes its events, so the `astream` loop yields bytes; a LangGraph node writes with `send(writer, events)`, and `BaseAgent.astream` also encodes an event dict (or list) a node wrote as is (`is_agui_events`).
 
 **Standard events** (type = `ag_ui` `EventType`):
 
@@ -381,7 +381,7 @@ Two halves: the **emitter** (event object → SSE bytes) and the **normalizer** 
 |--------|-----------|---------|
 | `run_start` / `run_end` | `RUN_STARTED` / `RUN_FINISHED` | `thread_id`, `run_id` |
 | `thinking_start` / `thinking_end` | `THINKING_START` / `THINKING_END` | — |
-| `thought(content)` | `THINKING_TEXT_MESSAGE_CONTENT` | `delta` |
+| `thought(content)` | `THINKING_TEXT_MESSAGE_START` / `_CONTENT` / `_END` (a list of three) | `delta` |
 | `response_start` / `_chunk` / `_content` / `_end` | `TEXT_MESSAGE_START/CHUNK/CONTENT/END` | `message_id`(+`delta`) |
 | `tool_call_start` | `TOOL_CALL_START` | `tool_call_id`, `tool_call_name` |
 | `tool_call_args` | `TOOL_CALL_ARGS` | `tool_call_id`, `delta`(=json of name+args) |
@@ -390,7 +390,7 @@ Two halves: the **emitter** (event object → SSE bytes) and the **normalizer** 
 
 **Custom events** (`EventType.CUSTOM`, `name` + `value`): `PLAN_SNAPSHOT` (from `write_todos`), `TASK_SUBAGENT` (from `task`), `SUBAGENT_EVENT` (wraps a nested normalized event), `BEFORE_AGENT_EVENT`, `TOKEN_USAGE` (from `usage_metadata` + the `mx_usage_metrics` stamp: model, latency, context, `finish_reason`, `truncated`, `ttft_ms`), `TOOL_USAGE` (after `TOOL_CALL_END`, from the `mx_tool_metrics` stamp: `tool_name`, `duration_ms`, `status`, `output_chars`; none for `write_todos`/`task`/`present_artifact`/`render_chart`/`ask_user`), `HITL_INTERRUPT` (from `__interrupt__`; for `ask_user` its `interrupt.value` is the question panel — the tool call itself emits no `TOOL_CALL_*`), `CHECKPOINT_COMMITTED` (terminal, namespace forced `None`, emitted by the router not the normalizer).
 
-**`AGUIStreamNormalizer`** (`harness/agui/normalizer.py`) — contract: `messages` mode → assistant text + tool-result messages only; `updates` mode → tool intent, plans, sub-agents, interrupts. Policies: `__interrupt__`→HITL only; `write_todos`→plan snapshot only; `task`→sub-agent event only; other tools→full `start/args/result/end` (result matched later from the `ToolMessage`). Module-global `_THREAD_NAMESPACE_BINDINGS` (keyed by `run_id`) persists sub-agent namespace↔task bindings across a run's legs so a HITL resume keeps the same UI block; `_THREAD_TASK_COMPLETED` keeps a replayed `task` result from sending SUBAGENT_COMPLETED twice; released at run end unless paused. `tasks` mode → `_handle_tasks_payload`: a `tools` task's id is the `tools:<id>` segment of the sub-agent it runs, so each sub-agent binds to its exact `task` call (parallel siblings, any depth, a resume stream that never saw the call) and its `BEFORE_AGENT_EVENT` goes out as it starts; without `tasks`, binding falls back to call order. Drops summarization-internal LLM text so compaction never renders as a reply, but reports it: `CONTEXT_COMPACTION` started/done and the summary call's `TOKEN_USAGE {purpose: compaction}` (plan 34).
+**`AGUIStreamNormalizer`** (`harness/agui/normalizer.py`) — contract: `messages` mode → assistant text + tool-result messages only; `updates` mode → tool intent, plans, sub-agents, interrupts. Policies: `__interrupt__`→HITL only; special tools through the `_special_tools` handler table (`write_todos`→plan snapshot, `present_artifact`/`render_chart`→their card, orchestrator only, `ask_user`→nothing, `task`→sub-agent event, `start_async_task`/`update_async_task`→`TASK_LAUNCHED` on the result); other tools→full `start/args/result/end` (result matched later from the `ToolMessage`), then `TOOL_USAGE`. Protocol: one `TEXT_MESSAGE_START…END` per model call; each thought is a `THINKING_TEXT_MESSAGE_START/CONTENT/END` inside one `THINKING_START…THINKING_END` phase, ended right before the reply. Messages are read through LangChain's `content_blocks` (any provider) plus `additional_kwargs["reasoning_content"]`. Module-global `_RUNS` holds one `_RunMemory` per `run_id` — sub-agent namespace↔task bindings, start times, and the `task` / background-task calls already reported — so a HITL resume keeps the same UI block and a replayed result is not reported twice; released at run end unless paused. `tasks` mode → `_on_tasks`: a `tools` task's id is the `tools:<id>` segment of the sub-agent it runs, so each sub-agent binds to its exact `task` call (parallel siblings, any depth, a resume stream that never saw the call) and its `BEFORE_AGENT_EVENT` goes out as it starts; without `tasks`, binding falls back to call order. Drops summarization-internal LLM text so compaction never renders as a reply, but reports it: `CONTEXT_COMPACTION` started/done and the summary call's `TOKEN_USAGE {purpose: compaction}` (plan 34).
 
 ---
 
@@ -616,7 +616,7 @@ Structured, async, per-request-context logging.
 **Sharp edges (don't get bitten):**
 - **`stream_mode` differs by base class** — `"custom"` (LangGraph, writer-emitted bytes) vs `["messages","updates","tasks"]`+`subgraphs=True` (Deep, normalizer-driven). Wrong mode = no UI events.
 - **normalizer/message_id keyed on `run_id`**, not the branch-scoped `thread_id`.
-- **Two module-level caches assume a single worker**: `checkpointer.store._checkpointer` and `normalizer._THREAD_NAMESPACE_BINDINGS`. Multiple uvicorn workers would each hold their own — fine for the durable saver (shared DB) but the namespace cache is per-process, so pin sticky routing or a single worker for HITL correctness.
+- **Two module-level caches assume a single worker**: `checkpointer.store._checkpointer` and `normalizer._RUNS`. Multiple uvicorn workers would each hold their own — fine for the durable saver (shared DB) but the namespace cache is per-process, so pin sticky routing or a single worker for HITL correctness.
 - **`ToolErrorMiddleware` must be on the main agent AND every subagent** — a tool exception must degrade to a `ToolMessage`, never abort. The same holds for the rate-limit retry and both metrics middlewares (`_ensure_platform_middleware`).
 - **deepagents' built-in `general-purpose` sub-agent is declared by `build_deep_agent`** (same name, prompt, model and skills) so it carries the platform middleware and no `ask_user`; deepagents skips its own auto-added one when a spec of that name exists.
 - **Stock deepagents summarizer must be excluded** per model spec or its lower threshold wins.
