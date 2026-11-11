@@ -1,7 +1,7 @@
 """Internal (service-to-service) memory endpoints.
 
 These are **not** browser-facing: they are gated by `require_internal_caller`
-(the shared internal proxy secret) AND blocked at the nginx edge
+(the service secret, `INTERNAL_SERVICE_SECRET`, which the UI never holds) AND blocked at the nginx edge
 (`/api/v1/internal/`), so only the agents service — reaching the bridge directly
 on the `backend` network — can call them. They back the agent's
 `search_past_conversations` tool, which queries the bridge-owned `chat_db`

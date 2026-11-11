@@ -217,7 +217,7 @@ Settings groups (env alias → default):
 - **McpSettings** — `MCP_GATEWAY_URL`→`""` (**empty = MCP off**; set e.g. `http://mcp_gateway:8005/sse` to opt in), `MCP_MANIFEST_CACHE_ENABLED`→True, `MCP_CONNECT_TIMEOUT_SECONDS`→10 (0 < x ≤ 120; connect + MCP handshake). Property `enabled` (`bool(mcp_gateway_url.strip())`) is the one "is MCP on" check.
 - **TlsSettings** — `INTERNAL_CA_CERT_PATH` (str), `INTERNAL_CLIENT_CERT_PATH`/`INTERNAL_CLIENT_KEY_PATH` (**SecretStr** — paths hidden from repr).
 - **CheckpointerSettings** — `AGENT_RUNTIME_DATABASE_URL`→`postgresql://admin:admin@chat_postgres:5432/agent_runtime` (**raw psycopg conninfo**, NOT `+asyncpg`), pool min/max/idle/timeout (2/20/300/30.0), `AGENT_RUNTIME_SETUP_ON_STARTUP`→True, `LANGGRAPH_STRICT_MSGPACK`→True (CVE-2025-64439 mitigation — leave on), `LANGGRAPH_AES_KEY` (SecretStr, empty=off). Validator `_inject_password_and_tls` splices a file-backed password into a password-less URL and appends `sslmode=verify-full&sslrootcert=<ca>` when `INTERNAL_CA_CERT_PATH` set.
-- **ProxySettings** — `TRUSTED_PROXY_HEADER_NAME`→`X-Internal-Proxy-Secret`, `TRUSTED_PROXY_SECRET` (SecretStr, file-backed).
+- **ProxySettings** — `TRUSTED_PROXY_HEADER_NAME`→`X-Internal-Proxy-Secret`, `INTERNAL_SERVICE_SECRET` → `internal_service_secret` (SecretStr, file-backed via `INTERNAL_SERVICE_SECRET_FILE`). `TRUSTED_PROXY_SECRET` is not read.
 - **LoggingSettings** — `LOG_LEVEL`→INFO, `LOG_FORMAT`→console, `LOG_TIMEZONE`/`TZ`→Europe/Athens, `LOG_REDACTION_SECRET`/`SESSION_TOKEN_SECRET` (SecretStr).
 - **AgentRegistrySettings** — `DISABLED_AGENT_SLUGS`→() (CSV, normalized, deduped); `ALLOWED_AGENT_MODELS`→ `provider:model` → `ModelInfo` (`reasoning`, `context_window`; JSON): the models user agents and workflow LLM nodes may select, and the facts the pinned `langchain-openai` lacks — the reasoning summary and `register_model_windows()` read them.
 - **RuntimeModelsSettings** — `TITLE_MODEL`/`SUGGESTIONS_MODEL`→`openai:gpt-4o-2024-08-06`, `OPENAI_STT_MODEL`→`gpt-4o-transcribe`, `READ_ALOUD_MODEL`→`gpt-4o-mini-tts`, `READ_ALOUD_FORMAT`→mp3, `EMBEDDING_MODEL`→`text-embedding-3-small`, `EMBEDDING_DIMENSIONS`→1536 (≤2000 pgvector limit; changing needs re-embed + bridge migration), `OPENAI_REALTIME_MODEL`→`gpt-realtime`, `REALTIME_SUPPORTED_VOICES`→frozenset of 10 voices.
@@ -232,7 +232,7 @@ Settings groups (env alias → default):
 - **BridgeSettings** — `DIALOGUE_BRIDGE_URL`→`https://dialogue_bridge:8002`, `BRIDGE_MEMORY_SEARCH_PATH`→`/v1/internal/memory/search`, timeouts; `.memory_search_url`.
 
 **Two boot validators** on the top-level `Settings`:
-- `_require_proxy_secret` — **raises and refuses to start** if `TRUSTED_PROXY_SECRET` is empty.
+- `_require_proxy_secret` — **raises and refuses to start** if `INTERNAL_SERVICE_SECRET` is empty.
 - `_harden_redaction_secret` — if the redaction secret is still the default sentinel, replaces it with a random per-process key (`secrets.token_hex(32)`).
 
 ---
@@ -566,7 +566,7 @@ Structured, async, per-request-context logging.
 
 ## 18. Security posture
 
-- **Single internal-trust gate** — every endpoint uses `require_internal_caller` (`secrets.compare_digest` on `X-Internal-Proxy-Secret`); the service refuses to boot without `TRUSTED_PROXY_SECRET` (`_require_proxy_secret`).
+- **Single internal-trust gate** — every endpoint uses `require_internal_caller` (`secrets.compare_digest` of `X-Internal-Proxy-Secret` against `INTERNAL_SERVICE_SECRET`); the service refuses to boot without it (`_require_proxy_secret`). The UI's `TRUSTED_PROXY_SECRET` is never accepted here.
 - **mTLS** to rag_service and the bridge via a single cached `ssl.SSLContext` carrying both CA trust and this service's client cert (httpx 0.28 silently ignores the `cert=` tuple, so `get_httpx_client_cert()` returns `None` on purpose and the cert lives in the context).
 - **Secrets** are `SecretStr`, file-backed via `*_FILE` (raising on unreadable); cert *paths* are `SecretStr` too.
 - **`LANGGRAPH_STRICT_MSGPACK`** on by default (blocks the `JsonPlusSerializer` RCE class, CVE-2025-64439); optional AES-at-rest for checkpoints.
@@ -592,7 +592,7 @@ Structured, async, per-request-context logging.
 - **`.dockerignore`** — excludes secrets/TLS/venvs; **keeps** `*.md`, `skills_registry/`, and the shim (all runtime-needed).
 - **`load-secrets-and-exec.sh`** — reads each `/run/secrets/*` into an uppercased env var, then `exec "$@"`. Needed because the OpenAI SDK / `init_chat_model` read `OPENAI_API_KEY` from `os.environ` directly, bypassing Pydantic.
 - **TLS is a prod-only compose override** (`docker-compose-denis.yaml`): `entrypoint: [load-secrets-and-exec.sh, /bin/sh, /app/tls/entrypoint-tls.sh]` + bind-mounted certs + `INTERNAL_CA/CLIENT_CERT/KEY_PATH` env. `REQUIRE_TLS`/`REQUIRE_MTLS` default `true` (fail-closed). **Local compose runs the baked plain-uvicorn CMD** (plaintext, no certs).
-- **Local run:** `uvicorn main:app --host 0.0.0.0 --port 8003 --reload` with `OPENAI_API_KEY`, `RAG_BASE_URL`, `TRUSTED_PROXY_SECRET`, `AGENT_RUNTIME_DATABASE_URL` set (plus `MCP_GATEWAY_URL` only to opt in to MCP); companions `rag_service` + a reachable `agent_runtime` Postgres, and `mcp_gateway` only if MCP is on. Local compose passes `MCP_GATEWAY_URL=${MCP_GATEWAY_URL-}` — off unless `magenticx/.env` sets it.
+- **Local run:** `uvicorn main:app --host 0.0.0.0 --port 8003 --reload` with `OPENAI_API_KEY`, `RAG_BASE_URL`, `INTERNAL_SERVICE_SECRET`, `AGENT_RUNTIME_DATABASE_URL` set (plus `MCP_GATEWAY_URL` only to opt in to MCP); companions `rag_service` + a reachable `agent_runtime` Postgres, and `mcp_gateway` only if MCP is on. Local compose passes `MCP_GATEWAY_URL=${MCP_GATEWAY_URL-}` — off unless `magenticx/.env` sets it.
 
 > **deepagents version:** requirements pin `0.7.34`; the *host* has `0.4.11`, so `tests/agents/` fail at import on the host — validate via `py_compile` + Docker.
 
@@ -608,7 +608,7 @@ Structured, async, per-request-context logging.
 
 **To stand up a replica:**
 1. Copy the whole `magenticx/agents/` tree.
-2. Provision `TRUSTED_PROXY_SECRET` (mandatory — won't boot without it), `OPENAI_API_KEY`, `AGENT_RUNTIME_DATABASE_URL` (a reachable Postgres — the service creates the DB but not the server), and `RAG_BASE_URL` / `MCP_GATEWAY_URL` if you keep those integrations (MCP is off when `MCP_GATEWAY_URL` is unset).
+2. Provision `INTERNAL_SERVICE_SECRET` (mandatory — won't boot without it; same value as the bridge, rag_service and the sandbox runner), `OPENAI_API_KEY`, `AGENT_RUNTIME_DATABASE_URL` (a reachable Postgres — the service creates the DB but not the server), and `RAG_BASE_URL` / `MCP_GATEWAY_URL` if you keep those integrations (MCP is off when `MCP_GATEWAY_URL` is unset).
 3. Keep the `load-secrets-and-exec.sh` shim if secrets are file-mounted (OpenAI SDK reads env directly).
 4. For a fresh agent: subclass `LangGraphAgent`/`DeepAgent`, set identity attrs, re-export from the package `__init__.py`, restart.
 5. Keep `LANGGRAPH_STRICT_MSGPACK=true`.

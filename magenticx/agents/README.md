@@ -447,7 +447,7 @@ The middleware sets contextual values such as:
 
 The client IP can be taken from forwarded headers only when the request comes from:
 
-- a trusted proxy secret header, or
+- the internal service secret header (`INTERNAL_SERVICE_SECRET`), or
 - a trusted proxy CIDR range
 
 Otherwise, the direct socket IP is used.
@@ -484,7 +484,7 @@ Configuration is loaded from environment variables in `core/settings.py` (pydant
 | `LOG_TIMEZONE` | `Europe/Athens` | Formatter timezone |
 | `LOG_REDACTION_SECRET` | derived fallback | HMAC secret for stable hashes |
 | `TRUSTED_PROXY_HEADER_NAME` | `X-Internal-Proxy-Secret` | Secret header name |
-| `TRUSTED_PROXY_SECRET` | required | Shared secret for trusted internal callers — service refuses to start if unset |
+| `INTERNAL_SERVICE_SECRET` / `INTERNAL_SERVICE_SECRET_FILE` | required | Shared secret for trusted internal callers — service refuses to start if unset. `TRUSTED_PROXY_SECRET` is not read |
 
 ### 11.4 Workflow-specific namespaces
 

@@ -289,7 +289,7 @@ async def test_execute_round_trips_with_identity_and_internal_auth(agents_servic
     assert str(request.url) == f"{RUNNER_URL}/v1/exec"
     settings = agents_service.settings_module.settings
     header = settings.proxy.trusted_proxy_header_name
-    assert request.headers[header] == settings.proxy.trusted_proxy_secret.get_secret_value()
+    assert request.headers[header] == settings.proxy.internal_service_secret.get_secret_value()
     assert json.loads(request.content) == {
         "user_id": "user-1",
         "agent_slug": "agent-1",

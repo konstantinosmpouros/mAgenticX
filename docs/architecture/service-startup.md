@@ -45,7 +45,8 @@ The BFF has the largest boot surface — it is the only service that is both the
 
 | Requirement | Gate | Why it blocks startup | Configure via |
 | --- | --- | --- | --- |
-| `TRUSTED_PROXY_SECRET` | 🔴 | `_finalize_secrets` raises: *"Refusing to start without an internal-caller shared secret."* | [Proxy trust & logging](configuration.md#proxy-trust--logging) |
+| `TRUSTED_PROXY_SECRET` | 🔴 | `_finalize_secrets` raises: *"Refusing to start without the edge-proxy shared secret."* | [Proxy trust & logging](configuration.md#proxy-trust--logging) |
+| `INTERNAL_SERVICE_SECRET` | 🔴 | `_finalize_secrets` raises: *"Refusing to start without an internal-caller shared secret."* — and *"INTERNAL_SERVICE_SECRET must differ from TRUSTED_PROXY_SECRET."* if the two are equal. | [Proxy trust & logging](configuration.md#proxy-trust--logging) |
 | `DATABASE_URL` | 🔴 | The field is `Field(...)` — **no default**. Pydantic raises at import if unset. (Password may come from `DATABASE_PASSWORD_FILE`.) | [Database](configuration.md#database-databasesettings) |
 | `ENTRA_TENANT_ID` + `ENTRA_CLIENT_ID` + `ENTRA_CLIENT_SECRET` | 🔴 | **Every environment.** Microsoft is the only way to sign in; without all three the bridge would boot a login page with no way in, so `_finalize_secrets` refuses to start. | [Entra](configuration.md#microsoft-entra-id--oidc-entrasettings) |
 | Session signing config | 🔴 | **Every environment.** `SESSION_SIGNING_BACKEND=kms` (the default) needs the KMS endpoint, key id, key versions and the signing principal's identity + API key; `file` needs a private key and is refused outside `development`/`test`. `SigningSettings` raises listing whatever is missing. | [Session signing](configuration.md#session-signing-signingsettings) |
@@ -59,7 +60,7 @@ The BFF has the largest boot surface — it is the only service that is both the
 | **Redis** reachable | 🟢 | Connected lazily for the per-run event streams. Boot succeeds; inference streaming fails if Redis is down. | [Redis](configuration.md#redis-redissettings) |
 | **agents** service reachable | 🟢 | Contacted per-inference only. | [Upstream, inference, rate limits](configuration.md#upstream-inference-rate-limits) |
 
-**Minimum to boot (prod):** `TRUSTED_PROXY_SECRET`, `DATABASE_URL` (+ DB password secret), the KMS signing config + its public key files, `SESSION_TOKEN_SECRET`, `APP_ENV=production`, a reachable `chat_db`, and valid TLS material. In **dev/test**, the hard gates are `TRUSTED_PROXY_SECRET`, `DATABASE_URL` and a signing key (the `file` backend is allowed); session secrets auto-fallback and TLS entrypoints aren't used.
+**Minimum to boot (prod):** `TRUSTED_PROXY_SECRET` + a different `INTERNAL_SERVICE_SECRET`, `DATABASE_URL` (+ DB password secret), the KMS signing config + its public key files, `SESSION_TOKEN_SECRET`, `APP_ENV=production`, a reachable `chat_db`, and valid TLS material. In **dev/test**, the hard gates are both proxy secrets, `DATABASE_URL` and a signing key (the `file` backend is allowed); session secrets auto-fallback and TLS entrypoints aren't used.
 
 ---
 
@@ -69,7 +70,7 @@ The LangGraph + DeepAgents runtime. Smaller config surface, but it has a **hard 
 
 | Requirement | Gate | Why it blocks startup | Configure via |
 | --- | --- | --- | --- |
-| `TRUSTED_PROXY_SECRET` | 🔴 | `_require_proxy_secret` raises — same internal-caller gate as the other Python services. | [Proxy trust, logging & redaction](configuration.md#proxy-trust-logging--redaction) |
+| `INTERNAL_SERVICE_SECRET` | 🔴 | `_require_proxy_secret` raises — same internal-caller gate as the other Python services. `TRUSTED_PROXY_SECRET` is not read. | [Proxy trust, logging & redaction](configuration.md#proxy-trust-logging--redaction) |
 | `chat_postgres` (`agent_runtime`) reachable | 🟠 | The lifespan calls `_init_durable_checkpointer`, which opens the `AsyncPostgresSaver` psycopg pool and (by design) **fails fast and loud** if `agent_runtime` is unreachable. It even creates the DB if missing, then runs `setup()` DDL when `AGENT_RUNTIME_SETUP_ON_STARTUP=true`. No checkpointer ⇒ no boot. | [Durable checkpointer](configuration.md#durable-checkpointer-checkpointersettings) |
 | TLS cert/key (+ CA for mTLS) | 🔒 | `REQUIRE_TLS`/`REQUIRE_MTLS` default `true`; the entrypoint refuses to start without readable certs. The checkpointer URL also auto-appends `sslmode=verify-full` when `INTERNAL_CA_CERT_PATH` is set. | [Deploy-time safety toggles](configuration.md#deploy-time-safety-toggles-cross-service) |
 | `OPENAI_API_KEY` | 🟢* | **Not** a startup raise — the field tolerates empty. But every agent run, title, suggestion, and voice call needs it, so it is *functionally* required. Treat as mandatory in any real deployment. | [App, API keys, RAG, MCP](configuration.md#app-api-keys-rag-mcp) |
@@ -77,7 +78,7 @@ The LangGraph + DeepAgents runtime. Smaller config surface, but it has a **hard 
 | **mcp_gateway** reachable | 🟢 | An optional sibling project, never a start gate — and not needed at all if `MCP_GATEWAY_URL` is set empty (MCP off). When set, each run connects to load live MCP tools; a gateway that is down or misses `MCP_CONNECT_TIMEOUT_SECONDS` costs the run its MCP tools, never the run (`mcp_session_unavailable`). The tool catalog (`GET /tools`) is served from the manifest cache once warm, and 502s on a cold cache with the gateway down. | [App, API keys, RAG, MCP](configuration.md#app-api-keys-rag-mcp) |
 | **sandbox_runner** reachable | 🟢 | An optional sibling project, never a start gate. It only decides whether `execute` works: with `SANDBOX_RUNNER_URL` empty the tool does not exist; with it set but the runner down, each `execute` call returns an error result and the run continues — there is no unsandboxed fallback. | [sandboxed-execution.md](../flows/sandboxed-execution.md) |
 
-**Minimum to boot (prod):** `TRUSTED_PROXY_SECRET`, a reachable `agent_runtime` DB (+ its password secret), and valid TLS material. `OPENAI_API_KEY` isn't boot-enforced but nothing useful runs without it.
+**Minimum to boot (prod):** `INTERNAL_SERVICE_SECRET`, a reachable `agent_runtime` DB (+ its password secret), and valid TLS material. `OPENAI_API_KEY` isn't boot-enforced but nothing useful runs without it.
 
 ---
 
@@ -87,13 +88,13 @@ The generic retrieval backend — the smallest boot surface. Notably, it does **
 
 | Requirement | Gate | Why it blocks startup | Configure via |
 | --- | --- | --- | --- |
-| `TRUSTED_PROXY_SECRET` | 🔴 | `_require_proxy_secret` raises — identical gate to the others. | [rag_service](configuration.md#rag_service) |
+| `INTERNAL_SERVICE_SECRET` | 🔴 | `_require_proxy_secret` raises — identical gate to the others. `TRUSTED_PROXY_SECRET` is not read. | [rag_service](configuration.md#rag_service) |
 | TLS cert/key (+ CA for mTLS) | 🔒 | `REQUIRE_TLS`/`REQUIRE_MTLS` default `true`. | [Deploy-time safety toggles](configuration.md#deploy-time-safety-toggles-cross-service) |
 | Excel workbooks in `data/` | 🟠 | DuckDB tables are loaded from the `data/` workbooks at import (`core/database/duck_db.py`). A malformed/missing workbook the loader expects can fail import; a healthy `data/` directory is part of the image. | [rag_service](configuration.md#rag_service) |
 | `OPENAI_API_KEY` | 🟢* | Not a startup raise, but needed to embed queries on every `/retrieve`. Functionally required to serve retrieval. | [rag_service](configuration.md#rag_service) |
 | **vectordb** (Chroma) reachable | 🟢 | The Chroma `HttpClient` is created **per `/retrieve` request**, not at boot. rag_service starts fine with Chroma down; only retrieval calls fail. | [vectordb](configuration.md#vectordb-chromadbchroma063) |
 
-**Minimum to boot:** `TRUSTED_PROXY_SECRET` + valid TLS material. Everything else is lazy.
+**Minimum to boot:** `INTERNAL_SERVICE_SECRET` + valid TLS material. Everything else is lazy.
 
 ---
 
@@ -106,7 +107,7 @@ These have no `settings.py`; they boot from image env vars + command flags. Thei
 | **chat_postgres** | `POSTGRES_PASSWORD_FILE` (first-init only), `POSTGRES_DB=chat_db` | TLS via `entrypoint-postgres-tls.sh` (🔒 `REQUIRE_TLS`). The `agent_runtime` DB is created out-of-band (the agents service creates it if missing). The password file only takes effect on **first** data-dir init. See [secrets.md](secrets.md). |
 | **redis** | `/run/secrets/redis_password` | Configured purely by command flags; TLS is **hardwired** in the command (`--tls-port 6379`, plain port disabled) — no `REQUIRE_TLS` toggle. Ephemeral (`--save "" --appendonly no`). |
 | **vectordb** | `vectorstore` volume mount | `IS_PERSISTENT=TRUE`, `PERSIST_DIRECTORY=/chroma/chroma`. No auth/TLS today (tracked in the security audit). |
-| **agentic_ui (nginx)** | `BFF_BASE_URL`, `TRUSTED_PROXY_SECRET` (via the secret shim), TLS material | 🔒 `REQUIRE_TLS` via `entrypoint-nginx-tls.sh`; needs the CA to verify the bridge upstream. The `load-secrets-and-exec.sh` shim reads the proxy secret from `/run/secrets` into the env before `envsubst` renders the template. |
+| **agentic_ui (nginx)** | `BFF_BASE_URL`, `TRUSTED_PROXY_SECRET` (via the secret shim), TLS material | 🔒 `REQUIRE_TLS` via `entrypoint-nginx-tls.sh`; needs the CA to verify the bridge upstream. The `load-secrets-and-exec.sh` shim reads the proxy secret from `/run/secrets` into the env before `envsubst` renders the template. Never holds `INTERNAL_SERVICE_SECRET`. |
 
 ---
 
@@ -118,8 +119,9 @@ The single most common "service won't boot" cause after secrets is TLS. The `mag
 
 ## Sharp Edges and Behavioral Notes
 
-- **`TRUSTED_PROXY_SECRET` is the universal gate.** All three Python services raise immediately without it — it's the first thing to check when a service won't boot after a secret rename.
-- **"Dev mode" relaxes three of the bridge's four hard gates.** With `APP_ENV` unset or `development`/`test`, `SESSION_TOKEN_SECRET` is not required (an auto-fallback kicks in), the dev file signer is allowed, and the TLS entrypoints aren't used — but `TRUSTED_PROXY_SECRET`, `DATABASE_URL`, Entra and a signing key are *always* required. **Unset means `development`**, so the production compose sets `APP_ENV=production` explicitly; it went unset for a long time, silently disabling the production-only checks.
+- **`INTERNAL_SERVICE_SECRET` is the universal gate.** All three Python services raise immediately without it, and the bridge also without `TRUSTED_PROXY_SECRET` or when the two are equal — the first thing to check when a service won't boot after a secret rename. On Dennis, `magenticx_internal_service_secret` must exist before the release that references it, or the stack deploy fails.
+- **A shell variable overrides `.env`.** docker compose takes a Windows/shell environment variable over `magenticx/.env`; a stale `TRUSTED_PROXY_SECRET` in the shell equal to `INTERNAL_SERVICE_SECRET` makes the bridge refuse to start.
+- **"Dev mode" relaxes three of the bridge's four hard gates.** With `APP_ENV` unset or `development`/`test`, `SESSION_TOKEN_SECRET` is not required (an auto-fallback kicks in), the dev file signer is allowed, and the TLS entrypoints aren't used — but both proxy secrets, `DATABASE_URL`, Entra and a signing key are *always* required. **Unset means `development`**, so the production compose sets `APP_ENV=production` explicitly; it went unset for a long time, silently disabling the production-only checks.
 - **agents fails fast on its own DB, by design.** Unlike a lazily-connected store, the checkpointer is opened in the lifespan and the comment is explicit: *fail fast and loud if `agent_runtime` is unreachable.* This is intentional — a running agents service with no checkpointer would lose every conversation on the first turn, so it refuses to serve at all.
 - **rag_service starts without Chroma; agents starts without the MCP gateway; the bridge starts without KMS/Redis.** These are all 🟢 lazy — the service boots green and only the dependent feature 500s. MCP goes further: it is optional, so a missing gateway does not even fail the run — the agent just runs without its MCP tools. Don't diagnose a down vectordb by looking at whether rag_service started; look at whether `/retrieve` calls fail.
 - **Swarm ignores `depends_on`.** Boot order is not guaranteed. The whole design leans on fail-fast + restart loops: bring up Postgres and the dependent services stop crash-looping on their own. There is no orchestrated "wait for X."
@@ -132,7 +134,7 @@ The single most common "service won't boot" cause after secrets is TLS. The `mag
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| bridge start gates | [magenticx/dialogue_bridge/core/settings.py](../../magenticx/dialogue_bridge/core/settings.py) | `_finalize_secrets` (`TRUSTED_PROXY_SECRET`, Entra, `SESSION_TOKEN_SECRET`, dev-signer refusal); `SigningSettings` (signing config); `DatabaseSettings.url = Field(...)` |
+| bridge start gates | [magenticx/dialogue_bridge/core/settings.py](../../magenticx/dialogue_bridge/core/settings.py) | `_finalize_secrets` (`TRUSTED_PROXY_SECRET`, `INTERNAL_SERVICE_SECRET`, must-differ check, Entra, `SESSION_TOKEN_SECRET`, dev-signer refusal); `SigningSettings` (signing config); `DatabaseSettings.url = Field(...)` |
 | bridge migration lifespan | [magenticx/dialogue_bridge/main.py](../../magenticx/dialogue_bridge/main.py) | `lifespan` → `_run_alembic_upgrade`, `RUN_MIGRATIONS_ON_STARTUP` |
 | agents proxy gate | [magenticx/agents/core/settings.py](../../magenticx/agents/core/settings.py) | `_require_proxy_secret` |
 | agents checkpointer boot | [magenticx/agents/main.py](../../magenticx/agents/main.py) | `_init_durable_checkpointer`, `_ensure_checkpointer_database` (fail-fast) |

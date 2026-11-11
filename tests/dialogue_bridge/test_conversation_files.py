@@ -57,7 +57,7 @@ def _upload(name: str, data: bytes) -> AttachmentIn:
 
 @pytest.fixture
 def internal_headers():
-    return {settings.proxy.header_name: settings.proxy.secret.get_secret_value()}
+    return {settings.proxy.header_name: settings.proxy.internal_secret.get_secret_value()}
 
 
 # ---------------------------------------------------------------------------

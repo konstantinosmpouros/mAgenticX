@@ -226,16 +226,19 @@ class ProxySettings(BaseSettings):
     trusted_proxy_header_name: str = Field(
         "X-Internal-Proxy-Secret", validation_alias="TRUSTED_PROXY_HEADER_NAME"
     )
-    trusted_proxy_secret: SecretStr = Field(default_factory=lambda: SecretStr(""))
+    # The credential between services (dialogue_bridge, agents, rag_service, the
+    # sandbox runner), sent in the header above. The UI's nginx never holds it:
+    # it has TRUSTED_PROXY_SECRET, which only the bridge reads.
+    internal_service_secret: SecretStr = Field(default_factory=lambda: SecretStr(""))
 
-    @field_validator("trusted_proxy_secret", mode="before")
+    @field_validator("internal_service_secret", mode="before")
     @classmethod
     def _load_secret(cls, value: object) -> object:
         if isinstance(value, SecretStr) and value.get_secret_value():
             return value
         if isinstance(value, str) and value:
             return value
-        resolved = _resolve_file_backed_secret("TRUSTED_PROXY_SECRET")
+        resolved = _resolve_file_backed_secret("INTERNAL_SERVICE_SECRET")
         return resolved if resolved else ""
 
 
@@ -824,7 +827,7 @@ class AsyncTasksSettings(BaseSettings):
     # Lifetime of a task-launch token. A token is minted when an agent is built
     # (per request / per task run), so it must outlive the longest run.
     launch_token_ttl_seconds: int = Field(7200, ge=60, le=86400, validation_alias="ASYNC_TASKS_LAUNCH_TOKEN_TTL_SECONDS")
-    # The HMAC key of the launch token. Empty = derived from TRUSTED_PROXY_SECRET
+    # The HMAC key of the launch token. Empty = derived from INTERNAL_SERVICE_SECRET
     # with a domain label (stable across replicas, never the raw secret).
     launch_secret: SecretStr = Field(default_factory=lambda: SecretStr(""))
     # The Agent Protocol base URL the middleware is given. Requests never leave
@@ -885,9 +888,9 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _require_proxy_secret(self) -> "Settings":
-        if not self.proxy.trusted_proxy_secret.get_secret_value():
+        if not self.proxy.internal_service_secret.get_secret_value():
             raise ValueError(
-                "TRUSTED_PROXY_SECRET must be set. "
+                "INTERNAL_SERVICE_SECRET must be set. "
                 "Refusing to start without an internal-caller shared secret."
             )
         return self

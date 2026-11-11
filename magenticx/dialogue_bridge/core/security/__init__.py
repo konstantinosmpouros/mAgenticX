@@ -7,6 +7,7 @@ for outbound mTLS. Re-exported so callers can use ``from core.security import ..
 from core.security.internal_trust import (
     TRUSTED_PROXY_HEADER_NAME,
     internal_service_headers,
+    is_internal_service_request,
     is_trusted_proxy_request,
     resolve_client_ip,
 )

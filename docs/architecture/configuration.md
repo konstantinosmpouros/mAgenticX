@@ -313,8 +313,9 @@ Per-destination `httpx` timeouts, in seconds. Each destination has four knobs: `
 
 | Env var | Default | What it does |
 | --- | --- | --- |
-| `TRUSTED_PROXY_HEADER_NAME` | `X-Internal-Proxy-Secret` | Header carrying the internal-caller secret. |
-| `TRUSTED_PROXY_SECRET` | (secret) | **Required — the service refuses to start without it.** |
+| `TRUSTED_PROXY_HEADER_NAME` | `X-Internal-Proxy-Secret` | Header carrying either secret below. |
+| `TRUSTED_PROXY_SECRET` / `TRUSTED_PROXY_SECRET_FILE` | (secret) | **Required — the service refuses to start without it.** Edge-proxy marker that nginx injects on browser traffic. Only trusts the forwarded client IP (`is_trusted_proxy_request` → `resolve_client_ip`); authorizes nothing. |
+| `INTERNAL_SERVICE_SECRET` / `INTERNAL_SERVICE_SECRET_FILE` | (secret) | **Required — the service refuses to start without it.** The credential between services: `require_internal_caller` checks it (`is_internal_service_request`) and `internal_service_headers()` sends it. **Must differ from `TRUSTED_PROXY_SECRET`** — the bridge refuses to start if they are equal. |
 | `LOG_LEVEL` | `INFO` | Root log level (uppercased). `uvicorn.access`/`httpx` are pinned to `WARNING`. |
 | `LOG_FORMAT` | `console` | `console` (dev) or `json` (prod — set in the production compose so Loki/Alloy can parse). |
 | `LOG_TIMEZONE` / `TZ` | `Europe/Athens` | Timestamp timezone. |
@@ -384,7 +385,7 @@ LangGraph + DeepAgents runtime. Configuration splits into runtime infra, the dur
 | Env var | Default | What it does |
 | --- | --- | --- |
 | `TRUSTED_PROXY_HEADER_NAME` | `X-Internal-Proxy-Secret` | Header carrying the internal-caller secret. |
-| `TRUSTED_PROXY_SECRET` | (secret) | **Required — refuses to start without it.** |
+| `INTERNAL_SERVICE_SECRET` / `INTERNAL_SERVICE_SECRET_FILE` | (secret) | **Required — refuses to start without it.** Checked on every route; sent on calls to rag_service, the bridge and the sandbox runner. Settings field `proxy.internal_service_secret`. `TRUSTED_PROXY_SECRET` is not read. |
 | `LOG_LEVEL` | `INFO` | Root log level. |
 | `LOG_FORMAT` | `console` | `console` / `json` (production sets `json`). |
 | `LOG_TIMEZONE` / `TZ` | `Europe/Athens` | Timestamp timezone. |
@@ -520,7 +521,7 @@ The generic retrieval backend — the smallest surface (5 vars beyond TLS).
 | `RAG_PORT` | `8000` | ChromaDB port. |
 | `OPENAI_API_KEY` / `OPENAI_API_KEY_FILE` | (secret) | Key for embedding queries. |
 | `TRUSTED_PROXY_HEADER_NAME` | `X-Internal-Proxy-Secret` | Internal-caller header. |
-| `TRUSTED_PROXY_SECRET` / `TRUSTED_PROXY_SECRET_FILE` | (secret) | **Required — refuses to start without it.** |
+| `INTERNAL_SERVICE_SECRET` / `INTERNAL_SERVICE_SECRET_FILE` | (secret) | **Required — refuses to start without it.** Checked on every route. `TRUSTED_PROXY_SECRET` is not read. |
 
 ---
 
@@ -557,7 +558,7 @@ Configured entirely by **command flags**, no env vars: password from `/run/secre
 | Env var | Default / value | What it does |
 | --- | --- | --- |
 | `BFF_BASE_URL` | `https://dialogue_bridge:8002` | Upstream the nginx `/api/` proxy forwards to (substituted into `nginx.conf.template`). |
-| `TRUSTED_PROXY_SECRET` | (from secret via shim) | Injected as the internal-caller header on proxied requests. |
+| `TRUSTED_PROXY_SECRET` | (from secret via shim) | Injected as `X-Internal-Proxy-Secret` on proxied requests. Edge-proxy marker only: the bridge trusts the forwarded client IP and nothing else. The UI never holds `INTERNAL_SERVICE_SECRET`. |
 | `REQUIRE_TLS` | `true` | Fail-closed HTTPS (via `entrypoint-nginx-tls.sh`). |
 
 ### Sibling projects
@@ -583,7 +584,8 @@ These flip behavior at boot; all are **fail-closed by default** (secure unless e
 ## Sharp Edges and Behavioral Notes
 
 - **Prod must set `APP_ENV=production` explicitly.** The default is `development`, so leaving it unset does *not* mean production — it switches off every production-only check (mandatory `SESSION_TOKEN_SECRET`, refusing the dev file signer, no random dev-secret fallbacks). Dennis ran unset for a long time on the mistaken belief that unset meant "not development"; plan 29 added `APP_ENV=production` to its compose.
-- **`TRUSTED_PROXY_SECRET` is a hard start gate** on all three Python services — a `model_validator` raises if it's empty. This is the single most common "service won't boot" cause after a secret rename.
+- **`INTERNAL_SERVICE_SECRET` is a hard start gate** on all three Python services, and the bridge also requires `TRUSTED_PROXY_SECRET` — a `model_validator` raises if either is empty, or (bridge) if the two are equal. This is the single most common "service won't boot" cause after a secret rename.
+- **A shell variable overrides `.env`.** docker compose takes a Windows/shell environment variable over `magenticx/.env`; a stale `TRUSTED_PROXY_SECRET` in the shell equal to `INTERNAL_SERVICE_SECRET` makes the bridge refuse to start.
 - **`*_FILE` unreadable is fail-loud; `*_FILE` unset is a silent fallback.** A set-but-unreadable secret path raises at startup (so a permission slip is loud), but an *unset* `*_FILE` quietly falls back to the plain env var — which is exactly what local `.env` dev relies on.
 - **`LOG_FORMAT` defaults to `console`.** Prod must run `json` (the production compose sets it on all three) or Alloy can't extract the `level` label and the Loki dashboards/error alerts break.
 - **The redaction secret only affects `client_ip`** now (`user_id`/`session_id` are logged raw to match the DB — see [observability.md](../development/observability.md)). Without the shared secret, `client_ip` correlation degrades to per-process; it never leaks the raw IP.
@@ -604,7 +606,7 @@ These flip behavior at boot; all are **fail-closed by default** (secure unless e
 | model price table | [magenticx/dialogue_bridge/utils/model_pricing.py](../../magenticx/dialogue_bridge/utils/model_pricing.py) | `DEFAULT_PRICES`, `parse_price_table()`, `call_cost_micros()` |
 | rag settings | [magenticx/rag_service/core/settings.py](../../magenticx/rag_service/core/settings.py) | `AppSettings`, `RagSettings`, `ProxySettings` |
 | TLS toggles | [magenticx/tls/entrypoint-tls.sh](../../magenticx/tls/entrypoint-tls.sh) | `REQUIRE_TLS`, `REQUIRE_MTLS` |
-| nginx env substitution | [magenticx/agentic_ui/nginx.conf.template](../../magenticx/agentic_ui/nginx.conf.template) | `BFF_BASE_URL`, `TRUSTED_PROXY_SECRET` |
+| nginx env substitution | [magenticx/agentic_ui/nginx.conf.template](../../magenticx/agentic_ui/nginx.conf.template) | `BFF_BASE_URL`, `TRUSTED_PROXY_SECRET` (edge-proxy marker only) |
 | core stack compose | [magenticx/docker-compose-denis.yaml](../../magenticx/docker-compose-denis.yaml) | per-service `environment:` overrides |
 | secret delivery | [docs/architecture/secrets.md](secrets.md) | which var is backed by which secret |
 

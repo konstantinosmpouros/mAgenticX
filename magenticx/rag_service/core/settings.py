@@ -80,14 +80,17 @@ class ProxySettings(BaseSettings):
     trusted_proxy_header_name: str = Field(
         "X-Internal-Proxy-Secret", validation_alias="TRUSTED_PROXY_HEADER_NAME"
     )
-    trusted_proxy_secret: SecretStr = Field(
-        default_factory=lambda: SecretStr(""), validation_alias="TRUSTED_PROXY_SECRET"
+    # The credential between services (dialogue_bridge, agents, rag_service, the
+    # sandbox runner), sent in the header above. The UI's nginx never holds it:
+    # it has TRUSTED_PROXY_SECRET, which only the bridge reads.
+    internal_service_secret: SecretStr = Field(
+        default_factory=lambda: SecretStr(""), validation_alias="INTERNAL_SERVICE_SECRET"
     )
 
-    @field_validator("trusted_proxy_secret", mode="before")
+    @field_validator("internal_service_secret", mode="before")
     @classmethod
     def _resolve_secret(cls, v: Any) -> Any:
-        return _resolve_file_backed_secret("TRUSTED_PROXY_SECRET_FILE", v) or ""
+        return _resolve_file_backed_secret("INTERNAL_SERVICE_SECRET_FILE", v) or ""
 
 
 class Settings(BaseSettings):
@@ -101,9 +104,9 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _require_proxy_secret(self) -> "Settings":
-        if not self.proxy.trusted_proxy_secret.get_secret_value():
+        if not self.proxy.internal_service_secret.get_secret_value():
             raise ValueError(
-                "TRUSTED_PROXY_SECRET must be set. "
+                "INTERNAL_SERVICE_SECRET must be set. "
                 "Refusing to start without an internal-caller shared secret."
             )
         return self

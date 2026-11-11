@@ -83,7 +83,7 @@ def test_remote_ip_no_client(agents_service):
 def test_is_trusted_proxy_request(agents_service):
     proxy = agents_service.proxy
     header = proxy.TRUSTED_PROXY_HEADER_NAME
-    secret = agents_service.settings_module.settings.proxy.trusted_proxy_secret.get_secret_value()
+    secret = agents_service.settings_module.settings.proxy.internal_service_secret.get_secret_value()
 
     assert proxy.is_trusted_proxy_request(_make_request(headers={header: secret})) is True
     assert proxy.is_trusted_proxy_request(_make_request(headers={header: "wrong"})) is False
@@ -93,7 +93,7 @@ def test_is_trusted_proxy_request(agents_service):
 def test_require_internal_caller(agents_service):
     proxy = agents_service.proxy
     header = proxy.TRUSTED_PROXY_HEADER_NAME
-    secret = agents_service.settings_module.settings.proxy.trusted_proxy_secret.get_secret_value()
+    secret = agents_service.settings_module.settings.proxy.internal_service_secret.get_secret_value()
 
     assert proxy.require_internal_caller(_make_request(headers={header: secret})) is None
 
@@ -105,7 +105,7 @@ def test_require_internal_caller(agents_service):
 def test_internal_service_headers(agents_service):
     proxy = agents_service.proxy
     header = proxy.TRUSTED_PROXY_HEADER_NAME
-    secret = agents_service.settings_module.settings.proxy.trusted_proxy_secret.get_secret_value()
+    secret = agents_service.settings_module.settings.proxy.internal_service_secret.get_secret_value()
 
     without_id = proxy.internal_service_headers()
     assert without_id == {header: secret}
@@ -128,7 +128,7 @@ def test_resolve_client_ip_untrusted_returns_remote(agents_service):
 def test_resolve_client_ip_trusted_prefers_cf_connecting_ip(agents_service):
     proxy = agents_service.proxy
     header = proxy.TRUSTED_PROXY_HEADER_NAME
-    secret = agents_service.settings_module.settings.proxy.trusted_proxy_secret.get_secret_value()
+    secret = agents_service.settings_module.settings.proxy.internal_service_secret.get_secret_value()
 
     request = _make_request(
         headers={
@@ -145,7 +145,7 @@ def test_resolve_client_ip_trusted_prefers_cf_connecting_ip(agents_service):
 def test_resolve_client_ip_trusted_falls_through_to_forwarded_for(agents_service):
     proxy = agents_service.proxy
     header = proxy.TRUSTED_PROXY_HEADER_NAME
-    secret = agents_service.settings_module.settings.proxy.trusted_proxy_secret.get_secret_value()
+    secret = agents_service.settings_module.settings.proxy.internal_service_secret.get_secret_value()
 
     request = _make_request(
         headers={
@@ -161,7 +161,7 @@ def test_resolve_client_ip_trusted_falls_through_to_forwarded_for(agents_service
 def test_resolve_client_ip_trusted_falls_through_to_real_ip(agents_service):
     proxy = agents_service.proxy
     header = proxy.TRUSTED_PROXY_HEADER_NAME
-    secret = agents_service.settings_module.settings.proxy.trusted_proxy_secret.get_secret_value()
+    secret = agents_service.settings_module.settings.proxy.internal_service_secret.get_secret_value()
 
     request = _make_request(
         headers={header: secret, "x-real-ip": "7.7.7.7"},
@@ -173,7 +173,7 @@ def test_resolve_client_ip_trusted_falls_through_to_real_ip(agents_service):
 def test_resolve_client_ip_trusted_no_forwarded_returns_remote(agents_service):
     proxy = agents_service.proxy
     header = proxy.TRUSTED_PROXY_HEADER_NAME
-    secret = agents_service.settings_module.settings.proxy.trusted_proxy_secret.get_secret_value()
+    secret = agents_service.settings_module.settings.proxy.internal_service_secret.get_secret_value()
 
     request = _make_request(
         headers={header: secret},
@@ -447,25 +447,25 @@ def test_proxy_settings_secret_branches(agents_service, monkeypatch):
     settings_module = agents_service.settings_module
     from pydantic import SecretStr
 
-    direct = settings_module.ProxySettings(trusted_proxy_secret=SecretStr("abc"))
-    assert direct.trusted_proxy_secret.get_secret_value() == "abc"
+    direct = settings_module.ProxySettings(internal_service_secret=SecretStr("abc"))
+    assert direct.internal_service_secret.get_secret_value() == "abc"
 
-    as_str = settings_module.ProxySettings(trusted_proxy_secret="xyz")
-    assert as_str.trusted_proxy_secret.get_secret_value() == "xyz"
+    as_str = settings_module.ProxySettings(internal_service_secret="xyz")
+    assert as_str.internal_service_secret.get_secret_value() == "xyz"
 
-    monkeypatch.setenv("TRUSTED_PROXY_SECRET", "resolved-secret")
-    resolved = settings_module.ProxySettings(trusted_proxy_secret=SecretStr(""))
-    assert resolved.trusted_proxy_secret.get_secret_value() == "resolved-secret"
+    monkeypatch.setenv("INTERNAL_SERVICE_SECRET", "resolved-secret")
+    resolved = settings_module.ProxySettings(internal_service_secret=SecretStr(""))
+    assert resolved.internal_service_secret.get_secret_value() == "resolved-secret"
 
 
 def test_proxy_settings_secret_missing_returns_empty(agents_service, monkeypatch):
     settings_module = agents_service.settings_module
     from pydantic import SecretStr
 
-    monkeypatch.delenv("TRUSTED_PROXY_SECRET", raising=False)
-    monkeypatch.delenv("TRUSTED_PROXY_SECRET_FILE", raising=False)
-    empty = settings_module.ProxySettings(trusted_proxy_secret=SecretStr(""))
-    assert empty.trusted_proxy_secret.get_secret_value() == ""
+    monkeypatch.delenv("INTERNAL_SERVICE_SECRET", raising=False)
+    monkeypatch.delenv("INTERNAL_SERVICE_SECRET_FILE", raising=False)
+    empty = settings_module.ProxySettings(internal_service_secret=SecretStr(""))
+    assert empty.internal_service_secret.get_secret_value() == ""
 
 
 def test_logging_settings_normalization(agents_service):
@@ -537,22 +537,22 @@ def test_settings_requires_proxy_secret(agents_service, monkeypatch):
     settings_module = agents_service.settings_module
     from pydantic import ValidationError
 
-    monkeypatch.delenv("TRUSTED_PROXY_SECRET", raising=False)
-    monkeypatch.delenv("TRUSTED_PROXY_SECRET_FILE", raising=False)
+    monkeypatch.delenv("INTERNAL_SERVICE_SECRET", raising=False)
+    monkeypatch.delenv("INTERNAL_SERVICE_SECRET_FILE", raising=False)
 
     with pytest.raises(ValidationError) as excinfo:
         settings_module.Settings(
-            proxy=settings_module.ProxySettings(trusted_proxy_secret="")
+            proxy=settings_module.ProxySettings(internal_service_secret="")
         )
-    assert "TRUSTED_PROXY_SECRET must be set" in str(excinfo.value)
+    assert "INTERNAL_SERVICE_SECRET must be set" in str(excinfo.value)
 
 
 def test_settings_builds_with_proxy_secret(agents_service):
     settings_module = agents_service.settings_module
     instance = settings_module.Settings(
-        proxy=settings_module.ProxySettings(trusted_proxy_secret="present")
+        proxy=settings_module.ProxySettings(internal_service_secret="present")
     )
-    assert instance.proxy.trusted_proxy_secret.get_secret_value() == "present"
+    assert instance.proxy.internal_service_secret.get_secret_value() == "present"
 
 
 # ---------------------------------------------------------------------------

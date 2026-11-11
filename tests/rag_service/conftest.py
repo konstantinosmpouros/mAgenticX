@@ -37,7 +37,7 @@ def _load_rag_service(monkeypatch, tmp_path):
 
     monkeypatch.syspath_prepend(str(SERVICE_ROOT))
 
-    monkeypatch.setenv("TRUSTED_PROXY_SECRET", "rag-test-secret")
+    monkeypatch.setenv("INTERNAL_SERVICE_SECRET", "rag-test-secret")
     monkeypatch.setenv("OPENAI_API_KEY", "test-openai-key")
     monkeypatch.chdir(tmp_path)
 
@@ -74,7 +74,7 @@ def rag_service(monkeypatch, tmp_path):
 
 @pytest.fixture
 def internal_headers(rag_service):
-    return {rag_service.proxy.TRUSTED_PROXY_HEADER_NAME: rag_service.proxy.settings.proxy.trusted_proxy_secret.get_secret_value()}
+    return {rag_service.proxy.TRUSTED_PROXY_HEADER_NAME: rag_service.proxy.settings.proxy.internal_service_secret.get_secret_value()}
 
 
 @pytest_asyncio.fixture

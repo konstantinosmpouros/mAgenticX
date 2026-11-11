@@ -38,7 +38,7 @@ def _remote_ip(request: Request) -> str | None:
 
 
 def is_trusted_proxy_request(request: Request) -> bool:
-    expected = settings.proxy.trusted_proxy_secret.get_secret_value()
+    expected = settings.proxy.internal_service_secret.get_secret_value()
     presented = request.headers.get(TRUSTED_PROXY_HEADER_NAME, "")
     return bool(presented) and secrets.compare_digest(presented, expected)
 
@@ -52,7 +52,7 @@ def internal_service_headers(
     request_id: str | None = None, session_id: str | None = None, user_id: str | None = None
 ) -> dict[str, str]:
     headers: dict[str, str] = {
-        TRUSTED_PROXY_HEADER_NAME: settings.proxy.trusted_proxy_secret.get_secret_value(),
+        TRUSTED_PROXY_HEADER_NAME: settings.proxy.internal_service_secret.get_secret_value(),
     }
     if request_id:
         headers["X-Request-ID"] = request_id

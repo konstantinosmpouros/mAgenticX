@@ -1,7 +1,7 @@
 """Internal (service-to-service) endpoints over a conversation's uploads.
 
-**Not** browser-facing: gated by `require_internal_caller` (the shared internal
-proxy secret) AND blocked at the nginx edge (`/api/v1/internal/`), so only the
+**Not** browser-facing: gated by `require_internal_caller` (the service secret,
+`INTERNAL_SERVICE_SECRET`, which the UI never holds) AND blocked at the nginx edge (`/api/v1/internal/`), so only the
 agents service — reaching the bridge directly on the `backend` network — can
 call them. They back the agent's read-only ``/conversation/input/`` folder
 (plan 36): the uploads stay here, and the agent reads them on demand.

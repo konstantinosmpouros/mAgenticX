@@ -14,8 +14,8 @@ header on every call. The router verifies it and reads the caller from it:
 Format: ``base64url(zlib(json claims)) "." base64url(HMAC-SHA256)``. Signed,
 not encrypted: it travels only inside this process (the in-process transport,
 ``harness.async_tasks.client``) and is never logged. The key is
-``ASYNC_TASKS_LAUNCH_SECRET`` or, unset, derived from ``TRUSTED_PROXY_SECRET``
-under a domain label, so the raw proxy secret is never the HMAC key.
+``ASYNC_TASKS_LAUNCH_SECRET`` or, unset, derived from ``INTERNAL_SERVICE_SECRET``
+under a domain label, so the raw service secret is never the HMAC key.
 """
 from __future__ import annotations
 
@@ -88,7 +88,7 @@ def _key() -> bytes:
     explicit = settings.async_tasks.launch_secret.get_secret_value()
     if explicit:
         return explicit.encode("utf-8")
-    base = settings.proxy.trusted_proxy_secret.get_secret_value().encode("utf-8")
+    base = settings.proxy.internal_service_secret.get_secret_value().encode("utf-8")
     return hmac.new(base, _DOMAIN, hashlib.sha256).digest()
 
 

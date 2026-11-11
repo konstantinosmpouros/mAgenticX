@@ -1078,7 +1078,15 @@ class ProxySettings(BaseSettings):
     model_config = _BASE_MODEL_CONFIG
 
     header_name: str = Field("X-Internal-Proxy-Secret", validation_alias="TRUSTED_PROXY_HEADER_NAME")
+    # What the UI's nginx sends on every browser request: "this came through the
+    # edge proxy", so the forwarded client IP can be trusted. Never a service
+    # credential: nginx and the UI container hold it.
     secret: SecretStr = Field(default_factory=lambda: SecretStr(""))
+    # The credential between services (dialogue_bridge, agents, rag_service, the
+    # sandbox runner), in the same header. The UI never holds it, so a browser
+    # request can never pass as a service, and a compromised UI container
+    # cannot call the agents, rag_service or /v1/internal/*.
+    internal_secret: SecretStr = Field(default_factory=lambda: SecretStr(""))
 
     @field_validator("secret", mode="before")
     @classmethod
@@ -1088,6 +1096,16 @@ class ProxySettings(BaseSettings):
         if isinstance(value, str) and value:
             return value
         resolved = _resolve_file_backed_secret("TRUSTED_PROXY_SECRET")
+        return resolved if resolved else ""
+
+    @field_validator("internal_secret", mode="before")
+    @classmethod
+    def _load_internal_secret(cls, value: object) -> object:
+        if isinstance(value, SecretStr) and value.get_secret_value():
+            return value
+        if isinstance(value, str) and value:
+            return value
+        resolved = _resolve_file_backed_secret("INTERNAL_SERVICE_SECRET")
         return resolved if resolved else ""
 
 
@@ -1402,8 +1420,17 @@ class Settings(BaseSettings):
         if not self.proxy.secret.get_secret_value():
             raise ValueError(
                 "TRUSTED_PROXY_SECRET must be set. "
+                "Refusing to start without the edge-proxy shared secret."
+            )
+        if not self.proxy.internal_secret.get_secret_value():
+            raise ValueError(
+                "INTERNAL_SERVICE_SECRET must be set. "
                 "Refusing to start without an internal-caller shared secret."
             )
+        # The split is the point: the UI holds TRUSTED_PROXY_SECRET, so the
+        # same value as the service credential would hand it every service.
+        if self.proxy.internal_secret.get_secret_value() == self.proxy.secret.get_secret_value():
+            raise ValueError("INTERNAL_SERVICE_SECRET must differ from TRUSTED_PROXY_SECRET.")
 
         # Entra is the only way in (plan 29 Part A). Checked in every
         # environment: with it unconfigured the bridge would boot into a login

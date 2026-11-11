@@ -29,7 +29,7 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - RAG_HOST=vectordb
       - RAG_PORT=8000
-      - TRUSTED_PROXY_SECRET=${TRUSTED_PROXY_SECRET}
+      - INTERNAL_SERVICE_SECRET=${INTERNAL_SERVICE_SECRET}
       - LOG_FORMAT=${LOG_FORMAT:-console}
     depends_on:
       - vectordb
@@ -66,7 +66,7 @@ services:
       #   MCP_GATEWAY_URL=http://mcp_gateway:8005/sse
       #   SANDBOX_RUNNER_URL=http://sandbox_runner:8090
       - MCP_GATEWAY_URL=${MCP_GATEWAY_URL:-}
-      - TRUSTED_PROXY_SECRET=${TRUSTED_PROXY_SECRET}
+      - INTERNAL_SERVICE_SECRET=${INTERNAL_SERVICE_SECRET}
       - LOG_FORMAT=${LOG_FORMAT:-console}   # json for ../../monitoring's log panels
       # The global plane (agent definitions, skills catalogue) is on the
       # magenticx_data volume. A conversation's files are rows in agent_runtime
@@ -172,7 +172,10 @@ services:
       - DATABASE_URL=postgresql+asyncpg://admin:admin@chat_postgres:5432/chat_db
       - AGENTS_SERVICE_URL=http://agents:8003
       - SESSION_TOKEN_SECRET=${SESSION_TOKEN_SECRET}
+      # What the UI's nginx sends (trust the forwarded client IP), and the
+      # credential between services, which the UI never holds.
       - TRUSTED_PROXY_SECRET=${TRUSTED_PROXY_SECRET}
+      - INTERNAL_SERVICE_SECRET=${INTERNAL_SERVICE_SECRET}
       - LOG_FORMAT=${LOG_FORMAT:-console}   # json for ../../monitoring's log panels
       - REDIS_URL=redis://redis:6379/0
       - REDIS_PASSWORD=${REDIS_PASSWORD:-magenticx-dev-redis}

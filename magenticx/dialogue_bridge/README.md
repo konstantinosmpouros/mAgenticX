@@ -759,7 +759,7 @@ Inference and blob streaming are instrumented with:
 
 Client IP resolution trusts forwarded headers only when the request comes from:
 
-- a trusted proxy secret header, or
+- the edge-proxy header (`TRUSTED_PROXY_SECRET`, injected by nginx), or
 - a trusted proxy CIDR
 
 ### 16.4 Rate limiting
@@ -817,7 +817,8 @@ The bridge also refuses to start without the Microsoft Entra app registration (`
 | `WORKFLOW_BUILDER_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `120` / `60` |
 | `WORKFLOW_RUN_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `6` / `60` |
 | `TRUSTED_PROXY_HEADER_NAME` | `X-Internal-Proxy-Secret` |
-| `TRUSTED_PROXY_SECRET` | required (service refuses to start if unset) |
+| `TRUSTED_PROXY_SECRET` | required (service refuses to start if unset) — edge-proxy marker; trusts the forwarded client IP only |
+| `INTERNAL_SERVICE_SECRET` | required (service refuses to start if unset or equal to `TRUSTED_PROXY_SECRET`) — the credential between services |
 
 ### 17.5 Redis (inference event log + skills cache) variables
 
@@ -937,6 +938,7 @@ Configured environment there includes:
 - the `ENTRA_*` sign-in config, and `SESSION_SIGNING_BACKEND=file` with a mounted dev key (production signs with OCI KMS)
 - `SESSION_TOKEN_SECRET=${SESSION_TOKEN_SECRET}`
 - `TRUSTED_PROXY_SECRET=${TRUSTED_PROXY_SECRET}`
+- `INTERNAL_SERVICE_SECRET=${INTERNAL_SERVICE_SECRET}`
 - `REDIS_URL=redis://redis:6379/0`
 - `REDIS_PASSWORD_FILE=/run/secrets/redis_password` (prod) or `REDIS_PASSWORD=${REDIS_PASSWORD}` (local dev)
 

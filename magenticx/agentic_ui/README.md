@@ -504,7 +504,7 @@ The Docker image is a two-stage build:
 
 - rewrites `/api/...` before proxying to `${BFF_BASE_URL}`
 - overwrites client IP headers with nginx `$remote_addr` before forwarding to the bridge
-- injects `X-Internal-Proxy-Secret ${TRUSTED_PROXY_SECRET}`
+- injects `X-Internal-Proxy-Secret ${TRUSTED_PROXY_SECRET}` (edge-proxy marker only)
 - disables request and response buffering for large uploads and SSE
 - dedicated `^~ /api/v1/inference/runs/` location handles the WebSocket upgrade (`Upgrade` / `Connection: $connection_upgrade` headers + 3600s `proxy_read_timeout` / `proxy_send_timeout`) so long-lived run observers stay alive
 - sets `client_max_body_size 50M`
@@ -528,7 +528,8 @@ Important runtime values:
   - upstream base URL for proxied API traffic
   - Docker default: `http://dialogue_bridge:8002`
 - `TRUSTED_PROXY_SECRET`
-  - shared secret added to proxied requests for bridge-side trust checks
+  - edge-proxy marker added to proxied requests; the bridge uses it only to trust the forwarded client IP, and it authorizes nothing
+  - the UI never holds `INTERNAL_SERVICE_SECRET`, the credential between services
 
 Development settings of note:
 

@@ -62,6 +62,7 @@ os.environ.setdefault(
 os.environ.setdefault("SESSION_TOKEN_SECRET", "test-session-token-secret")
 os.environ.setdefault("SESSION_COOKIE_SECURE", "false")
 os.environ.setdefault("TRUSTED_PROXY_SECRET", "test-trusted-proxy-secret")
+os.environ.setdefault("INTERNAL_SERVICE_SECRET", "test-internal-service-secret")
 os.environ.setdefault("AGENTS_SERVICE_URL", "http://agents.test")
 # Rate limits run FOR REAL against the fakeredis pool seeded below — every
 # suite request shares one identity bucket, so the ceilings must be generous

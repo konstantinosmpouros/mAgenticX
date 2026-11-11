@@ -25,7 +25,7 @@ There are four delivery paths; a single service may use more than one.
 | Mechanism | Used by | How it works |
 | --- | --- | --- |
 | **Swarm secret → `*_FILE` env** | the three Python services | The compose `secrets:` list mounts `/run/secrets/<alias>`. A `<NAME>_FILE` env var points at that path; `_resolve_file_backed_secret()` in each `core/settings.py` reads the file, strips it, and feeds the value into a Pydantic `SecretStr`. If `*_FILE` is unset it falls back to the plain env var (this is what local `.env` dev uses). |
-| **Swarm secret → env via shim** | `agentic_ui` (nginx) | nginx's `envsubst` can only read env vars, not files. `load-secrets-and-exec.sh` reads `/run/secrets/trusted_proxy_secret` into `$TRUSTED_PROXY_SECRET`, then exec's the TLS entrypoint. |
+| **Swarm secret → env via shim** | `agentic_ui` (nginx) | nginx's `envsubst` can only read env vars, not files. `load-secrets-and-exec.sh` reads `/run/secrets/trusted_proxy_secret` into `$TRUSTED_PROXY_SECRET`, then exec's the TLS entrypoint. The UI gets no other secret. |
 | **Swarm secret → file path in config** | `chat_postgres`, `redis`, `grafana`, `alertmanager` | The service's own config consumes the file directly: Postgres `POSTGRES_PASSWORD_FILE`, Redis `$(cat /run/secrets/redis_password)` in its command, Grafana `GF_SECURITY_ADMIN_USER__FILE` / `GF_SECURITY_ADMIN_PASSWORD__FILE`, Alertmanager `password_file:` in `alertmanager.yml`. |
 | **Bind-mounted file** | `mcp_gateway`, `sandbox_runner` | Both are plain `docker compose` (not Swarm), so they can't use Swarm secrets. The gateway's upstream MCP-server API keys live in `mcp_secret.env`, passed via `--secrets`; the runner reads copies of two magenticx secrets from `/opt/sandbox/secrets/`. |
 | **Key held in an HSM (never delivered)** | `dialogue_bridge` | The session-JWT signing key lives in OCI KMS and is **never delivered to any service**. The bridge holds only an API key (Swarm secret) permitted to request signatures over a digest, from Dennis only. |
@@ -36,12 +36,13 @@ The in-container **alias** (e.g. `openai_api_key`) is intentionally fixed so app
 
 ## Core stack secrets — `docker-compose-denis.yaml`
 
-Twelve Swarm secrets, declared at the bottom of the compose with `external: true` and a `magenticx_`-prefixed `name:`. The alias column is both the `secrets:` entry name and the `/run/secrets/<alias>` path.
+Thirteen Swarm secrets, declared at the bottom of the compose with `external: true` and a `magenticx_`-prefixed `name:`. The alias column is both the `secrets:` entry name and the `/run/secrets/<alias>` path.
 
 | External Swarm name | Alias / path | Resolved via | Consumed by | Purpose / functionality |
 | --- | --- | --- | --- | --- |
 | `magenticx_openai_api_key` | `openai_api_key` | `OPENAI_API_KEY_FILE` | `rag_service`, `agents` | OpenAI key for embeddings (rag), every LLM/agent call, and STT / TTS / realtime voice. |
-| `magenticx_trusted_proxy_secret` | `trusted_proxy_secret` | `TRUSTED_PROXY_SECRET_FILE` (Python); shim (nginx) | `rag_service`, `agents`, `dialogue_bridge`, `agentic_ui` | The internal-caller shared secret sent as the `X-Internal-Proxy-Secret` header. `require_internal_caller` validates it on every internal hop; the UI's nginx injects it. **Missing it = 403 on all internal calls, and the Python services refuse to start.** |
+| `magenticx_trusted_proxy_secret` | `trusted_proxy_secret` | `TRUSTED_PROXY_SECRET_FILE` (bridge); shim (nginx) | `dialogue_bridge`, `agentic_ui` | Edge-proxy marker: the UI's nginx injects it as `X-Internal-Proxy-Secret` on every browser request. The bridge uses it only to trust the forwarded client IP (`is_trusted_proxy_request` → `resolve_client_ip`); it authorizes nothing. The bridge refuses to start without it. |
+| `magenticx_internal_service_secret` | `internal_service_secret` | `INTERNAL_SERVICE_SECRET_FILE` | `rag_service`, `agents`, `dialogue_bridge` | The credential between services, in the same `X-Internal-Proxy-Secret` header. `require_internal_caller` validates it on every internal hop; `internal_service_headers()` sends it. Also the base of the async-task launch-token key when `ASYNC_TASKS_LAUNCH_SECRET` is unset. Never given to `agentic_ui`. **Must differ from `magenticx_trusted_proxy_secret`. Missing it = 403 on all internal calls, and the Python services refuse to start.** Must exist **before** the release that references it, or the stack deploy fails. |
 | `magenticx_session_token_secret` | `session_token_secret` | `SESSION_TOKEN_SECRET_FILE` | `dialogue_bridge` | General-purpose HMAC key (e.g. short-lived DOCX-preview tokens). **No longer the auth-session secret** — auth is stateless KMS-signed JWTs. |
 | `magenticx_parked_token_key` | `parked_token_key` | `PARKED_TOKEN_KEY_FILE` | `dialogue_bridge` | AES-GCM key (**at least** 32 bytes, base64 or hex; longer is condensed with HKDF) encrypting the refresh tokens of *parked* accounts in Redis, so a Redis-only compromise yields no usable credential. Dedicated rather than derived from `session_token_secret` so it rotates on its own — rotating it signs every parked account out, which must not be a side effect of rotating an unrelated key. Omitted locally: the bridge then derives it from `SESSION_TOKEN_SECRET` (HKDF) rather than ever storing tokens unencrypted. |
 | `magenticx_redis_password` | `redis_password` | `REDIS_PASSWORD_FILE` (bridge); `cat` in command (redis) | `dialogue_bridge`, `redis` | Redis AUTH password. Redis holds the per-run inference event-log streams; the bridge reads/writes them over `rediss://`. |
@@ -53,7 +54,7 @@ Twelve Swarm secrets, declared at the bottom of the compose with `external: true
 | `magenticx_oci_signer_key` | `oci_signer_key` | `OCI_API_PRIVATE_KEY_FILE` | `dialogue_bridge` | API private key of the dedicated OCI principal whose **only** permission is `use keys` on the session-signing HSM key, **and only from Dennis** (IAM network-source condition). It cannot read, export or rotate the key — only request a signature over a digest. OCI API keys carry no expiry date; rotate it on any suspected leak (see below). Without it, new logins and refreshes stop. |
 | `magenticx_entra_client_secret` | `entra_client_secret` | `ENTRA_CLIENT_SECRET_FILE` | `dialogue_bridge` | Microsoft Entra app-registration **client secret** for the OIDC relying-party (auth-code + PKCE) sign-in — **the only way into the platform**. The bridge refuses to start without it. **Expires on a calendar date: record it below and rotate before it lapses**, or nobody can sign in. |
 
-> `dialogue_bridge`, `agents`, and `rag_service` **refuse to start** without `trusted_proxy_secret`. Outside `development`/`test`, the bridge additionally requires a `session_token_secret`. In **every** environment it requires the Entra config (`entra_client_secret` + tenant/client ids) and the session-signing config (`oci_signer_key` + the KMS settings, or the local-dev file key).
+> `dialogue_bridge`, `agents`, and `rag_service` **refuse to start** without `internal_service_secret`; the bridge also requires `trusted_proxy_secret` and refuses to start if the two are equal. Outside `development`/`test`, the bridge additionally requires a `session_token_secret`. In **every** environment it requires the Entra config (`entra_client_secret` + tenant/client ids) and the session-signing config (`oci_signer_key` + the KMS settings, or the local-dev file key).
 
 ---
 
@@ -81,11 +82,11 @@ The MCP gateway (sibling project, [mcp_gateway](https://github.com/konstantinosm
 
 ## Sandbox runner secrets — `docker-compose-denis.yaml` in the sandbox repo
 
-The sandbox runner (sibling project, plain `docker compose`) reads bind-mounted copies of two magenticx Swarm secrets. **Rotating either in magenticx means updating the copy too**, or the runner rejects `agents` (proxy secret) or its log hashes stop correlating (redaction secret). Setup: [sandbox](https://github.com/konstantinosmpouros/sandbox).
+The sandbox runner (sibling project, plain `docker compose`) reads bind-mounted copies of two magenticx Swarm secrets. **Rotating either in magenticx means updating the copy too**, or the runner rejects `agents` (internal service secret) or its log hashes stop correlating (redaction secret). Update the copy at the same time as the Swarm secret. Setup: [sandbox](https://github.com/konstantinosmpouros/sandbox).
 
 | Source file (on VM) | Same value as | Consumed by |
 | --- | --- | --- |
-| `/opt/sandbox/secrets/trusted_proxy_secret` | `magenticx_trusted_proxy_secret` | `sandbox_runner` (refuses to start without it) |
+| `/opt/sandbox/secrets/trusted_proxy_secret` | `magenticx_internal_service_secret` (the file keeps the sandbox's own name; the value is the service secret) | `sandbox_runner` (refuses to start without it) |
 | `/opt/sandbox/secrets/log_redaction_secret` | `magenticx_log_redaction_secret` | `sandbox_runner` |
 
 ---
@@ -149,7 +150,7 @@ Rotation of a key/cert is a file copy + `chown 1000:1000` + container restart �
 - **`POSTGRES_PASSWORD_FILE` only takes effect on first data-dir init.** To move an existing cluster onto the secret, `ALTER USER admin WITH PASSWORD '<new>'` from the container console **before** deploying the revision that switches the bridge/agents to the file-backed password.
 - **An unreadable `*_FILE` is fail-loud.** `_resolve_file_backed_secret()` raises if the `*_FILE` path is set but unreadable, rather than silently falling through to a plain env var — so a permission slip surfaces as a startup crash, not a silent wrong-value boot.
 - **The log-redaction secret is fail-safe, not fail-loud.** Without it each service hardens to a random per-process key; logs stay private but the `client_ip` hash stops correlating across services/restarts. Provision it.
-- **Blast radius, highest first:** `magenticx_postgres_password` (all chat + agent state), the OCI signing principal's API key and the KMS key's IAM policy (every session JWT — a policy that drops the network-source condition makes a leaked key usable from anywhere), `magenticx_openai_api_key` (cost + data egress), `magenticx_trusted_proxy_secret` (internal trust boundary), `magenticx_agent_runtime_aes_key` (checkpoint confidentiality). Rotate these first on any suspected exposure.
+- **Blast radius, highest first:** `magenticx_postgres_password` (all chat + agent state), the OCI signing principal's API key and the KMS key's IAM policy (every session JWT — a policy that drops the network-source condition makes a leaked key usable from anywhere), `magenticx_openai_api_key` (cost + data egress), `magenticx_internal_service_secret` (internal trust boundary), `magenticx_agent_runtime_aes_key` (checkpoint confidentiality). Rotate these first on any suspected exposure.
 - **Local dev needs none of this.** With no `*_FILE` vars set, settings fall back to plain env vars from `magenticx/.env`, and the dev defaults fill in the rest (random session/redaction secrets). Local dev still needs two things of its own: the `ENTRA_*` values for the shared app registration, and a gitignored file signing key in `magenticx/secrets/`. See `CLAUDE.md` § Local Development Setup.
 
 ---

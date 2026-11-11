@@ -8,7 +8,7 @@ TRUSTED_PROXY_HEADER_NAME = settings.proxy.trusted_proxy_header_name
 
 
 def is_trusted_proxy_request(request: Request) -> bool:
-    expected = settings.proxy.trusted_proxy_secret.get_secret_value()
+    expected = settings.proxy.internal_service_secret.get_secret_value()
     presented = request.headers.get(TRUSTED_PROXY_HEADER_NAME, "")
     return bool(presented) and secrets.compare_digest(presented, expected)
 

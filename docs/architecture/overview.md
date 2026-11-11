@@ -150,9 +150,16 @@ All routes are mounted under the `/v1/` prefix by FastAPI's app router.
 
 ### Internal Trust Model
 
-All backend-to-backend HTTP calls require the `X-Internal-Proxy-Secret` header (value from `TRUSTED_PROXY_SECRET` env var). The `require_internal_caller` FastAPI dependency validates this on every internal endpoint. nginx injects the header automatically for browser → bridge traffic. The bridge injects it manually when calling the agents service.
+The `X-Internal-Proxy-Secret` header carries one of two secrets:
 
-There is one **reverse hop**: the agents service calls the bridge's internal `POST /v1/internal/memory/search` for the `search_past_conversations` agent tool (the bridge owns the pgvector index — see [conversation-embeddings](../flows/conversation-embeddings.md)). Because nginx injects the proxy secret on *browser* traffic too, that endpoint is guarded by `require_internal_caller` **and** explicitly denied at the nginx edge (`location ^~ /api/v1/internal/ → 404`), so it is reachable only service-to-service on the `backend` network — never from a browser. The agents service authenticates with its existing internal client cert + proxy secret (no new credentials).
+| Secret | Sent by | Checked by | Grants |
+| --- | --- | --- | --- |
+| `TRUSTED_PROXY_SECRET` | nginx (`agentic_ui`), on every browser request | `dialogue_bridge` (`is_trusted_proxy_request`) | Trust in the forwarded client IP (`resolve_client_ip`). Nothing else. |
+| `INTERNAL_SERVICE_SECRET` | `internal_service_headers()` in the bridge and agents | `require_internal_caller` in the bridge (`is_internal_service_request`), agents, rag_service and the sandbox runner | Service-to-service access. The UI never holds it. |
+
+So a compromised UI container cannot call agents, rag_service, the sandbox runner or the bridge's `/v1/internal/*`.
+
+There is one **reverse hop**: the agents service calls the bridge's internal `POST /v1/internal/memory/search` for the `search_past_conversations` agent tool (the bridge owns the pgvector index — see [conversation-embeddings](../flows/conversation-embeddings.md)). That endpoint is guarded by `require_internal_caller` (the service secret, which nginx never sends) **and** explicitly denied at the nginx edge (`location ^~ /api/v1/internal/ → 404`), so it is reachable only service-to-service on the `backend` network — never from a browser. The agents service authenticates with its existing internal client cert + `INTERNAL_SERVICE_SECRET` (no new credentials).
 
 In production this application-layer credential is backed by **transport-layer mutual TLS** on the three HTTP service hops — `agentic_ui → dialogue_bridge`, `dialogue_bridge → agents`, and `agents → rag_service`. Each server requires a client certificate signed by the internal CA (`entrypoint-tls.sh` adds `--ssl-cert-reqs 2 --ssl-ca-certs ca.crt` to uvicorn when `REQUIRE_MTLS` is true, default `true`); each caller presents its own service cert (nginx `proxy_ssl_certificate`, Python services via httpx `cert=get_httpx_client_cert()`). So a peer is authenticated cryptographically by its cert, not only by the shared header. `chat_postgres` and `redis` stay password-over-verified-TLS (not mTLS); `agents → mcp_gateway` remains plaintext. `REQUIRE_MTLS=false` is the escape hatch and the zero-downtime rollout lever (deploy cert-presenting clients first, then flip enforcement on).
 
@@ -387,7 +394,8 @@ Only `agentic_ui` (port 8050) is bound to the host. All other services are inter
 | `SESSION_TOKEN_SECRET` | dialogue_bridge | General-purpose HMAC key (e.g. DOCX-preview tokens); not used for auth sessions |
 | `JWT_ACCESS_TTL_SECONDS` | dialogue_bridge | Access JWT lifetime (default 28800 / 8 h) |
 | `JWT_REFRESH_IDLE_TTL_SECONDS` / `JWT_REFRESH_ABSOLUTE_TTL_SECONDS` | dialogue_bridge | Refresh JWT idle and absolute lifetimes (defaults 1036800 / 12 d and 1728000 / 20 d) |
-| `TRUSTED_PROXY_SECRET` | all services | Internal service authentication |
+| `TRUSTED_PROXY_SECRET` | agentic_ui (nginx), dialogue_bridge | Edge-proxy marker: the bridge trusts the forwarded client IP; authorizes nothing |
+| `INTERNAL_SERVICE_SECRET` | dialogue_bridge, agents, rag_service (+ sandbox runner) | Service-to-service authentication; must differ from `TRUSTED_PROXY_SECRET` |
 | `LOG_REDACTION_SECRET_FILE` / `LOG_REDACTION_SECRET` | dialogue_bridge, agents, rag_service | Shared HMAC key (Swarm `magenticx_log_redaction_secret`) for hashing `user_id`/`session_id`/`client_ip` in logs. Same key across services so hashes correlate; falls back to a random per-process key if unset (correlation disabled). See [observability](../development/observability.md). |
 | `LOG_LEVEL` / `LOG_FORMAT` | all Python services | Log verbosity (default `INFO`) and output mode (`json` in prod, `console` in dev) |
 | `REQUIRE_TLS` | agents, rag_service, dialogue_bridge, chat_postgres, agentic_ui | TLS-entrypoint gate; defaults to `true` (fail closed — refuse to start in plaintext if certs are missing/unreadable). Set `false` only as an emergency escape hatch. Not used in local dev (the TLS entrypoints are a prod-only override). |
@@ -442,7 +450,7 @@ Only `agentic_ui` (port 8050) is bound to the host. All other services are inter
 
 - **nginx is the only public port.** Every browser request enters through port 8050. Nothing else should be exposed to the host in production. Exposing `dialogue_bridge:8002` or `agents:8003` directly bypasses the proxy-secret injection and breaks the trust model.
 
-- **`TRUSTED_PROXY_SECRET` must match across all services.** The bridge and agents both validate this header. A mismatch causes 403 errors on all agent inference calls.
+- **`INTERNAL_SERVICE_SECRET` must match across the bridge, agents, rag_service and the sandbox runner.** A mismatch causes 403 errors on all agent inference calls. `TRUSTED_PROXY_SECRET` is shared only by nginx and the bridge, and the two values must differ.
 
 - **Agent inference is always a detached background task.** `dialogue_bridge` spawns an asyncio task to stream from `agents`. If the browser disconnects, the task runs to completion (the inference run is still persisted). Cancellation requires an explicit API call to the cancellation endpoint, which sends a cancellation signal to the running graph.
 

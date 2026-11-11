@@ -20,7 +20,7 @@ if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
 
 os.environ.setdefault("OPENAI_API_KEY", "test-openai-key")
-os.environ.setdefault("TRUSTED_PROXY_SECRET", "agents-test-secret")
+os.environ.setdefault("INTERNAL_SERVICE_SECRET", "agents-test-secret")
 os.environ.setdefault("MCP_GATEWAY_URL", "http://mcp.test/sse")
 
 #: Fixed timestamp for fake store rows — the shape matters, the value does not.
@@ -50,7 +50,7 @@ def _load_agents_service(monkeypatch):
     monkeypatch.syspath_prepend(str(SERVICE_ROOT))
 
     monkeypatch.setenv("OPENAI_API_KEY", "test-openai-key")
-    monkeypatch.setenv("TRUSTED_PROXY_SECRET", "agents-test-secret")
+    monkeypatch.setenv("INTERNAL_SERVICE_SECRET", "agents-test-secret")
     monkeypatch.setenv("MCP_GATEWAY_URL", "http://mcp.test/sse")
 
     main_module = importlib.import_module("main")
@@ -295,7 +295,7 @@ def _memory_pool(agents_service):
 @pytest.fixture
 def internal_headers(agents_service):
     return {
-        agents_service.settings_module.settings.proxy.trusted_proxy_header_name: agents_service.settings_module.settings.proxy.trusted_proxy_secret.get_secret_value()
+        agents_service.settings_module.settings.proxy.trusted_proxy_header_name: agents_service.settings_module.settings.proxy.internal_service_secret.get_secret_value()
     }
 
 

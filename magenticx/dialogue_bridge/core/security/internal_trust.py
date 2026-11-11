@@ -38,7 +38,16 @@ def _remote_ip(request: Request) -> str | None:
 
 
 def is_trusted_proxy_request(request: Request) -> bool:
+    """The request came through the UI's nginx (``TRUSTED_PROXY_SECRET``), so its
+    forwarded client IP can be trusted. Never an authorization for anything."""
     expected = settings.proxy.secret.get_secret_value()
+    presented = request.headers.get(TRUSTED_PROXY_HEADER_NAME, "")
+    return bool(presented) and secrets.compare_digest(presented, expected)
+
+
+def is_internal_service_request(request: Request) -> bool:
+    """The caller is another service (``INTERNAL_SERVICE_SECRET``, which the UI never holds)."""
+    expected = settings.proxy.internal_secret.get_secret_value()
     presented = request.headers.get(TRUSTED_PROXY_HEADER_NAME, "")
     return bool(presented) and secrets.compare_digest(presented, expected)
 
@@ -46,16 +55,13 @@ def is_trusted_proxy_request(request: Request) -> bool:
 def require_internal_caller(request: Request) -> None:
     """FastAPI dependency for service-to-service-only endpoints (e.g. the
     agents → bridge memory search). Rejects anything that doesn't present the
-    shared internal proxy secret.
+    service secret (``INTERNAL_SERVICE_SECRET``).
 
-    SECURITY: nginx injects this same secret on browser traffic, so an endpoint
-    guarded by this dependency MUST ALSO be blocked at the nginx edge (see the
-    ``/api/v1/internal/`` deny in ``agentic_ui/nginx.conf.template``). The agents
-    service reaches these endpoints directly on the ``backend`` network, never
-    through nginx, so denying the path at nginx leaves them reachable only
-    server-to-server.
+    nginx sends ``TRUSTED_PROXY_SECRET`` on browser traffic, never this one, so a
+    browser request is refused here even if the path reached the bridge. The
+    ``/api/v1/internal/`` deny at the nginx edge stays as a second layer.
     """
-    if not is_trusted_proxy_request(request):
+    if not is_internal_service_request(request):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Internal caller required.",
@@ -66,7 +72,7 @@ def internal_service_headers(
     request_id: str | None = None, session_id: str | None = None, user_id: str | None = None
 ) -> dict[str, str]:
     headers: dict[str, str] = {
-        TRUSTED_PROXY_HEADER_NAME: settings.proxy.secret.get_secret_value(),
+        TRUSTED_PROXY_HEADER_NAME: settings.proxy.internal_secret.get_secret_value(),
     }
     if request_id:
         headers["X-Request-ID"] = request_id

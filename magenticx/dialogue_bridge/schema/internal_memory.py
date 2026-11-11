@@ -8,7 +8,7 @@ class MemorySearchRequest(BaseModel):
     """Internal (agents → bridge) request: semantic search over a user's past
     messages, backing the agent's `search_past_conversations` tool. `user_id`
     is trusted because only internal callers (the agents service, with the
-    proxy secret) can reach this endpoint."""
+    service secret) can reach this endpoint."""
     user_id: str
     query: str
     limit: int = 5
