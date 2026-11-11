@@ -325,7 +325,7 @@ Per-destination `httpx` timeouts, in seconds. Each destination has four knobs: `
 
 | Env var | Default | What it does |
 | --- | --- | --- |
-| `CORS_ALLOWED_ORIGINS` | `localhost:8080/8050` + `127.0.0.1:8080/8050` (CSV) | Allowed browser origins, for CORS **and** the WebSocket `Origin` check. **Cannot contain `*` while credentials are on**, and outside `APP_ENV=development`/`test` only `https` origins on public hosts (the localhost defaults raise at startup). Dennis sets `https://agents.magenticx.com`. |
+| `CORS_ALLOWED_ORIGINS` | `localhost:8080/8050` + `127.0.0.1:8080/8050` (CSV, or a JSON list; the `CORS_*` tuples are `NoDecode`, so a plain origin is not JSON-parsed) | Allowed browser origins, for CORS **and** the WebSocket `Origin` check. **Cannot contain `*` while credentials are on**, and outside `APP_ENV=development`/`test` only `https` origins on public hosts (the localhost defaults raise at startup). Dennis sets `https://agents.magenticx.com`. |
 | `CORS_ALLOW_CREDENTIALS` | `true` | Allow cookies on cross-origin requests. |
 | `CORS_ALLOW_METHODS` | `GET,POST,PUT,PATCH,DELETE` (CSV) | Allowed methods. |
 | `CORS_ALLOW_HEADERS` | auto | Defaults to `Accept, Content-Type, Authorization, Range, If-Range, <csrf header>` if unset. |

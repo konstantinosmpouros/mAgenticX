@@ -114,6 +114,21 @@ def test_production_refuses_the_localhost_defaults(tmp_path):
         )
 
 
+@pytest.mark.parametrize("raw, expected", [
+    ("https://agents.magenticx.com", ("https://agents.magenticx.com",)),  # what Dennis sets
+    ("https://a.example, https://b.example", ("https://a.example", "https://b.example")),
+    ('["https://a.example", "https://b.example"]', ("https://a.example", "https://b.example")),
+])
+def test_cors_origins_are_read_from_the_environment(monkeypatch, raw, expected):
+    # Set through the env, as in production: a tuple env value used to be
+    # JSON-decoded first, so a plain origin crashed the bridge at boot.
+    monkeypatch.setenv("CORS_ALLOWED_ORIGINS", raw)
+    monkeypatch.setenv("CORS_ALLOW_METHODS", "GET,POST")
+    cors = CorsSettings(_env_file=None)
+    assert cors.allowed_origins == expected
+    assert cors.allow_methods == ("GET", "POST")
+
+
 def test_development_keeps_the_localhost_defaults():
     assert settings_module.settings.app.env in {"development", "test"}
     assert "http://localhost:8050" in CorsSettings(_env_file=None).allowed_origins

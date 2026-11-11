@@ -1,14 +1,15 @@
 from __future__ import annotations
 
+import json
 import os
 import secrets
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 from urllib.parse import quote, urlsplit
 
 import httpx
 from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 _BASE_MODEL_CONFIG = SettingsConfigDict(
@@ -47,6 +48,8 @@ def _split_csv(raw: object) -> tuple[str, ...]:
         return ()
     if isinstance(raw, (list, tuple)):
         return tuple(str(item).strip() for item in raw if str(item).strip())
+    if str(raw).strip().startswith("["):  # a JSON list is accepted too
+        return _split_csv(json.loads(str(raw)))
     items: list[str] = []
     for part in str(raw).split(","):
         candidate = part.strip()
@@ -1338,7 +1341,9 @@ class LoggingSettings(BaseSettings):
 class CorsSettings(BaseSettings):
     model_config = _BASE_MODEL_CONFIG
 
-    allowed_origins: tuple[str, ...] = Field(
+    # NoDecode: pydantic-settings would otherwise JSON-decode a tuple env value,
+    # so `CORS_ALLOWED_ORIGINS=https://a.example` crashed the boot; _parse_csv reads it.
+    allowed_origins: Annotated[tuple[str, ...], NoDecode] = Field(
         default=(
             "http://localhost:8080",
             "http://127.0.0.1:8080",
@@ -1348,12 +1353,12 @@ class CorsSettings(BaseSettings):
         validation_alias="CORS_ALLOWED_ORIGINS",
     )
     allow_credentials: bool = Field(True, validation_alias="CORS_ALLOW_CREDENTIALS")
-    allow_methods: tuple[str, ...] = Field(
+    allow_methods: Annotated[tuple[str, ...], NoDecode] = Field(
         default=("GET", "POST", "PUT", "PATCH", "DELETE"),
         validation_alias="CORS_ALLOW_METHODS",
     )
-    allow_headers: tuple[str, ...] | None = Field(default=None, validation_alias="CORS_ALLOW_HEADERS")
-    expose_headers: tuple[str, ...] = Field(
+    allow_headers: Annotated[tuple[str, ...] | None, NoDecode] = Field(default=None, validation_alias="CORS_ALLOW_HEADERS")
+    expose_headers: Annotated[tuple[str, ...], NoDecode] = Field(
         default=("Content-Disposition", "Content-Length", "Content-Range", "Accept-Ranges"),
         validation_alias="CORS_EXPOSE_HEADERS",
     )
