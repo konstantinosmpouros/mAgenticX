@@ -3,7 +3,7 @@
 // ------------------------------------------------------
 import type { AttachmentIn, AttachmentOut } from "./attachments";
 import type { CommandRef } from "./commands";
-import type { TaskNotice } from "../schemas";
+import type { EffortLevel, TaskNotice } from "../schemas";
 
 // A manual compaction recorded on the answer it follows (plan 34). Token
 // figures are estimates until the next model call reports the real prompt;
@@ -79,6 +79,8 @@ export type MessageOut = {
   compaction?: MessageCompaction | null;
   /** The slash command this user message ran (plan 35), shown as a chip. */
   command?: CommandRef | null;
+  /** The reasoning effort a user message was sent with; null when none was picked. */
+  effort?: EffortLevel | null;
   /**
    * `task_notification`: a wake-up input row (plan 41) — the graph's input is
    * a HumanMessage, so `sender` is `user`, but it is the system telling the
@@ -103,6 +105,8 @@ export type MessageIn = {
   rawEvents?: Record<string, any>[]; // defaults to [] on the backend
   /** A slash command (plan 35): its argument is `content`, which may be empty. */
   command?: CommandRef;
+  /** How hard the agent's model reasons; sent only for an agent that lists the level. */
+  effort?: EffortLevel;
 };
 
 // Message update payload (used to finalise AI placeholders)

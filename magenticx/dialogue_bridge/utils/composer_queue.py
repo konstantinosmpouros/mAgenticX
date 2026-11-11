@@ -14,7 +14,7 @@ normal ``send`` when that run ends, on the leaf the run produced.
   the loop and the queue route can race, and only one of them gets it. When
   the send is refused for a transient reason (another run started first: 409;
   the user's run cap: 429) it is put back, unless a newer one took the slot.
-* **Text and a slash command only.** Attachment bytes are never parked in a
+* **Text, a slash command and a reasoning effort only.** Attachment bytes are never parked in a
   JSON column: a send with attachments to a busy conversation gets today's 409.
 
 The composer shows the slot through ``queue`` frames on the conversation
@@ -116,6 +116,7 @@ async def queue_if_busy(
     queued = QueuedMessageOut(
         content=message.content,
         command=message.command,
+        effort=message.effort,
         agent_id=agent.id,
         queued_at=_now(),
     )
@@ -242,7 +243,9 @@ async def send_queued_message(
             agentId=queued.agent_id,
             conversationId=conversation_id,
             parentMessageId=parent_id,
-            message=MessageIn(sender="user", content=queued.content, command=queued.command),
+            message=MessageIn(
+                sender="user", content=queued.content, command=queued.command, effort=queued.effort
+            ),
         )
         try:
             response = await start_inference_flow(db=db, user=user, payload=payload)

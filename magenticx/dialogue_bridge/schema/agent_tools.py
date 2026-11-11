@@ -1,7 +1,9 @@
-"""Agents-tab tool DTOs, mirroring the agents-service shapes."""
+"""Per-agent DTOs (Agents tab tools, the composer's effort picker), mirroring the agents-service shapes."""
 from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from schema.base import EffortLevel
 
 
 class AgentToolRow(BaseModel):
@@ -51,3 +53,20 @@ class ToolApprovalsRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     approvals: dict[str, bool | None] = Field(default_factory=dict)
+
+
+class AgentModelResponse(BaseModel):
+    """``GET /v1/agents/{user_id}/{agent_id}/model`` — the agent's model and the
+    reasoning efforts it accepts, so the composer offers only levels that work.
+
+    Proxied from the agents service, which alone knows the model and maps each
+    level onto the provider's knob. Validated on the way out: an unknown level
+    from upstream fails the response instead of reaching the browser. ``efforts``
+    is empty and ``defaultEffort`` null for a model with no effort setting.
+    """
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    agentSlug: str
+    model: str | None = None
+    efforts: list[EffortLevel] = Field(default_factory=list)
+    defaultEffort: EffortLevel | None = None

@@ -9,7 +9,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * then done; or done alone); the message transform keeps a manual compaction
  * and drops anything else; after one, the context gauge reads the smaller
  * figure (not once undone) and the conversation's spend includes the summary
- * call; the ring compacts on click only when it can, and says so; the divider
+ * call; the gauge opens a panel whose button is the only way to compact (or
+ * /compact), and explains why it cannot; the divider
  * names what happened and expands to the summary; the hook compacts the leaf
  * answer, replaces it, and explains every reason it cannot.
  */
@@ -19,7 +20,7 @@ vi.mock("@/shared/lib/api", () => ({
 }));
 
 import { compactConversation } from "@/shared/lib/api";
-import { ContextMeter } from "@/features/chat/components/ContextMeter";
+import { ContextMeter, type ContextTrigger } from "@/features/chat/components/ContextMeter";
 import { CompactionDivider } from "@/features/chat/components/message_parts/CompactionDivider";
 import { useConversationCompaction } from "@/features/chat/hooks/useConversationCompaction";
 import { selectConversationContext, selectConversationStats } from "@/features/chat/lib/contextUsage";
@@ -103,56 +104,48 @@ const control = (over: Partial<ContextCompactionControl> = {}): ContextCompactio
   ...over,
 });
 
-describe("the context ring", () => {
+describe("the context gauge", () => {
   const context = { model: "gpt-5", tokens: 110_000, window: 272_000, percent: 40, compactionPercent: 92 };
 
-  it("compacts on click and says so", () => {
+  it("opens the panel on click and never compacts by itself", () => {
     const compaction = control();
-    render(<ContextMeter context={context} compaction={compaction} />);
-    const ring = screen.getByRole("button", { name: "Context window: 40% used. Click to compact the conversation" });
-    fireEvent.click(ring);
-    expect(compaction.compact).toHaveBeenCalledTimes(1);
-  });
-
-  it("does nothing on click when it cannot compact, and keeps its plain name", () => {
-    const compaction = control({ disabledReason: "Wait for the answer to finish to compact." });
     render(<ContextMeter context={context} compaction={compaction} />);
     fireEvent.click(screen.getByRole("button", { name: "Context window: 40% used" }));
     expect(compaction.compact).not.toHaveBeenCalled();
-  });
-
-  it("opens the card on a tap from a finger, even where hover is reported", () => {
-    // Phones with a stylus and some Android browsers match (hover: hover):
-    // the tap itself, not the media query, must decide.
-    const compaction = control();
-    render(<ContextMeter context={context} compaction={compaction} />);
-    const ring = screen.getByRole("button", { name: /Context window: 40% used/ });
-    act(() => {
-      ring.dispatchEvent(new PointerEvent("click", { bubbles: true, pointerType: "touch" }));
-    });
-    expect(compaction.compact).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Compact now" }));
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Compact" }));
     expect(compaction.compact).toHaveBeenCalledTimes(1);
   });
 
-  it("opens the card on the mobile layout instead of compacting", async () => {
-    const width = window.innerWidth;
-    window.innerWidth = 500;
-    try {
-      const compaction = control();
-      render(<ContextMeter context={context} compaction={compaction} />);
-      const ring = await screen.findByRole("button", { name: "Context window: 40% used" });
-      fireEvent.click(ring);
-      expect(compaction.compact).not.toHaveBeenCalled();
-      expect(screen.getByRole("button", { name: "Compact now" })).toBeTruthy();
-    } finally {
-      window.innerWidth = width;
-    }
+  it("explains why it cannot compact, beside a disabled button", () => {
+    const reason = "Compacting is available once the context is past 5%.";
+    const compaction = control({ disabledReason: reason });
+    render(<ContextMeter context={context} compaction={compaction} />);
+    fireEvent.click(screen.getByRole("button", { name: "Context window: 40% used" }));
+    expect(screen.getByText(reason, { exact: false })).toBeTruthy();
+    const button = screen.getByRole("button", { name: "Compact" }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    fireEvent.click(button);
+    expect(compaction.compact).not.toHaveBeenCalled();
   });
 
   it("is busy while compacting", () => {
     render(<ContextMeter context={context} compaction={control({ status: "compacting", disabledReason: "Compacting…" })} />);
     expect(screen.getByRole("button", { name: /Compacting the conversation/ }).getAttribute("aria-busy")).toBe("true");
+  });
+
+  it("hands the sidebar its row: the ring with the percentage, the title, the tokens", () => {
+    const renderTrigger = vi.fn((_trigger: ContextTrigger) => null);
+    render(<ContextMeter context={context} renderTrigger={renderTrigger} />);
+    const trigger = renderTrigger.mock.calls[0][0];
+    expect(trigger).toMatchObject({
+      title: "Context",
+      detail: "110K / 272K tokens",
+      ariaLabel: "Context window: 40% used",
+      busy: false,
+    });
+    render(<>{trigger.icon}</>);
+    expect(screen.getByText("40%")).toBeTruthy();
   });
 });
 

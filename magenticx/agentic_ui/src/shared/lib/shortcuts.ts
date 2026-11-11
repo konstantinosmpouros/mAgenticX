@@ -37,6 +37,13 @@ export type ShortcutDefinition = {
   scope: ShortcutScope;
   implementation: "global" | "local";
   allowInEditable?: boolean;
+  /**
+   * Run only after the focused UI had its say: the key reaches the open
+   * dialog, menu, panel or the composer's own handler first, and this runs
+   * only if none of them handled it (`defaultPrevented`). Escape needs it —
+   * taken first, it would stop every surface from closing itself.
+   */
+  yieldsToFocusedUi?: boolean;
   combos: {
     mac: ShortcutCombo[];
     win: ShortcutCombo[];
@@ -247,6 +254,7 @@ export const SHORTCUTS: ShortcutDefinition[] = [
     scope: "Contextual",
     implementation: "global",
     allowInEditable: true,
+    yieldsToFocusedUi: true,
     combos: {
       mac: [{ key: "escape" }],
       win: [{ key: "escape" }],

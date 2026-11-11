@@ -3,7 +3,7 @@ from typing import List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 from core.settings import settings
 from schema.attachments import AttachmentIn, AttachmentOut
-from schema.base import Senders, UTCDateTime
+from schema.base import EffortLevel, Senders, UTCDateTime
 from schema.commands import CommandInvocation
 
 
@@ -98,6 +98,10 @@ class MessageOut(BaseModel):
     # The slash command this user message ran (plan 35), e.g. {"name": "explain"};
     # the bubble shows it as a chip in front of the content.
     command: Optional[CommandInvocation] = None
+    # The reasoning effort the user picked for this turn ("minimal" … "xhigh"),
+    # null when they left the model's default. User messages only. A plain str,
+    # not the literal: a stored value must never fail a conversation load.
+    effort: str | None = None
     # A background-task notification row (plan 41): ``kind`` is
     # "task_notification" (sender stays "user" — it is the orchestrator's
     # input), rendered as a compact notice, never as the user's words. Both
@@ -136,6 +140,9 @@ class MessageIn(BaseModel):
     attachments: List[AttachmentIn] = Field(default_factory=list)
     # A slash command (plan 35): its argument is ``content``. User messages only.
     command: Optional[CommandInvocation] = None
+    # How hard a reasoning model thinks on this turn. User messages only; None
+    # leaves the model's default. Rides the run context (utils/effort.py).
+    effort: EffortLevel | None = None
 
     # Optional metadata (your schema already supports on MessageTable)
     thinking: Optional[List[str]] = None
@@ -149,6 +156,8 @@ class MessageIn(BaseModel):
         # Allow empty AI placeholders so the UI can allocate an id before streaming.
         if self.command is not None and self.sender != "user":
             raise ValueError("Only a user message can run a command.")
+        if self.effort is not None and self.sender != "user":
+            raise ValueError("Only a user message can set a reasoning effort.")
         if self.sender == "ai" and not self.content and not self.attachments:
             return self
         if not self.content and not self.attachments and self.command is None:

@@ -151,7 +151,7 @@ A branch with no committed checkpoint yet (new conversation, pre-migration branc
 
 ### Compaction on an Answer
 
-Clicking the composer's context ring compacts the conversation after the visible branch's latest answer (plan 34). Nothing is added to the tree: the compaction is recorded on that answer (`messages.compaction`) and its `checkpoint_id` moves to the compacted head, so a `send` after it resumes from the compacted state, an edit of a later message forks from it, and a retry of the compacted answer forks from the answer before it (without the compaction). Edit/retry forks of a branch an automatic compaction already compacted keep it too. Undo restores the previous head while nothing was sent after it. See [context-compaction.md](context-compaction.md).
+The **Compact** button in the sidebar context panel (or `/compact`) compacts the conversation after the visible branch's latest answer (plan 34). Nothing is added to the tree: the compaction is recorded on that answer (`messages.compaction`) and its `checkpoint_id` moves to the compacted head, so a `send` after it resumes from the compacted state, an edit of a later message forks from it, and a retry of the compacted answer forks from the answer before it (without the compaction). Edit/retry forks of a branch an automatic compaction already compacted keep it too. Undo restores the previous head while nothing was sent after it. See [context-compaction.md](context-compaction.md).
 
 ### Branch Selection vs Active Runs
 

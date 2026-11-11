@@ -2,6 +2,7 @@ from typing import Any, Dict, Iterable, List, Sequence
 
 import httpx
 from fastapi import HTTPException, status
+from pydantic import ValidationError
 from core.logging import get_context, get_logger
 from sqlalchemy import or_, select, update
 from sqlalchemy.dialects.postgresql import insert
@@ -15,6 +16,7 @@ from core.security.tls import get_httpx_client_cert, get_httpx_verify
 from core.database import AgentTable, SessionLocal, UserPreferencesTable
 from core.security.internal_trust import internal_service_headers
 from core.error_handling import upstream_error_handler
+from schema import AgentModelResponse
 
 
 logger = get_logger(__name__)
@@ -492,6 +494,73 @@ async def _fetch_tool_manifest(db: AsyncSession, user_id: str, slug: str) -> dic
             upstream_service="agents", operation="agent_tools_fetch",
         )
     return payload
+
+
+def _agent_model_url(user_id: str, agent_slug: str) -> str:
+    """GET endpoint naming an agent's model and the reasoning efforts it accepts."""
+    base = AGENTS_SERVICE_URL.rstrip("/")
+    return f"{base}/agents/{user_id}/{agent_slug}/model"
+
+
+async def fetch_agent_model(db: AsyncSession, user_id: str, agent_id: str) -> AgentModelResponse:
+    """The agent's model and its reasoning efforts, for the composer's picker.
+
+    Only the agents service knows which model an agent runs and which effort
+    levels that model accepts, so this asks it, the same way the tool manifest
+    is fetched: the catalog id is resolved to a slug for an agent this user may
+    use (someone else's agent is a 404 before any upstream call), and the call
+    carries the internal-service headers. The agents endpoint resolves the slug
+    as a platform agent first, then as this user's own. The caller validates
+    the body against ``schema.AgentModelResponse``.
+    """
+    slug = await _resolve_agent_slug(db, user_id, agent_id)
+    timeout = settings.http.agents_timeout
+    upstream_headers = internal_service_headers(get_context().get("request_id"))
+    url = _agent_model_url(user_id, slug)
+    try:
+        async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()) as client:
+            resp = await upstream_error_handler.run_with_retries(
+                logger,
+                lambda: client.get(url, headers=upstream_headers),
+                upstream_service="agents",
+                operation="agent_model_fetch",
+            )
+            resp.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        upstream_error_handler.raise_http_error(
+            logger, exc, event="agent_model_fetch_failed",
+            message="Agents service returned an HTTP error while fetching the agent's model",
+            public_detail="The agent's model could not be loaded. Please try again.",
+            upstream_service="agents", operation="agent_model_fetch",
+        )
+    except httpx.RequestError as exc:
+        upstream_error_handler.raise_request_error(
+            logger, exc, event="agent_model_unreachable",
+            message="Failed to reach agents service while fetching the agent's model",
+            public_detail="The agent's model is temporarily unavailable. Please try again shortly.",
+            upstream_service="agents", operation="agent_model_fetch",
+        )
+    try:
+        payload = resp.json()
+    except ValueError as exc:
+        upstream_error_handler.raise_invalid_response(
+            logger, exc, event="agent_model_invalid_json",
+            message="Agents service returned invalid JSON for the agent's model",
+            public_detail="The agent's model returned an unexpected response.",
+            upstream_service="agents", operation="agent_model_fetch",
+        )
+    try:
+        # Validated here, not in the router, so an upstream that answers with an
+        # unknown level (or a non-object) is a 502 from the agents service, not
+        # a 500 from the bridge, and never reaches the browser.
+        return AgentModelResponse.model_validate(payload)
+    except ValidationError as exc:
+        upstream_error_handler.raise_invalid_response(
+            logger, exc, event="agent_model_invalid_payload",
+            message="Agents service returned an unexpected payload for the agent's model",
+            public_detail="The agent's model returned an unexpected response.",
+            upstream_service="agents", operation="agent_model_fetch",
+        )
 
 
 async def _write_and_refresh(db: AsyncSession, user_id: str, agent_id: str, tool_key: str, write):

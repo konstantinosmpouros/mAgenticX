@@ -9,14 +9,14 @@ compaction as one private key in the branch's LangGraph checkpoint,
 
 Plan 34 makes compaction something the user can trigger and see:
 
-- **Manual.** Clicking the composer's context ring compacts the conversation
-  now, between turns, after the visible branch's latest answer. Hovering the
-  ring opens its card. Without hover a tap opens the card instead, and its
-  **Compact now** button compacts (disabled, with the reason under it, when
-  there is nothing to compact). "Without hover" is any of: `(hover: none)`,
-  the mobile layout (under 768 px), or a click delivered by a finger — the
-  media query alone misreports on stylus phones, some Android browsers and
-  narrow desktop windows. The compaction is recorded on that answer
+- **Manual.** The context gauge sits in the sidebar, just above the profile,
+  drawn like the other rows: its icon (the ring, the percentage under it)
+  stays pinned at the same place on the collapsed rail and the open sidebar,
+  which adds "Context" and the tokens. Clicking it only opens a small centred
+  panel (the window, the conversation's spend, the model); the panel's
+  **Compact** button, beside the reason it cannot compact yet (e.g. "past 5%"),
+  is the one control that compacts — or the `/compact` slash command. It
+  compacts now, between turns, after the visible branch's latest answer. The compaction is recorded on that answer
   (`messages.compaction`). A toast offers **Undo** while nothing has been sent
   after it.
 - **Automatic.** When the summarizer fires on its own (95% of the window)
@@ -34,7 +34,7 @@ own usage scope, `compaction`.
 
 ```mermaid
 flowchart LR
-    UI["agentic_ui<br/>ContextMeter (hover card + click)<br/>CompactionDivider"] -->|"POST /v1/conversations/{user}/{conv}/compact[/undo]"| BR["dialogue_bridge<br/>utils/compaction.py<br/>Redis lock compaction:{conv}"]
+    UI["agentic_ui<br/>ContextMeter (sidebar gauge + panel)<br/>CompactionDivider"] -->|"POST /v1/conversations/{user}/{conv}/compact[/undo]"| BR["dialogue_bridge<br/>utils/compaction.py<br/>Redis lock compaction:{conv}"]
     BR -->|"POST /agents/{slug}/compact[/undo]"| AG["agents<br/>harness/checkpointer/compaction.py"]
     AG -->|"read head · write _summarization_event"| CK[("agent_runtime<br/>LangGraph checkpoints")]
     AG -->|"/conversation_history/{thread}.md"| FS[("conversation volume")]
@@ -121,7 +121,7 @@ stays booked, because it happened.
 - **LangChain answers some failures with a stand-in text** instead of raising: `"Error generating summary: …"`, `"Previous conversation was too long to summarize."`, `"No previous conversation history."`. The manual path treats each as a failure (502) and writes nothing; saving one would replace the history with that sentence.
 - **Sub-agents** run deepagents' stock summarizer. Their summary calls are booked to the sub-agent, and no divider is shown: their contexts are short-lived.
 - **Shared links never carry the summary.** Share snapshots copy an explicit field list without `compaction`. Clones (fork, shared-continue) do not copy it either, because a clone starts a fresh thread. The data export does include it.
-- **Agents without a summarizer** (every LangGraph agent, or a deep agent whose stack drops it) have no compaction point, so the ring explains it cannot compact.
+- **Agents without a summarizer** (every LangGraph agent, or a deep agent whose stack drops it) have no compaction point, so the panel explains it cannot compact.
 - **No `/compact` command yet.** All composer slash commands will come in one dedicated plan.
 
 ---
@@ -138,7 +138,7 @@ stays booked, because it happened.
 | Bridge flow, lock | `magenticx/dialogue_bridge/utils/compaction.py`, `utils/compaction_lock.py` |
 | Bridge routes, DTOs | `magenticx/dialogue_bridge/router/conversations.py`, `schema/compaction.py`, `schema/messages.py` (`MessageCompactionOut`) |
 | Column | `messages.compaction`, migration `0035_message_compaction` |
-| Ring, card | `magenticx/agentic_ui/src/features/chat/components/ContextMeter.tsx`, `shared/ui/hover-card.tsx` |
+| Sidebar gauge, panel | `magenticx/agentic_ui/src/features/chat/components/ContextMeter.tsx` (rendered by `ChatSidebar`'s `contextControl`, wired in `app/WorkspaceShell.tsx`) |
 | Divider | `…/chat/components/message_parts/CompactionDivider.tsx`, `ChatBody.tsx`, `block-registry.tsx` |
 | Hook | `…/chat/hooks/useConversationCompaction.ts`, `useCanHover.ts` |
 | Timeline | `magenticx/agentic_ui/src/features/inference/timeline.ts` (`foldCompaction`), `agui.ts` |

@@ -17,8 +17,7 @@ import StarBorder from "@/shared/ui/react_bits/star_border";
 import { useVoiceVisualizer, VoiceVisualizer } from "react-voice-visualizer";
 import { Loader } from "@/shared/ui/shadcn-io/loader";
 
-import type { ContextCompactionControl, ConversationStats, DictationStatus, RunContextUsage } from "@/shared/lib/types";
-import { ContextMeter } from "@/features/chat/components/ContextMeter";
+import type { DictationStatus } from "@/shared/lib/types";
 import { DraftHighlight } from "@/features/chat/components/DraftHighlight";
 import { SlashCommandMenu } from "@/features/chat/components/SlashCommandMenu";
 import { Orb } from "@/shared/ui/orb";
@@ -57,15 +56,11 @@ type ChatInputBarProps = {
   isPrivateMode: boolean;
   thinkingActive?: boolean;
   isStreaming?: boolean;
-  /** How full the model's context window is (composer gauge); null hides it. */
-  contextUsage?: RunContextUsage | null;
-  /** The open conversation's totals, shown in the context gauge's card. */
-  conversationStats?: ConversationStats | null;
-  // Click-to-compact on the context ring (plan 34); null when unavailable.
-  compaction?: ContextCompactionControl | null;
   // Slash commands (plan 35): the menu, and the command highlighted in the draft.
   slash?: SlashComposer | null;
-  /** The agent-map button, placed right of the context ring. */
+  /** The reasoning-effort picker, placed left of the dictation button. */
+  effortControl?: React.ReactNode;
+  /** The agent-map button, placed right of the attach button. */
   agentMapControl?: React.ReactNode;
   /** The plan button, placed right of the agent-map button. */
   planControl?: React.ReactNode;
@@ -159,10 +154,8 @@ export function ChatInputBar(props: ChatInputBarProps) {
     isPrivateMode,
     thinkingActive,
     isStreaming = false,
-    contextUsage = null,
-    conversationStats = null,
-    compaction = null,
     slash = null,
+    effortControl = null,
     agentMapControl = null,
     planControl = null,
     currentMessage,
@@ -998,9 +991,12 @@ export function ChatInputBar(props: ChatInputBarProps) {
                         )}
                       </div>
 
-                      {/* Action Buttons */}
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-1">
+                      {/* Action Buttons. The right group (effort, mic, send) never
+                          shrinks, so the send button stays on screen; on a phone the
+                          left tools scroll sideways if they do not fit. The padding
+                          keeps their focus rings and press scale inside the scroll box. */}
+                      <div className="flex items-center justify-between gap-2 sm:gap-3 [&>*:not(:first-child)]:shrink-0">
+                        <div className="scrollbar-none -m-1 flex min-w-0 items-center gap-1 overflow-x-auto overflow-y-hidden p-1">
                           <Tooltip delayDuration={0}>
                             <TooltipTrigger asChild>
                               <button
@@ -1019,13 +1015,13 @@ export function ChatInputBar(props: ChatInputBarProps) {
                               <p>Attach files & photos</p>
                             </TooltipContent>
                           </Tooltip>
-                          <ContextMeter context={contextUsage ?? null} stats={conversationStats} compaction={compaction} />
                           {agentMapControl}
                           {planControl}
                         </div>
 
                         {dictationStatus === "idle" ? (
                           <div className="flex items-center gap-2">
+                            {effortControl}
                             <Tooltip delayDuration={0}>
                               <TooltipTrigger asChild>
                                 <button

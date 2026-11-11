@@ -219,7 +219,7 @@ Settings groups (env alias → default):
 - **CheckpointerSettings** — `AGENT_RUNTIME_DATABASE_URL`→`postgresql://admin:admin@chat_postgres:5432/agent_runtime` (**raw psycopg conninfo**, NOT `+asyncpg`), pool min/max/idle/timeout (2/20/300/30.0), `AGENT_RUNTIME_SETUP_ON_STARTUP`→True, `LANGGRAPH_STRICT_MSGPACK`→True (CVE-2025-64439 mitigation — leave on), `LANGGRAPH_AES_KEY` (SecretStr, empty=off). Validator `_inject_password_and_tls` splices a file-backed password into a password-less URL and appends `sslmode=verify-full&sslrootcert=<ca>` when `INTERNAL_CA_CERT_PATH` set.
 - **ProxySettings** — `TRUSTED_PROXY_HEADER_NAME`→`X-Internal-Proxy-Secret`, `INTERNAL_SERVICE_SECRET` → `internal_service_secret` (SecretStr, file-backed via `INTERNAL_SERVICE_SECRET_FILE`). `TRUSTED_PROXY_SECRET` is not read.
 - **LoggingSettings** — `LOG_LEVEL`→INFO, `LOG_FORMAT`→console, `LOG_TIMEZONE`/`TZ`→Europe/Athens, `LOG_REDACTION_SECRET`/`SESSION_TOKEN_SECRET` (SecretStr).
-- **AgentRegistrySettings** — `DISABLED_AGENT_SLUGS`→() (CSV, normalized, deduped); `ALLOWED_AGENT_MODELS`→ `provider:model` → `ModelInfo` (`reasoning`, `context_window`; JSON): the models user agents and workflow LLM nodes may select, and the facts the pinned `langchain-openai` lacks — the reasoning summary and `register_model_windows()` read them.
+- **AgentRegistrySettings** — `DISABLED_AGENT_SLUGS`→() (CSV, normalized, deduped); `ALLOWED_AGENT_MODELS`→ `provider:model` → `ModelInfo` (`reasoning`, `context_window`, `efforts`, `default_effort`; JSON): the models user agents and workflow LLM nodes may select, and the facts the pinned `langchain-openai` lacks — the reasoning summary, `register_model_windows()` and the reasoning effort (`harness/models/effort.py`) read them.
 - **RuntimeModelsSettings** — `TITLE_MODEL`/`SUGGESTIONS_MODEL`→`openai:gpt-4o-2024-08-06`, `OPENAI_STT_MODEL`→`gpt-4o-transcribe`, `READ_ALOUD_MODEL`→`gpt-4o-mini-tts`, `READ_ALOUD_FORMAT`→mp3, `EMBEDDING_MODEL`→`text-embedding-3-small`, `EMBEDDING_DIMENSIONS`→1536 (≤2000 pgvector limit; changing needs re-embed + bridge migration), `OPENAI_REALTIME_MODEL`→`gpt-realtime`, `REALTIME_SUPPORTED_VOICES`→frozenset of 10 voices.
 - **RealtimeSettings** — `OPENAI_REALTIME_API_URL`, connect/read/write/pool timeouts (15/60/60/15), `REALTIME_ERROR_BODY_MAX_CHARS`→1000; `.timeout` → `httpx.Timeout`.
 - **GenerationSettings** — title candidate count/min/max-len/temp/tokens (4/3/120/1.0/128), suggestion count/max-len/temp/tokens (10/160/0.8/320).
@@ -245,6 +245,7 @@ Every endpoint below carries `dependencies=[Depends(require_internal_caller)]` (
 |---|--------|------|--------|---------|----------|------|
 | 1 | GET | `/agents` | catalog | — | `List[AgentManifest]` | 200 |
 | 2 | GET | `/tools` | catalog | — | `List[ToolManifest]` | 200 |
+| 2a | GET | `/agents/{uid}/{slug}/model` | agent_tools | — | `AgentModelResponse{agentSlug, model, efforts[], defaultEffort}` — the agent's main model and the reasoning efforts the composer may offer (`efforts` empty for a LangGraph agent or a model with none) | 200 (404 unknown agent) |
 | 3 | POST | `/embed` | embeddings | `EmbedRequest` | `EmbedResponse` | 200 |
 | 4 | POST | `/titles/generate` | generation | `TitleRequest` | `ConversationTitle` | 200 |
 | 5 | POST | `/suggestions/generate` | generation | `SuggestionsRequest` | `ConversationSuggestions` | 200 |

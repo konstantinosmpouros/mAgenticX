@@ -17,6 +17,7 @@ import { requestJson, requestRaw, requestVoid } from "../http";
 import { PROXY_LIMIT_MB } from "../uploadGuards";
 import { getFilenameFromDisposition, triggerBrowserDownload } from "../download";
 import {
+  AgentModelInfoSchema,
   AgentToolsResponseSchema,
   AgentVersionDetailSchema,
   AgentVersionListSchema,
@@ -55,6 +56,16 @@ export async function getAgentTools(userId: string, agentId: string) {
   return requestJson(url, {
     schema: AgentToolsResponseSchema,
     fallbackMessage: "Failed to fetch agent tools",
+  });
+}
+
+// The agent's model and the reasoning-effort levels it takes (the composer's
+// effort picker). `efforts` empty: the model takes no effort, so no picker.
+export async function getAgentModelInfo(userId: string, agentId: string) {
+  const url = `${AGENTS_BASE_PATH}/${encodeURIComponent(userId)}/${encodeURIComponent(agentId)}/model`;
+  return requestJson(url, {
+    schema: AgentModelInfoSchema,
+    fallbackMessage: "Failed to fetch agent model",
   });
 }
 

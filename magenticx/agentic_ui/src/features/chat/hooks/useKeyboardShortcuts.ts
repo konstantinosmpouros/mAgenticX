@@ -80,7 +80,13 @@ export function useKeyboardShortcuts({
   useEffect(() => {
     const platform = detectShortcutPlatform();
 
-    const handleKeyDown = (event: KeyboardEvent) => {
+    // Two passes. Most shortcuts are taken first (window, capture phase) so a
+    // focused control cannot swallow them. The ones that yield to the focused
+    // UI (Escape) run last (window, bubble phase): the open dialog, menu or
+    // panel closes itself first — Radix and our panels mark the key handled —
+    // and the workspace's own dismissal runs only when nothing did. They never
+    // stop propagation, so nothing after them is starved either.
+    const dispatch = (event: KeyboardEvent, yielding: boolean) => {
       if (event.defaultPrevented) {
         return;
       }
@@ -88,6 +94,10 @@ export function useKeyboardShortcuts({
       const editableTarget = isEditableTarget(event.target);
 
       for (const shortcut of shortcuts) {
+        if (Boolean(shortcut.yieldsToFocusedUi) !== yielding) {
+          continue;
+        }
+
         if (!isShortcutEnabled(shortcut, context)) {
           continue;
         }
@@ -107,14 +117,22 @@ export function useKeyboardShortcuts({
         }
 
         event.preventDefault();
-        event.stopPropagation();
+        if (!yielding) {
+          event.stopPropagation();
+        }
         action();
         return;
       }
     };
 
-    window.addEventListener("keydown", handleKeyDown, { capture: true });
-    return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
+    const handleCapture = (event: KeyboardEvent) => dispatch(event, false);
+    const handleBubble = (event: KeyboardEvent) => dispatch(event, true);
+    window.addEventListener("keydown", handleCapture, { capture: true });
+    window.addEventListener("keydown", handleBubble);
+    return () => {
+      window.removeEventListener("keydown", handleCapture, { capture: true });
+      window.removeEventListener("keydown", handleBubble);
+    };
   }, [actions, context, shortcuts]);
 }
 

@@ -7,7 +7,7 @@ module a DTO lives in.
 """
 from schema.account import PurgeThreadsRequest, PurgeThreadsResponse, PurgeUserResponse
 from schema.agent_protocol import RunCreateIn, RunOut, ThreadCreateIn, ThreadOut
-from schema.agent_tools import AgentToolRow, AgentToolsResponse
+from schema.agent_tools import AgentModelResponse, AgentToolRow, AgentToolsResponse
 from schema.async_tasks import (
     OutboxItem,
     TaskCancelIn,
@@ -118,6 +118,7 @@ __all__ = [
     "AgentManifest",
     "AgentResumeRequest",
     "AgentToolRow",
+    "AgentModelResponse",
     "AgentToolsResponse",
     "CatalogueSearchPage",
     "CatalogueSkill",

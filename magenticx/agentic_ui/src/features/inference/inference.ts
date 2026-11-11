@@ -4,6 +4,7 @@ import { convertFileAttachments } from "@/shared/lib/utils";
 import { validateAttachmentsForUpload } from "@/shared/lib/uploadGuards";
 import type {
   Agent,
+  AgentEffortChoice,
   CommandRef,
   ConversationDetail,
   MessageIn,
@@ -15,6 +16,7 @@ import type {
 } from "@/shared/lib/types";
 import type { MutableRefObject, Dispatch, SetStateAction } from "react";
 import { updateSession } from "@/shared/lib/authStorage";
+import { buildUserMessage, effortForAgent, effortForEdit } from "./messagePayload";
 
 // Inference handlers own every flow that starts an agent run:
 // send, edit-submit, retry, and stop-streaming.
@@ -37,6 +39,8 @@ type InferenceCtx = {
   currentMessage: string;
   /** The slash command picked for this send (plan 35), if any. */
   pendingCommand: CommandRef | null;
+  /** The composer's effort pick; sent only when the run goes to the agent it is for. */
+  effort?: AgentEffortChoice | null;
   isSendingMessage?: boolean;
   sharedConversationToken?: string;
 
@@ -97,6 +101,8 @@ type MessageEditHandlersCtx = {
   setIsSendingMessage?: (value: boolean) => void;
   persistUIState?: () => void;
   beginInferenceRun: (request: InferenceStartRequest) => Promise<InferenceStartResponse>;
+  /** The composer's effort pick; see `effortForEdit` for when an edit uses it. */
+  effort?: AgentEffortChoice | null;
 };
 
 // Retry flow dependencies for starting a fresh AI sibling under the same parent prompt.
@@ -236,22 +242,23 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
       messages.length > 0
     ) {
       try {
+        const queuedAgentId = currentAgent?.id ?? currentConversation.agent.id;
         const outcome = await queueInferenceSend({
           mode: "send",
-          agentId: currentAgent?.id ?? currentConversation.agent.id,
+          agentId: queuedAgentId,
           conversationId: currentConversation.id,
           parentMessageId: lastPersistedMessageId,
           messagePath: buildPathToMessage(
             currentConversation.messages ?? messages,
             lastPersistedMessageId,
           ),
-          message: {
+          message: buildUserMessage({
             parentMessageId: lastPersistedMessageId,
-            sender: "user",
             content: promptText || undefined,
             attachments: apiAttachments,
             command,
-          },
+            effort: effortForAgent(ctx.effort, queuedAgentId),
+          }),
         });
         if (outcome.queued) {
           // The bridge may describe the held message; when it does not, the
@@ -323,13 +330,13 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
           mode: "new",
           agentId: currentAgent.id,
           isPrivate: isPrivateMode,
-          message: {
-            sender: "user",
+          message: buildUserMessage({
+            parentMessageId: null,
             content: promptText || undefined,
             attachments: apiAttachments,
-            parentMessageId: null,
             command,
-          },
+            effort: effortForAgent(ctx.effort, currentAgent.id),
+          }),
         });
         persistUIState?.();
       }
@@ -364,13 +371,13 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         if (!lastPersistedMessageId) {
           throw new Error("Unable to determine parent message for the new entry.");
         }
-        const messagePayload: MessageIn = {
+        const messagePayload: MessageIn = buildUserMessage({
           parentMessageId: lastPersistedMessageId,
-          sender: "user",
           content: promptText || undefined,
           attachments: apiAttachments,
           command,
-        };
+          effort: effortForAgent(ctx.effort, currentAgent?.id ?? currentConversation.agent.id),
+        });
 
         await beginInferenceRun({
           mode: "send",
@@ -493,13 +500,13 @@ export function createMessageEditHandlers(ctx: MessageEditHandlersCtx) {
 
     try {
       setIsSendingMessage?.(true);
-      const payload: MessageIn = {
-        sender: "user",
+      const payload: MessageIn = buildUserMessage({
         parentMessageId: parentId,
         content: trimmed,
         // An edit keeps the command the message ran; only its text changes.
-        ...(target.command ? { command: target.command } : {}),
-      };
+        command: target.command ?? undefined,
+        effort: effortForEdit(ctx.effort, target, allMessages, currentConversation.agent?.id),
+      });
 
       if (setShowAiTransition) setShowAiTransition(true);
       await beginInferenceRun({

@@ -36,6 +36,7 @@ from utils.agents import (
 )
 from utils.commands import command_context
 from utils.compaction_lock import compaction_locks
+from utils.effort import effort_context
 from utils.conversations import _preview
 from utils.event_log import event_log
 from utils.hitl_decisions import (
@@ -1087,6 +1088,11 @@ class InferenceRunManager:
                         # shared block, so the /resume legs of a paused run keep
                         # it too — a paused /code-review must stay read-only.
                         **command_context(parent_user_message),
+                        # The reasoning effort the user picked for this turn,
+                        # only when they picked one: without it the key is
+                        # absent and the config is what it was before. Same
+                        # shared block, so retry and resume legs keep it.
+                        **effort_context(parent_user_message),
                     },
                 }
                 if fork_from is not None:

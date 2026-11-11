@@ -96,11 +96,11 @@ flowchart TD
 
 ## Phase 4 — The composer queue
 
-While the conversation has an active run (usually a wake-up run reporting results), a `send` with `"queue_if_busy": true` is held in `conversations.queued_message` and answered **202** `{"queued": true, "queued_message": {content, command, agent_id, queued_at}}`. One slot: a second send replaces it. `DELETE /v1/conversations/{user_id}/{conversation_id}/queued-message` cancels it. When the run it waited for ends, it is sent as a normal `send` on that run's leaf (`utils/composer_queue.send_queued_message`).
+While the conversation has an active run (usually a wake-up run reporting results), a `send` with `"queue_if_busy": true` is held in `conversations.queued_message` and answered **202** `{"queued": true, "queued_message": {content, command, effort, agent_id, queued_at}}`. One slot: a second send replaces it. `DELETE /v1/conversations/{user_id}/{conversation_id}/queued-message` cancels it. When the run it waited for ends, it is sent as a normal `send` on that run's leaf (`utils/composer_queue.send_queued_message`).
 
 | Key fact | Value / detail |
 | --- | --- |
-| What can be queued | Text and a slash command, validated when queued (agent usable, command known). A send with **files** keeps the 409 — bytes are never parked in a JSON column |
+| What can be queued | Text, a slash command and a reasoning effort, validated when queued (agent usable, command known). A send with **files** keeps the 409 — bytes are never parked in a JSON column |
 | Exactly once | Sending locks the row, reads and empties the slot in one transaction; racing senders (run-end hook, loop, the queue route itself) cannot both get it |
 | Transient refusal | 409 (another run started first) or 429 (the user's run cap): put back unless a newer message took the slot; sent at the next run end or loop pass |
 | Race at queue time | If the run ended between the check and the commit, the queue route sends it at once |

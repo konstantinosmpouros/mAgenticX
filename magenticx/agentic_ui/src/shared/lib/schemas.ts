@@ -559,6 +559,40 @@ export type AgentToolRow = z.infer<typeof AgentToolRowSchema>;
 export type AgentToolsResponse = z.infer<typeof AgentToolsResponseSchema>;
 
 // ---------------------------------------------------------------------------
+// An agent's model and its reasoning-effort levels (the composer's effort
+// picker) — GET /v1/agents/{user}/{slug}/model
+// ---------------------------------------------------------------------------
+export const EFFORT_LEVELS = ["minimal", "low", "medium", "high", "xhigh"] as const;
+export const EffortLevelSchema = z.enum(EFFORT_LEVELS);
+export type EffortLevel = z.infer<typeof EffortLevelSchema>;
+
+/** A known effort level, or null for anything else (an unknown level is dropped, never sent). */
+export const toEffortLevel = (value: unknown): EffortLevel | null => {
+  const parsed = EffortLevelSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+};
+
+// Transform style (not `.catch`-ed object fields) so every output key is
+// required. Levels keep the server's order; unknown or repeated ones are
+// dropped, and a default the list does not hold is no default.
+const toAgentModelInfo = (raw: Record<string, unknown>) => {
+  const efforts: EffortLevel[] = [];
+  for (const value of Array.isArray(raw.efforts) ? raw.efforts : []) {
+    const level = toEffortLevel(value);
+    if (level && !efforts.includes(level)) efforts.push(level);
+  }
+  const defaultEffort = toEffortLevel(raw.defaultEffort);
+  return {
+    agentSlug: typeof raw.agentSlug === "string" ? raw.agentSlug : "",
+    model: typeof raw.model === "string" && raw.model ? raw.model : null,
+    efforts,
+    defaultEffort: defaultEffort && efforts.includes(defaultEffort) ? defaultEffort : null,
+  };
+};
+export const AgentModelInfoSchema = z.record(z.unknown()).transform(toAgentModelInfo);
+export type AgentModelInfo = z.infer<typeof AgentModelInfoSchema>;
+
+// ---------------------------------------------------------------------------
 // Catalog suggestions — { suggestions: string[] } → filtered string[]
 // ---------------------------------------------------------------------------
 export const SuggestionsSchema = z

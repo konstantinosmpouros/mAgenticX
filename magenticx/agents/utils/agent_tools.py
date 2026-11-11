@@ -22,9 +22,10 @@ from __future__ import annotations
 from typing import Dict, List, Optional, Set
 
 from core.settings import settings
+from harness.models import default_effort, supported_efforts
 from harness.tools.builtins import BUILTIN_TOOLS, replaced_by_delegation_mode, resolve_availability
 from harness.tools.registry import NATIVE_TOOLS, native_hitl_defaults
-from schema import AgentToolRow
+from schema import AgentModelResponse, AgentToolRow
 from utils.agents import resolve_agent_definition
 from utils.mcp_tools import build_tool_cache_key, get_cached_tool_manifests_map
 
@@ -184,3 +185,35 @@ async def list_agent_tools(
     return _builtin_rows(
         gates, use_memory=use_memory, search_past_convs=search_past_convs
     ) + _mcp_rows(definition, gates)
+
+
+def _main_model_spec(definition) -> str | None:
+    """A deep agent's main ``provider:model``: its spec's (YAML), else its class's."""
+    spec = getattr(definition, "spec", None)
+    main = getattr(getattr(spec, "model", None), "main", None)
+    if isinstance(main, str) and main:
+        return main
+    cls = getattr(definition, "cls", None)
+    hook = getattr(cls, "main_model_spec", None)
+    value = hook() if callable(hook) else None
+    return value if isinstance(value, str) and value else None
+
+
+async def agent_model_info(user_id: str, agent_slug: str) -> AgentModelResponse | None:
+    """The agent's main model and the efforts it accepts, or ``None`` when the agent is unknown.
+
+    Only a deep agent gets efforts: the effort rides its middleware, which a
+    LangGraph agent's own chains never pass through.
+    """
+    definition = await _resolve_for_user(agent_slug, user_id)
+    if definition is None:
+        return None
+    if not _is_deep(definition):
+        return AgentModelResponse(agentSlug=agent_slug)
+    model = _main_model_spec(definition)
+    return AgentModelResponse(
+        agentSlug=agent_slug,
+        model=model,
+        efforts=list(supported_efforts(model)),
+        defaultEffort=default_effort(model),
+    )

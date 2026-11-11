@@ -1,4 +1,4 @@
-"""Per-agent tool endpoints (Agents tab) — thin proxy to the agents service.
+"""Per-agent endpoints (Agents tab tools, the composer's effort picker) — thin proxy to the agents service.
 
 Lists the tools an agent can use with their per-(user, agent) state, toggles one
 on or off, and sets whether one pauses for human approval (one tool, or every
@@ -10,6 +10,10 @@ No longer a pure proxy: the *manifest* still comes from the agents service (only
 it can see which tools exist), while the user's on/off choices are owned by
 ``chat_db``. Business logic lives in ``utils.agents`` (``fetch_agent_tools`` /
 ``set_agent_tool_disabled``) over ``utils.agent_tool_prefs``.
+
+``GET …/model`` is a pure proxy: the agent's model and the reasoning efforts it
+accepts (``utils.agents.fetch_agent_model``), so the composer offers only levels
+the model supports.
 """
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,8 +21,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from core.logging import get_logger, set_context
 from core.auth.session import AuthUser, require_csrf_protection
-from schema import AgentToolsResponse, ToolApprovalRequest, ToolApprovalsRequest, ToolEnabledRequest
+from schema import AgentModelResponse, AgentToolsResponse, ToolApprovalRequest, ToolApprovalsRequest, ToolEnabledRequest
 from utils import (
+    fetch_agent_model,
     fetch_agent_tools,
     set_agent_tool_approval,
     set_agent_tool_approvals,
@@ -45,6 +50,22 @@ async def get_agent_tools(
     set_context(user_id=user_id)
     payload = await fetch_agent_tools(db, user_id, agent_id)
     return AgentToolsResponse.model_validate(payload)
+
+
+@router.get(
+    "/{user_id}/{agent_id}/model",
+    response_model=AgentModelResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def get_agent_model(
+    user_id: str,
+    agent_id: str,
+    _: AuthUser = Depends(validate_userId),
+    db: AsyncSession = Depends(get_db),
+) -> AgentModelResponse:
+    """The agent's model and the reasoning efforts it accepts (composer picker)."""
+    set_context(user_id=user_id)
+    return await fetch_agent_model(db, user_id, agent_id)
 
 
 @router.post(

@@ -17,7 +17,7 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from schema.base import UTCDateTime
+from schema.base import EffortLevel, UTCDateTime
 from schema.commands import CommandInvocation
 from schema.inference import InferenceRunOut, InferenceRunResumeIn
 
@@ -185,6 +185,8 @@ class QueuedMessageOut(BaseModel):
 
     content: Optional[str] = None
     command: Optional[CommandInvocation] = None
+    # The reasoning effort picked with it; re-sent with the message (utils/composer_queue.py).
+    effort: EffortLevel | None = None
     agent_id: str
     queued_at: UTCDateTime
 

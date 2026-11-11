@@ -27,6 +27,7 @@ import { useSettingsPanels } from "@/features/settings/hooks/useSettingsPanels";
 import { useAttachmentPreview } from "@/features/attachments/hooks/useAttachmentPreview";
 import { useOverlayMenus } from "@/features/chat/hooks/useOverlayMenus";
 import { useComposer } from "@/features/chat/hooks/useComposer";
+import { useAgentEffort } from "@/features/chat/hooks/useAgentEffort";
 import {
   useMessageInteraction,
   ROOT_BRANCH_KEY,
@@ -804,9 +805,17 @@ export function useChatWorkspace({
     },
   });
 
+  // Reasoning effort (the composer's picker), for the agent the next message
+  // goes to — the same agent the send flow resolves: the selected one, else
+  // the conversation's.
+  const effortAgentId =
+    agents.find((a) => a.id === selectedAgent)?.id ?? currentConversation?.agent?.id ?? null;
+  const agentEffort = useAgentEffort({ userId, agentId: effortAgentId });
+
   // Message edit handlers
   const { handleConfirmEditMessage } = createMessageEditHandlers({
     userId,
+    effort: agentEffort.choice,
     currentConversation,
     setConversationMessages,
     setCurrentConversation,
@@ -1050,6 +1059,7 @@ export function useChatWorkspace({
     currentConversation,
     currentMessage,
     pendingCommand: composer.pendingCommand,
+    effort: agentEffort.choice,
     // While a run streams, a send is queued rather than blocked (plan 41) — so
     // only a send already in flight blocks another.
     isSendingMessage:
@@ -1570,6 +1580,7 @@ export function useChatWorkspace({
     accountSwitching,
     // derived
     inputBarAgent,
+    agentEffort,
     settledVoiceActive,
     isCurrentConversationBusy,
     canShareFullConversation,

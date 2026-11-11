@@ -1,10 +1,15 @@
-"""Shared schema building blocks: the Senders literal and the UTC-serializing datetime annotation used across every DTO module."""
+"""Shared schema building blocks: the Senders and EffortLevel literals and the UTC-serializing datetime annotation used across every DTO module."""
 from typing import Annotated, Literal
 from pydantic import PlainSerializer
 from datetime import datetime, timezone
 
 
 Senders = Literal["user", "ai"]
+
+# How hard a reasoning model thinks on one turn, picked per message in the
+# composer. The agents service owns which levels a model accepts (and maps them
+# onto the provider's knob); the bridge only validates the word and carries it.
+EffortLevel = Literal["minimal", "low", "medium", "high", "xhigh"]
 
 
 def _serialize_utc(value: datetime) -> str:

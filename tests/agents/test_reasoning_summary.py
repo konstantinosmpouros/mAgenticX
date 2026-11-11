@@ -48,7 +48,9 @@ def test_the_model_list_carries_each_model_s_facts(monkeypatch):
     monkeypatch.delenv("ALLOWED_AGENT_MODELS", raising=False)
     models = AgentRegistrySettings().allowed_agent_models
     assert list(models) == ["openai:gpt-6-luna", "openai:gpt-5", "openai:gpt-4o", "openai:gpt-4o-mini"]
-    assert models["openai:gpt-6-luna"] == ModelInfo(reasoning=True, context_window=1_050_000)
+    assert models["openai:gpt-6-luna"] == ModelInfo(
+        reasoning=True, context_window=1_050_000, efforts=("low", "medium", "high"), default_effort="medium"
+    )
     assert models["openai:gpt-4o"].reasoning is False
 
 

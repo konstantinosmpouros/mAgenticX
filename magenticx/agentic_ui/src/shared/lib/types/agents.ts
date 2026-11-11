@@ -5,7 +5,7 @@
 // it), so this module is deliberately a LEAF: it imports nothing from the rest
 // of `types/` — only the Lucide icon type and the Zod-inferred wire contracts.
 import type { LucideIcon } from "lucide-react";
-import type { AgentFile, AgentKind, CustomAgentSummary } from "../schemas";
+import type { AgentFile, AgentKind, CustomAgentSummary, EffortLevel } from "../schemas";
 
 // `AgentFile`, `CustomAgentDetail`, `CustomAgentValidation`, `AgentToolRow`,
 // `AgentToolsResponse` and the agent.yaml `AgentSpec` family are inferred from
@@ -29,7 +29,18 @@ export type {
   CustomAgentValidation,
   AgentToolRow,
   AgentToolsResponse,
+  AgentModelInfo,
+  EffortLevel,
 } from "../schemas";
+
+/**
+ * The effort picked in the composer, and the agent it was picked for. `level`
+ * null: that agent takes no effort (or its levels have not loaded yet).
+ */
+export type AgentEffortChoice = {
+  agentId: string;
+  level: EffortLevel | null;
+};
 
 // Raw shape returned by backend
 export type AgentPublic = {

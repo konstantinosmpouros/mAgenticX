@@ -2,6 +2,8 @@
 from typing import List, Literal, Optional
 from pydantic import BaseModel, Field
 
+from core.settings import EffortLevel
+
 
 class AgentToolRow(BaseModel):
     """One tool an agent can have, with the baseline this service knows.
@@ -35,3 +37,17 @@ class AgentToolsResponse(BaseModel):
 
     agentSlug: str
     tools: List[AgentToolRow] = Field(default_factory=list)
+
+
+class AgentModelResponse(BaseModel):
+    """An agent's main model and the reasoning efforts it accepts (the composer's picker).
+
+    ``efforts`` empty means no picker: the model takes none, or the agent is not
+    a deep agent (a LangGraph agent builds its own chains, which no middleware
+    reaches).
+    """
+
+    agentSlug: str
+    model: str | None = None
+    efforts: list[EffortLevel] = Field(default_factory=list)
+    defaultEffort: EffortLevel | None = None

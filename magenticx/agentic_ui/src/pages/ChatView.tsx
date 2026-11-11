@@ -13,6 +13,7 @@ import { AskUserTakeover } from "@/features/chat/components/AskUserTakeover";
 import { isAskUserInterrupt } from "@/features/inference";
 import { AgentMapButton } from "@/features/chat/components/agent_map/AgentMapButton";
 import { PlanButton } from "@/features/chat/components/plan/PlanButton";
+import { EffortPicker } from "@/features/chat/components/EffortPicker";
 import { createCommandActions } from "@/features/chat/handlers/commandActions";
 import { useSlashCommands } from "@/features/chat/hooks/useSlashCommands";
 import { Loader } from "@/shared/ui/shadcn-io/loader";
@@ -83,6 +84,7 @@ export default function ChatView() {
     triggerVoiceMode,
     toast,
     inputBarAgent,
+    agentEffort,
     activeHitlInterrupt,
     activeConversationRun,
     pendingRunInterrupts,
@@ -92,8 +94,6 @@ export default function ChatView() {
     handleCancelQueuedMessage,
     canShowStarterSuggestions,
     handleStarterSuggestionSelect,
-    conversationContext,
-    conversationStats,
     conversationCompaction,
     agentMap,
     agentMapAgentName,
@@ -248,10 +248,14 @@ export default function ChatView() {
           isPrivateMode={isPrivateMode}
           thinkingActive={isCurrentConversationBusy && thinkingState?.isActive}
           isStreaming={isCurrentConversationBusy}
-          contextUsage={conversationContext}
-          conversationStats={conversationStats}
-          compaction={conversationCompaction}
           slash={voiceSession.isActive ? null : slash}
+          effortControl={
+            <EffortPicker
+              efforts={agentEffort.efforts}
+              effort={agentEffort.effort}
+              onChange={agentEffort.setEffort}
+            />
+          }
           agentMapControl={
             <AgentMapButton
               map={agentMap}

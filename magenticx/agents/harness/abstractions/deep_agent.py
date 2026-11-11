@@ -25,7 +25,7 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from harness.agui import AGUIEmitter, AGUIStreamNormalizer
 from harness.abstractions.base_agent import AgentType, BaseAgent
-from harness.models import register_reasoning_summaries
+from harness.models import EffortMiddleware, parse_effort, register_reasoning_summaries
 from harness.abstractions.subagent_tree import SUBAGENTS_KEY, validate_subagent_tree
 from harness.async_tasks.client import AsyncTaskMiddleware
 from harness.async_tasks.specs import (
@@ -70,7 +70,7 @@ from harness.filesystem import (
 )
 from harness.memory import get_memory_pool
 from core.logging import get_logger
-from core.settings import settings
+from core.settings import EffortLevel, settings
 
 logger = get_logger(__name__)
 
@@ -459,6 +459,16 @@ class DeepAgent(BaseAgent, ABC):
 
 
     @property
+    def effort(self) -> EffortLevel | None:
+        """The reasoning effort the user picked for this run, or ``None``.
+
+        Read from the run context (``effort``, set by the bridge from the user
+        message; a task run gets it from its launcher). An unknown value is
+        ignored, so a malformed context can never reach the provider."""
+        return parse_effort((self.context or {}).get("effort"))
+
+
+    @property
     def interactive(self) -> bool:
         """Whether someone is there to answer this run (``ask_user``'s gate).
 
@@ -495,6 +505,28 @@ class DeepAgent(BaseAgent, ABC):
             return items
         index = next((i for i, m in enumerate(items) if isinstance(m, ToolErrorMiddleware)), 0)
         items.insert(index, ToolMetricsMiddleware())
+        return items
+
+
+    @classmethod
+    def main_model_spec(cls) -> str | None:
+        """The ``provider:model`` this agent's main model is, without building it.
+
+        Answers the composer's "how hard may it think" question (the efforts
+        that model accepts). ``None`` when the class cannot say; a code-defined
+        agent overrides it, a YAML agent's spec states it."""
+        return None
+
+
+    def _run_middleware(self, stack: Sequence[Any] | None) -> list[Any]:
+        """The platform guarantees, plus what this run asked for: the user's
+        reasoning effort, when they picked one. Used for the main agent, every
+        sub-agent and every task node, so the whole tree thinks as hard as asked;
+        a model that takes no effort is left untouched (``harness.models.effort``)."""
+        items = self._ensure_platform_middleware(stack)
+        effort = self.effort
+        if effort is not None and not any(isinstance(m, EffortMiddleware) for m in items):
+            items.append(EffortMiddleware(effort))
         return items
 
 
@@ -666,7 +698,7 @@ class DeepAgent(BaseAgent, ABC):
 
         use_async = self._uses_async_subagents(subagents)
         stack = middleware if middleware is not None else self.default_middleware(model, backend)
-        stack = self._ensure_platform_middleware(stack)  # guarantee on the main agent
+        stack = self._run_middleware(stack)  # guarantee on the main agent
         self.summarizer = find_summarizer(stack)
         exclude_stock_summarization(model if isinstance(model, str) else "")
 
@@ -811,6 +843,7 @@ class DeepAgent(BaseAgent, ABC):
             tool_config=dict(tool_config) if isinstance(tool_config, Mapping) else None,
             agent_owner_id=owner if isinstance(owner, str) and owner else None,
             command=command if isinstance(command, str) and command else None,
+            effort=self.effort,
         )
 
 
@@ -919,7 +952,7 @@ class DeepAgent(BaseAgent, ABC):
         # result handed back to its parent).
         prompt_context = self.prompt_context(has_subagents=bool(children), async_subagents=True)
         system_prompt = compose_task_prompt(system_prompt, prompt_context)
-        stack = self._ensure_platform_middleware(ensure_planning_and_filesystem(stack, backend, permissions))
+        stack = self._run_middleware(ensure_planning_and_filesystem(stack, backend, permissions))
         self.summarizer = find_summarizer(stack)
         exclude_stock_summarization(node_model if isinstance(node_model, str) else "")
         disable_blocking_general_purpose(node_model)
@@ -1008,7 +1041,7 @@ class DeepAgent(BaseAgent, ABC):
                     depth=2,
                 ))
                 spec["system_prompt"] = delegating_subagent_prompt(spec.get("system_prompt"))
-            spec["middleware"] = self._ensure_platform_middleware(
+            spec["middleware"] = self._run_middleware(
                 ensure_planning_and_filesystem(stack, backend, permissions)
             )
             prepared.append(spec)
@@ -1033,7 +1066,7 @@ class DeepAgent(BaseAgent, ABC):
             **GENERAL_PURPOSE_SUBAGENT,
             "model": model,
             "tools": list(tools),
-            "middleware": self._ensure_platform_middleware(
+            "middleware": self._run_middleware(
                 ensure_planning_and_filesystem([], backend, permissions)
             ),
         }
@@ -1131,7 +1164,7 @@ class DeepAgent(BaseAgent, ABC):
             "system_prompt": system_prompt,
             "model": resolved_model,
             "tools": tools,
-            "middleware": self._ensure_platform_middleware(stack),
+            "middleware": self._run_middleware(stack),
         }
         if gates:
             built["interrupt_on"] = gates

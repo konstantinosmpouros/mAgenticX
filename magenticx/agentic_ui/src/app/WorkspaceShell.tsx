@@ -10,6 +10,7 @@ import SwitchingAccounts from "@/features/auth/components/SwitchingAccounts";
 import AccountLimitDialog from "@/features/auth/components/AccountLimitDialog";
 import AttachmentPreviewPanel from "@/features/attachments/components/AttachmentPreviewPanel";
 import ChatSidebar from "@/features/chat/components/ChatSidebar";
+import { ContextMeter } from "@/features/chat/components/ContextMeter";
 import { useSidebarInteractionEffect } from "@/features/chat/hooks/useChatEffects";
 import { useChatKeyboardShortcuts } from "@/features/chat/hooks/useKeyboardShortcuts";
 import { BackgroundTasksContext, HitlProvider } from "@/features/inference";
@@ -284,6 +285,18 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
           onOpenHelp={settingsPanels.openHelpPanel}
           onLogout={handleLogout}
           userProfile={userProfile}
+          contextControl={
+            isAutomationsPage || isAgentsPage || isWorkflowsPage
+              ? null
+              : (renderTrigger) => (
+                  <ContextMeter
+                    renderTrigger={renderTrigger}
+                    context={ws.conversationContext}
+                    stats={ws.conversationStats}
+                    compaction={ws.conversationCompaction}
+                  />
+                )
+          }
           dismissFloatingUiSignal={overlayMenus.sidebarDismissFloatingUiSignal}
           onFloatingUiStateChange={overlayMenus.setIsSidebarFloatingUiOpen}
           isLoadingMore={convIsLoadingMore}

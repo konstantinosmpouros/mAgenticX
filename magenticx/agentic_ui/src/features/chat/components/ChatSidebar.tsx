@@ -58,6 +58,7 @@ import { NewChatIcon } from "@/shared/ui/new-chat-icon";
 import { AgentsIcon } from "@/shared/ui/agents-icon";
 import { BrandLogo } from "@/shared/ui/brand-logo";
 import { INTERACTIVE_SURFACE } from "@/shared/lib/consts";
+import type { RenderContextTrigger } from "@/features/chat/components/ContextMeter";
 import { useTouchMenuTrigger } from "@/features/chat/hooks/useTouchMenuTrigger";
 import { loadSidebarSectionOpen, saveSidebarSectionOpen } from "@/shared/lib/sidebarStorage";
 import { RADIX_MOTION } from "@/shared/lib/motion/panels";
@@ -112,6 +113,10 @@ type ChatSidebarProps = {
   onOpenHelp: () => void;
   onLogout: () => void;
   userProfile: UserProfile | null;
+  /** The open conversation's context gauge, just above the profile, given
+   *  the sidebar's row renderer so it reads like the other rows. Absent off
+   *  the chat pages; renders nothing with no conversation. */
+  contextControl?: ((renderTrigger: RenderContextTrigger) => React.ReactNode) | null;
   /** Accounts this browser is signed in to. Empty ⇒ no switcher is shown,
    *  which is also what happens when the feature is disabled server-side. */
   accounts?: AccountSummary[];
@@ -167,6 +172,32 @@ const NAV_ICON_MOTION =
 const RAIL_REVEAL = "motion-safe:animate-sidebar-reveal";
 // Labels also never wrap: mid-animation the rail is narrower than "New chat".
 const RAIL_LABEL = `whitespace-nowrap ${RAIL_REVEAL} group-data-[collapsible=icon]:hidden`;
+
+/**
+ * The context gauge's row, drawn like Search and the other rows: a constant
+ * px-1.5 lead and the 36px icon (the ring with its percentage) keep it pinned
+ * at the same x on the collapsed rail and the open sidebar; the icon grows a
+ * little on hover; the open sidebar adds "Context" and the tokens.
+ */
+const renderContextRow: RenderContextTrigger = ({ icon, title, detail, ariaLabel, busy, onOpen }) => (
+  <SidebarMenuItem className="mb-1">
+    <SidebarMenuButton
+      size="lg"
+      onClick={onOpen}
+      aria-label={ariaLabel}
+      aria-busy={busy || undefined}
+      aria-haspopup="dialog"
+      className={`group/nav !flex !h-10 gap-1 items-center rounded-xl bg-transparent px-1.5 py-0 text-sm text-foreground/90 transition-colors supports-[hover:hover]:${INTERACTIVE_SURFACE}`}
+      tooltip={ariaLabel}
+    >
+      <span className={`flex shrink-0 ${NAV_ICON_MOTION}`}>{icon}</span>
+      <span className={cn("flex min-w-0 flex-col leading-tight", RAIL_LABEL)}>
+        <span className="truncate">{title}</span>
+        <span className="truncate text-xs tabular-nums text-muted-foreground">{detail}</span>
+      </span>
+    </SidebarMenuButton>
+  </SidebarMenuItem>
+);
 // A page entry (Automations, Agents) while its page is open: the highlight is the
 // motion span inside it, so the button's own active fill stays off, and the
 // label reads as selected like the open conversation's title.
@@ -377,6 +408,7 @@ export default function ChatSidebar({
   onOpenHelp,
   onLogout,
   userProfile,
+  contextControl = null,
   accounts = [],
   canAddAccount = false,
   maxAccounts = 0,
@@ -1308,6 +1340,7 @@ export default function ChatSidebar({
 
       <SidebarFooter className="px-2 pb-3 pt-2">
         <SidebarMenu className="!gap-0">
+          {contextControl ? contextControl(renderContextRow) : null}
           <SidebarMenuItem>
             <DropdownMenu.Root open={profileMenuOpen} onOpenChange={setProfileMenuOpen}>
               {/* Tooltip composed manually (not via SidebarMenuButton's `tooltip` prop):

@@ -250,6 +250,8 @@ def task_context(task: Mapping[str, Any], run_id: str) -> dict[str, Any]:
         context["agent_owner_id"] = inherited.agent_owner_id
     if inherited.command:
         context["command"] = inherited.command
+    if inherited.effort:
+        context["effort"] = inherited.effort
     return context
 
 

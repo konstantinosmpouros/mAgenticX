@@ -29,7 +29,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from core.settings import settings
+from core.settings import EffortLevel, settings
 
 #: The header the middleware sends the token in.
 LAUNCH_TOKEN_HEADER = "X-Task-Launch-Token"
@@ -62,6 +62,8 @@ class InheritedContext(BaseModel):
     tool_config: dict[str, Any] | None = None
     agent_owner_id: str | None = None
     command: str | None = None
+    # The reasoning effort the user picked; a child thinks as hard as its launcher.
+    effort: EffortLevel | None = None
 
 
 class LaunchClaims(BaseModel):

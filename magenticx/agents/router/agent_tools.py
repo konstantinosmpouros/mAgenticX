@@ -10,8 +10,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from core.security.internal_trust import require_internal_caller
 from core.logging import get_logger
 from core.settings import settings
-from schema import AgentToolsResponse
-from utils.agent_tools import list_agent_tools
+from schema import AgentModelResponse, AgentToolsResponse
+from utils.agent_tools import agent_model_info, list_agent_tools
 from utils.mcp_tools import MCPToolsClientError, list_mcp_tools
 
 logger = get_logger(__name__)
@@ -60,3 +60,17 @@ async def get_agent_tools(
     if rows is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown agent.")
     return AgentToolsResponse(agentSlug=agent_slug, tools=rows)
+
+
+@router.get(
+    "/agents/{user_id}/{agent_slug}/model",
+    response_model=AgentModelResponse,
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_internal_caller)],
+)
+async def get_agent_model(user_id: str, agent_slug: str) -> AgentModelResponse:
+    """The agent's main model and the reasoning efforts the composer may offer for it."""
+    info = await agent_model_info(user_id, agent_slug)
+    if info is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown agent.")
+    return info

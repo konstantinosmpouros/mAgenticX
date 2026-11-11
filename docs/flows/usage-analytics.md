@@ -263,7 +263,7 @@ from before pricing) also shows "—".
 ## Sharp Edges and Behavioral Notes
 
 - **Old answers have tokens only.** Answers from before plan 33 have no call counts, model time or sub-agent split. Totals include them; the split, the "Model split" ranking and per-answer ratios cover newer answers only, and the pages say so ("recorded from Oct 8 onward"). One conversation counts its old answers' calls from their event logs on the fly, for up to 200 answers (`callsComplete` turns false beyond that).
-- **Replaced answers count.** Totals include every answer, including ones a retry or an edit replaced, because they were spent. "Replaced" means off the latest branch. The composer's context card uses the same rule.
+- **Replaced answers count.** Totals include every answer, including ones a retry or an edit replaced, because they were spent. "Replaced" means off the latest branch. The sidebar's context panel uses the same rule.
 - **Compaction is spend, not an answer.** The summary call of a compaction is its own `compaction` group ("Compaction") in every split. A manual compaction adds its tokens, one model call and its model time to the conversation totals and the day, with 0 answers; see [context-compaction](context-compaction.md).
 - **Forks start at zero.** A fork copies messages without their token counts, so its usage begins with its first new answer and nothing is counted twice.
 - **Deleted conversations keep their spend in the rollups.** The daily rollups outlive a deleted conversation on purpose: the spend happened. So the Overview can exceed the sum of the listed conversations. The account purge deletes the rollups explicitly; `message_usage` and the conversation totals go with their rows.
@@ -309,4 +309,4 @@ from before pricing) also shows "—".
 | Reply card | `magenticx/agentic_ui/src/features/chat/components/message_parts/MessageUsage.tsx`, `ActionBars.tsx`; `shared/ui/ai-elements/context.tsx` (`ContextMetricRow`) |
 | Formatting | `magenticx/agentic_ui/src/shared/lib/utils.ts` (`formatCost`, `describeCost`, `formatSeconds`, `formatTokensPerSecond`) |
 | Contracts, API | `magenticx/agentic_ui/src/shared/lib/schemas.ts`, `shared/lib/api/usage.ts` |
-| Composer card | `magenticx/agentic_ui/src/features/chat/components/ContextMeter.tsx` |
+| Sidebar context panel | `magenticx/agentic_ui/src/features/chat/components/ContextMeter.tsx` |

@@ -9,6 +9,7 @@ stable ``from schema import ...`` import surface regardless of which module
 a DTO lives in.
 """
 from schema.agent_tools import (
+    AgentModelResponse,
     AgentToolRow,
     AgentToolsResponse,
     ToolApprovalRequest,
@@ -30,6 +31,7 @@ from schema.auth import (
     UserProfile,
 )
 from schema.base import (
+    EffortLevel,
     Senders,
     UTCDateTime,
 )
@@ -244,6 +246,7 @@ __all__ = [
     "AgentPublic",
     "AgentToolRow",
     "AgentToolsResponse",
+    "AgentModelResponse",
     "BuiltinToolInfo",
     "AttachmentIn",
     "AttachmentOut",
@@ -303,6 +306,7 @@ __all__ = [
     "ScheduledTaskOut",
     "ScheduledTaskUpdate",
     "Senders",
+    "EffortLevel",
     "SharedConversationDetail",
     "RemoteProvenance",
     "SkillFile",

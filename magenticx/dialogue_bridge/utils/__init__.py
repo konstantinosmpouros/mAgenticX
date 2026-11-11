@@ -1,5 +1,6 @@
 from utils.agents import (
     build_agent_stream_url,
+    fetch_agent_model,
     fetch_agent_tools,
     fetch_builtin_tools_from_agents_service,
     fetch_models_from_agents_service,
@@ -85,6 +86,7 @@ __all__ = [
     "list_usage_conversations",
     "conversation_summaries_query",
     "create_realtime_session_with_agents",
+    "fetch_agent_model",
     "fetch_agent_tools",
     "fetch_builtin_tools_from_agents_service",
     "fetch_models_from_agents_service",

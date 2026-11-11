@@ -5,7 +5,7 @@ import os
 import re
 import secrets
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import quote
 
 import httpx
@@ -274,6 +274,13 @@ class LoggingSettings(BaseSettings):
         return resolved or _DEFAULT_REDACTION_SECRET
 
 
+#: How hard a reasoning model thinks before it answers, weakest first. A model
+#: lists the levels it accepts in ``ModelInfo.efforts``; the user picks one per
+#: message and ``harness.models.effort`` sends it with every model call.
+EffortLevel = Literal["minimal", "low", "medium", "high", "xhigh"]
+EFFORT_LEVELS: tuple[EffortLevel, ...] = ("minimal", "low", "medium", "high", "xhigh")
+
+
 class ModelInfo(BaseModel):
     """What the platform knows about one model, beside what LangChain knows.
 
@@ -289,6 +296,18 @@ class ModelInfo(BaseModel):
     reasoning: bool | None = None
     # Max input tokens: compaction and the composer's context ring need it.
     context_window: int | None = Field(None, gt=0)
+    # The reasoning efforts it accepts, weakest first; none means the user is
+    # never offered a choice and no effort is ever sent to it.
+    efforts: tuple[EffortLevel, ...] = ()
+    # What the picker starts on; must be one of ``efforts``.
+    default_effort: EffortLevel | None = None
+
+    @model_validator(mode="after")
+    def _default_effort_is_offered(self) -> ModelInfo:
+        """A default the model does not accept would be sent and refused."""
+        if self.default_effort is not None and self.default_effort not in self.efforts:
+            raise ValueError("default_effort must be one of efforts")
+        return self
 
 
 class AgentRegistrySettings(BaseSettings):
@@ -309,8 +328,13 @@ class AgentRegistrySettings(BaseSettings):
     # comma-separated string) of specs is accepted, every fact then unset.
     allowed_agent_models: Annotated[dict[str, ModelInfo], NoDecode] = Field(
         default_factory=lambda: {
-            "openai:gpt-6-luna": ModelInfo(reasoning=True, context_window=1_050_000),
-            "openai:gpt-5": ModelInfo(reasoning=True),
+            "openai:gpt-6-luna": ModelInfo(
+                reasoning=True, context_window=1_050_000,
+                efforts=("low", "medium", "high"), default_effort="medium",
+            ),
+            "openai:gpt-5": ModelInfo(
+                reasoning=True, efforts=("low", "medium", "high"), default_effort="medium",
+            ),
             "openai:gpt-4o": ModelInfo(reasoning=False),
             "openai:gpt-4o-mini": ModelInfo(reasoning=False),
         },

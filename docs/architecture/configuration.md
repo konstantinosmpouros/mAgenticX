@@ -151,7 +151,7 @@ Who signs session JWTs and which public keys verify them. Production signs with 
 | `WORKFLOW_RUN_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `6` / `60` | Workflows, per user: starting or resuming a run — each spends work on the user's behalf, so the tightest bucket. |
 | `MESSAGE_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `30` / `60` | Message creation (attachment/blob growth) per user. |
 | `SUGGESTIONS_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Starter-suggestion generation (LLM-backed) per user. |
-| `COMPACTION_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `600` | Compacting a conversation from the context ring, or undoing it (plan 34), per user, after auth — each compaction is a summary call over most of the conversation. |
+| `COMPACTION_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `600` | Compacting a conversation (the context panel's button or `/compact`), or undoing it (plan 34), per user, after auth — each compaction is a summary call over most of the conversation. |
 | `USAGE_ANALYTICS_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `60` / `60` | Every Settings → Usage read (plan 33), per user, after auth. Generous for browsing; one conversation's page can count older answers from their event logs. |
 | `REFRESH_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Session refresh (OCI KMS mint) per client IP. |
 | `WS_CONNECT_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `20` / `60` | Run-stream WebSocket handshakes per user (enforced in-route; close code `4429`). |
@@ -441,8 +441,9 @@ Each built-in workflow agent picks its models per node. All accept `openai:<mode
 
 ```json
 {
-  "openai:gpt-6-luna":  {"reasoning": true,  "context_window": 1050000},
-  "openai:gpt-5":       {"reasoning": true},
+  "openai:gpt-6-luna":  {"reasoning": true,  "context_window": 1050000,
+                         "efforts": ["low", "medium", "high"], "default_effort": "medium"},
+  "openai:gpt-5":       {"reasoning": true, "efforts": ["low", "medium", "high"], "default_effort": "medium"},
   "openai:gpt-4o":      {"reasoning": false},
   "openai:gpt-4o-mini": {"reasoning": false}
 }
@@ -452,11 +453,15 @@ Each built-in workflow agent picks its models per node. All accept `openai:<mode
 | --- | --- | --- |
 | *(the key)* | The only models a user-authored agent or a workflow LLM node may select (built-ins are not constrained by it) | — |
 | `reasoning` | Asked for its reasoning summary (**Reasoning summaries** below); a non-reasoning model would reject that parameter | The pinned `langchain-openai`'s table decides (gpt-5, o3, o4-mini → yes; gpt-4o, gpt-4.1 → no; unknown → no) |
-| `context_window` | Compaction and the composer's context ring; registered through deepagents' `ProviderProfile` before an agent builds its model (`DeepAgent.register_model_windows`) | The table's window; a model newer than it (gpt-6-luna) then has none |
+| `context_window` | Compaction and the sidebar's context gauge; registered through deepagents' `ProviderProfile` before an agent builds its model (`DeepAgent.register_model_windows`) | The table's window; a model newer than it (gpt-6-luna) then has none |
+| `efforts` | The reasoning efforts it accepts, weakest first, from `minimal` / `low` / `medium` / `high` / `xhigh`: the composer offers these for an agent whose main model this is (**Reasoning effort** below) | None: no picker, and no effort is ever sent to it |
+| `default_effort` | Where the picker starts; must be one of `efforts` (refused at startup otherwise) | None (the picker starts on the middle level) |
 
 A model newer than the pinned `langchain-openai` needs both facts stated. An unknown fact is refused at startup. A bare list (`["openai:a", "openai:b"]`, or `openai:a,openai:b`) still works, every fact then unset.
 
 **Reasoning summaries** (`REASONING_SUMMARY`, default `auto`; `concise` / `detailed` / `off`): deep agents ask every OpenAI reasoning model in the tree for its summary of its reasoning, which streams into the chat's CoT as thoughts and shows in Langfuse. `off` asks for none — OpenAI may require a verified organization for summaries. Which models reason: their `reasoning` in `ALLOWED_AGENT_MODELS`, else the table (see **Models** above). See `harness/models/reasoning_summary.py`.
+
+**Reasoning effort** (no env var of its own; the levels are the models' `efforts` above): the user picks how hard the agent thinks per message in the composer, the bridge stores it on the user message and puts it in the run context as `effort`, and `EffortMiddleware` sends it with every model call whose model lists that level — the main agent, every sub-agent and every background task (they inherit it). OpenAI gets `reasoning.effort`, with the reasoning summary kept. Any other model call (a gpt-4o sub-agent, a LangGraph agent's own chains) is sent exactly what it was before. `GET /agents/{user_id}/{agent_slug}/model` tells the composer which levels the agent's main model accepts. See `harness/models/effort.py`.
 
 ### Deep-agent filesystem, conversation files & summarization
 
@@ -476,7 +481,7 @@ A model newer than the pinned `langchain-openai` needs both facts stated. An unk
 | `SUMMARIZATION_KEEP_FRACTION` | `0.30` | Only bounds deepagents' overflow clipping: every compaction, automatic or manual, folds everything before the latest question. |
 | `SUMMARIZATION_TRIGGER_TOKENS` | `200000` | Fallback token trigger for profile-less models. |
 | `SUMMARIZATION_KEEP_MESSAGES` | `20` | Fallback recent-message retention. |
-| `SUMMARIZATION_MANUAL_MIN_FRACTION` | `0.05` | A **manual** compaction (the composer's context ring, plan 34) is allowed once the context passes this fraction of the window. The UI applies the same 5% (`MANUAL_COMPACTION_MIN_PERCENT`). |
+| `SUMMARIZATION_MANUAL_MIN_FRACTION` | `0.05` | A **manual** compaction (the context panel's button or `/compact`, plan 34) is allowed once the context passes this fraction of the window. The UI applies the same 5% (`MANUAL_COMPACTION_MIN_PERCENT`). |
 
 ### Model-call rate-limit retry (`RateLimitRetrySettings`)
 

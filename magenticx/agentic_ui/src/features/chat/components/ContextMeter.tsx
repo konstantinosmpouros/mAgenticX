@@ -1,20 +1,18 @@
-import { useState, type MouseEvent, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
   CircleDashed,
-  Info,
   Loader2,
-  MousePointerClick,
   Shrink,
   Sigma,
   Timer,
   Wrench,
 } from "lucide-react";
 
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/shared/ui/hover-card";
 import { Button } from "@/shared/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/shared/ui/dialog";
 import { cn, formatCompactTokens, formatModelTime } from "@/shared/lib/utils";
 import type {
   ContextCompactionControl,
@@ -22,30 +20,26 @@ import type {
   RunContextUsage,
 } from "@/shared/lib/types";
 import { contextLevel } from "@/features/chat/lib/contextUsage";
-import { useCanHover } from "@/features/chat/hooks/useCanHover";
-import { useIsMobile } from "@/shared/hooks/use-mobile";
 
-// The composer's context gauge. The ring shows how full the model's window is
-// on the conversation's latest call; the card on hover reads top to bottom:
+// The conversation's context gauge, in the sidebar just above the profile.
+// The ring and the percentage under it show how full the model's window is on
+// the conversation's latest call; the sidebar draws the row around them like
+// its other rows (`renderTrigger`: the icon pinned at the same place on the
+// collapsed rail and the open sidebar, which adds "Context" and the tokens).
+// A click opens a small centred panel that reads top to bottom:
 //
-//   117K / 272K tokens               [43%]   ← occupancy; the notch on the bar
-//   ▬▬▬▬▬▬▬▬▬░░░░░░░░░░░░░╋░░                 is where compaction kicks in
-//   Free · Compacting in                     ← room left, and left before compaction
-//   THIS CONVERSATION                        ← every finished answer, replaced
-//   Input · Output · Total · Tool calls        ones included (what was spent)
-//   Click the ring to compact now            ← or why it cannot (plan 34)
-//   gpt-5                Avg latency 2.3 s   ← the model, time per model call
+//   Context window  gpt-5                     ← the model beside the title
+//   43%                    Compacts itself at  ← occupancy, large; where the
+//   117K of 272K tokens used             92%     automatic compaction kicks in
+//   ▬▬▬▬▬▬▬▬▬░░░░░░░░░░░░░╋░░                   (the notch on the bar)
+//   [Free]  [Until it compacts]               ← room left, and left before it
+//   This conversation   7 answers · 14 calls   ← every finished answer, replaced
+//   [Input] [Output] [Tool calls] [Total]        ones included (what was spent)
+//   Compact the conversation       [Compact]  ← the only button that compacts
+//   Average time per model call        2.3 s
 //
-// Hover (or keyboard focus) opens the card; a click compacts the conversation
-// now. Without hover — a touch screen, the mobile layout, or simply a tap
-// from a finger — a tap opens the card and its "Compact now" button compacts,
-// so a blind tap never fires a summary call. `(hover: hover)` alone is not
-// enough: phones with a stylus and some Android browsers report hover, and so
-// does a narrow desktop window, where the layout is still the mobile one.
-// Occupancy moves after every model call; the conversation block when an
-// answer finishes. Built on the shadcn HoverCard rather than the vendored AI
-// Elements Context: this card's sections (free room, the compaction point, the
-// conversation block) are not that component's shape, and it carries a control.
+// Opening the panel never compacts: the panel's own button does (or the
+// /compact slash command), so a stray click can never fire a summary call.
 
 const RADIUS = 9;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
@@ -56,107 +50,158 @@ const LEVEL_TEXT = {
   critical: "text-destructive",
 } as const;
 
-const LEVEL_PILL = {
-  ok: "bg-primary/10 text-primary",
-  high: "bg-warning/10 text-warning",
-  critical: "bg-destructive/10 text-destructive",
-} as const;
-
 const plural = (count: number, one: string, many: string) =>
   `${count.toLocaleString()} ${count === 1 ? one : many}`;
 
-function StatRow({
+/** One figure of the panel: a small card with its label over its value. */
+function StatTile({
   icon: Icon,
   label,
-  children,
+  value,
+  note,
   className,
 }: {
   icon: LucideIcon;
   label: string;
-  children: ReactNode;
+  value: ReactNode;
+  note?: ReactNode;
   className?: string;
 }) {
   return (
-    <div className={cn("flex items-baseline justify-between gap-4", className)}>
-      <dt className="flex items-center gap-2 text-muted-foreground">
-        <Icon className="h-3.5 w-3.5 shrink-0 self-center text-muted-foreground/70" aria-hidden />
+    <div className={cn("rounded-xl border border-border/60 bg-muted/30 px-3 py-2.5", className)}>
+      <dt className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" aria-hidden />
         {label}
       </dt>
-      <dd className="text-right font-medium text-foreground tabular-nums">{children}</dd>
+      <dd className="mt-1 text-sm font-semibold tabular-nums text-foreground">
+        {value}
+        {note ? <span className="ml-1 text-xs font-normal text-muted-foreground">{note}</span> : null}
+      </dd>
     </div>
   );
 }
 
-function CompactRow({
-  compaction,
-  showButton,
+/** The ring itself: how full the window is, coloured by how close compaction is. */
+function ContextRing({
+  filled,
+  level,
+  pulsing,
 }: {
-  compaction: ContextCompactionControl;
-  showButton: boolean;
+  filled: number;
+  level: keyof typeof LEVEL_TEXT;
+  pulsing: boolean;
 }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={cn("h-[18px] w-[18px] shrink-0 -rotate-90", pulsing && "animate-pulse motion-reduce:animate-none")}
+      aria-hidden
+    >
+      <circle cx="12" cy="12" r={RADIUS} fill="none" strokeWidth="3" className="stroke-muted" />
+      <circle
+        cx="12"
+        cy="12"
+        r={RADIUS}
+        fill="none"
+        strokeWidth="3"
+        strokeLinecap="round"
+        className={cn(
+          "stroke-current transition-[stroke-dashoffset] duration-300 ease-out motion-reduce:transition-none",
+          LEVEL_TEXT[level],
+        )}
+        strokeDasharray={CIRCUMFERENCE}
+        strokeDashoffset={CIRCUMFERENCE * (1 - filled / 100)}
+      />
+    </svg>
+  );
+}
+
+/**
+ * The panel's compaction row: why it cannot compact yet (or what it does),
+ * beside the one button that compacts.
+ */
+function CompactRow({ compaction }: { compaction: ContextCompactionControl }) {
   if (compaction.status === "compacting") {
     return (
-      <p className="flex items-center gap-2 text-muted-foreground" aria-live="polite">
-        <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden />
+      <p className="flex items-center gap-2 text-sm text-muted-foreground" aria-live="polite">
+        <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden />
         Compacting the conversation…
       </p>
     );
   }
-  // Touch: the card's own button is the only way to compact, so it is always
-  // there — disabled, with the reason under it, when there is nothing to compact.
-  if (showButton) {
-    return (
-      <div className="space-y-2">
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          className="h-11 w-full"
-          disabled={Boolean(compaction.disabledReason)}
-          onClick={compaction.compact}
-        >
-          <Shrink className="h-3.5 w-3.5" aria-hidden />
-          Compact now
-        </Button>
-        {compaction.disabledReason ? (
-          <p className="flex items-center gap-2 text-muted-foreground">
-            <Info className="h-3.5 w-3.5 shrink-0" aria-hidden />
-            {compaction.disabledReason}
-          </p>
-        ) : null}
-      </div>
-    );
-  }
-  if (compaction.disabledReason) {
-    return (
-      <p className="flex items-center gap-2 text-muted-foreground">
-        <Info className="h-3.5 w-3.5 shrink-0" aria-hidden />
-        {compaction.disabledReason}
-      </p>
-    );
-  }
+  const reason = compaction.disabledReason;
   return (
-    <p className="flex items-center gap-2 text-muted-foreground">
-      <MousePointerClick className="h-3.5 w-3.5 shrink-0" aria-hidden />
-      Click the ring to compact now
-    </p>
+    <div className="flex items-center justify-between gap-4">
+      <div className="min-w-0 space-y-0.5">
+        <p className="text-sm font-medium text-foreground">Compact the conversation</p>
+        <p className="text-xs text-muted-foreground">
+          {reason ?? "Summarise the older turns to free room."} Or type{" "}
+          <code className="rounded bg-muted px-1 py-0.5 font-mono text-[0.68rem]">/compact</code>.
+        </p>
+      </div>
+      <Button
+        type="button"
+        size="sm"
+        variant={reason ? "secondary" : "default"}
+        className="h-9 shrink-0 rounded-full px-4"
+        disabled={Boolean(reason)}
+        onClick={compaction.compact}
+      >
+        <Shrink className="h-3.5 w-3.5" aria-hidden />
+        Compact
+      </Button>
+    </div>
   );
 }
+
+/** What the sidebar needs to draw the gauge's row like its other rows. */
+export type ContextTrigger = {
+  /** The ring with the percentage under it: the row's 36px icon. */
+  icon: ReactNode;
+  /** "Context", or "Compacting…" while it runs. */
+  title: string;
+  /** "117K / 272K tokens". */
+  detail: string;
+  /** The accessible name: how full it is, and whether it is compacting. */
+  ariaLabel: string;
+  busy: boolean;
+  /** Opens the panel. */
+  onOpen: () => void;
+};
+
+export type RenderContextTrigger = (trigger: ContextTrigger) => ReactNode;
+
+/** Without a sidebar to draw it (tests, a page of its own): a plain button. */
+const defaultTrigger: RenderContextTrigger = ({ icon, title, detail, ariaLabel, busy, onOpen }) => (
+  <button
+    type="button"
+    aria-label={ariaLabel}
+    aria-busy={busy || undefined}
+    aria-haspopup="dialog"
+    onClick={onOpen}
+    className="flex items-center gap-2 rounded-xl px-1.5 text-left text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70"
+  >
+    {icon}
+    <span className="flex min-w-0 flex-col leading-tight">
+      <span className="truncate text-sm text-foreground">{title}</span>
+      <span className="truncate text-xs tabular-nums">{detail}</span>
+    </span>
+  </button>
+);
 
 export function ContextMeter({
   context,
   stats = null,
   compaction = null,
+  renderTrigger = defaultTrigger,
 }: {
   context: RunContextUsage | null;
   stats?: ConversationStats | null;
   compaction?: ContextCompactionControl | null;
+  /** Draws the row that opens the panel; the sidebar passes its own. */
+  renderTrigger?: RenderContextTrigger;
 }) {
-  const canHover = useCanHover();
-  const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
-  // Set by the first tap from a finger, for hybrid devices that report hover.
-  const [tapped, setTapped] = useState(false);
   if (!context) return null;
   const percent = context.percent;
   const known = typeof percent === "number";
@@ -170,202 +215,177 @@ export function ContextMeter({
     ? `Context window: ${percent}% used`
     : `Context: ${context.tokens.toLocaleString()} tokens used`;
   const compacting = compaction?.status === "compacting";
-  const canCompact = Boolean(compaction && !compaction.disabledReason);
-  const tapMode = !canHover || isMobile || tapped;
-  const label = compacting
-    ? `${usage}. Compacting the conversation`
-    : canCompact && !tapMode
-      ? `${usage}. Click to compact the conversation`
-      : usage;
-
-  const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
-    // Chrome and Firefox deliver click as a PointerEvent, so a finger is
-    // recognisable even where the media query claims hover.
-    const pointerType = (event.nativeEvent as Partial<PointerEvent>).pointerType;
-    const fromFinger = pointerType === "touch" || pointerType === "pen";
-    if (fromFinger) setTapped(true);
-    // Without hover the tap opens the card, whose button compacts.
-    if (tapMode || fromFinger) {
-      setOpen((current) => !current);
-      return;
-    }
-    if (canCompact) compaction?.compact();
-  };
+  const label = compacting ? `${usage}. Compacting the conversation` : usage;
+  const tokensLine = window
+    ? `${formatCompactTokens(context.tokens)} / ${formatCompactTokens(window)} tokens`
+    : `${formatCompactTokens(context.tokens)} tokens`;
 
   return (
-    <HoverCard open={open} onOpenChange={setOpen} openDelay={120} closeDelay={80}>
-      <HoverCardTrigger asChild>
-        <button
-          type="button"
-          aria-label={label}
-          aria-busy={compacting || undefined}
-          onClick={handleClick}
-          className={cn(
-            "flex h-10 min-w-10 items-center justify-center gap-1.5 rounded-full px-2 text-xs font-medium tabular-nums text-muted-foreground transition-[background-color,transform] duration-150 hover:bg-[hsl(var(--hover-surface))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70",
-            canCompact && "active:scale-[0.94] motion-reduce:active:scale-100",
-          )}
-        >
-          <svg
-            viewBox="0 0 24 24"
-            className={cn(
-              "h-5 w-5 -rotate-90",
-              compacting && "animate-pulse motion-reduce:animate-none",
-            )}
-            aria-hidden
-          >
-            <circle
-              cx="12"
-              cy="12"
-              r={RADIUS}
-              fill="none"
-              strokeWidth="3"
-              className="stroke-muted"
-            />
-            <circle
-              cx="12"
-              cy="12"
-              r={RADIUS}
-              fill="none"
-              strokeWidth="3"
-              strokeLinecap="round"
-              className={cn(
-                "stroke-current transition-[stroke-dashoffset] duration-300 ease-out motion-reduce:transition-none",
-                LEVEL_TEXT[level],
-              )}
-              strokeDasharray={CIRCUMFERENCE}
-              strokeDashoffset={CIRCUMFERENCE * (1 - filled / 100)}
-            />
-          </svg>
-          {known ? <span>{Math.round(percent)}%</span> : null}
-        </button>
-      </HoverCardTrigger>
-      <HoverCardContent
-        side="top"
-        align="center"
-        className="w-72 divide-y divide-border/50 overflow-hidden rounded-xl p-0 shadow-lg"
-      >
-        <div className="space-y-3 px-3.5 pb-3 pt-3.5">
-          <div className="flex items-center justify-between gap-3 tabular-nums">
-            <p className="text-sm font-semibold tracking-tight text-foreground">
-              {formatCompactTokens(context.tokens)}
-              {window ? (
-                <span className="font-normal text-muted-foreground">
-                  {" "}
-                  / {formatCompactTokens(window)}
-                </span>
-              ) : null}{" "}
-              <span className="font-normal text-muted-foreground">tokens</span>
-            </p>
-            {known ? (
-              <span
-                className={cn("rounded-md px-1.5 py-0.5 text-xs font-semibold", LEVEL_PILL[level])}
-              >
-                {percent}%
-              </span>
-            ) : null}
-          </div>
-          {known && window ? (
-            <div className="relative py-1">
-              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                <div
+    <>
+      {renderTrigger({
+        icon: (
+          // A 36px box like every sidebar icon, so the row pins it in place:
+          // the ring, the percentage under it.
+          <span className="grid size-9 shrink-0 place-items-center">
+            <span className="flex flex-col items-center gap-px">
+              <ContextRing filled={filled} level={level} pulsing={compacting} />
+              {known ? (
+                <span
                   className={cn(
-                    "h-full w-full origin-left rounded-full bg-current",
+                    "text-[0.6rem] font-semibold leading-none tabular-nums",
                     LEVEL_TEXT[level],
                   )}
-                  style={{ transform: `scaleX(${filled / 100})` }}
-                />
+                >
+                  {Math.round(percent)}%
+                </span>
+              ) : null}
+            </span>
+          </span>
+        ),
+        title: compacting ? "Compacting…" : "Context",
+        detail: tokensLine,
+        ariaLabel: label,
+        busy: compacting,
+        onOpen: () => setOpen(true),
+      })}
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-md gap-0 overflow-hidden p-0">
+          <div className="px-5 pb-5 pt-5">
+            <div className="flex items-center gap-2 pr-8">
+              <DialogTitle className="text-base">Context window</DialogTitle>
+              {context.model ? (
+                <span className="truncate rounded-md bg-muted px-1.5 py-0.5 font-mono text-[0.68rem] text-muted-foreground">
+                  {context.model}
+                </span>
+              ) : null}
+            </div>
+            <DialogDescription className="sr-only">
+              How full the model's context window is, and what this conversation has spent.
+            </DialogDescription>
+
+            <div className="mt-5 flex items-end justify-between gap-4">
+              <div className="min-w-0">
+                <p
+                  className={cn(
+                    "text-3xl font-semibold leading-none tracking-tight tabular-nums",
+                    known ? LEVEL_TEXT[level] : "text-foreground",
+                  )}
+                >
+                  {known ? `${percent}%` : formatCompactTokens(context.tokens)}
+                </p>
+                <p className="mt-1.5 text-xs tabular-nums text-muted-foreground">
+                  {window
+                    ? `${formatCompactTokens(context.tokens)} of ${formatCompactTokens(window)} tokens used`
+                    : "tokens used · this model's window size is unknown"}
+                </p>
               </div>
               {context.compactionPercent ? (
-                // The notch stands proud of the track so it reads as a marker,
-                // not as part of the fill.
-                <div
-                  className="absolute inset-y-0 w-0.5 -translate-x-1/2 rounded-full bg-foreground/70"
-                  style={{ left: `${Math.min(context.compactionPercent, 100)}%` }}
-                  aria-hidden
-                />
-              ) : null}
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">This model's window size is unknown.</p>
-          )}
-          {window ? (
-            <dl className="space-y-1.5 text-xs">
-              <StatRow icon={CircleDashed} label="Free">
-                {formatCompactTokens(Math.max(window - context.tokens, 0))} tokens
-              </StatRow>
-              {compactAt ? (
-                <StatRow icon={Shrink} label="Compacting in">
-                  {compactAt > context.tokens
-                    ? `${formatCompactTokens(compactAt - context.tokens)} tokens`
-                    : "next call"}
-                </StatRow>
-              ) : null}
-            </dl>
-          ) : null}
-        </div>
-
-        {stats ? (
-          <div className="space-y-2.5 px-3.5 py-3">
-            <div className="space-y-0.5">
-              <p className="text-[0.66rem] font-semibold uppercase tracking-[0.16em] text-foreground">
-                This conversation
-              </p>
-              <p className="text-xs text-muted-foreground/80 tabular-nums">
-                {plural(stats.answers, "answer", "answers")}
-                {stats.replaced ? ` (${stats.replaced.toLocaleString()} replaced)` : ""}
-                {stats.modelCalls
-                  ? ` · ${plural(stats.modelCalls, "model call", "model calls")}`
-                  : ""}
-              </p>
-            </div>
-            <dl className="space-y-1.5 text-xs">
-              <StatRow icon={ArrowDownToLine} label="Input">
-                {formatCompactTokens(stats.inputTokens)}
-                {stats.cachedInputTokens ? (
-                  <span className="font-normal text-muted-foreground">
-                    {" "}
-                    ({formatCompactTokens(stats.cachedInputTokens)} cached)
+                <p className="shrink-0 text-right text-xs leading-snug text-muted-foreground">
+                  Compacts itself at
+                  <span className="block text-sm font-semibold tabular-nums text-foreground">
+                    {context.compactionPercent}%
                   </span>
+                </p>
+              ) : null}
+            </div>
+
+            {known && window ? (
+              <div className="relative mt-3 py-1">
+                <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
+                  <div
+                    className={cn(
+                      "h-full w-full origin-left rounded-full bg-current transition-transform duration-300 ease-out motion-reduce:transition-none",
+                      LEVEL_TEXT[level],
+                    )}
+                    style={{ transform: `scaleX(${filled / 100})` }}
+                  />
+                </div>
+                {context.compactionPercent ? (
+                  // The notch stands proud of the track so it reads as a marker,
+                  // not as part of the fill.
+                  <div
+                    className="absolute inset-y-0 w-0.5 -translate-x-1/2 rounded-full bg-foreground/60"
+                    style={{ left: `${Math.min(context.compactionPercent, 100)}%` }}
+                    aria-hidden
+                  />
                 ) : null}
-              </StatRow>
-              <StatRow icon={ArrowUpFromLine} label="Output">
-                {formatCompactTokens(stats.outputTokens)}
-              </StatRow>
-              <StatRow icon={Wrench} label="Tool calls">
-                {stats.toolCalls.toLocaleString()}
-              </StatRow>
-              <StatRow
-                icon={Sigma}
-                label="Total"
-                className="border-t border-dashed border-border/60 pt-1.5 [&_dd]:font-semibold"
-              >
-                {formatCompactTokens(stats.inputTokens + stats.outputTokens)} tokens
-              </StatRow>
-            </dl>
-          </div>
-        ) : null}
+              </div>
+            ) : null}
 
-        {compaction ? (
-          <div className="px-3.5 py-2.5 text-xs">
-            <CompactRow compaction={compaction} showButton={tapMode} />
-          </div>
-        ) : null}
-
-        {context.model || avgLatencyMs !== null ? (
-          <div className="flex items-center justify-between gap-3 bg-muted/40 px-3.5 py-2.5 text-xs">
-            <span className="truncate font-mono text-[0.7rem] text-muted-foreground">
-              {context.model ?? ""}
-            </span>
-            {avgLatencyMs !== null ? (
-              <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground tabular-nums">
-                <Timer className="h-3.5 w-3.5" aria-hidden />
-                Avg latency
-                <span className="font-medium text-foreground">{formatModelTime(avgLatencyMs)}</span>
-              </span>
+            {window ? (
+              <dl className="mt-4 grid grid-cols-2 gap-2">
+                <StatTile
+                  icon={CircleDashed}
+                  label="Free"
+                  value={`${formatCompactTokens(Math.max(window - context.tokens, 0))} tokens`}
+                />
+                {compactAt ? (
+                  <StatTile
+                    icon={Shrink}
+                    label="Until it compacts"
+                    value={
+                      compactAt > context.tokens
+                        ? `${formatCompactTokens(compactAt - context.tokens)} tokens`
+                        : "Next call"
+                    }
+                  />
+                ) : null}
+              </dl>
             ) : null}
           </div>
-        ) : null}
-      </HoverCardContent>
-    </HoverCard>
+
+          {stats ? (
+            <div className="border-t border-border/50 px-5 py-4">
+              <div className="flex items-baseline justify-between gap-3">
+                <p className="shrink-0 text-sm font-semibold text-foreground">This conversation</p>
+                <p className="truncate text-xs tabular-nums text-muted-foreground">
+                  {plural(stats.answers, "answer", "answers")}
+                  {stats.replaced ? ` (${stats.replaced.toLocaleString()} replaced)` : ""}
+                  {stats.modelCalls
+                    ? ` · ${plural(stats.modelCalls, "model call", "model calls")}`
+                    : ""}
+                </p>
+              </div>
+              <dl className="mt-3 grid grid-cols-2 gap-2">
+                <StatTile
+                  icon={ArrowDownToLine}
+                  label="Input"
+                  value={formatCompactTokens(stats.inputTokens)}
+                  note={
+                    stats.cachedInputTokens
+                      ? `${formatCompactTokens(stats.cachedInputTokens)} cached`
+                      : undefined
+                  }
+                />
+                <StatTile icon={ArrowUpFromLine} label="Output" value={formatCompactTokens(stats.outputTokens)} />
+                <StatTile icon={Wrench} label="Tool calls" value={stats.toolCalls.toLocaleString()} />
+                <StatTile
+                  icon={Sigma}
+                  label="Total"
+                  value={`${formatCompactTokens(stats.inputTokens + stats.outputTokens)} tokens`}
+                />
+              </dl>
+            </div>
+          ) : null}
+
+          {compaction ? (
+            <div className="border-t border-border/50 px-5 py-4">
+              <CompactRow compaction={compaction} />
+            </div>
+          ) : null}
+
+          {avgLatencyMs !== null ? (
+            <div className="flex items-center justify-between gap-3 border-t border-border/50 bg-muted/30 px-5 py-2.5 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <Timer className="h-3.5 w-3.5" aria-hidden />
+                Average time per model call
+              </span>
+              <span className="font-medium tabular-nums text-foreground">{formatModelTime(avgLatencyMs)}</span>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

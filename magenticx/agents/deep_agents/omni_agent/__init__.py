@@ -141,6 +141,11 @@ class OmniAgent(DeepAgent):
     # ------------------------------------------------------------------
     # Main agent
     # ------------------------------------------------------------------
+    @classmethod
+    def main_model_spec(cls) -> str:
+        """The configured main model (``OMNI_MAIN_MODEL``)."""
+        return settings.deep_agents.omni.main_model
+
     def register_agent(self) -> Any:
         omni = settings.deep_agents.omni
         return self.build_deep_agent(
