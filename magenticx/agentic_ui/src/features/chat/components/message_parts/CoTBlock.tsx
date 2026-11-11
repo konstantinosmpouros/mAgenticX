@@ -1,4 +1,5 @@
-import { memo, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { motion, useReducedMotion } from "framer-motion";
 import {
   Check,
   CheckCircle2,
@@ -25,7 +26,7 @@ import {
   toolTitle,
   toolTitleHint,
 } from "@/features/chat/lib/toolPresentation";
-import { liveCoTTitle } from "@/features/chat/lib/cotTitle";
+import { finalCoTTitle, liveCoTTitle } from "@/features/chat/lib/cotTitle";
 import { useWorkspaceStore } from "@/shared/stores/workspaceStore";
 import { ToolCallArgsView, ToolCallResultView } from "./ToolCallViews";
 import { ShimmeringText } from "@/shared/ui/shadcn-io/shimmering-text";
@@ -517,8 +518,21 @@ export const CoTBlock = memo(
     );
     // While the block runs, its header says what the latest step is doing —
     // a thought's headline, the tool in use — the way a live chain of thought
-    // reads; "Thought for Xs" only once it is done.
+    // reads. Once done it keeps its last thought's headline, with the time it
+    // took after it; "Thought for Xs" only when no thought had a headline.
     const availableTools = useWorkspaceStore((s) => s.availableTools);
+    const finalTitle = useMemo(
+      () => (isLiveActive ? null : finalCoTTitle(block.items)),
+      [isLiveActive, block.items],
+    );
+    // The duration fades in only when this block finishes in front of the
+    // user; a block that was already done when it mounted shows it at once.
+    const reduceMotion = useReducedMotion();
+    const wasLive = useRef(isLiveActive);
+    const finishedLive = wasLive.current && !isLiveActive;
+    useEffect(() => {
+      if (isLiveActive) wasLive.current = true;
+    }, [isLiveActive]);
     const liveTitle = useMemo(
       () =>
         isLiveActive
@@ -586,6 +600,21 @@ export const CoTBlock = memo(
             ) : (
               `Asked you ${askedCount} questions`
             )
+          ) : finalTitle ? (
+            <span className="flex min-w-0 items-baseline gap-1.5" title={finalTitle}>
+              <span className="truncate">{finalTitle}</span>
+              {durationLabel ? (
+                <motion.span
+                  initial={finishedLive && !reduceMotion ? { opacity: 0, x: -4 } : false}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.3, ease: "easeOut", delay: 0.1 }}
+                  className="shrink-0 font-normal tabular-nums text-muted-foreground/70"
+                  aria-label={`thought for ${durationLabel}`}
+                >
+                  · {durationLabel}
+                </motion.span>
+              ) : null}
+            </span>
           ) : durationLabel ? (
             `Thought for ${durationLabel}`
           ) : (

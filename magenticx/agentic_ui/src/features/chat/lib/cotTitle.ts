@@ -27,6 +27,22 @@ export const thoughtTitle = (text: string): string => {
 };
 
 /**
+ * What a finished chain of thought keeps as its title: the headline of its
+ * last thought, the conclusion it reached. Tool calls after it don't replace
+ * it — "Read report.pdf" says what was done, not what was thought. Null when
+ * no thought has a headline; the caller falls back to "Thought for Xs".
+ */
+export const finalCoTTitle = (items: readonly ThinkingBlockItem[]): string | null => {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item.kind !== "thought") continue;
+    const title = thoughtTitle(item.text);
+    if (title) return title;
+  }
+  return null;
+};
+
+/**
  * What a live chain of thought says it is doing: its latest step, while the
  * block still runs. A thought → its headline; a tool call → its step title
  * where the tool is known ("Read report.pdf"), else "Using <tool>"; a hand-off

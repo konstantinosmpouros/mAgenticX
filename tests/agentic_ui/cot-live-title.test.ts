@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { liveCoTTitle, thoughtTitle } from "@/features/chat/lib/cotTitle";
+import { finalCoTTitle, liveCoTTitle, thoughtTitle } from "@/features/chat/lib/cotTitle";
 import type { ThinkingBlockItem } from "@/shared/lib/types";
 
 /**
@@ -58,5 +58,19 @@ describe("liveCoTTitle", () => {
   it("skips an empty thought and has nothing to say for an empty block", () => {
     expect(liveCoTTitle([thought("**Found it**"), thought("")])).toBe("Found it");
     expect(liveCoTTitle([])).toBeNull();
+  });
+});
+
+describe("finalCoTTitle", () => {
+  it("keeps the last thought's headline, not a later tool step", () => {
+    expect(
+      finalCoTTitle([thought("**One**"), thought("**Settled on the plan**\n\nx"), tool("read_file", { file_path: "/a.pdf" })]),
+    ).toBe("Settled on the plan");
+  });
+
+  it("skips an empty thought and is null when no thought has a headline", () => {
+    expect(finalCoTTitle([thought("**Found it**"), thought("")])).toBe("Found it");
+    expect(finalCoTTitle([tool("fetch_weather")])).toBeNull();
+    expect(finalCoTTitle([])).toBeNull();
   });
 });
