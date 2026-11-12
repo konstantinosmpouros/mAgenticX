@@ -8,7 +8,7 @@
 // features/inference/agui — shared/ must not import from features/. The schema
 // lives there so this type stays derived from the wire contract; agui re-exports
 // it so the AG-UI consumers still have one import site.
-import type { AsyncTaskStatus, PlanSnapshot } from "../schemas";
+import type { AsyncTaskStatus, CitationSource, PlanSnapshot } from "../schemas";
 
 export type ToolExecutionState =
   "input-streaming" | "input-available" | "output-available" | "output-error";
@@ -99,6 +99,9 @@ export type TimelineToolExecution = {
   approval?: TimelineHitlApproval;
   startedAt?: number;
   endedAt?: number;
+  /** The pages this call's result named (plan 42): shown as cards in place of
+   *  the result, whose text is never sent to the browser. */
+  sources?: CitationSource[];
 };
 
 /**
@@ -430,6 +433,11 @@ export type RunTimeline = {
   /** One entry per `plan.items` step, in the same order; absent before a plan. */
   planTimings?: PlanStepTiming[];
   interrupts: TimelineHitlApproval[];
+  /**
+   * Every source a search tool returned in this run (plan 42 `SOURCES` events,
+   * the sub-agents' included), by source id. Absent until the first arrives.
+   */
+  sources?: Record<string, CitationSource>;
   subagentCount: number;
   terminal: boolean;
   terminalStatus?: TimelineTerminalStatus;

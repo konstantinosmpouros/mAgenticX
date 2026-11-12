@@ -30,6 +30,9 @@ export const TASK_LAUNCHED_EVENT_TYPE = "TASK_LAUNCHED" as const;
 export const TASK_SETTLED_INLINE_EVENT_TYPE = "TASK_SETTLED_INLINE" as const;
 // In a task's own stream: a follow-up instruction it received (update_async_task).
 export const TASK_INPUT_EVENT_TYPE = "TASK_INPUT" as const;
+// Inline citations (plan 42): the sources one search-tool call returned.
+export const SOURCES_EVENT_TYPE = "SOURCES" as const;
+export const SOURCES_EVENT_NAMES = [SOURCES_EVENT_TYPE, "sources"] as const;
 
 export const PLAN_SNAPSHOT_EVENT_NAMES = [PLAN_SNAPSHOT_EVENT_TYPE, "plan_snapshot"] as const;
 
@@ -198,6 +201,17 @@ export const PresentArtifactPayloadSchema = z.object({
   summary: z.string().nullish(),
   mime: z.string().nullish(),
   status: z.string().nullish(),
+});
+
+// ------------------------------------------------------
+// Sources (plan 42 §3.8) — one search-tool call's results, each with the id
+// the model cites it by. The list is kept loose here and each entry is checked
+// on its own (`toCitationSources`): one malformed or non-http source is
+// dropped, never the whole event.
+// ------------------------------------------------------
+export const SourcesPayloadSchema = z.object({
+  tool_call_id: z.string().nullish(),
+  sources: z.array(z.unknown()),
 });
 
 // ------------------------------------------------------

@@ -1,4 +1,7 @@
+"""Share links: the public snapshot read, list items, expiry, and importing a
+shared conversation into the viewer's own account."""
 import hashlib
+import re
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 
@@ -26,8 +29,61 @@ from schema import (
 )
 from core.settings import settings
 from utils.account_status import open_deletion_exists_for
+from utils.agents import fetch_conversation_sources
 from utils.conversations import _preview, init_message
 from utils.workspace_names import WorkspaceNames
+
+
+#: A citation marker in an answer (plan 42 §3.8): ``[src:ID]`` or ``[src:ID,ID,…]``.
+_SOURCE_MARKER = re.compile(r"\[src:\s*([0-9a-f]{6,8}(?:\s*,\s*[0-9a-f]{6,8})*)\s*\]")
+_TEXT_EVENT_TYPES = ("TEXT_MESSAGE_CHUNK", "TEXT_MESSAGE_CONTENT")
+
+
+def _snapshot_texts(messages: list) -> list[str]:
+    """Every text of a snapshot that can carry a marker: each message's content
+    and the text deltas of its event log (a sub-agent's, inside its envelope)."""
+    texts: list[str] = []
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+        if isinstance(message.get("content"), str):
+            texts.append(message["content"])
+        for event in message.get("rawEvents") or []:
+            if not isinstance(event, dict):
+                continue
+            value = event.get("value")
+            if event.get("name") == "SUBAGENT_EVENT" and isinstance(value, dict) and isinstance(value.get("event"), dict):
+                event = value["event"]
+            if event.get("type") in _TEXT_EVENT_TYPES and isinstance(event.get("delta"), str):
+                texts.append(event["delta"])
+    return texts
+
+
+def cited_source_ids(texts: list[str]) -> set[str]:
+    """The source ids the ``[src:…]`` markers in ``texts`` cite."""
+    ids: set[str] = set()
+    for text in texts:
+        for match in _SOURCE_MARKER.finditer(text):
+            ids.update(part.strip() for part in match.group(1).split(","))
+    return ids
+
+
+async def attach_cited_sources(snapshot: dict, user_id: str, conversation_id: str) -> None:
+    """Freeze into a share snapshot the citation sources its answers cite (plan 42).
+
+    The public share view has no session, so it cannot ask for the
+    conversation's sources later; and it must not see sources the shared
+    part does not cite (other branches, later turns). So only the cited ones
+    are copied in, once, when the link is made, and the snapshot then stands
+    on its own like the rest of it. No marker, no call. The
+    fetch fails open: without the agents service the link is still made,
+    and its markers just render nothing.
+    """
+    cited = cited_source_ids(_snapshot_texts(snapshot.get("messages") or []))
+    if not cited:
+        return
+    sources = await fetch_conversation_sources(user_id, conversation_id)
+    snapshot["sources"] = [source.model_dump() for source in sources if source.id in cited]
 
 
 def parse_snapshot_datetime(value: str | None) -> datetime | None:

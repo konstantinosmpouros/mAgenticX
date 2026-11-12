@@ -9,6 +9,7 @@
 - Check Postgres `tsvector` for full-text search.
 - Check Postgres `LISTEN` / `NOTIFY` for live updates between services.
 - Check `pg_cron` for scheduled jobs.
+- Add a header button that opens a conversation overview panel: the files the agent produced (with previews), the files the user attached, and what the run used (web searches with their sources, memory reads, other tools), grouped and counted.
 
 ## New Features
 

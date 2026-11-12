@@ -1,3 +1,4 @@
+import { plainSnippet } from "@/shared/lib/citations";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -11,7 +12,6 @@ import {
   parsePapers,
   parseTavilyPages,
   parseTavilyResults,
-  plainSnippet,
   safeHttpUrl,
   salvageJsonArray,
 } from "@/features/chat/lib/mcpToolPresentation";

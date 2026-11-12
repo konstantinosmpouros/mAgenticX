@@ -1,0 +1,27 @@
+Detailed Results:
+
+Title: Greek government-debt crisis - Wikipedia
+URL: https://en.wikipedia.org/wiki/Greek_government-debt_crisis
+Content: In January 2010, the Greek Ministry of Finance published Stability and Growth Program 2010, which listed the main causes of the crisis including poor GDP growth, government debt and deficits, budget compliance and data credibility. Causes found by others included excess government spending, current account deficits, tax avoidance and tax evasion.
+
+#### GDP growth
+
+[edit] [...] The crisis led to a loss of confidence in the Greek economy, indicated by a widening of bond "Bond (finance)") yield spreads and rising cost of risk insurance on credit default swaps compared to the other eurozone countries, particularly Germany. The government enacted 12 rounds of tax increases, spending cuts, and reforms from 2010-16, which at times triggered local riots and nationwide protests. Despite these efforts, the country required bailout loans in 2010, 2012, and 2015 from the [...] [edit]
+
+Despite the crisis, the Greek government's bond auction in January 2010 of €8bn 5-year bonds was 4x over-subscribed. The next auction (March) sold €5bn in 10-year bonds reached 3x. However, yields (interest rates) increased, which worsened the deficit. In April 2010, it was estimated that up to 70% of Greek government bonds were held by foreign investors, primarily banks.
+
+Title: The Greek debt crisis: A case of banks before people - Debt Justice
+URL: https://debtjustice.org.uk/countries-in-crisis/greek-debt-crisis-case-banks-people
+Content: In the Spring of 2010, lenders began to finally lose confidence in the ability of the Greek government to pay its debts. The government admitted that it could no longer afford to make debt payments, but rather than defaulting, it took bailout loans from the IMF and EU. These new loans were used to pay-off the reckless banks, whilst keeping and increasing the Greek debt. By early 2013, the EU and IMF had lent $290 billion amounting to 65% of the Greek government’s foreign-owed debt. In return [...] When the global financial crisis began in 2008, lending to Greece increased to help the country cope with the impact of lower tax revenues and the need for higher government spending. Foreign banks were particularly keen to lend to governments such as Greece, because governments were now seen as safe compared to their fellow banks. By the start of 2010, French banks had lent the Greek government and banks $53.5 billion, German banks $36.8 billion and British banks $12 billion.
+
+Title: The Greek Debt Crisis: No Easy Way Out
+URL: https://www.piie.com/microsites/2022/greek-debt-crisis-no-easy-way-out
+Content: Banks had mistakenly assumed all government debt is risk-free. They had lent to the Greek government on the questionable assumption that it had sufficient capital to absorb a Greek default. All banks in Europe feared that Greek debt relief would set a precedent. Bonds issued by other European governments suddenly became risky, making it more expensive for these governments to borrow. Loss of investor confidence infected the entire European financial system. [...] Greek debts moved away from the hands of private bondholders to European and international institutions
+
+ 
+
+The transfer of debt from the private sector to European official creditors changed the political dynamics of the Greek crisis. Nationalist sentiments stirred in many European countries. At the same time, public opinion in Greece turned against Europe and its forced retrenchment of the Greek economy. [...] In return, the government got up to €110 billion in loans from European countries and the IMF. The ECB also stepped in to buy Greek bonds in the secondary market.
+
+The plan seemed to work at first. Yields on Greek bonds fell.  Greece closed its deficit to 5 percent of GDP. But the fiscal consolidation took an economic toll.  Greece’s economy sank.
+
+Following austerity measures, Greece's economy collapsed

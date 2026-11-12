@@ -5,6 +5,7 @@ from datetime import datetime
 from schema.base import UTCDateTime
 from schema.catalog import AgentPublic
 from schema.messages import MessageOut
+from schema.sources import ConversationSource, keep_valid_sources
 
 
 class ConversationShareIn(BaseModel):
@@ -92,3 +93,12 @@ class SharedConversationDetail(BaseModel):
     messages: List[MessageOut] = Field(default_factory=list)
     expiresAt: Optional[UTCDateTime] = None
     createdAt: UTCDateTime
+    # The citation sources the shared answers cite (plan 42), frozen into the
+    # snapshot when the link was made. Re-validated on every read: a snapshot
+    # made before the feature has none, and a bad stored row is dropped alone.
+    sources: list[ConversationSource] = Field(default_factory=list)
+
+    @field_validator("sources", mode="before")
+    @classmethod
+    def _drop_invalid_sources(cls, value):
+        return keep_valid_sources(value)

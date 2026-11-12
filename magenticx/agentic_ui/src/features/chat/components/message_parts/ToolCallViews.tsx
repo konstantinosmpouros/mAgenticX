@@ -43,6 +43,7 @@ import {
 import { toTitleCase } from "@/features/inference";
 import type { SubagentRunStatus } from "@/shared/lib/types";
 import { McpResultView } from "./McpToolViews";
+import { SourceCards } from "./SourceCards";
 import { STATUS_META } from "./subagentStatus";
 
 // `text-foreground` resets the colour: a step waiting for approval tints its
@@ -282,6 +283,8 @@ export const ToolCallResultView = ({
   const generic = (
     <ToolOutput output={result} truncated={tool.resultTruncated} bare={toolIsBare(tool.name)} />
   );
+  // A search step's pages (plan 42), whatever the tool: cards, not the result.
+  if (tool.sources?.length && tool.state !== "output-error") return <SourceCards sources={tool.sources} />;
   if (isGenericStep(tool, args) || result === undefined) return result === undefined ? null : generic;
   const a = args as ToolArgs;
   if (isMcpTool(tool.name, serverId)) return <McpResultView tool={tool} />;

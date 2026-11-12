@@ -241,15 +241,6 @@ export const parseTavilyPages = (result: string | undefined): { base?: string; p
   return { base, pages: pages.map((page) => ({ ...page, content: page.content?.trim() || undefined })) };
 };
 
-/** Markdown / whitespace stripped for a one-glance snippet. */
-export const plainSnippet = (text: string | undefined): string =>
-  (text ?? "")
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/[#*_`>]+/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-
 // ---------------------------------------------------------------------------
 // arXiv
 // ---------------------------------------------------------------------------

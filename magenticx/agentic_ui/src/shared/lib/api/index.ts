@@ -178,3 +178,7 @@ export {
   cancelWorkflowRun,
   streamWorkflowRunEvents,
 } from "./workflows";
+
+export { getConversationSources } from "./citations";
+
+export { faviconUrl } from "./favicons";

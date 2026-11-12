@@ -1,7 +1,7 @@
 import { useBackgroundTasksContext } from "@/features/inference";
 import { taskNoticeText } from "@/features/chat/lib/taskTreeAdapter";
 import type { MessageOut } from "@/shared/lib/types";
-import { TaskOutcomeLine } from "./TaskOutcomeLine";
+import { TaskMarker } from "./ConversationMarkers";
 
 /**
  * A wake-up's input row (`messages.kind = task_notification`, plan 41 §3.9):
@@ -15,11 +15,11 @@ export function TaskNoticeRow({ message }: { message: MessageOut }) {
   const tasks = useBackgroundTasksContext();
   const notice = message.taskNotice;
   if (!notice) {
-    return <TaskOutcomeLine status="success" text="A background task finished" />;
+    return <TaskMarker status="success" text="A background task finished" />;
   }
   const known = Boolean(tasks?.tree.tasks[notice.taskId]);
   return (
-    <TaskOutcomeLine
+    <TaskMarker
       status={notice.status}
       text={taskNoticeText(notice)}
       onOpen={tasks && known ? () => tasks.openTask(notice.taskId) : undefined}

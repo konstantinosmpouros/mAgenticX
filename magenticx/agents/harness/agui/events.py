@@ -1,6 +1,9 @@
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+from harness.sources.extractors import MAX_SOURCES_PER_RESULT
+from harness.sources.model import Source
 
 
 # Custom event names/constants for AG-UI
@@ -12,6 +15,8 @@ SUBAGENT_COMPLETED_EVENT_TYPE = "SUBAGENT_COMPLETED"
 BEFORE_AGENT_EVENT_TYPE = "BEFORE_AGENT_EVENT"
 TOKEN_USAGE_EVENT_TYPE = "TOKEN_USAGE"
 TOOL_USAGE_EVENT_TYPE = "TOOL_USAGE"
+#: The citable pages one tool call returned (plan 42).
+SOURCES_EVENT_TYPE = "SOURCES"
 CHECKPOINT_COMMITTED_EVENT_TYPE = "CHECKPOINT_COMMITTED"
 PRESENT_ARTIFACT_EVENT_TYPE = "PRESENT_ARTIFACT"
 RENDER_CHART_EVENT_TYPE = "RENDER_CHART"
@@ -196,6 +201,24 @@ class ToolUsageEvent(BaseModel):
     duration_ms: int
     status: Literal["ok", "error"]
     output_chars: int
+
+
+# ------------------------------------------------------------------
+# Sources event (plan 42)
+# ------------------------------------------------------------------
+class SourcesEvent(BaseModel):
+    """The citable pages one tool call returned, with the ids the model saw.
+
+    Synthesised by the normalizer right after the call's ``TOOL_CALL_END`` (and
+    its ``TOOL_USAGE``), from the stamp ``SourcesMiddleware`` put on the
+    ToolMessage; a sub-agent's is wrapped in ``SUBAGENT_EVENT`` like its other
+    events. The UI folds every ``SOURCES`` of the visible branch into the map an
+    inline ``[src:ID]`` marker resolves against. Each source is re-validated
+    here (``http(s)`` only, capped, no control characters): it is untrusted
+    search output on its way to a browser.
+    """
+    tool_call_id: str
+    sources: list[Source] = Field(min_length=1, max_length=MAX_SOURCES_PER_RESULT)
 
 
 # ------------------------------------------------------------------

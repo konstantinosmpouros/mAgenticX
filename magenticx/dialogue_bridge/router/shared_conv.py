@@ -32,6 +32,8 @@ async def getSharedConversation(
         shareMode=snapshot.get("shareMode") or "branch",
         agent=snapshot.get("agent") or {},
         messages=snapshot.get("messages") or [],
+        # Frozen at share time (plan 42); validated again by the schema.
+        sources=snapshot.get("sources") or [],
         expiresAt=share.expires_at,
         createdAt=share.created_at,
     )

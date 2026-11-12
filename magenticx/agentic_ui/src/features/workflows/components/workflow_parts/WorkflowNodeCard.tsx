@@ -56,6 +56,8 @@ export function WorkflowNodeCard({ data, selected: flowSelected }: WorkflowNodeC
   const editable = data.mode === "edit";
   const handleClass = cn("workflow-node-handle", !editable && "is-readonly");
   const label = data.label.trim();
+  // A label that only repeats the kind shows once: the tile and its accent already say the kind.
+  const sameAsKind = Boolean(label) && label.toLowerCase() === kindLabel.trim().toLowerCase();
 
   return (
     <div
@@ -86,7 +88,12 @@ export function WorkflowNodeCard({ data, selected: flowSelected }: WorkflowNodeC
             <Glyph className="h-[17px] w-[17px]" aria-hidden />
           </span>
           <span className="relative min-w-0 flex-1">
-            <span className="workflow-node-kind block truncate text-[9.5px] font-semibold uppercase tracking-[0.16em]">
+            <span
+              className={cn(
+                "workflow-node-kind block truncate text-[9.5px] font-semibold uppercase tracking-[0.16em]",
+                sameAsKind && "sr-only",
+              )}
+            >
               {kindLabel}
             </span>
             <span

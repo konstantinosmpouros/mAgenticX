@@ -101,6 +101,8 @@ _AGENT_COUNT_KEYS = (
     "agent_memories", "skill_pool", "skill_files", "agent_skills",
     "agent_definitions", "agent_definition_files", "agent_definition_versions",
     "conversation_files", "conversation_file_blobs",
+    # Citation sources (plan 42), stored per conversation like its files.
+    "conversation_sources",
     # Workflow definitions (plan 38), when the agents service reports them.
     "workflows", "workflow_versions",
 )

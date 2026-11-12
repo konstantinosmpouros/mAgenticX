@@ -155,7 +155,7 @@ sudo docker exec "$PG" pg_dump -U admin -d agent_runtime -Fc > ~/agent_runtime_$
 | Name | `magenticx` — **the same name**, so the existing volumes and secrets re-attach |
 | Build method | **Repository** |
 | Authentication | off — the repository is public |
-| Repository URL | `https://github.com/konstantinosmpouros/mAgenticX` |
+| Repository URL | `https://github.com/konstantinosmpouros/magenticx` |
 | Repository reference | `refs/heads/main` |
 | Compose path | `magenticx/docker-compose-denis.yaml` |
 | GitOps updates | ☑ → Mechanism **Webhook** → **copy the webhook URL** |

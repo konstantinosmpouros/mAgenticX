@@ -1,7 +1,7 @@
 """Request/response schemas for the agents service.
 
 One module per concept/router — agent_protocol, async_tasks, inference, embeddings, generation, voice,
-catalog, commands, skills, user_agents, memories, agent_tools, conversation_files, workflows. Re-exported so callers
+catalog, commands, skills, user_agents, memories, agent_tools, conversation_files, conversation_sources, workflows. Re-exported so callers
 keep the stable ``from schema import ...`` import surface regardless of which
 module a DTO lives in.
 """
@@ -28,6 +28,7 @@ from schema.conversation_files import (
     ReadOutputFilesResponse,
     ReapConversationRequest,
 )
+from schema.conversation_sources import ConversationSourcesResponse, CopyConversationSourcesRequest
 from schema.embeddings import EmbedRequest, EmbedResponse
 from schema.generation import (
     ConversationSuggestions,
@@ -126,7 +127,9 @@ __all__ = [
     "CompactRequest",
     "CompactResponse",
     "ConversationSuggestions",
+    "ConversationSourcesResponse",
     "CopyConversationFilesRequest",
+    "CopyConversationSourcesRequest",
     "CopyConversationFilesResponse",
     "ConversationTitle",
     "CustomAgentValidation",

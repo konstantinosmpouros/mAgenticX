@@ -327,6 +327,26 @@ See [database-schema](../architecture/database-schema.md#agent_runtime-tables) f
 
 ---
 
+## Source tools and citations (plan 42)
+
+A tool whose result lists web pages can make them **citable**: the agent ends a sentence with `[src:ID]`, and the chat renders the marker as an inline citation — but only for an id a tool really returned. The harness side is one registry and one middleware:
+
+| Piece | File | What it does |
+| --- | --- | --- |
+| Extractor registry | `harness/sources/extractors.py` | `EXTRACTORS`: tool name → `extractor(content) → (list[Source], rewritten content)`. v1: `tavily-search`, `tavily-extract`, `tavily-crawl` (text blocks `Title:` / `URL:` / `Content:`; each `Title:` line becomes `[src:ID] Title: …`) and `search_papers` (JSON `papers[]`; each paper gets `"cite": "[src:ID]"` as its first key, re-serialised with `indent=2`) |
+| Ids | `harness/sources/ids.py` | `source_id(url)` = first 6 hex of `sha256(normalised URL)`; normalising lowercases scheme and host, drops `www.`, the fragment, `utm_*` and a trailing `/` (not the root's). Two pages that clash on 6 inside one result both get 8 |
+| Schema | `harness/sources/model.py` | `Source{id, url, title, snippet, tool}` — `url` http(s) only, ≤ 2048, no credentials, `utm_*` stripped; `title`/`snippet` ≤ 300, control/bidi characters stripped, whitespace collapsed; `tool` ≤ 100. A page whose URL fails is dropped (its title stays unmarked) |
+| Middleware | `harness/middlewares/sources.py` | `SourcesMiddleware`: runs the tool, extracts, rewrites the `ToolMessage` the model sees, stamps `response_metadata["mx_sources"]` (→ the `SOURCES` AG-UI event) and, on the async path with a user + conversation, upserts into `agent_runtime.conversation_sources`. Guaranteed by `DeepAgent._run_middleware` on the main agent, every sub-agent and every task node, directly outside `ToolErrorMiddleware` |
+| Generic reader | `harness/sources/extractors.py` `extract_generic` | Any **MCP** tool without an extractor of its own is read generically, so a newly installed search server cites with no code: JSON objects carrying a link (`url` / `link` / `href` / …, title from `title` / `name` / …), then `Title:` / `URL:` blocks, then markdown links. `SourcesMiddleware` learns which tools are MCP from `utils.mcp_tools.is_mcp_tool` (the gateway's manifest cache), injected by `DeepAgent` |
+| Prompt | `harness/prompt_engineering/prompts/citations_prompt.py` | "Cite What You Found", only when `PromptContext.has_source_tools` (one of the agent's tools has an extractor, or is an MCP tool). Tool descriptions never repeat it |
+| What the browser gets | `harness/agui/normalizer.py` `_tool_card_close` | A result with valid sources is sent as an **empty** `TOOL_CALL_RESULT`: the card shows the pages from `SOURCES` (title, link), and the page contents stay with the agent. A malformed stamp sends the text as before |
+
+**Adding a source tool:** an MCP search server usually needs nothing (the generic reader). Only when its results are in a shape the generic reader misses: record one real result of the tool into `tests/agents/fixtures/sources/<tool>.txt` (the exact `ToolMessage.content` string), write an extractor in `extractors.py` that finds each page's URL / title / snippet and marks it with `marker(id)` (reuse `_resolve()` for validation, ids and the 50-sources cap), register it in `EXTRACTORS`, and test it against the fixture. Nothing else changes — the middleware, the event, the prompt gate and the store all key on the registry. An extractor must be pure; anything it cannot read comes back unchanged and uncited (`extract_sources` logs `sources_extract_failed` with the tool name only).
+
+**Sharp edges.** Only a successful `ToolMessage` is read (an error result or a `Command` passes through). Content given as a list of content blocks is read text block by text block. A result past 50 distinct pages keeps the rest uncited. The middleware never logs a URL, title or snippet (they carry the user's search terms), and a store write that fails or takes longer than 5 s is logged and skipped — the call still returns its marked result.
+
+---
+
 ## File Map
 
 | Concept | File | What to look for |

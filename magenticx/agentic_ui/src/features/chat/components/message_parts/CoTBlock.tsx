@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import {
   Check,
@@ -26,7 +26,11 @@ import {
   toolTitle,
   toolTitleHint,
 } from "@/features/chat/lib/toolPresentation";
-import { finalCoTTitle, liveCoTTitle } from "@/features/chat/lib/cotTitle";
+import {
+  finalCoTTitle,
+  liveCoTTitle,
+  withoutThoughtTitle,
+} from "@/features/chat/lib/cotTitle";
 import { useWorkspaceStore } from "@/shared/stores/workspaceStore";
 import { ToolCallArgsView, ToolCallResultView } from "./ToolCallViews";
 import { ShimmeringText } from "@/shared/ui/shadcn-io/shimmering-text";
@@ -518,12 +522,17 @@ export const CoTBlock = memo(
     );
     // While the block runs, its header says what the latest step is doing —
     // a thought's headline, the tool in use — the way a live chain of thought
-    // reads. Once done it keeps its last thought's headline, with the time it
-    // took after it; "Thought for Xs" only when no thought had a headline.
+    // reads. Once done it keeps its last step's title — a thought's headline,
+    // or what a tool did — with the time it took after it; "Thought for Xs"
+    // only when no step names it.
     const availableTools = useWorkspaceStore((s) => s.availableTools);
+    const serverIdOf = useCallback(
+      (name: string) => availableTools.find((t) => t.toolName === name)?.serverId || undefined,
+      [availableTools],
+    );
     const finalTitle = useMemo(
-      () => (isLiveActive ? null : finalCoTTitle(block.items)),
-      [isLiveActive, block.items],
+      () => (isLiveActive ? null : finalCoTTitle(block.items, serverIdOf)),
+      [isLiveActive, block.items, serverIdOf],
     );
     // The duration fades in only when this block finishes in front of the
     // user; a block that was already done when it mounted shows it at once.
@@ -536,12 +545,9 @@ export const CoTBlock = memo(
     const liveTitle = useMemo(
       () =>
         isLiveActive
-          ? liveCoTTitle(
-              block.items,
-              (name) => availableTools.find((t) => t.toolName === name)?.serverId || undefined,
-            )
+          ? liveCoTTitle(block.items, serverIdOf)
           : null,
-      [isLiveActive, block.items, availableTools],
+      [isLiveActive, block.items, serverIdOf],
     );
     const awaitingApproval = block.items.some(
       (item) =>
@@ -634,7 +640,12 @@ export const CoTBlock = memo(
                   className="text-sm"
                 >
                   <MarkdownRenderer
-                    content={item.text || "Working..."}
+                    content={
+                      // The header names the block; a step shows only its thought,
+                      // without its own title (one still only a title keeps it).
+                      withoutThoughtTitle(item.text) || item.text ||
+                      "Working..."
+                    }
                     className="text-muted-foreground text-sm leading-relaxed"
                   />
                 </ChainOfThoughtStep>

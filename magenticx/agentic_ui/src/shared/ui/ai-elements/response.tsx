@@ -1,10 +1,13 @@
 "use client";
 
+import { hideUnclosedCitationMarker } from "@/shared/lib/citations";
+import { CITATION_ELEMENT, remarkCitations } from "@/shared/lib/remarkCitations";
 import { prepareStreamingMarkdown } from "@/shared/lib/streaming-markdown";
 import { cn } from "@/shared/lib/utils";
 import { type ComponentProps, memo, useState } from "react";
-import { Streamdown, type MermaidConfig } from "streamdown";
+import { defaultRemarkPlugins, Streamdown, type MermaidConfig } from "streamdown";
 
+import { CitationElement } from "./inline-citation";
 import { MarkdownTable } from "./markdown-table";
 import { MermaidExportLayer } from "./mermaid-export";
 
@@ -12,7 +15,22 @@ type ResponseProps = ComponentProps<typeof Streamdown> & {
   /** The answer is still arriving: an unfinished ```mermaid block is held back
    * (see `prepareStreamingMarkdown`) instead of rendering Mermaid's parse error. */
   streaming?: boolean;
+  /** An agent's answer: `[src:…]` markers become citation pills (plan 42),
+   * resolved against the conversation's sources. Off for anything a person
+   * wrote, where the text is shown as typed. */
+  citations?: boolean;
 };
+
+// Streamdown's own plugins (GFM, math) plus the citation markers.
+const CITATION_REMARK_PLUGINS = [...Object.values(defaultRemarkPlugins), remarkCitations];
+// `mx-citation` is not an HTML element, so it is not in react-markdown's
+// `Components` keys; the renderer still looks it up by tag name.
+const CITATION_COMPONENTS = { [CITATION_ELEMENT]: CitationElement } as Record<string, unknown>;
+
+function prepareMarkdown(markdown: string, streaming: boolean, citations: boolean): string {
+  const prepared = prepareStreamingMarkdown(markdown, streaming);
+  return citations && streaming ? hideUnclosedCitationMarker(prepared) : prepared;
+}
 
 const defaultMermaidConfig: MermaidConfig = {
   theme: "base",
@@ -47,6 +65,8 @@ const defaultMermaidConfig: MermaidConfig = {
  * `MermaidExportLayer`. Tables render through `MarkdownTable` (a card frame,
  * copy as a grid, CSV that Excel opens correctly). While `streaming`, a diagram
  * still being written shows "Generating diagram…" instead of a parse error.
+ * With `citations`, `[src:…]` markers render as citation pills, and while
+ * streaming a marker that has not closed yet is held back.
  */
 export const Response = memo(
   ({
@@ -54,6 +74,7 @@ export const Response = memo(
     components,
     mermaidConfig,
     streaming = false,
+    citations = false,
     children,
     ...props
   }: ResponseProps) => {
@@ -109,18 +130,22 @@ export const Response = memo(
               );
             },
             table: MarkdownTable,
+            ...(citations ? CITATION_COMPONENTS : {}),
             ...components,
           }}
+          {...(citations ? { remarkPlugins: CITATION_REMARK_PLUGINS } : {})}
           {...props}
         >
-          {typeof children === "string" ? prepareStreamingMarkdown(children, streaming) : children}
+          {typeof children === "string" ? prepareMarkdown(children, streaming, citations) : children}
         </Streamdown>
         <MermaidExportLayer root={root} />
       </div>
     );
   },
   (prevProps, nextProps) =>
-    prevProps.children === nextProps.children && prevProps.streaming === nextProps.streaming,
+    prevProps.children === nextProps.children &&
+    prevProps.streaming === nextProps.streaming &&
+    prevProps.citations === nextProps.citations,
 );
 
 Response.displayName = "Response";

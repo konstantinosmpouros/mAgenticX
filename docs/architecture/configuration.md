@@ -152,6 +152,12 @@ Who signs session JWTs and which public keys verify them. Production signs with 
 | `MESSAGE_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `30` / `60` | Message creation (attachment/blob growth) per user. |
 | `SUGGESTIONS_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Starter-suggestion generation (LLM-backed) per user. |
 | `COMPACTION_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `600` | Compacting a conversation (the context panel's button or `/compact`), or undoing it (plan 34), per user, after auth — each compaction is a summary call over most of the conversation. |
+| `SOURCES_READ_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `120` / `60` | Reading a conversation's citation sources (`GET /v1/conversations/{user}/{conversation}/sources`, plan 42), per user, after auth — each read is one agents-service call. |
+| `FAVICON_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `600` / `60` | Site icons for the source chips (`GET /v1/favicons/{user}?host=`, plan 42), per user, after auth — an answer can show dozens; most are served from Redis. |
+| `FAVICONS_ENABLED` | `true` | Fetch site icons for the source chips at all; off → every chip shows the site's initial. |
+| `FAVICON_SERVICE_URLS` | DuckDuckGo `ip3`, then Google `s2` | Comma-separated icon services tried in order, `{host}` = the validated hostname (the bridge never contacts the sites themselves). |
+| `FAVICON_TIMEOUT_SECONDS` / `FAVICON_MAX_BYTES` | `4` / `32768` | Per upstream call; a bigger icon is refused. |
+| `FAVICON_CACHE_TTL_SECONDS` / `FAVICON_MISS_TTL_SECONDS` | `604800` / `86400` | Redis `favicon:{host}`: an icon for a week, "no icon" for a day. |
 | `USAGE_ANALYTICS_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `60` / `60` | Every Settings → Usage read (plan 33), per user, after auth. Generous for browsing; one conversation's page can count older answers from their event logs. |
 | `REFRESH_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Session refresh (OCI KMS mint) per client IP. |
 | `WS_CONNECT_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `20` / `60` | Run-stream WebSocket handshakes per user (enforced in-route; close code `4429`). |

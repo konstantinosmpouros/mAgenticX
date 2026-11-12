@@ -54,6 +54,7 @@ from harness.middlewares import (
     ConfigurableSummarizationMiddleware,
     FirstTokenCallback,
     RetryOnRateLimitMiddleware,
+    SourcesMiddleware,
     ToolErrorMiddleware,
     ToolMetricsMiddleware,
     UsageMetricsMiddleware,
@@ -69,6 +70,8 @@ from harness.filesystem import (
     workspace_write_deny,
 )
 from harness.memory import get_memory_pool
+from harness.sources import has_extractor
+from utils.mcp_tools import is_mcp_tool
 from core.logging import get_logger
 from core.settings import EffortLevel, settings
 
@@ -519,14 +522,36 @@ class DeepAgent(BaseAgent, ABC):
 
 
     def _run_middleware(self, stack: Sequence[Any] | None) -> list[Any]:
-        """The platform guarantees, plus what this run asked for: the user's
-        reasoning effort, when they picked one. Used for the main agent, every
-        sub-agent and every task node, so the whole tree thinks as hard as asked;
-        a model that takes no effort is left untouched (``harness.models.effort``)."""
-        items = self._ensure_platform_middleware(stack)
+        """The platform guarantees, plus what belongs to this run: its sources
+        and the user's reasoning effort, when they picked one. Used for the main
+        agent, every sub-agent and every task node, so the whole tree marks the
+        pages it searched and thinks as hard as asked; a model that takes no
+        effort is left untouched (``harness.models.effort``)."""
+        items = self._ensure_sources_middleware(self._ensure_platform_middleware(stack))
         effort = self.effort
         if effort is not None and not any(isinstance(m, EffortMiddleware) for m in items):
             items.append(EffortMiddleware(effort))
+        return items
+
+
+    def _ensure_sources_middleware(self, stack: Sequence[Any] | None) -> list[Any]:
+        """Return ``stack`` with ``SourcesMiddleware`` guaranteed (never duplicated),
+        bound to this run's user and conversation so a task's sources are kept
+        where the orchestrator's citations resolve (plan 42).
+
+        Placed directly before ``ToolErrorMiddleware`` (first means outermost):
+        a tool that raised reaches it as an error result and is left alone, and
+        ``ToolMetricsMiddleware`` outside it measures the result the model reads.
+        """
+        items = list(stack or [])
+        if any(isinstance(m, SourcesMiddleware) for m in items):
+            return items
+        ctx = self.context or {}
+        index = next((i for i, m in enumerate(items) if isinstance(m, ToolErrorMiddleware)), 0)
+        items.insert(index, SourcesMiddleware(
+            user_id=ctx.get("user_id") or None, conversation_id=ctx.get("conversation_id") or None,
+            is_mcp_tool=is_mcp_tool,
+        ))
         return items
 
 
@@ -578,15 +603,24 @@ class DeepAgent(BaseAgent, ABC):
         return items
 
 
-    def prompt_context(self, *, has_subagents: bool = False, async_subagents: bool = False) -> PromptContext:
+    def prompt_context(
+        self,
+        *,
+        has_subagents: bool = False,
+        async_subagents: bool = False,
+        tools: Sequence[Any] | None = None,
+    ) -> PromptContext:
         """What this run has, for the prompt composer to describe.
 
         Every field is read from the same flag that builds the thing it names,
         so a section can never advertise a mount or tool the run lacks. Override
         to suppress a section for one agent — returning a context with
         ``use_memory=False`` drops the memory block without touching the mount.
+        ``tools`` are the tools this prompt's agent really gets (a task node's
+        narrowed set); the agent's own when omitted.
         """
         ctx = self.context or {}
+        run_tools = self.tools if tools is None else tools
         return PromptContext(
             use_memory=self.use_memory,
             has_subagents=has_subagents,
@@ -607,6 +641,12 @@ class DeepAgent(BaseAgent, ABC):
             has_reference=self._has_reference,
             has_default_skills=self._has_default_skills,
             search_past_convs=bool(ctx.get("search_past_convs")),
+            # The same registry SourcesMiddleware reads: the citing rule is
+            # stated only when a tool will really hand out source ids.
+            has_source_tools=any(
+                has_extractor(name, mcp=is_mcp_tool(name))
+                for name in (getattr(tool, "name", None) for tool in run_tools or ())
+            ),
             sandbox_enabled=settings.filesystem.sandbox_execution_active,
             now=datetime.now(timezone.utc),
             personalization=build_personalization_prompt(self.personalization),
@@ -950,7 +990,7 @@ class DeepAgent(BaseAgent, ABC):
         # The task's own platform sections: how to work with the shared files
         # and how to narrate for its task panel (its last message stays the
         # result handed back to its parent).
-        prompt_context = self.prompt_context(has_subagents=bool(children), async_subagents=True)
+        prompt_context = self.prompt_context(has_subagents=bool(children), async_subagents=True, tools=node_tools)
         system_prompt = compose_task_prompt(system_prompt, prompt_context)
         stack = self._run_middleware(ensure_planning_and_filesystem(stack, backend, permissions))
         self.summarizer = find_summarizer(stack)

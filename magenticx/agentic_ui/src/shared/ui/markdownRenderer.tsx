@@ -4,18 +4,44 @@ import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import "highlight.js/styles/github-dark.css";
 
+import { hideUnclosedCitationMarker } from "@/shared/lib/citations";
+import { CITATION_ELEMENT, remarkCitations } from "@/shared/lib/remarkCitations";
+import { CitationElement } from "@/shared/ui/ai-elements/inline-citation";
+
 interface MarkdownRendererProps {
   content: string;
   className?: string;
+  /**
+   * An agent's text: `[src:…]` markers become citation pills (plan 42),
+   * resolved against the conversation's sources (`CitationSourcesContext`).
+   * Off by default — attachment previews and anything a person wrote keep
+   * their text exactly as written.
+   */
+  citations?: boolean;
+  /** Still arriving: with `citations`, a marker that has not closed is held back. */
+  streaming?: boolean;
 }
 
-export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, className = "" }) => {
+const PLAIN_REMARK_PLUGINS = [remarkGfm];
+const CITATION_REMARK_PLUGINS = [remarkGfm, remarkCitations];
+// `mx-citation` is not an HTML element, so it is not in react-markdown's
+// `Components` keys; the renderer still looks it up by tag name.
+const CITATION_COMPONENTS = { [CITATION_ELEMENT]: CitationElement } as Record<string, unknown>;
+
+export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
+  content,
+  className = "",
+  citations = false,
+  streaming = false,
+}) => {
+  const markdown = citations && streaming ? hideUnclosedCitationMarker(content) : content;
   return (
     <div className={`prose prose-sm max-w-none dark:prose-invert ${className}`}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={citations ? CITATION_REMARK_PLUGINS : PLAIN_REMARK_PLUGINS}
         rehypePlugins={[rehypeHighlight]}
         components={{
+          ...(citations ? CITATION_COMPONENTS : {}),
           // Customize rendering of specific elements
           code: ({ node, className, children, ...props }) => {
             const match = /language-(\w+)/.exec(className || "");
@@ -113,7 +139,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, cla
           ),
         }}
       >
-        {content}
+        {markdown}
       </ReactMarkdown>
     </div>
   );

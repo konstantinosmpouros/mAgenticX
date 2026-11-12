@@ -115,6 +115,7 @@ from utils.trial_drafts import trial_drafts
 from utils.workflow_runs import workflow_event_log
 from utils.conversation_channel import conversation_channel
 from utils.task_streams import task_streams
+from utils.favicons import favicon_cache
 
 # Every raw-Redis singleton the app holds. Left alone, each would dial the real
 # (absent) server on first use: the logout denylist and revocation checks run
@@ -123,7 +124,7 @@ from utils.task_streams import task_streams
 # still swap their own in (test_event_log, test_multi_account).
 _REDIS_HOLDERS = (
     logout_denylist, session_revocation, refresh_guard, parked_sessions, compaction_locks, run_event_log, trial_drafts,
-    workflow_event_log, conversation_channel, task_streams,
+    workflow_event_log, conversation_channel, task_streams, favicon_cache,
 )
 # Holders with a second pool for blocking stream reads.
 _REDIS_READERS = (run_event_log, workflow_event_log, conversation_channel, task_streams)

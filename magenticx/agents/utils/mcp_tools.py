@@ -145,6 +145,19 @@ def get_cached_tool_manifests_map() -> Dict[str, ToolManifest]:
     return dict(_MCP_TOOL_MANIFEST_CACHE)
 
 
+def is_mcp_tool(tool_name: object) -> bool:
+    """Whether ``tool_name`` is a tool the MCP gateway serves (by the manifest cache).
+
+    Lets the harness treat any MCP tool alike — e.g. read a newly installed
+    search server's results for citable sources without code of its own. A cold
+    cache (no listing yet) answers False: the caller then falls back to what it
+    knows by name.
+    """
+    if not isinstance(tool_name, str) or not tool_name:
+        return False
+    return build_cache_key_from_tool_name(tool_name) in _MCP_TOOL_MANIFEST_CACHE
+
+
 def get_cached_tool_manifests() -> List[ToolManifest]:
     """Return cached ToolManifest instances in deterministic order."""
     return list(_MCP_TOOL_MANIFEST_CACHE.values())

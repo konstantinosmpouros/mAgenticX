@@ -16,7 +16,7 @@ from core.security.tls import get_httpx_client_cert, get_httpx_verify
 from core.database import AgentTable, SessionLocal, UserPreferencesTable
 from core.security.internal_trust import internal_service_headers
 from core.error_handling import upstream_error_handler
-from schema import AgentModelResponse
+from schema import AgentModelResponse, ConversationSource, keep_valid_sources
 
 
 logger = get_logger(__name__)
@@ -115,6 +115,13 @@ def build_conversation_files_url(user_id: str, conversation_id: str) -> str:
     conversation, never by agent — the files belong to the conversation."""
     base = AGENTS_SERVICE_URL.rstrip("/")
     return f"{base}/users/{user_id}/conversations/{conversation_id}/files"
+
+
+def build_conversation_sources_url(user_id: str, conversation_id: str) -> str:
+    """A conversation's citation sources in the agents service (plan 42):
+    keyed by the conversation, like its files — copied on fork, deleted with it."""
+    base = AGENTS_SERVICE_URL.rstrip("/")
+    return f"{base}/users/{user_id}/conversations/{conversation_id}/sources"
 
 
 def build_conversation_reap_url(user_id: str, conversation_id: str) -> str:
@@ -376,24 +383,75 @@ async def get_usable_agent(
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found.")
 
 
+async def _copy_to_fork(url: str, target_id: str) -> None:
+    """POST ``{"target_conversation_id": target_id}`` to an agents-service copy
+    route; raises ``httpx.HTTPError`` for the caller to log."""
+    async with httpx.AsyncClient(
+        timeout=settings.http.agents_timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()
+    ) as client:
+        resp = await client.post(
+            url,
+            json={"target_conversation_id": target_id},
+            headers=internal_service_headers(get_context().get("request_id")),
+        )
+        resp.raise_for_status()
+
+
 async def copy_conversation_files(user_id: str, source_id: str, target_id: str) -> None:
     """Give a fork its source conversation's files (paths only — the agents
     service shares the bytes). Best-effort: a fork without them is still a
     fork, so a failure is logged, not raised."""
-    url = f"{build_conversation_files_url(user_id, source_id)}/copy"
+    try:
+        await _copy_to_fork(f"{build_conversation_files_url(user_id, source_id)}/copy", target_id)
+    except httpx.HTTPError as exc:
+        logger.warning("conversation_files_copy_failed", "Could not give a fork its source's files",
+                       conversation_id=target_id, error_type=type(exc).__name__)
+
+
+async def copy_conversation_sources(user_id: str, source_id: str, target_id: str) -> None:
+    """Give a fork its source conversation's citation sources (plan 42), so the
+    markers in the copied answers keep resolving. Best-effort like the files:
+    without them the fork's citations just don't render."""
+    try:
+        await _copy_to_fork(f"{build_conversation_sources_url(user_id, source_id)}/copy", target_id)
+    except httpx.HTTPError as exc:
+        logger.warning("conversation_sources_copy_failed", "Could not give a fork its source's citation sources",
+                       conversation_id=target_id, error_type=type(exc).__name__)
+
+
+async def fetch_conversation_sources(user_id: str, conversation_id: str) -> list[ConversationSource]:
+    """The conversation's citation sources (plan 42), validated, newest first.
+
+    The caller has already checked that ``user_id`` owns the conversation. Fail
+    open to an empty list: the agents service being down, slow or answering
+    something unexpected only means the citations don't render, never that the
+    conversation fails to load. Each source is re-validated here (``http(s)``
+    URLs, capped lengths) and a bad one is dropped on its own. Logs carry
+    counts and error types only — URLs and snippets can hold search terms.
+    """
+    url = build_conversation_sources_url(user_id, conversation_id)
     try:
         async with httpx.AsyncClient(
             timeout=settings.http.agents_timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()
         ) as client:
-            resp = await client.post(
-                url,
-                json={"target_conversation_id": target_id},
-                headers=internal_service_headers(get_context().get("request_id")),
-            )
+            resp = await client.get(url, headers=internal_service_headers(get_context().get("request_id")))
             resp.raise_for_status()
-    except httpx.HTTPError as exc:
-        logger.warning("conversation_files_copy_failed", "Could not give a fork its source's files",
-                       conversation_id=target_id, error_type=type(exc).__name__)
+        body = resp.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        logger.warning("conversation_sources_unavailable", "Could not load the conversation's citation sources",
+                       conversation_id=conversation_id, error_type=type(exc).__name__)
+        return []
+    items = body.get("sources") if isinstance(body, dict) else None
+    if not isinstance(items, list):
+        logger.warning("conversation_sources_invalid_payload",
+                       "Agents service returned an unexpected citation-sources payload",
+                       conversation_id=conversation_id)
+        return []
+    sources = keep_valid_sources(items)
+    if len(sources) < len(items):
+        logger.warning("conversation_sources_dropped", "Dropped citation sources that failed validation",
+                       conversation_id=conversation_id, received=len(items), kept=len(sources))
+    return sources
 
 
 async def _memory_prefs(db: AsyncSession, user_id: str) -> Dict[str, str]:

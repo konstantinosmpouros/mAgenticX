@@ -20,6 +20,7 @@ import remarkGfm from "remark-gfm";
 import type { ReactNode } from "react";
 
 import { PAYLOAD_PANE, ToolOutput } from "@/shared/ui/ai-elements/tool";
+import { plainSnippet } from "@/shared/lib/citations";
 import { cn } from "@/shared/lib/utils";
 import type { TimelineToolExecution } from "@/shared/lib/types";
 import {
@@ -30,7 +31,6 @@ import {
   parsePapers,
   parseTavilyPages,
   parseTavilyResults,
-  plainSnippet,
   safeHttpUrl,
   shortUrl,
 } from "@/features/chat/lib/mcpToolPresentation";

@@ -8,6 +8,7 @@ from router.conversations import router as conversations_router
 from router.account import router as account_router
 from router.commands import router as commands_router
 from router.export import router as export_router
+from router.favicons import router as favicons_router
 from router.messages import router as messages_router
 from router.attachments import router as attachments_router
 from router.shared_conv import router as shared_conv_router
@@ -35,6 +36,7 @@ __all__ = [
     "account_router",
     "commands_router",
     "export_router",
+    "favicons_router",
     "inference_router",
     "internal_conversations_router",
     "internal_memory_router",

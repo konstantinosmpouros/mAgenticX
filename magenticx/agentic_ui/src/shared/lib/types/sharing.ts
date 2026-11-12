@@ -2,6 +2,7 @@
 // Conversation Sharing Schemas
 // ------------------------------------------------------
 import type { Agent } from "./agents";
+import type { CitationSource } from "./citations";
 import type { MessageOut } from "./messages";
 
 export type ConversationShareMode = "full" | "branch" | "message";
@@ -43,6 +44,11 @@ export type SharedConversationDetail = {
   shareMode: ConversationShareMode;
   agent: Agent;
   messages: MessageOut[];
+  /**
+   * The citation sources the shared messages cite (plan 42), frozen at share
+   * time — a viewer cannot read the conversation's own list. [] when none.
+   */
+  sources: CitationSource[];
   expiresAt?: Date | null;
   createdAt: Date;
 };

@@ -12,12 +12,14 @@ one answer to "what does the prompt look like":
 3. the workspace — which mounts exist, which refuse writes
 4. the platform verbs — ``view_image`` / ``present_artifact`` / ``render_chart`` / ``ask_user``,
    and background delegation (``start_async_task``) when async sub-agents are on
-5. working out loud — short updates to the user between tool calls
-6. long-term memory
-7. the current date and time
+5. citations — how to cite the ``[src:ID]`` sources a search tool returns
+6. efficient file work
+7. working out loud — short updates to the user between tool calls
+8. long-term memory
+9. the current date and time
 
-Stable sections first, volatile last: 1-6 are fixed for a given agent and run,
-so a provider can cache that prefix, while 7 changes every minute. Reversing
+Stable sections first, volatile last: 1-8 are fixed for a given agent and run,
+so a provider can cache that prefix, while 9 changes every minute. Reversing
 those two would cost the cache on every request — see ``temporal_prompt``.
 
 Every section returns "" when its feature is off, so an agent with nothing
@@ -27,6 +29,7 @@ from __future__ import annotations
 
 from harness.prompt_engineering.context import PromptContext
 from harness.prompt_engineering.prompts.capabilities_prompt import capabilities_prompt
+from harness.prompt_engineering.prompts.citations_prompt import citations_prompt
 from harness.prompt_engineering.prompts.efficiency_prompt import efficiency_prompt
 from harness.prompt_engineering.prompts.filesystem_prompt import filesystem_prompt
 from harness.prompt_engineering.prompts.memory_prompt import memory_prompt
@@ -39,6 +42,7 @@ from harness.prompt_engineering.prompts.temporal_prompt import temporal_prompt
 _SECTIONS = (
     ("filesystem", filesystem_prompt),
     ("capabilities", capabilities_prompt),
+    ("citations", citations_prompt),
     ("efficiency", efficiency_prompt),
     ("progress", progress_prompt),
     ("memory", memory_prompt),
@@ -75,8 +79,11 @@ def compose_system_prompt(instructions: str | None, context: PromptContext) -> s
 #: What a background sub-agent task adds to its own instructions. Not the main
 #: agent's whole set: the workspace, the platform verbs (``present_artifact``
 #: is ignored from a sub-agent) and memory are the main agent's; a task gets
-#: how to work with the shared files and how to narrate for its task panel.
+#: how to cite what it searched (its result keeps the markers, so the
+#: orchestrator can carry them into its answer), how to work with the shared
+#: files and how to narrate for its task panel.
 _TASK_SECTIONS = (
+    ("citations", citations_prompt),
     ("efficiency", efficiency_prompt),
     ("progress", progress_prompt),
 )

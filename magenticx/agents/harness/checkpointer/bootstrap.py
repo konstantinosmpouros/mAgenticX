@@ -24,6 +24,7 @@ from harness.checkpointer.store import set_checkpointer
 from harness.memory.pool import set_memory_pool
 from harness.agent_registry.store import AgentDefinitionStore
 from harness.conversation_files import ConversationFileStore
+from harness.sources import ConversationSourceStore
 from harness.skill_registry.store import SkillStore
 from harness.memory.store import AgentMemoryStore
 from harness.workflows.store import WorkflowStore
@@ -139,6 +140,9 @@ async def init_durable_checkpointer(app: FastAPI) -> None:
         # nearly every tool call, so they are local SQL on this pool, not a
         # hop to the bridge.
         await ConversationFileStore(pool).setup()
+        # A conversation's sources (plan 42): written on every search tool call,
+        # read when the conversation loads — same reasoning, same pool.
+        await ConversationSourceStore(pool).setup()
         # Workflow definitions, versions and persisted state: compiled and run
         # here, so — the same rule again — stored here.
         await WorkflowStore(pool).setup()

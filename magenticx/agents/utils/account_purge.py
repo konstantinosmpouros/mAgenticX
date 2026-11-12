@@ -6,9 +6,9 @@ Two kinds of state live here:
   thread id, not by user, so the bridge (which recorded the ids on its messages)
   sends them in batches.
 * **``agent_runtime`` rows** — memories, the skill pool and its files, agent
-  skill assignments, custom agent definitions and their files, and every
-  conversation's files and their blobs. Each store deletes its own tables in
-  its own transaction, by ``user_id`` — no conversation or agent lookup.
+  skill assignments, custom agent definitions and their files, every
+  conversation's files and their blobs, and every conversation's sources.
+  Each store deletes its own tables in its own transaction, by ``user_id`` — no conversation or agent lookup.
 
 Every function here is idempotent — the bridge retries a failed step, and a
 retry after a partial success finds less to delete, never an error. Failures
@@ -27,6 +27,7 @@ from harness.conversation_files import ConversationFileStore
 from harness.filesystem import BranchScratchStore, layout
 from harness.memory import AgentMemoryStore, get_memory_pool
 from harness.skill_registry.store import SkillStore
+from harness.sources import ConversationSourceStore
 from harness.workflows.store import WorkflowStore
 from utils.agents import forget_user_agents
 
@@ -80,6 +81,7 @@ async def purge_user(user_id: str) -> dict[str, int]:
         counts.update(await SkillStore(pool).purge_user(user_id))
         counts.update(await AgentDefinitionStore(pool).purge_user(user_id))
         counts.update(await ConversationFileStore(pool).purge_user(user_id))
+        counts.update(await ConversationSourceStore(pool).purge_user(user_id))
         counts.update(await WorkflowStore(pool).purge_user(user_id))
         counts.update(await BranchScratchStore(pool).purge_user(user_id))
         # Background tasks (plan 41): their checkpoint threads, then their rows

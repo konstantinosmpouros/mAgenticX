@@ -828,6 +828,27 @@ class ShareSettings(BaseSettings):
     max_ttl_days: int = Field(365, validation_alias="SHARE_MAX_TTL_DAYS")
 
 
+class FaviconSettings(BaseSettings):
+    """Site icons for the source chips (plan 42), fetched by the bridge from one
+    fixed icon service — never from the sites themselves (no SSRF surface) and
+    never by the browser (no third party learns what the user researched)."""
+    model_config = _BASE_MODEL_CONFIG
+
+    enabled: bool = Field(True, validation_alias="FAVICONS_ENABLED")
+    # Comma-separated, tried in order; ``{host}`` is the validated hostname.
+    # Fixed https services only: the bridge never connects to an address taken
+    # from a search result. DuckDuckGo first; Google covers the hosts it lacks.
+    service_urls: str = Field(
+        "https://icons.duckduckgo.com/ip3/{host}.ico,https://www.google.com/s2/favicons?domain={host}&sz=32",
+        validation_alias="FAVICON_SERVICE_URLS",
+    )
+    timeout_seconds: float = Field(4.0, validation_alias="FAVICON_TIMEOUT_SECONDS")
+    max_bytes: int = Field(32 * 1024, validation_alias="FAVICON_MAX_BYTES")
+    cache_ttl_seconds: int = Field(7 * 86400, validation_alias="FAVICON_CACHE_TTL_SECONDS")
+    # A host with no icon is remembered too, so it is not asked for again soon.
+    miss_ttl_seconds: int = Field(86400, validation_alias="FAVICON_MISS_TTL_SECONDS")
+
+
 class GenerationSettings(BaseSettings):
     model_config = _BASE_MODEL_CONFIG
 
@@ -1241,6 +1262,13 @@ class RateLimitSettings(BaseSettings):
     task_read_window_seconds: int = Field(60, validation_alias="TASK_READ_RATE_LIMIT_WINDOW_SECONDS")
     task_mutate_max_attempts: int = Field(30, validation_alias="TASK_MUTATE_RATE_LIMIT_MAX_ATTEMPTS")
     task_mutate_window_seconds: int = Field(60, validation_alias="TASK_MUTATE_RATE_LIMIT_WINDOW_SECONDS")
+    # A conversation's citation sources (plan 42): read when a conversation
+    # opens and again when a background task reports back. Each read is one
+    # agents-service call, so it gets its own per-user window.
+    sources_read_max_attempts: int = Field(120, validation_alias="SOURCES_READ_RATE_LIMIT_MAX_ATTEMPTS")
+    sources_read_window_seconds: int = Field(60, validation_alias="SOURCES_READ_RATE_LIMIT_WINDOW_SECONDS")
+    favicon_max_attempts: int = Field(600, validation_alias="FAVICON_RATE_LIMIT_MAX_ATTEMPTS")
+    favicon_window_seconds: int = Field(60, validation_alias="FAVICON_RATE_LIMIT_WINDOW_SECONDS")
 
 
 class AsyncTaskSettings(BaseSettings):
@@ -1404,6 +1432,7 @@ class Settings(BaseSettings):
     conversations: ConversationSettings = Field(default_factory=ConversationSettings)
     agent_trial: AgentTrialSettings = Field(default_factory=AgentTrialSettings)
     share: ShareSettings = Field(default_factory=ShareSettings)
+    favicons: FaviconSettings = Field(default_factory=FaviconSettings)
     workflows: WorkflowSettings = Field(default_factory=WorkflowSettings)
     export: ExportSettings = Field(default_factory=ExportSettings)
     account_deletion: AccountDeletionSettings = Field(default_factory=AccountDeletionSettings)

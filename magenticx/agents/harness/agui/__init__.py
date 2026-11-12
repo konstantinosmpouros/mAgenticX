@@ -26,4 +26,6 @@ from harness.agui.events import (
     TokenUsageEvent,
     TOOL_USAGE_EVENT_TYPE,
     ToolUsageEvent,
+    SOURCES_EVENT_TYPE,
+    SourcesEvent,
 )

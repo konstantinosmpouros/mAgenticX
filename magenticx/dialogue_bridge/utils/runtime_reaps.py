@@ -1,8 +1,8 @@
 """Deleting a conversation deletes its agents-service state too — guaranteed.
 
-The agents service holds a conversation's checkpoint threads and its files
-(``agent_runtime``), in another database, so no foreign key can cascade there.
-Instead the delete writes an outbox row (``pending_runtime_reaps``) in its own
+The agents service holds a conversation's checkpoint threads, its files and
+its citation sources (``agent_runtime``), in another database, so no foreign
+key can cascade there. Instead the delete writes an outbox row (``pending_runtime_reaps``) in its own
 transaction: the conversation cannot disappear without leaving the note that
 its runtime must go. The row is sent right after the commit and removed once
 the agents service confirms; a failure keeps it, and it is retried after the
@@ -12,6 +12,9 @@ not retention.
 The reap first stops the conversation's background sub-agent tasks (plan 41,
 ``POST /tasks/cancel-scope``), and the threads it drops include theirs (a
 task's thread id is its task id).
+
+Its citation sources (plan 42) are dropped in the same send, through the
+agents service's ``DELETE …/sources``.
 
 The reap is by conversation id alone. It used to go agent by agent, and an
 agent that had been deactivated or deleted meant its threads and files were
@@ -29,7 +32,7 @@ from core.logging import get_context, get_logger
 from core.security.internal_trust import internal_service_headers
 from core.security.tls import get_httpx_client_cert, get_httpx_verify
 from core.settings import settings
-from utils.agents import build_conversation_reap_url
+from utils.agents import build_conversation_reap_url, build_conversation_sources_url
 
 logger = get_logger(__name__)
 
@@ -94,6 +97,15 @@ async def _send(client: httpx.AsyncClient, row: PendingRuntimeReapTable) -> None
         headers=internal_service_headers(get_context().get("request_id")),
     )
     resp.raise_for_status()
+    # The conversation's citation sources (plan 42) go with it. Part of the
+    # reap, so a failure keeps the outbox row and is retried like the rest. A
+    # 404 is an agents service without the sources route: nothing stored.
+    dropped = await client.delete(
+        build_conversation_sources_url(row.user_id, row.conversation_id),
+        headers=internal_service_headers(get_context().get("request_id")),
+    )
+    if dropped.status_code != 404:
+        dropped.raise_for_status()
 
 
 async def drain_runtime_reaps() -> int:

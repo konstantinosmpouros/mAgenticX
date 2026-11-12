@@ -15,7 +15,11 @@ import type {
 import { kindMeta, humanizeKind } from "@/features/workflows/lib/kinds";
 import { REVEAL, REVEAL_REDUCED } from "@/features/workflows/lib/builder/consts";
 import { fieldDomId, slugFromLabel } from "@/features/workflows/lib/builder/ids";
-import { enumLabel, isCustomised, splitInspectorFields } from "@/features/workflows/lib/builder/inspectorLayout";
+import {
+  enumLabel,
+  isCustomised,
+  splitInspectorFields,
+} from "@/features/workflows/lib/builder/inspectorLayout";
 import { SCHEDULE_TRIGGER_KIND } from "@/features/workflows/lib/builder/schedule";
 import { templatePaths } from "@/features/workflows/lib/builder/templates";
 import { issueIsOn, kindFields } from "@/features/workflows/lib/builder/validate";
@@ -126,11 +130,15 @@ export function NodeInspector({
     : "";
   const moreIssues = issues.filter(
     (issue) =>
-      issue.severity === "error" && layout.more.some((field) => issueIsOn(issue, `config.${field.key}`)),
+      issue.severity === "error" &&
+      layout.more.some((field) => issueIsOn(issue, `config.${field.key}`)),
   );
   const moreSet = layout.more.filter((field) => isCustomised(field, node.config)).length;
   const titleIssues = issues.filter((i) => i.field === "label" || i.field === "id");
   const kindLabel = info?.label ?? humanizeKind(node.kind);
+  // A label that only repeats the kind ("Wait for all" on a Wait for all step)
+  // is the title on its own: the glyph and its colour already say the kind.
+  const sameAsKind = (node.label ?? "").trim().toLowerCase() === kindLabel.trim().toLowerCase();
   // The label as it was when the field took focus: the id follows only a label that changed.
   const labelAtFocus = React.useRef<string | null>(null);
   const commitLabel = () => {
@@ -161,37 +169,47 @@ export function NodeInspector({
           >
             <Glyph className="h-[18px] w-[18px]" aria-hidden />
           </span>
-          <div className="min-w-0 flex-1">
-            <div className="flex min-h-6 min-w-0 items-center gap-1.5">
-              <p
-                className="truncate text-[10.5px] font-semibold uppercase tracking-[0.14em]"
-                style={{ color: `hsl(${meta.accent})` }}
-              >
-                {kindLabel}
-              </p>
-              {headerField ? (
-                <HeaderChoice
-                  nodeId={node.id}
-                  field={headerField}
-                  value={headerValue}
-                  onChange={setHeader}
-                  invalid={headerIssues.some((issue) => issue.severity === "error")}
-                />
-              ) : null}
-              <button
-                type="button"
-                onClick={() => setAboutOpen((value) => !value)}
-                aria-expanded={aboutOpen}
-                aria-controls={`${labelId}-about`}
-                aria-label={`About ${kindLabel}`}
-                className={cn(
-                  "relative flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-muted-foreground/70 transition-colors after:absolute after:-inset-2.5 after:content-[''] hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
-                  aboutOpen && "text-primary",
-                )}
-              >
-                <Info className="h-3.5 w-3.5" aria-hidden />
-              </button>
-            </div>
+          {/* One wrapping row in a fixed DOM order: the kind line, then the title on
+              a line of its own — or, when the title only repeats the kind, the
+              title alone beside the pill and (i). Only classes change between the
+              two, so the title field never remounts (and keeps focus) as it is typed. */}
+          <div
+            className={cn(
+              "flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5",
+              sameAsKind ? "min-h-10" : "gap-y-0.5",
+            )}
+          >
+            <p
+              className={cn(
+                "truncate text-[10.5px] font-semibold uppercase tracking-[0.14em]",
+                sameAsKind && "sr-only",
+              )}
+              style={{ color: `hsl(${meta.accent})` }}
+            >
+              {kindLabel}
+            </p>
+            {headerField ? (
+              <HeaderChoice
+                nodeId={node.id}
+                field={headerField}
+                value={headerValue}
+                onChange={setHeader}
+                invalid={headerIssues.some((issue) => issue.severity === "error")}
+              />
+            ) : null}
+            <button
+              type="button"
+              onClick={() => setAboutOpen((value) => !value)}
+              aria-expanded={aboutOpen}
+              aria-controls={`${labelId}-about`}
+              aria-label={`About ${kindLabel}`}
+              className={cn(
+                "relative flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-muted-foreground/70 transition-colors after:absolute after:-inset-2.5 after:content-[''] hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+                aboutOpen && "text-primary",
+              )}
+            >
+              <Info className="h-3.5 w-3.5" aria-hidden />
+            </button>
             <input
               id={labelId}
               aria-label="Label"
@@ -209,9 +227,17 @@ export function NodeInspector({
                 }
               }}
               maxLength={120}
-              placeholder={kindLabel}
+              placeholder="Name this step"
               aria-invalid={titleIssues.some((issue) => issue.severity === "error") || undefined}
-              className="-ml-1.5 mt-0.5 w-[calc(100%+0.375rem)] rounded-lg border border-transparent bg-transparent px-1.5 py-0.5 text-[17px] font-semibold tracking-tight text-foreground transition-[border-color,background-color,box-shadow] placeholder:text-muted-foreground/60 hover:border-border/60 focus-visible:border-primary/50 focus-visible:bg-background/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 aria-[invalid=true]:border-destructive/60"
+              className={
+                cn(
+                  "-ml-1.5 min-w-0 rounded-lg",
+                  sameAsKind
+                    ? "order-first w-auto flex-1"
+                    : "order-last w-[calc(100%+0.375rem)] basis-full",
+                ) +
+                " border border-transparent border border-transparent bg-transparent px-1.5 py-0.5 text-[17px] font-semibold tracking-tight text-foreground transition-[border-color,background-color,box-shadow] placeholder:text-muted-foreground/60 hover:border-border/60 focus-visible:border-primary/50 focus-visible:bg-background/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 aria-[invalid=true]:border-destructive/60"
+              }
             />
           </div>
         </div>

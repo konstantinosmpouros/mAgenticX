@@ -1,7 +1,7 @@
 import { useBackgroundTasksContext } from "@/features/inference";
 import { taskSettledText } from "@/features/chat/lib/taskTreeAdapter";
 import type { TaskSettledBlock } from "@/shared/lib/types";
-import { TaskOutcomeLine } from "./TaskOutcomeLine";
+import { TaskMarker } from "./ConversationMarkers";
 
 /**
  * "✓ researcher finished" inside an answer: a background task's result was
@@ -14,7 +14,7 @@ export function TaskSettledMarker({ block }: { block: TaskSettledBlock }) {
   const tasks = useBackgroundTasksContext();
   const known = Boolean(tasks?.tree.tasks[block.taskId]);
   return (
-    <TaskOutcomeLine
+    <TaskMarker
       status={block.status}
       text={taskSettledText(block.name, block.status)}
       onOpen={tasks && known ? () => tasks.openTask(block.taskId) : undefined}

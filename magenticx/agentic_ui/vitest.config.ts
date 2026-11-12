@@ -65,6 +65,11 @@ export default defineConfig({
     // `/@fs/...` URL under a DOM environment and then fails to resolve.
     setupFiles: ["../../tests/agentic_ui/setup.ts"],
     include: [`${TESTS_DIR}/**/*.{test,spec}.{ts,tsx}`],
+    // Streamdown (the chat's markdown renderer) imports KaTeX's stylesheet,
+    // which Node cannot load; served through Vite instead, a test can render
+    // the real pipeline (inline-citations-response.test.tsx). Tests that mock
+    // `ai-elements/response` never load either package.
+    server: { deps: { inline: [/streamdown/, /katex/] } },
     coverage: {
       provider: "v8",
       reporter: ["text", "lcov"],

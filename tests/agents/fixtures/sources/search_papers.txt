@@ -1,0 +1,40 @@
+{
+  "total_results": 2,
+  "papers": [
+    {
+      "id": "2610.00223v1",
+      "title": "A Holistic Assessment of the Carbon Footprint of Noor, a Very Large Arabic Language Model",
+      "authors": [
+        "Imad Lakim",
+        "Ebtesam Almazrouei",
+        "Ibrahim Abu Alhaol",
+        "Merouane Debbah",
+        "Julien Launay"
+      ],
+      "abstract": "As ever larger language models grow more ubiquitous, it is crucial to consider their environmental impact. Characterised by extreme size and resource use, recent generations of models have been criticised for their voracious appetite for compute, and thus significant carbon footprint. Although reporting of carbon impact has grown more common in machine learning papers, this reporting is usually limited to compute resources used strictly for training. In this work, we propose a holistic assessment of the footprint of an extreme-scale language model, Noor. Noor is an ongoing project aiming to develop the largest multi-task Arabic language models -- with up to 13B parameters -- leveraging zero-shot generalisation to enable a wide range of downstream tasks via natural language instructions. We assess the total carbon bill of the entire project: starting with data collection and storage costs, including research and development budgets, pretraining costs, future serving estimates, and other exogenous costs necessary for this international cooperation. Notably, we find that inference costs and exogenous factors can have a significant impact on total budget. Finally, we discuss pathways to reduce the carbon footprint of extreme-scale models.",
+      "categories": [
+        "cs.CL"
+      ],
+      "published": "2026-09-22T11:25:39+00:00",
+      "url": "https://arxiv.org/pdf/2610.00223v1",
+      "resource_uri": "arxiv://2610.00223v1"
+    },
+    {
+      "id": "2610.24913v1",
+      "title": "A Cross-Domain Evaluation of Prompting Techniques for Large Language Models",
+      "authors": [
+        "Kevin Krazius",
+        "Tim Schlippe",
+        "Paul Libbrecht"
+      ],
+      "abstract": "Prompt engineering has become a central mechanism for guiding the behavior of Large Language Models (LLMs) across a wide range of reasoning and language understanding tasks [1], [2]. However, existing studies frequently evaluate prompting techniques using different LLMs, datasets, or task settings, making direct comparisons across methods and domains difficult [3]. Consequently, in this paper we present a controlled cross-domain evaluation of Zero-Shot prompting, Few-Shot prompting, Retrieval-Augmented Generation (RAG), and automatic prompt optimization based on a PE2-inspired optimization pipeline [4]-[6]. All experiments were conducted with the same LLM and evaluated on six benchmark datasets covering arithmetic reasoning, logical reasoning, commonsense reasoning, and factual verification. The results show that no prompting strategy consistently outperforms the others across all domains, and pairwise statistical comparisons of the highest-performing configurations revealed no significant differences. RAG achieves the highest overall average accuracy of 78.33% when 300 examples are available for retrieval, while Few-Shot Prompting achieves comparatively high accuracies across several structured reasoning tasks. Zero-Shot Prompting remains competitive on tasks with self-contained inputs, whereas the PE2-inspired optimization approach produces stable but not systematically superior results compared to the other evaluated prompting techniques. Furthermore, increasing the number of task-specific examples does not consistently improve performance across prompting techniques, indicating strong domain and task dependency. These findings suggest that prompting techniques should be selected adaptively based on task characteristics rather than treated as universally applicable optimization strategies.",
+      "categories": [
+        "cs.AI",
+        "cs.CL"
+      ],
+      "published": "2026-10-17T23:18:46+00:00",
+      "url": "https://arxiv.org/pdf/2610.24913v1",
+      "resource_uri": "arxiv://2610.24913v1"
+    }
+  ]
+}

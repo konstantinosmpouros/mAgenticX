@@ -1610,3 +1610,57 @@ export const toTaskSocketFrame = (raw: unknown) => {
   return null;
 };
 export type TaskSocketFrame = NonNullable<ReturnType<typeof toTaskSocketFrame>>;
+
+// ---------------------------------------------------------------------------
+// Inline citations (plan 42 §3.8) — a source a search tool really returned.
+// The same shape arrives three ways: inside the run's `SOURCES` custom event,
+// in the conversation's durable list (`GET …/{conversation_id}/sources`), and
+// replayed from a settled message's event log. Search results are untrusted
+// input, so the contract is enforced here too, not only agents-side: the id is
+// short lowercase hex, the URL is http(s) only (never `javascript:` / `data:`),
+// and the strings are capped and stripped of control characters. They are
+// only ever rendered as plain text.
+// ---------------------------------------------------------------------------
+export const CITATION_SOURCE_ID_PATTERN = /^[0-9a-f]{6,8}$/;
+const CITATION_URL_MAX = 2048;
+
+/** True for an absolute http(s) URL — the only kind a citation may link to. */
+export const isHttpUrl = (value: string): boolean => {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f]+/g;
+const citationText = (max: number) =>
+  z
+    .string()
+    .nullish()
+    .transform((value) => (value ?? "").replace(CONTROL_CHARS, " ").replace(/\s+/g, " ").trim().slice(0, max));
+
+export const CitationSourceSchema = z.object({
+  id: z.string().regex(CITATION_SOURCE_ID_PATTERN),
+  url: z.string().trim().max(CITATION_URL_MAX).refine(isHttpUrl, "a source URL must be http(s)"),
+  title: citationText(300),
+  snippet: citationText(300),
+  tool: citationText(100),
+});
+export type CitationSource = z.infer<typeof CitationSourceSchema>;
+
+/** Every valid source in `value`; a malformed entry is dropped, never the whole list. */
+export const toCitationSources = (value: unknown): CitationSource[] => {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((raw) => {
+    const parsed = CitationSourceSchema.safeParse(raw);
+    return parsed.success ? [parsed.data] : [];
+  });
+};
+
+// `{"sources": [...]}` from the bridge, unwrapped to the list.
+export const ConversationSourcesSchema = z
+  .record(z.unknown())
+  .transform((raw) => toCitationSources(raw.sources));

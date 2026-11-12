@@ -10,6 +10,8 @@ import {
   PresentArtifactPayloadSchema,
   RENDER_CHART_EVENT_TYPE,
   RenderChartPayloadSchema,
+  SOURCES_EVENT_NAMES,
+  SourcesPayloadSchema,
   SUBAGENT_COMPLETED_EVENT_TYPE,
   SUBAGENT_EVENT_TYPE,
   SubAgentCompletedPayloadSchema,
@@ -50,8 +52,8 @@ import type {
   TimelineThought,
   TimelineToolExecution,
 } from "@/shared/lib/types";
-import type { AsyncTaskStatus, SubagentItem } from "@/shared/lib/types";
-import { ASYNC_TASK_STATUSES } from "@/shared/lib/schemas";
+import type { AsyncTaskStatus, CitationSource, SubagentItem } from "@/shared/lib/types";
+import { ASYNC_TASK_STATUSES, toCitationSources } from "@/shared/lib/schemas";
 
 // The single fold from raw AG-UI events to the rendered timeline structure
 // [Thinking, Content, Subagent, Content, …]. Used incrementally on live WS
@@ -74,6 +76,7 @@ const FULL_LOG_TYPES = new Set([
 ]);
 const BRIDGE_HITL_RESOLVED_EVENT_TYPE = "BRIDGE_HITL_RESOLVED";
 const PLAN_EVENT_NAMES = new Set<string>(PLAN_SNAPSHOT_EVENT_NAMES);
+const SOURCES_NAMES = new Set<string>(SOURCES_EVENT_NAMES);
 
 export function createTimeline(): RunTimeline {
   return {
@@ -781,6 +784,48 @@ function parseRawSseEvent(raw: string): RawEvent | null {
   return null;
 }
 
+/**
+ * The valid sources of a `SOURCES` event's value (plan 42); [] for anything
+ * else. Shared by the reducer and `collectRunSources`, so a live run and a
+ * replayed log read the event the same way.
+ */
+function sourcesOf(value: unknown): CitationSource[] {
+  const parsed = SourcesPayloadSchema.safeParse(value);
+  return parsed.success ? toCitationSources(parsed.data.sources) : [];
+}
+
+/**
+ * Fold a `SOURCES` event into the run's sources. One flat map per run, like the
+ * interrupts: a source a sub-agent found is citable by the orchestrator, so its
+ * event (arriving wrapped in `SUBAGENT_EVENT`) lands here as well. Copy-on-write
+ * — the map is replaced, never mutated, so a memo keyed on it sees the change.
+ */
+function foldSources(session: Session, value: unknown): void {
+  const found = sourcesOf(value);
+  if (!found.length) return;
+  const next = { ...(session.state.sources ?? {}) };
+  for (const source of found) next[source.id] = source;
+  session.state.sources = next;
+}
+
+/**
+ * Give a tool step the pages its result named (a `SOURCES` event, plan 42).
+ * The step shows them as cards; the result's text never reaches the browser.
+ */
+function attachToolSources(
+  value: unknown,
+  paths: Record<string, { block: number; item: number }>,
+  getBlock: (index: number) => ThinkingBlock,
+): void {
+  const parsed = SourcesPayloadSchema.safeParse(value);
+  const callId = parsed.success ? parsed.data.tool_call_id : null;
+  const path = callId ? paths[callId] : undefined;
+  if (!path) return;
+  const found = sourcesOf(value);
+  if (!found.length) return;
+  updateToolAt(getBlock(path.block), path.item, (tool) => ({ ...tool, sources: found }));
+}
+
 function ensureSubagentBlock(
   session: Session,
   key: string,
@@ -1118,6 +1163,14 @@ function applySubagentInnerEvent(session: Session, key: string, inner: RawEvent)
     return;
   }
 
+  if (type === "CUSTOM" && SOURCES_NAMES.has(String(inner.name))) {
+    foldSources(session, inner.value);
+    attachToolSources(inner.value, subFold.toolPaths, (index) =>
+      subBlockForWrite<ThinkingBlock>(session, parentIndex, index),
+    );
+    return;
+  }
+
   if (type === "CUSTOM" && inner.name === TASK_SUBAGENT_EVENT_TYPE) {
     const parsed = TaskSubAgentPayloadSchema.safeParse(inner.value);
     if (!parsed.success) return;
@@ -1277,6 +1330,14 @@ function applyEvent(session: Session, event: RawEvent): void {
     }
     if (name === TASK_INPUT_EVENT_TYPE) {
       pushTaskInputBlock(session, event);
+      return;
+    }
+
+    if (SOURCES_NAMES.has(name)) {
+      foldSources(session, event.value);
+      attachToolSources(event.value, session.state.fold.toolPaths, (index) =>
+        blockForWrite<ThinkingBlock>(session, index),
+      );
       return;
     }
 
@@ -1820,6 +1881,36 @@ export function countRunActivity(events: RawEvent[] | null | undefined): {
 
   for (const event of Array.isArray(events) ? events : []) visit(event);
   return { modelCalls: usageIds.size + anonymousCalls, toolCalls: toolIds.size + anonymousTools };
+}
+
+/**
+ * Every source a run's event log carries (plan 42), by id — what
+ * `RunTimeline.sources` holds after a fold, read straight off the log without
+ * building the timeline. For the conversation's source registry, which needs
+ * the sources of every settled message on screen but none of their blocks.
+ * Top-level, wrapped in `SUBAGENT_EVENT`, or a legacy `RAW_SSE_EVENT`.
+ */
+export function collectRunSources(
+  events: RawEvent[] | null | undefined,
+): Record<string, CitationSource> {
+  const found: Record<string, CitationSource> = {};
+  const visit = (event: RawEvent | null | undefined): void => {
+    if (!event || typeof event.type !== "string") return;
+    if (event.type === "RAW_SSE_EVENT") {
+      visit(parseRawSseEvent(String(event.raw_sse ?? "")));
+      return;
+    }
+    if (event.type !== "CUSTOM") return;
+    if (event.name === SUBAGENT_EVENT_TYPE) {
+      visit(event.value?.event);
+      return;
+    }
+    if (SOURCES_NAMES.has(String(event.name))) {
+      for (const source of sourcesOf(event.value)) found[source.id] = source;
+    }
+  };
+  for (const event of Array.isArray(events) ? events : []) visit(event);
+  return found;
 }
 
 export function pendingTimelineInterrupts(

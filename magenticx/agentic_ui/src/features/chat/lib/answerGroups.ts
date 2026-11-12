@@ -13,9 +13,11 @@
  *   from the user's message (retrying a later member would only redo the part
  *   after the previous task finished).
  * - Fork → the LAST message, so the fork keeps every part of the answer.
- * - Copy → the text of every member, in order.
+ * - Copy → the text of every member, in order, with citation markers turned
+ *   into one numbered reference list for the whole answer (plan 42).
  */
-import type { MessageOut } from "@/shared/lib/types";
+import type { CitationSourceMap, MessageOut } from "@/shared/lib/types";
+import { citationsToPlainText } from "./citationText";
 
 export type AnswerGroup = {
   /** The first assistant message: what "Try again" regenerates. */
@@ -61,10 +63,15 @@ export function groupAnswers(messages: readonly MessageOut[]): Map<string, Answe
   return places;
 }
 
-/** The text "Copy" puts on the clipboard for a whole group. */
-export function answerGroupText(group: AnswerGroup): string {
-  return group.members
+/**
+ * The text "Copy" puts on the clipboard for a whole group. With `sources`, its
+ * citation markers become `[1]`, `[2]` — numbered across the whole answer —
+ * followed by one "Sources:" list.
+ */
+export function answerGroupText(group: AnswerGroup, sources?: CitationSourceMap): string {
+  const text = group.members
     .map((member) => (member.content ?? "").trim())
     .filter(Boolean)
     .join("\n\n");
+  return sources ? citationsToPlainText(text, sources) : text;
 }

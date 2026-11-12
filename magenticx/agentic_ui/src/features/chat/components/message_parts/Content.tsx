@@ -6,11 +6,16 @@ import { normalizeBulletMarkdown } from "@/shared/lib/utils";
 
 // ContentBlockView — a timeline content block rendered as markdown. `streaming`
 // while it is the live run's last block, i.e. text may still be arriving in it.
+// Always an agent's text, so its `[src:…]` markers render as citation pills.
 export const ContentBlockView = memo(
   ({ block, streaming = false }: { block: ContentBlock; streaming?: boolean }) => {
     const normalized = normalizeBulletMarkdown(block.text);
     if (!normalized.trim()) return null;
-    return <Response streaming={streaming}>{normalized}</Response>;
+    return (
+      <Response streaming={streaming} citations>
+        {normalized}
+      </Response>
+    );
   },
 );
 ContentBlockView.displayName = "ContentBlockView";
@@ -81,5 +86,6 @@ export function MessageContent({
     return null;
   }
 
-  return <Response>{normalizedContent}</Response>;
+  // An agent's stored reply may cite sources; a person's message is shown as typed.
+  return <Response citations={message.sender === "ai"}>{normalizedContent}</Response>;
 }

@@ -4,7 +4,7 @@ Pins what the bridge relies on:
 
 * each store deletes **all** of a user's rows, scoped to that user only, and the
   skill pool is really deleted (not tombstoned) — conversation files and their
-  blobs included, by user id alone;
+  blobs and conversation sources included, by user id alone;
 * a malformed user id is refused before anything is deleted;
 * checkpoint threads are deleted, and a failure surfaces (503) instead of being
   swallowed, so the bridge retries rather than recording success;
@@ -145,6 +145,7 @@ async def test_purge_user_removes_rows_and_cached_agents(purge, agents_service):
         assert counts["agent_memories"] == 1 and counts["skill_pool"] == 1 and counts["agent_definitions"] == 1
         assert counts["agent_definition_versions"] == 1
         assert counts["conversation_files"] == 1 and counts["conversation_file_blobs"] == 1
+        assert counts["conversation_sources"] == 1
         assert counts["workflows"] == 1 and counts["workflow_versions"] == 1
         assert counts["async_tasks"] == 0
     finally:
@@ -220,6 +221,6 @@ async def test_delete_route_reports_what_was_removed(client, internal_headers, p
     assert set(body) == {
         "agent_memories", "skill_pool", "skill_files", "agent_skills",
         "agent_definitions", "agent_definition_files", "agent_definition_versions",
-        "conversation_files", "conversation_file_blobs",
+        "conversation_files", "conversation_file_blobs", "conversation_sources",
         "workflows", "workflow_versions",
     }

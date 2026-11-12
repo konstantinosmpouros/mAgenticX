@@ -3,7 +3,7 @@
 One module per concept/router — auth, catalog, conversations, messages,
 attachments, sharing, inference, voice, skills, memories, preferences,
 usage, search, scheduled_tasks, agent_tools, user_agents, workflows, internal_memory,
-internal_conversations —
+internal_conversations, sources —
 on the shared building blocks in ``base``. Re-exported so callers keep the
 stable ``from schema import ...`` import surface regardless of which module
 a DTO lives in.
@@ -88,6 +88,11 @@ from schema.compaction import (
     AgentCompactionUsage,
     CompactConversationIn,
     CompactConversationOut,
+)
+from schema.sources import (
+    ConversationSource,
+    ConversationSourcesOut,
+    keep_valid_sources,
 )
 from schema.preferences import (
     CustomInstructions,
@@ -308,6 +313,9 @@ __all__ = [
     "Senders",
     "EffortLevel",
     "SharedConversationDetail",
+    "ConversationSource",
+    "ConversationSourcesOut",
+    "keep_valid_sources",
     "RemoteProvenance",
     "SkillFile",
     "SuggestionsOut",

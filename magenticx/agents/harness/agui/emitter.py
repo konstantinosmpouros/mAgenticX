@@ -42,6 +42,7 @@ from harness.agui.events import (
     PLAN_SNAPSHOT_EVENT_TYPE,
     PRESENT_ARTIFACT_EVENT_TYPE,
     RENDER_CHART_EVENT_TYPE,
+    SOURCES_EVENT_TYPE,
     SUBAGENT_COMPLETED_EVENT_TYPE,
     SUBAGENT_EVENT_TYPE,
     TASK_LAUNCHED_EVENT_TYPE,
@@ -57,6 +58,7 @@ from harness.agui.events import (
     PlanSnapshot,
     PresentArtifactEvent,
     RenderChartEvent,
+    SourcesEvent,
     SubAgentCompletedEvent,
     SubAgentEvent,
     TaskLaunchedEvent,
@@ -273,6 +275,12 @@ class AGUIEmitter:
             status="error" if status == "error" else "ok", output_chars=output_chars,
         )
         return self.custom(TOOL_USAGE_EVENT_TYPE, payload, namespace)
+
+    def sources(self, *, tool_call_id: str, sources: Sequence[Any], namespace: str | None = None) -> Event:
+        """The citable pages one tool call returned (plan 42). ``sources`` are
+        validated again here, so a malformed stamp raises ``ValidationError``."""
+        payload = SourcesEvent(tool_call_id=tool_call_id, sources=list(sources))
+        return self.custom(SOURCES_EVENT_TYPE, payload, namespace)
 
     def context_compaction(self, phase: str, *, details: dict[str, Any] | None = None, namespace: str | None = None) -> Event:
         """An automatic compaction's start, or its result (``details``)."""

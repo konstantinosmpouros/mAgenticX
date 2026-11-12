@@ -20,6 +20,7 @@ from harness.conversation_files import ConversationFileStore
 from harness.conversation_files.paths import OUTPUT_PREFIX, InvalidPath, normalise
 from harness.filesystem import BranchScratchStore
 from harness.memory import get_memory_pool
+from harness.sources import ConversationSourceStore
 
 logger = get_logger(__name__)
 
@@ -81,7 +82,7 @@ async def copy_conversation_files(user_id: str, source_id: str, target_id: str) 
 
 
 async def reap_conversation(user_id: str, conversation_id: str, thread_ids: list[str]) -> None:
-    """A deleted conversation's checkpoint threads and files, all of them.
+    """A deleted conversation's checkpoint threads, files and sources, all of them.
 
     Idempotent — unknown threads and an empty conversation are no-ops — and
     loud: a failure raises :class:`ReapFailed` so the bridge keeps its outbox
@@ -92,6 +93,7 @@ async def reap_conversation(user_id: str, conversation_id: str, thread_ids: list
         for thread_id in filter(None, thread_ids):
             await checkpointer.adelete_thread(thread_id)
         await _store().delete_conversation(user_id, conversation_id)
+        await ConversationSourceStore(get_memory_pool()).delete_conversation(user_id, conversation_id)
         await BranchScratchStore(get_memory_pool()).delete_conversation(user_id, conversation_id)
         # The conversation's background tasks (plan 41): their threads, then rows.
         for task_id in await AsyncTaskStore(get_memory_pool()).delete_conversation(user_id, conversation_id):

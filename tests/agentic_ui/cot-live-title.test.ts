@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { finalCoTTitle, liveCoTTitle, thoughtTitle } from "@/features/chat/lib/cotTitle";
+import {
+  finalCoTTitle,
+  liveCoTTitle,
+  thoughtTitle,
+  withoutThoughtTitle,
+} from "@/features/chat/lib/cotTitle";
 import type { ThinkingBlockItem } from "@/shared/lib/types";
 
 /**
@@ -61,16 +66,30 @@ describe("liveCoTTitle", () => {
   });
 });
 
-describe("finalCoTTitle", () => {
-  it("keeps the last thought's headline, not a later tool step", () => {
-    expect(
-      finalCoTTitle([thought("**One**"), thought("**Settled on the plan**\n\nx"), tool("read_file", { file_path: "/a.pdf" })]),
-    ).toBe("Settled on the plan");
+describe("finalCoTTitle — the last step names the finished block", () => {
+  it("is the last thought's headline when the block ends on a thought", () => {
+    expect(finalCoTTitle([tool("read_file", { file_path: "/a.pdf" }), thought("**Settled on the plan**\n\nx")])).toBe(
+      "Settled on the plan",
+    );
   });
 
-  it("skips an empty thought and is null when no thought has a headline", () => {
+  it("says what a tool did when the block ends on a tool", () => {
+    expect(finalCoTTitle([thought("**Planning**\n\nx"), tool("read_file", { file_path: "/a.pdf" })])).toBe("Read a.pdf");
+    expect(finalCoTTitle([thought("**Planning**\n\nx"), tool("fetch_weather")])).toBe("Used Fetch weather");
+    expect(
+      finalCoTTitle([{ kind: "delegation", id: "d", taskId: "tc-1", type: "fact-checker" }]),
+    ).toBe("Delegated to the fact-checker sub-agent");
+  });
+
+  it("skips an empty thought and is null for an empty block", () => {
     expect(finalCoTTitle([thought("**Found it**"), thought("")])).toBe("Found it");
-    expect(finalCoTTitle([tool("fetch_weather")])).toBeNull();
     expect(finalCoTTitle([])).toBeNull();
+  });
+});
+
+describe("a thought's title is said only in the header", () => {
+  it("drops the bold title from the step", () => {
+    expect(withoutThoughtTitle("**Updating task status**\n\nI need to report…")).toBe("I need to report…");
+    expect(withoutThoughtTitle("No title here")).toBe("No title here");
   });
 });

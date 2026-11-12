@@ -63,7 +63,7 @@ async def copy_files_to_fork(
 async def reap_deleted_conversation(
     user_id: str, conversation_id: str, payload: ReapConversationRequest
 ) -> None:
-    """Delete a deleted conversation's checkpoint threads and files.
+    """Delete a deleted conversation's checkpoint threads, files and sources.
 
     503 when any of it is still there, so the bridge's outbox retries."""
     try:

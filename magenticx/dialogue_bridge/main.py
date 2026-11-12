@@ -46,6 +46,7 @@ from router import (
     conversation_tasks_router,
     tasks_router,
     export_router,
+    favicons_router,
     messages_router,
     attachments_router,
     shared_conv_router,
@@ -360,6 +361,11 @@ app.include_router(
     workflow_runs_router,
     prefix="/v1/workflow-runs",
     tags=["Workflow Runs"],
+)
+app.include_router(
+    favicons_router,
+    prefix="/v1/favicons",
+    tags=["Favicons"],
 )
 # Service-to-service only. Guarded by require_internal_caller AND denied at the
 # nginx edge (/api/v1/internal/) — reachable only by the agents service on the

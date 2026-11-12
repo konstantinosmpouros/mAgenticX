@@ -8,7 +8,7 @@ import { cn } from "@/shared/lib/utils";
 import type { AttachmentLike } from "./message_parts/MessageAttachments";
 import { ChatMessage } from "./ChatMessage";
 import { AiTransitionIndicator } from "./AiTransitionIndicator";
-import { CompactionDivider } from "./message_parts/CompactionDivider";
+import { CompactionMarker } from "./message_parts/ConversationMarkers";
 import { ConversationRail } from "./message_parts/ConversationRail";
 import { TaskNoticeRow } from "./message_parts/TaskNoticeRow";
 import { TaskSidePanel } from "./message_parts/RunSidePanels";
@@ -802,7 +802,9 @@ export default function ChatBody({
                   <div
                     key={rowKeys[index]}
                     data-message-id={message.id}
-                    className="animate-message-in py-1"
+                    // Pulled into the column's gap (space-y-4 / md:space-y-6), so
+                    // the marker sits close to the answers around it.
+                    className="animate-message-in -my-2 md:-my-4"
                   >
                     <TaskNoticeRow message={message} />
                   </div>
@@ -894,9 +896,9 @@ export default function ChatBody({
                     groupBranchData={groupBranchData}
                   />
                   {compactingMessageId === message.id ? (
-                    <CompactionDivider trigger="manual" status="running" />
+                    <CompactionMarker trigger="manual" status="running" />
                   ) : message.compaction && !message.compaction.undoneAt ? (
-                    <CompactionDivider
+                    <CompactionMarker
                       trigger="manual"
                       status="done"
                       freed={message.compaction.freed}

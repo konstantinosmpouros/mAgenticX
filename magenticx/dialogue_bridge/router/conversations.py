@@ -22,14 +22,21 @@ from schema import (
     ConversationShareResponse,
     ConversationSummary,
     CreateConversationResponse,
+    ConversationSourcesOut,
     ConversationTitleUpdate,
     ConversationVisibilityUpdate,
     MessageOut,
 )
 from core.auth.session import AuthUser, require_csrf_protection
-from core.security.rate_limit import compaction_rate_limit, export_pdf_rate_limit, share_create_rate_limit
-from utils.agents import copy_conversation_files
+from core.security.rate_limit import (
+    compaction_rate_limit,
+    export_pdf_rate_limit,
+    share_create_rate_limit,
+    sources_read_rate_limit,
+)
+from utils.agents import copy_conversation_files, copy_conversation_sources, fetch_conversation_sources
 from utils.attachments import encode_disposition
+from utils.citations import has_citation_markers
 from utils.share_export import conversation_pdf_filename, render_conversation_pdf, select_scoped_messages
 from utils import (
     _preview,
@@ -53,7 +60,7 @@ from utils import (
 )
 from utils.compaction import compact_conversation, undo_conversation_compaction
 from utils.runtime_reaps import delete_conversation
-from utils.shared_conv import build_share_list_item, resolve_share_expires_at
+from utils.shared_conv import attach_cited_sources, build_share_list_item, resolve_share_expires_at
 
 
 router = APIRouter()
@@ -165,8 +172,13 @@ async def forkConversation(
         )
         await db.commit()
         operation.add(forked_conversation_id=forked_conv.id)
-    # The agent's files come along — paths only; the agents service shares the bytes.
-    await copy_conversation_files(user_id, conversation_id, forked_conv.id)
+    # The agent's files come along — paths only; the agents service shares the
+    # bytes — and so do the citation sources (plan 42), so the copied answers'
+    # markers keep resolving. Independent and best-effort, so concurrent.
+    await asyncio.gather(
+        copy_conversation_files(user_id, conversation_id, forked_conv.id),
+        copy_conversation_sources(user_id, conversation_id, forked_conv.id),
+    )
 
     forked_full = await get_conversation_with_agent(db, forked_conv.id)
     logger.info("conversation_forked", "Conversation forked", **operation.snapshot())
@@ -200,6 +212,8 @@ async def shareConversation(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found in conversation.")
     snapshot = build_share_snapshot(current_conv, snapshot_messages)
     snapshot["shareMode"] = payload.mode
+    # Freeze the sources the shared answers cite (plan 42) into the snapshot.
+    await attach_cited_sources(snapshot, current_user.id, conversation_id)
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     expires_at = resolve_share_expires_at(payload.expiresAt, now)
 
@@ -270,9 +284,16 @@ async def exportConversationPdf(
     if not messages:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found in conversation.")
 
+    # Citation markers print as [1], [2] with a source list (plan 42); the
+    # sources are fetched only when an exported message cites something.
+    sources = (
+        {source.id: source for source in await fetch_conversation_sources(user_id, conversation_id)}
+        if has_citation_markers(message.content for message in messages)
+        else {}
+    )
     # CPU-heavy and synchronous: on the event loop it would stall every other
     # user's streams and requests while it renders.
-    pdf_bytes = await asyncio.to_thread(render_conversation_pdf, current_conv, messages, payload.mode)
+    pdf_bytes = await asyncio.to_thread(render_conversation_pdf, current_conv, messages, payload.mode, sources)
     filename = conversation_pdf_filename(current_conv, payload.mode)
     logger.info(
         "conversation_pdf_exported",
@@ -427,6 +448,31 @@ async def getConvDetails(
     # Log a custom event with the conversation id and number of messages, for better observability of conversation engagement
     logger.info("conversation_details_fetched", "Conversation details fetched", conversation_id=conversation_id, message_count=len(current_conv.messages))
     return ConversationDetail.model_validate(current_conv)
+
+
+@router.get(
+    "/{user_id}/{conversation_id}/sources",
+    response_model=ConversationSourcesOut,
+    status_code=status.HTTP_200_OK,
+    summary="Get the citation sources of a conversation",
+)
+async def getConversationSources(
+    user_id: str,
+    conversation_id: str,
+    current_user: AuthUser = Depends(validate_userId),
+    # After auth on purpose: the bucket is keyed on the path's {user_id}, so it
+    # must only ever count requests that user actually made.
+    _rate_limited: None = Depends(sources_read_rate_limit),
+    current_conv: ConversationTable = Depends(validate_convId),
+) -> ConversationSourcesOut:
+    """The sources the conversation's search tools returned (plan 42), newest
+    first, so the chat can turn ``[src:ID]`` markers into citations. Owner
+    only (a trial or someone else's conversation is a 404); an unreachable
+    agents service is an empty list, never an error."""
+    set_context(user_id=user_id, conversation_id=conversation_id)
+    sources = await fetch_conversation_sources(current_user.id, current_conv.id)
+    logger.info("conversation_sources_fetched", "Conversation citation sources fetched", count=len(sources))
+    return ConversationSourcesOut(sources=sources)
 
 
 @router.delete(

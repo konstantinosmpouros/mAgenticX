@@ -1,5 +1,6 @@
 from harness.middlewares.first_token import FirstTokenCallback
 from harness.middlewares.rate_limit import RetryOnRateLimitMiddleware
+from harness.middlewares.sources import SOURCES_KEY, SourcesMiddleware
 from harness.middlewares.summarization import (
     COMPACTION_KEY,
     EVENT_KEY,
@@ -21,9 +22,11 @@ __all__ = [
     "COMPACTION_KEY",
     "EVENT_KEY",
     "SESSION_ID_KEY",
+    "SOURCES_KEY",
     "ConfigurableSummarizationMiddleware",
     "FirstTokenCallback",
     "RetryOnRateLimitMiddleware",
+    "SourcesMiddleware",
     "ToolErrorMiddleware",
     "ToolMetricsMiddleware",
     "UsageMetricsMiddleware",

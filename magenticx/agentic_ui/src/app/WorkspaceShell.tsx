@@ -35,6 +35,7 @@ import ChatView from "@/pages/ChatView";
 import { ImageLightbox } from "@/shared/ui/ImageLightbox";
 
 import { OVERLAY_HOST_ID } from "@/shared/lib/overlay-host";
+import { CitationSourcesContext } from "@/shared/lib/citations-context";
 import { guarded } from "@/shared/lib/leaveGuard";
 import { useWorkspaceStore } from "@/shared/stores/workspaceStore";
 import { Loader } from "@/shared/ui/shadcn-io/loader";
@@ -111,6 +112,7 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
     handleSearchResultSelect,
     resumeInferenceRunHandler,
     backgroundTasksContext,
+    citationSources,
     isDecisionInFlight,
     activeProfileTab,
     handleSetActiveProfileTab,
@@ -325,6 +327,8 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
             <HitlProvider value={{ resumeRun: resumeInferenceRunHandler, isDecisionInFlight }}>
               {/* The open conversation's background task tree (plan 41). */}
               <BackgroundTasksContext.Provider value={backgroundTasksContext}>
+              {/* The sources the answers' citation pills resolve against (plan 42). */}
+              <CitationSourcesContext.Provider value={citationSources}>
               {/* Fills the card on desktop (md:h-full) and the screen on mobile;
                   the overlays mounted here stay inside the card's rounded edge. */}
               <div
@@ -480,6 +484,7 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
                   onClose={handleCloseImagePreview}
                 />
               </div>
+              </CitationSourcesContext.Provider>
               </BackgroundTasksContext.Provider>
             </HitlProvider>
           </TooltipProvider>

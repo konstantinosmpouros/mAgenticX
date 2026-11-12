@@ -289,6 +289,24 @@ task_mutate_rate_limit = rate_limit(
     emit_headers=True,
 )
 
+# A conversation's citation sources (plan 42) — per user, after auth. Each read
+# proxies one agents-service call; its own scope so it never eats task reads.
+sources_read_rate_limit = rate_limit(
+    (settings.rate_limit.sources_read_max_attempts, settings.rate_limit.sources_read_window_seconds),
+    scope="sources-read",
+    identifier=user_path_identity,
+    emit_headers=True,
+)
+
+# Site icons for the source chips (plan 42) — per user, after auth. An answer
+# can show dozens at once, so a roomier budget; most are served from Redis.
+favicon_rate_limit = rate_limit(
+    (settings.rate_limit.favicon_max_attempts, settings.rate_limit.favicon_window_seconds),
+    scope="favicon",
+    identifier=user_path_identity,
+    emit_headers=True,
+)
+
 refresh_rate_limit = rate_limit(
     (settings.rate_limit.refresh_max_attempts, settings.rate_limit.refresh_window_seconds),
     scope="auth-refresh",

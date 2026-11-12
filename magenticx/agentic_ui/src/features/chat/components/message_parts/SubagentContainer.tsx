@@ -8,6 +8,8 @@ import { cn } from "@/shared/lib/utils";
 import { isAskUserInterrupt } from "@/features/inference/hitl";
 import { HitlRequestSummary } from "./HitlActionSummary";
 import { STATUS_META } from "./subagentStatus";
+import { useCitationSources } from "@/shared/lib/citations-context";
+import { citationsToPlainText } from "@/features/chat/lib/citationText";
 
 import type {
   SubagentInterrupt,
@@ -106,10 +108,12 @@ function CopyableContentBox({
   size?: "sm" | "md" | "lg" | "xl";
 }) {
   const [copied, setCopied] = React.useState(false);
+  // Citation markers copy as [1], [2] with a source list, like an answer's Copy.
+  const sources = useCitationSources();
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(content);
+      await navigator.clipboard.writeText(citationsToPlainText(content, sources));
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);
     } catch {

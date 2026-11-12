@@ -6,9 +6,13 @@ import type { LucideIcon } from "lucide-react";
 import { Check, X as CloseIcon } from "lucide-react";
 import { AIActionBar, UserActionBar } from "./message_parts/ActionBars";
 import { answerGroupText, type AnswerGroupPlace } from "@/features/chat/lib/answerGroups";
+import { citationsToPlainText } from "@/features/chat/lib/citationText";
+import { useCitationSources } from "@/shared/lib/citations-context";
 import { MessageAttachments } from "./message_parts/MessageAttachments";
 import { MessageContent } from "./message_parts/Content";
 import { PlanSidePanel, SubagentsSidePanel } from "./message_parts/RunSidePanels";
+import { AnswerSourcesPanel } from "./message_parts/AnswerSourcesPanel";
+import { useAnswerSources } from "@/features/chat/hooks/useAnswerSources";
 import { MessageTaskTree } from "./message_parts/MessageTaskTree";
 import { AgentRunTimeline } from "./AgentRunTimeline";
 import { useRunTimeline } from "@/features/inference";
@@ -118,7 +122,9 @@ export function ChatMessage({
   const isUser = message.sender === "user";
   const isAi = message.sender === "ai";
   const isTempUserMessage = isUser && String(message.id ?? "").startsWith("temp-");
-  const [openRunPanel, setOpenRunPanel] = useState<"plan" | "subagents" | null>(null);
+  const [openRunPanel, setOpenRunPanel] = useState<"plan" | "subagents" | "sources" | null>(
+    null,
+  );
   // Per-message agent for the AI action bar. With a resolver (main chat) we get
   // catalog name + icon; without one (e.g. shared view) we fall back to the
   // denormalized per-message agentName and the conversation's icon.
@@ -168,9 +174,26 @@ export function ChatMessage({
   const groupHead = group?.group.head;
   const handleGroupRetry =
     onRetryMessage && groupHead ? () => onRetryMessage(groupHead) : onRetryMessage;
+  // Copy carries citations as numbered references plus a Sources list (plan 42).
+  const citationSources = useCitationSources();
   const handleGroupCopy = group
-    ? (_content: string, messageId: string) => onCopy(answerGroupText(group.group), messageId)
-    : onCopy;
+    ? (_content: string, messageId: string) =>
+        onCopy(answerGroupText(group.group, citationSources), messageId)
+    : (content: string, messageId: string) =>
+        onCopy(citationsToPlainText(content, citationSources), messageId);
+
+  // The answer's Sources panel covers the whole group (plan 42): what every
+  // member's text points at, then the rest its runs found.
+  const groupMembers = group?.group.members;
+  const answerMembers = useMemo(
+    () => (isAi && carriesActionBar ? (groupMembers ?? [message]) : []),
+    [carriesActionBar, groupMembers, isAi, message],
+  );
+  const sourcesOfAnswer = useAnswerSources(
+    answerMembers,
+    isAi && carriesActionBar && !isStreamingThisMessage ? timeline?.sources : null,
+  );
+  const hasAnswerSources = sourcesOfAnswer.cited.length + sourcesOfAnswer.more.length > 0;
 
   const timestampLabel = useMemo(
     () =>
@@ -307,6 +330,7 @@ export function ChatMessage({
                       subagentCount > 0 ? () => setOpenRunPanel("subagents") : undefined
                     }
                     subagentCount={subagentCount}
+                    onOpenSources={hasAnswerSources ? () => setOpenRunPanel("sources") : undefined}
                   />
                 </div>
               )
@@ -328,6 +352,14 @@ export function ChatMessage({
           timeline={timeline}
           open={openRunPanel === "subagents"}
           onOpenChange={(open) => setOpenRunPanel(open ? "subagents" : null)}
+        />
+      ) : null}
+
+      {hasAnswerSources ? (
+        <AnswerSourcesPanel
+          sources={sourcesOfAnswer}
+          open={openRunPanel === "sources"}
+          onOpenChange={(open) => setOpenRunPanel(open ? "sources" : null)}
         />
       ) : null}
 

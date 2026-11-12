@@ -6,6 +6,7 @@ import zlib
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
+from collections.abc import Mapping
 from typing import Iterable, Literal, Optional
 
 from fontTools.ttLib import TTFont
@@ -13,6 +14,8 @@ from fontTools.subset import Options, Subsetter
 
 from core.database import ConversationTable, MessageTable
 from core.logging import get_logger
+from schema import ConversationSource
+from utils.citations import number_citations
 from utils.conversations import build_message_lineage, is_shareable
 
 logger = get_logger(__name__)
@@ -74,7 +77,15 @@ def conversation_pdf_filename(conversation: ConversationTable, mode: PdfExportMo
     return f"{safe_title or 'conversation'}-{safe_mode}.pdf"
 
 
-def render_conversation_pdf(conversation: ConversationTable, messages: list[MessageTable], mode: PdfExportMode) -> bytes:
+def render_conversation_pdf(
+    conversation: ConversationTable,
+    messages: list[MessageTable],
+    mode: PdfExportMode,
+    sources: Mapping[str, ConversationSource] | None = None,
+) -> bytes:
+    """Render the scoped messages as a PDF. Citation markers become numbered
+    references, listed under "Sources" at the end (plan 42); without ``sources``
+    every marker is dropped rather than printed raw."""
     title = conversation.title or conversation.agent_name or "Conversation"
     exported_at = datetime.now(timezone.utc).strftime("%b %d, %Y · %H:%M UTC")
     writer = _PdfDocument(title=title, exported_at=exported_at)
@@ -85,8 +96,14 @@ def render_conversation_pdf(conversation: ConversationTable, messages: list[Mess
 
     if not messages:
         writer.add_paragraph("No messages were available for this export.", size=11, color=_INK_SOFT)
-    for index, message in enumerate(messages, start=1):
-        writer.add_message(index, message)
+    texts, cited = number_citations([message.content or "" for message in messages], sources or {})
+    for index, (message, text) in enumerate(zip(messages, texts), start=1):
+        writer.add_message(index, message, content=text)
+    if cited:
+        writer.add_rule()
+        writer.add_paragraph("Sources", size=11, color=_DARK_MAGENTA)
+        for source in cited:
+            writer.add_paragraph(f"[{source.number}] {source.title} — {source.url}", size=9.5, color=_INK_SOFT)
 
     return writer.to_bytes()
 
@@ -216,13 +233,13 @@ class _PdfDocument:
             self._text(line, self.margin_x, self.y, size, color=color)
             self.y -= self.leading
 
-    def add_message(self, index: int, message: MessageTable) -> None:
+    def add_message(self, index: int, message: MessageTable, *, content: str | None = None) -> None:
         is_ai = message.sender == "ai"
         sender = "Assistant" if is_ai else "You"
         role_color = _DARK_MAGENTA if is_ai else _INK
         created = message.created_at.strftime("%b %d, %Y · %H:%M") if message.created_at else ""
 
-        blocks = _markdown_blocks(message.content or "")
+        blocks = _markdown_blocks(message.content or "" if content is None else content)
         attachments = [item for item in (message.attachments or []) if is_shareable(item)]
         if attachments:
             attachment_names = ", ".join(_clean_text(item.file_name) for item in attachments)

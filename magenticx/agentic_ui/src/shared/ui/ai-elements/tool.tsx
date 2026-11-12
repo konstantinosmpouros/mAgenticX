@@ -8,6 +8,8 @@ import { isValidElement, useState } from "react";
 import { ImageLightbox } from "@/shared/ui/ImageLightbox";
 
 import { CodeBlock } from "./code-block";
+import { HardDriveDownload } from "lucide-react";
+import { parseEvictedToolResult } from "@/shared/lib/evictedToolResult";
 
 /**
  * Ceiling for a tool payload pane.
@@ -127,6 +129,7 @@ export const ToolOutput = ({
   const images = errorText ? [] : parseToolResultImages(output);
 
   let Output = <div>{output as ReactNode}</div>;
+  let evicted: ReturnType<typeof parseEvictedToolResult> = null;
 
   if (typeof output === "object" && !isValidElement(output)) {
     Output = (
@@ -135,6 +138,29 @@ export const ToolOutput = ({
         code={JSON.stringify(output, null, 2)}
         language="json"
       />
+    );
+  } else if (typeof output === "string" && (evicted = parseEvictedToolResult(output))) {
+    // Too large for the context: the harness saved it to a file and gave the
+    // model a note on reading it in parts. Show where it went and the preview,
+    // not the note's instructions.
+    Output = (
+      <div className="space-y-2">
+        <p className="flex items-center gap-1.5 px-3 pt-2.5 text-muted-foreground">
+          <HardDriveDownload className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          <span className="min-w-0">
+            Large result, saved to{" "}
+            <code className="break-all rounded bg-muted px-1 py-0.5 text-foreground/85">{evicted.path}</code>{" "}
+            for the agent to read in parts.
+          </span>
+        </p>
+        {evicted.preview ? (
+          <CodeBlock
+            className="[&_pre]:whitespace-pre-wrap [&_pre]:break-words"
+            code={evicted.preview}
+            language="markdown"
+          />
+        ) : null}
+      </div>
     );
   } else if (typeof output === "string") {
     Output = (

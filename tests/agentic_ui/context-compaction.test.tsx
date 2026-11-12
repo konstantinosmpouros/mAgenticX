@@ -21,7 +21,7 @@ vi.mock("@/shared/lib/api", () => ({
 
 import { compactConversation } from "@/shared/lib/api";
 import { ContextMeter, type ContextTrigger } from "@/features/chat/components/ContextMeter";
-import { CompactionDivider } from "@/features/chat/components/message_parts/CompactionDivider";
+import { CompactionMarker } from "@/features/chat/components/message_parts/ConversationMarkers";
 import { useConversationCompaction } from "@/features/chat/hooks/useConversationCompaction";
 import { selectConversationContext, selectConversationStats } from "@/features/chat/lib/contextUsage";
 import { createTimeline, reduceTimelineEvents } from "@/features/inference/timeline";
@@ -151,7 +151,7 @@ describe("the context gauge", () => {
 
 describe("the divider", () => {
   it("names what happened and expands to the summary", () => {
-    render(<CompactionDivider trigger="manual" status="done" freed={81_000} summary="The user is planning a trip." />);
+    render(<CompactionMarker trigger="manual" status="done" freed={81_000} summary="The user is planning a trip." />);
     const headline = screen.getByRole("button", { name: /Compacted chat · manual · 81K tokens freed/ });
     expect(screen.queryByText("The user is planning a trip.")).toBeNull();
     fireEvent.click(headline);
@@ -159,7 +159,7 @@ describe("the divider", () => {
   });
 
   it("shows compacting while it runs", () => {
-    render(<CompactionDivider trigger="manual" status="running" />);
+    render(<CompactionMarker trigger="manual" status="running" />);
     expect(screen.getByRole("separator", { name: "Compacting the conversation" })).toBeTruthy();
   });
 });

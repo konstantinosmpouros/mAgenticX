@@ -780,12 +780,15 @@ async def test_deleting_a_conversation_stops_its_tasks_and_reaps_their_threads(
     agents_service.on("POST", "/tasks/cancel-scope", httpx.Response(200, json={"cancelled": 1}))
     reap = f"/users/{seeded_user.id}/conversations/{ids['conversation_id']}/reap"
     agents_service.on("POST", reap, httpx.Response(204))
+    sources = f"/users/{seeded_user.id}/conversations/{ids['conversation_id']}/sources"
+    agents_service.on("DELETE", sources, httpx.Response(204))
 
     assert (await client.delete(f"/v1/conversations/{seeded_user.id}/{ids['conversation_id']}")).status_code == 204
 
     scope = json.loads(agents_service.called("POST", "/tasks/cancel-scope")[0].content)
     assert scope == {"user_id": seeded_user.id, "conversation_id": ids["conversation_id"]}
     assert "task-1" in json.loads(agents_service.called("POST", reap)[0].content)["thread_ids"]
+    assert len(agents_service.called("DELETE", sources)) == 1
     async with session_factory() as s:
         assert await s.get(ConversationTaskTable, "task-1") is None
 

@@ -27,20 +27,23 @@ export const thoughtTitle = (text: string): string => {
 };
 
 /**
- * What a finished chain of thought keeps as its title: the headline of its
- * last thought, the conclusion it reached. Tool calls after it don't replace
- * it — "Read report.pdf" says what was done, not what was thought. Null when
- * no thought has a headline; the caller falls back to "Thought for Xs".
+ * A thought's text without its opening bold title (`**Weighing the sources**`),
+ * for when the block's header already shows that title. Text without one is
+ * returned as it is.
  */
-export const finalCoTTitle = (items: readonly ThinkingBlockItem[]): string | null => {
-  for (let index = items.length - 1; index >= 0; index -= 1) {
-    const item = items[index];
-    if (item.kind !== "thought") continue;
-    const title = thoughtTitle(item.text);
-    if (title) return title;
-  }
-  return null;
-};
+export const withoutThoughtTitle = (text: string): string =>
+  text.replace(/^\s*\*\*.+?\*\*[ \t]*(?:\r?\n)*/, "");
+
+/**
+ * What a finished chain of thought keeps as its title: its last step's. A
+ * thought → its headline; a tool call → what was done ("Read report.pdf",
+ * "Used Tavily · Search"); a hand-off → who it went to. Null when nothing
+ * names it; the caller falls back to "Thought for Xs".
+ */
+export const finalCoTTitle = (
+  items: readonly ThinkingBlockItem[],
+  serverIdOf: (toolName: string) => string | undefined = () => undefined,
+): string | null => stepTitle(items, serverIdOf, true);
 
 /**
  * What a live chain of thought says it is doing: its latest step, while the
@@ -55,7 +58,14 @@ export const finalCoTTitle = (items: readonly ThinkingBlockItem[]): string | nul
 export const liveCoTTitle = (
   items: readonly ThinkingBlockItem[],
   serverIdOf: (toolName: string) => string | undefined = () => undefined,
-): string | null => {
+): string | null => stepTitle(items, serverIdOf, false);
+
+/** The latest step's title, worded as in progress or (``done``) as done. */
+function stepTitle(
+  items: readonly ThinkingBlockItem[],
+  serverIdOf: (toolName: string) => string | undefined,
+  done: boolean,
+): string | null {
   for (let index = items.length - 1; index >= 0; index -= 1) {
     const item = items[index];
     if (item.kind === "thought") {
@@ -69,12 +79,14 @@ export const liveCoTTitle = (
       if (known) return clipTitle(known);
       const label = toolTitle(item.name, args, serverIdOf(item.name));
       // A tool with no label of its own reads as words, not `fetch_weather`.
-      return clipTitle(`Using ${label === item.name ? humaniseName(item.name) : label}`);
+      const name = label === item.name ? humaniseName(item.name) : label;
+      return clipTitle(`${done ? "Used" : "Using"} ${name}`);
     }
     if (item.kind === "delegation") {
-      return item.type ? `Delegating to the ${subagentName(item.type)} sub-agent` : "Delegating to a sub-agent";
+      const to = item.type ? `the ${subagentName(item.type)} sub-agent` : "a sub-agent";
+      return `${done ? "Delegated" : "Delegating"} to ${to}`;
     }
     return null; // an approval or a question: the caller has its own words for those
   }
   return null;
-};
+}

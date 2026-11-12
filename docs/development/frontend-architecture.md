@@ -52,10 +52,14 @@ src/
                    #   AgentRunTimeline, HitlInputTakeover, ComposerTaskNotices,
                    #   message_parts/* (incl. the async-task parts: TaskTreeCards,
                    #   TaskRefBlockView, TaskSettledMarker, TaskNoticeRow, MessageTaskTree,
-                   #   TaskStopButton, TaskOutcomeLine; TaskSidePanel in RunSidePanels)
-      lib/         #   pure helpers, e.g. taskTreeAdapter (task tree → sub-agent cards)
+                   #   TaskStopButton; TaskSidePanel in RunSidePanels; AnswerSourcesPanel)
+      lib/         #   pure helpers, e.g. taskTreeAdapter (task tree → sub-agent cards),
+                   #   sources (the citation source registry: durable + events + live,
+                   #   plan 42), citationText (markers → [1] + "Sources:" for Copy),
+                   #   answerSources (an answer's sources: pointed-at first, then More)
       hooks/       #   useChatEffects, useActiveRunBranchSnap, useConversationRail,
-                   #   useKeyboardShortcuts, useTaskClock
+                   #   useKeyboardShortcuts, useTaskClock, useConversationSources,
+                   #   useAnswerSources
       handlers/    #   conversations, messages, shortcuts, ui
     inference/     # the AG-UI run engine: agui, timeline, inference, hitl(+context),
                    #   useInferenceRuns, useRunTimeline, inferenceErrors, index (barrel);
@@ -82,12 +86,17 @@ src/
 
   shared/                    # cross-cutting, feature-agnostic (imports NOTHING from features)
     ui/                      # design system — shadcn base + ai-elements + react_bits + shadcn-io
+                             #   (ai-elements/inline-citation: the citation pill + card, plan 42;
+                             #   site-icon: a source's favicon from our own origin)
     lib/                     # api, http, schemas, types, consts, utils + persistence
                              #   (authStorage, uiStateStorage, cookieConsentStorage), shortcuts,
                              #   schedule + workflowSchedule (schedule wording / preview shared
-                             #   by Automations → Schedules and the workflow builder)
+                             #   by Automations → Schedules and the workflow builder),
+                             #   citations + remarkCitations + citations-context (inline
+                             #   citation markers, the remark plugin, the sources context),
+                             #   siteIcons (favicon host + failed-host memo)
     stores/                  # workspaceStore (Zustand)
-    hooks/                   # use-mobile, use-toast (framework-generic)
+    hooks/                   # use-mobile, use-toast (framework-generic), useSessionUserId
 
 ```
 
@@ -128,6 +137,30 @@ src/
 - **Dedicated**: everything under a `features/<feature>/` folder is used by exactly
   that feature. This is what makes "what does `/automations` own?" answerable — it's
   `features/automations/`, nothing else.
+
+## Inline citations (plan 42)
+
+The answer's `[src:ID]` markers become citation pills. The pieces sit on both
+sides of the `shared/` boundary, so the dependency direction holds:
+
+| Piece | File | Role |
+| --- | --- | --- |
+| Marker grammar | `shared/lib/citations.ts` | The contract regex, id parsing, hostname, `hideUnclosedCitationMarker` (streaming), code-aware `replaceCitationMarkers` |
+| Remark plugin | `shared/lib/remarkCitations.ts` | Marker → `mx-citation` element with `data-ids`; skips code, math, HTML, link text |
+| Components | `shared/ui/ai-elements/inline-citation.tsx` | AI Elements' `InlineCitation` family on our `HoverCard`; `SourceCitation` resolves ids, drops unknown ones, renders nothing when none is known |
+| Sources context | `shared/lib/citations-context.ts` | `CitationSourcesContext` (a `Map<id, CitationSource>`), read by the pill; empty outside a provider |
+| Contract + API | `shared/lib/schemas.ts` (`CitationSourceSchema`, `ConversationSourcesSchema`), `types/citations.ts`, `api/citations.ts` (`getConversationSources`) | http(s) URLs only, capped text; a bad entry is dropped, never the list |
+| Run fold | `features/inference/timeline.ts` | `SOURCES` events (top-level or in `SUBAGENT_EVENT`) → `RunTimeline.sources`; `collectRunSources(events)` reads a log without folding it |
+| Registry | `features/chat/lib/sources.ts` + `hooks/useConversationSources.ts` | Durable list (TanStack Query; a share's frozen `sources` instead) + settled messages' events + background-task timelines + the live run; reloads when a run ends or a task notification arrives |
+| Copy | `features/chat/lib/citationText.ts` | Markers → `[1]`, `[2]` by first appearance + a `Sources:` list; used by `ChatMessage`, `answerGroupText` and a sub-agent card's copy |
+| Search step chips | `features/chat/components/message_parts/SourceCards.tsx` | A tool step whose `SOURCES` event names pages (`TimelineToolExecution.sources`, attached by `tool_call_id`) shows them as compact chips (`aria-label="Sources"` list): the site icon + the page title (truncated) or its host, the whole chip a safe link, full title + host in its tooltip — for any search tool. Its `TOOL_CALL_RESULT` arrives empty: the page contents never reach the browser |
+| Site icon | `shared/ui/site-icon.tsx` + `shared/lib/siteIcons.ts` + `api/favicons.ts` (`faviconUrl`) + `shared/hooks/useSessionUserId.ts` | A 14–16px favicon from **our own origin only** (`GET /api/v1/favicons/{user_id}?host=…`, the bridge fetches and caches it; lazy, async, no referrer, decorative). User id from the workspace store (signed in, not pending deletion); no user (public share page) or a load error → the site's initial on a muted tile (drawn by CSS, so it never joins copied text). Failed hosts are remembered for the session. Used by the chips, the citation pill, the pill's card and the Sources panel |
+| Answer Sources panel | `features/chat/lib/answerSources.ts` + `hooks/useAnswerSources.ts` + `message_parts/AnswerSourcesPanel.tsx` | "Sources" in an answer's More menu (`AIActionBar`, only when it has any) opens a right Sheet for the whole answer group: first the sources its members' `[src:…]` markers point at (first appearance, resolved via the registry, unknown ids dropped), no heading; then "More" — the rest of the union of the members' `SOURCES` events (+ the bar message's timeline), 8 shown, "N more" reveals the others. http(s) only, no repeats by id or URL |
+
+The renderers opt in: `Response citations` (agent answers: `ContentBlockView`,
+an AI `MessageContent`) and `MarkdownRenderer citations` (off by default, so an
+attachment preview or a person's text is never rewritten). The provider sits in
+`app/WorkspaceShell` (from `useChatWorkspace`) and on `pages/SharedConvPage`.
 
 ## Known transitional state
 

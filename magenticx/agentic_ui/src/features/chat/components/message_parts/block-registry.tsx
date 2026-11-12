@@ -17,7 +17,7 @@ import type {
 } from "@/shared/lib/types";
 import { ArtifactCard } from "./ArtifactCard";
 import { ChartCard } from "./ChartCard";
-import { CompactionDivider } from "./CompactionDivider";
+import { CompactionMarker } from "./ConversationMarkers";
 import { ContentBlockView } from "./Content";
 import { CoTBlock } from "./CoTBlock";
 import { SubagentTreeCard } from "./SubagentTreeCard";
@@ -76,7 +76,7 @@ export const BLOCK_REGISTRY: Record<
     // finished — the agent's state was not changed, so there is nothing to mark.
     if (compaction.status === "running" && !ctx.isLiveActive) return null;
     return (
-      <CompactionDivider
+      <CompactionMarker
         trigger="auto"
         status={compaction.status}
         freed={compaction.freed}

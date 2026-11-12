@@ -33,6 +33,9 @@ class PromptContext:
     has_default_skills: bool = False
     #: Cross-conversation recall is opted in.
     search_past_convs: bool = False
+    #: At least one of the agent's tools hands out source ids (it has an
+    #: extractor in ``harness.sources``), so citing them is worth explaining.
+    has_source_tools: bool = False
     #: The sandbox is enabled, so ``execute`` exists.
     sandbox_enabled: bool = False
     #: This agent has sub-agents, so the "only the orchestrator presents"

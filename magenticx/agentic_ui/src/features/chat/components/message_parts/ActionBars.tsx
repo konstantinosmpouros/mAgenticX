@@ -2,6 +2,7 @@
 import { PlanIcon } from "@/shared/ui/plan-icon";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/shared/ui/tooltip";
 import {
+  BookOpen,
   Bot,
   Copy,
   Check,
@@ -67,6 +68,8 @@ type AIActionBarProps = BaseActionBarProps & {
   onOpenPlan?: () => void;
   onOpenSubagents?: () => void;
   subagentCount?: number;
+  // The answer's Sources panel (plan 42): present only when it has sources.
+  onOpenSources?: () => void;
   showMessageTokenUsage?: boolean;
 };
 
@@ -162,6 +165,7 @@ export const AIActionBar = ({
   onOpenPlan,
   onOpenSubagents,
   subagentCount = 0,
+  onOpenSources,
   showMessageTokenUsage = false,
 }: AIActionBarProps) => {
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
@@ -319,7 +323,10 @@ export const AIActionBar = ({
 
         {!readOnly && (
           <div className="mt-1">
-            <DropdownMenu.Root open={moreMenuOpen} onOpenChange={setMoreMenuOpen}>
+            {/* Not modal: Sources (and Report) open a panel from this menu. A modal
+                menu's page lock (pointer-events: none on <body>) was left behind
+                when the panel closed, and most of the page (the sidebar) took no clicks. */}
+            <DropdownMenu.Root modal={false} open={moreMenuOpen} onOpenChange={setMoreMenuOpen}>
               <Tooltip delayDuration={0}>
                 <TooltipTrigger asChild>
                   <DropdownMenu.Trigger asChild>
@@ -392,6 +399,13 @@ export const AIActionBar = ({
                     )}
                     <span>{isSpeaking ? "Stop reading" : "Read aloud"}</span>
                   </DropdownMenu.Item>
+
+                  {onOpenSources ? (
+                    <DropdownMenu.Item className={moreMenuItemClass} onSelect={onOpenSources}>
+                      <BookOpen className="h-4 w-4" aria-hidden="true" />
+                      <span>Sources</span>
+                    </DropdownMenu.Item>
+                  ) : null}
 
                   {!conversationIsReported && onReportMessage && (
                     <>

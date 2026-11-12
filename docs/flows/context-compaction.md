@@ -34,7 +34,7 @@ own usage scope, `compaction`.
 
 ```mermaid
 flowchart LR
-    UI["agentic_ui<br/>ContextMeter (sidebar gauge + panel)<br/>CompactionDivider"] -->|"POST /v1/conversations/{user}/{conv}/compact[/undo]"| BR["dialogue_bridge<br/>utils/compaction.py<br/>Redis lock compaction:{conv}"]
+    UI["agentic_ui<br/>ContextMeter (sidebar gauge + panel)<br/>CompactionMarker"] -->|"POST /v1/conversations/{user}/{conv}/compact[/undo]"| BR["dialogue_bridge<br/>utils/compaction.py<br/>Redis lock compaction:{conv}"]
     BR -->|"POST /agents/{slug}/compact[/undo]"| AG["agents<br/>harness/checkpointer/compaction.py"]
     AG -->|"read head · write _summarization_event"| CK[("agent_runtime<br/>LangGraph checkpoints")]
     AG -->|"/conversation_history/{thread}.md"| FS[("conversation volume")]
@@ -139,6 +139,6 @@ stays booked, because it happened.
 | Bridge routes, DTOs | `magenticx/dialogue_bridge/router/conversations.py`, `schema/compaction.py`, `schema/messages.py` (`MessageCompactionOut`) |
 | Column | `messages.compaction`, migration `0035_message_compaction` |
 | Sidebar gauge, panel | `magenticx/agentic_ui/src/features/chat/components/ContextMeter.tsx` (rendered by `ChatSidebar`'s `contextControl`, wired in `app/WorkspaceShell.tsx`) |
-| Divider | `…/chat/components/message_parts/CompactionDivider.tsx`, `ChatBody.tsx`, `block-registry.tsx` |
+| Marker | `…/chat/components/message_parts/ConversationMarkers.tsx` (`CompactionMarker`), `ChatBody.tsx`, `block-registry.tsx` |
 | Hook | `…/chat/hooks/useConversationCompaction.ts`, `useCanHover.ts` |
 | Timeline | `magenticx/agentic_ui/src/features/inference/timeline.ts` (`foldCompaction`), `agui.ts` |

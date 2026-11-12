@@ -52,6 +52,7 @@ import {
 } from "@/features/auth/hooks/useSessionEffects";
 import { useActiveRunBranchSnap } from "@/features/chat/hooks/useActiveRunBranchSnap";
 import { useTaskBusySidebar } from "@/features/chat/hooks/useTaskBusySidebar";
+import { useConversationSources } from "@/features/chat/hooks/useConversationSources";
 import { useWorkspaceStore } from "@/shared/stores/workspaceStore";
 
 // Handlers, imported from the feature that owns each one.
@@ -435,6 +436,23 @@ export function useChatWorkspace({
   const isCurrentConversationStreaming =
     isConversationStreaming(currentConversation?.id ?? null) ||
     Boolean(currentConversation?.activeRunId);
+
+  // Inline citations (plan 42): every source the open conversation may cite —
+  // its durable list, the visible messages' events, the folded background
+  // tasks and the live run — for the chat's `CitationSourcesContext`.
+  const taskNodeTimelines = useMemo(
+    () => Object.values(taskTree.nodes).map((node) => node.timeline),
+    [taskTree.nodes],
+  );
+  const citationSources = useConversationSources({
+    userId,
+    conversationId: taskConversationId,
+    messages: activeMessages,
+    liveTimeline: activeConversationRun?.timeline ?? null,
+    runActive: isCurrentConversationStreaming,
+    taskTimelines: taskNodeTimelines,
+    snapshotSources: initialSharedConversation?.sources,
+  });
 
   // The composer: draft, attachments, dictation, layout, and the send flag.
   // Declared here because it needs the streaming flag above to know whether it
@@ -1536,6 +1554,8 @@ export function useChatWorkspace({
     isDecisionInFlight,
     // Background tasks (plan 41): the tree for the chat's context, the queue.
     backgroundTasksContext,
+    // Inline citations (plan 42): the sources the chat's pills resolve against.
+    citationSources,
     queuedMessage,
     canQueueSend,
     handleCancelQueuedMessage,

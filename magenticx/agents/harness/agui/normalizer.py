@@ -24,6 +24,7 @@ from pydantic import ValidationError
 
 from core.logging import get_logger
 from harness.agui.emitter import AGUIEmitter, Event, encode
+from harness.middlewares.sources import SOURCES_KEY
 from harness.middlewares.summarization import COMPACTION_KEY
 from harness.middlewares.tool_metrics import TOOL_METRICS_KEY
 from harness.middlewares.usage_metrics import METRICS_KEY as USAGE_METRICS_KEY
@@ -597,13 +598,23 @@ class AGUIStreamNormalizer:
         self._started_tools.add(call_id)
 
     def _tool_card_close(self, out: list[Event], call_id: str, msg: Any, label: str | None, *, error: bool) -> None:
-        """The result and end of a tool card, then its TOOL_USAGE."""
+        """The result and end of a tool card, then its TOOL_USAGE and SOURCES.
+
+        A result that carries valid sources (plan 42) is not sent as text: the
+        card shows its pages from the SOURCES event, and the page contents — the
+        model's reading, not the user's — never leave the agents service. A
+        malformed stamp sends the result as before, so the card is never empty.
+        """
+        sources = None if error else self._sources_event(msg, call_id, label)
         self._add(out, self.emitter.tool_call_result(
-            tool_call_id=call_id, thread_id=self.thread_id, output=getattr(msg, "content", ""),
+            tool_call_id=call_id, thread_id=self.thread_id,
+            output="" if sources is not None else getattr(msg, "content", ""),
             namespace=label, error=error,
         ))
         self._add(out, self.emitter.tool_call_end(tool_call_id=call_id, namespace=label))
         self._tool_usage(out, msg, call_id, label)
+        if sources is not None:
+            self._add(out, sources)
         self._open_tools.discard(call_id)
         self._finished_tools.add(call_id)
 
@@ -621,6 +632,23 @@ class AGUIStreamNormalizer:
             ))
         except ValidationError:
             logger.warning("tool_usage_skipped", "Malformed tool metrics on a tool result", tool_call_id=call_id)
+
+    def _sources_event(self, msg: Any, call_id: str, label: str | None) -> Event | None:
+        """The SOURCES event for the stamp ``SourcesMiddleware`` put on the result,
+        or None. Citations never break the stream: a malformed stamp is logged
+        (counts only, never a URL) and dropped."""
+        stamp = (getattr(msg, "response_metadata", None) or {}).get(SOURCES_KEY)
+        if not stamp:
+            return None
+        if not isinstance(stamp, list):
+            logger.warning("sources_event_skipped", "Malformed sources stamp on a tool result", tool_call_id=call_id)
+            return None
+        try:
+            return self.emitter.sources(tool_call_id=call_id, sources=stamp, namespace=label)
+        except ValidationError:
+            logger.warning("sources_event_skipped", "Malformed sources stamp on a tool result",
+                           tool_call_id=call_id, sources=len(stamp))
+            return None
 
     def _on_tool_result(self, out: list[Event], msg: Any, label: str | None) -> None:
         call_id = getattr(msg, "tool_call_id", None)

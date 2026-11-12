@@ -160,11 +160,14 @@ All modes produce the same JSON envelope:
       "plan": {},
       "subagents": {}
     }
+  ],
+  "sources": [
+    {"id": "3fa2c1", "url": "https://example.com/a", "title": "…", "snippet": "…", "tool": "tavily-search"}
   ]
 }
 ```
 
-Attachment blobs are base64-encoded and embedded directly in the JSON. The snapshot is fully self-contained.
+Attachment blobs are base64-encoded and embedded directly in the JSON. `sources` (plan 42) holds only the citation sources the shared messages cite, and is absent when they cite none. The snapshot is fully self-contained.
 
 ---
 
@@ -206,7 +209,11 @@ Builds the message selection from `messageId` + `mode` identically to a share, t
 
 **`GET /v1/shared-conversations/{token}`** — Fetch a share
 
-Validates: `is_active = true`, `revoked_at IS NULL`, `expires_at IS NULL OR expires_at > now()`. Returns the full `SharedConversationDetail` from `snapshot_json`. Anyone with the URL can call this.
+Validates: `is_active = true`, `revoked_at IS NULL`, `expires_at IS NULL OR expires_at > now()`. Returns the full `SharedConversationDetail` from `snapshot_json`, including `sources` — the citation sources frozen at share time (below), re-validated on every read (`http(s)` URLs only, capped lengths; a bad entry is dropped). Anyone with the URL can call this.
+
+**Citation sources in a share (plan 42).** The public view has no session, so it cannot read the conversation's sources later — and it must not see sources the shared part does not cite (other branches, later turns). So when the link is made, `attach_cited_sources` (`utils/shared_conv.py`) collects the source ids the snapshot's `[src:ID]` markers cite (each message's `content` and the text deltas of its `rawEvents`, sub-agent envelopes included), fetches the conversation's sources once with the owner's ids, and stores only the cited ones as `snapshot_json["sources"]`. No marker → no call; the agents service down → the link is still made, without sources, and its markers render nothing. A share made before plan 42 has no `sources` key and returns `[]`.
+
+In the UI, `transformSharedConversationDetail` re-checks each frozen source (`toCitationSources`) and the share page (and a logged-in viewer's workspace view of a `full` share) hands them to `useConversationSources` as the conversation's durable list, merged with the `SOURCES` events of the snapshot's own `rawEvents`. Copy on a shared answer goes through the same `citationsToPlainText` as in the chat: markers become `[1]`, `[2]` and a `Sources:` list (title — URL) closes the text; an id with no source is removed.
 
 ### Fork Endpoint (authentication + CSRF required)
 
@@ -228,6 +235,7 @@ The decision to store `snapshot_json` instead of DB foreign-key references is de
 | Owner renames the conversation | Share title unchanged |
 | Agent is updated or removed | Share shows agent data at creation time |
 | Attachment blob is deleted | Share still embeds the base64 data |
+| A cited source is dropped from the conversation | Share keeps the copy frozen in `snapshot_json["sources"]` |
 
 The one case where deletion does cascade is conversation deletion — the `conversation_shares.conversation_id` FK has `CASCADE`, so all share rows for a conversation are deleted when the conversation is removed. A recipient accessing the link after that gets a 404.
 
@@ -347,4 +355,5 @@ There are no endpoints to list or resolve reports via the public API. Report man
 | Pydantic schemas | [magenticx/dialogue_bridge/schema/sharing.py](../../magenticx/dialogue_bridge/schema/sharing.py) | `ConversationShareIn`, `ConversationShareResponse`, `SharedConversationDetail` |
 | Frontend API calls | [magenticx/agentic_ui/src/shared/lib/api/](../../magenticx/agentic_ui/src/shared/lib/api/) | `shareConversation()`, `revokeSharedConversationLink()`, `getSharedConversation()`, `startInference()`, `downloadConversationPdfExport()` |
 | Frontend types | [magenticx/agentic_ui/src/shared/lib/types/](../../magenticx/agentic_ui/src/shared/lib/types/) | `ConversationShareMode`, `ConversationShareResponse`, `SharedConversationDetail` |
+| Citation sources on a share (plan 42) | [magenticx/agentic_ui/src/pages/SharedConvPage.tsx](../../magenticx/agentic_ui/src/pages/SharedConvPage.tsx), [features/chat/hooks/useConversationSources.ts](../../magenticx/agentic_ui/src/features/chat/hooks/useConversationSources.ts), [features/chat/lib/citationText.ts](../../magenticx/agentic_ui/src/features/chat/lib/citationText.ts) | `CitationSourcesContext` provider from `detail.sources`; Copy → numbered references |
 | Share UI handlers | [magenticx/agentic_ui/src/features/sharing/handlers/share.ts](../../magenticx/agentic_ui/src/features/sharing/handlers/share.ts) | `handleCreateShareLink()`, `handleRevokeSharedConversation()`, `loadSharedConversationPage()` |

@@ -7,6 +7,8 @@ import { Button } from "@/shared/ui/button";
 import { BrandLogo } from "@/shared/ui/brand-logo";
 import { Textarea } from "@/shared/ui/textarea";
 import ChatBody from "@/features/chat/components/ChatBody";
+import { useConversationSources } from "@/features/chat/hooks/useConversationSources";
+import { CitationSourcesContext } from "@/shared/lib/citations-context";
 import { getSharedConversation, startInference } from "@/shared/lib/api";
 import { getInferenceStartErrorCopy } from "@/features/inference";
 import type { SharedConversationDetail } from "@/shared/lib/types";
@@ -44,6 +46,14 @@ export default function SharedConversationPage() {
   const [replyDraft, setReplyDraft] = useState("");
   const [continuing, setContinuing] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  // A viewer has no access to the conversation's sources (plan 42): the
+  // snapshot carries the ones it cites, plus its messages' own events.
+  const citationSources = useConversationSources({
+    userId: null,
+    conversationId: null,
+    messages: detail?.messages ?? null,
+    snapshotSources: detail?.sources,
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -283,6 +293,7 @@ export default function SharedConversationPage() {
           </div>
         ) : (
           <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col overflow-hidden border-white/10 bg-background/45 shadow-[0_24px_80px_rgba(0,0,0,0.28)] md:rounded-2xl md:border">
+            <CitationSourcesContext.Provider value={citationSources}>
             <ChatBody
               messages={detail.messages}
               loadingConversation={false}
@@ -305,6 +316,7 @@ export default function SharedConversationPage() {
               readOnly
               isStreaming={false}
             />
+            </CitationSourcesContext.Provider>
           </div>
         )}
       </main>

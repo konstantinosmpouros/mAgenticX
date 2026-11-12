@@ -35,6 +35,7 @@ def full(pe):
         sandbox_enabled=True,
         has_subagents=True,
         has_ask_user=True,
+        has_source_tools=True,
         narrate_progress=True,
         now=datetime(2026, 9, 15, 17, 23, tzinfo=timezone.utc),
         personalization="## How To Talk To This User\n\nBe brief.",
@@ -176,6 +177,7 @@ def test_the_sections_are_ordered_stable_first_volatile_last(pe, full):
         "personalization",
         "filesystem",
         "capabilities",
+        "citations",
         "efficiency",
         "progress",
         "memory",
@@ -257,6 +259,7 @@ def test_every_conversation_run_narrates_a_background_task_as_a_sub_agent(agents
         personalization = personalization_mod.Personalization()
         _has_reference = False
         _has_default_skills = False
+        tools = ()
 
         def __init__(self, context, async_task_id=None):
             self.context = context
