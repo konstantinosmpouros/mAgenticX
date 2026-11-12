@@ -141,7 +141,14 @@ export type WorkflowSchemaField = {
   type: WorkflowSchemaFieldType;
   description: string;
   required: boolean;
+  /** `string` only: the values it may take (`enum`); empty = any text. */
+  options?: string[];
+  /** `array` only: what each item is (`items.type`); absent = any items. */
+  itemType?: WorkflowSchemaItemType;
 };
+
+/** What a list field of the reply holds, item by item. */
+export type WorkflowSchemaItemType = "string" | "number" | "integer" | "boolean";
 
 export type WorkflowRuleOp =
   | "eq"

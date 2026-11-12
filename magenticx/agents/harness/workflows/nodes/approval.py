@@ -29,7 +29,7 @@ MAX_COMMENT_CHARS = 2000
 class ApprovalConfig(NodeConfig):
     """What the person is asked, and what they see alongside it."""
 
-    message: str = Field(min_length=1, max_length=2000, description="The question shown to the approver")
+    message: str = Field(min_length=1, max_length=2000, description="The question shown to the approver; templates allowed")
     payload: Any = Field(default=None, description="Data shown with the question (templates allowed)")
 
 

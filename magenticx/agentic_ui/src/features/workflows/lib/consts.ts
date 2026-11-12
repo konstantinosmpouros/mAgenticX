@@ -69,11 +69,60 @@ export const RUN_PANEL_MAX_SHARE = 0.6;
 /** Where the run panel's width is remembered on this device. */
 export const RUN_PANEL_WIDTH_STORAGE_KEY = "magenticx:workflow-view:panel-width";
 
-/** JSON trees open this many levels deep; deeper levels start folded. */
+/** JSON trees open this many levels deep (1: the top level only); deeper levels start folded. */
 export const JSON_OPEN_DEPTH = 2;
 
-/** Long strings in a JSON tree are cut here, with a "show all" toggle. */
+/** Long strings in a value tree are clamped past this many characters (or lines), with "Show more". */
 export const JSON_STRING_PREVIEW = 280;
+export const JSON_STRING_LINES = 4;
+
+/** A value tree shows this many entries of an object or list at a time ("Show 20 more"). */
+export const TREE_PAGE_SIZE = 20;
+
+/** A step's value panel: the folding tree, or the exact payload as JSON. */
+export const VALUE_MODES = [
+  { id: "tree", label: "Tree" },
+  { id: "raw", label: "Raw JSON" },
+] as const;
+
+/** The usual reason phrase of the statuses a fetch step meets most. */
+export const HTTP_STATUS_TEXT: Readonly<Record<number, string>> = {
+  200: "OK",
+  201: "Created",
+  202: "Accepted",
+  204: "No Content",
+  301: "Moved Permanently",
+  302: "Found",
+  304: "Not Modified",
+  307: "Temporary Redirect",
+  308: "Permanent Redirect",
+  400: "Bad Request",
+  401: "Unauthorized",
+  403: "Forbidden",
+  404: "Not Found",
+  405: "Method Not Allowed",
+  408: "Request Timeout",
+  409: "Conflict",
+  410: "Gone",
+  413: "Payload Too Large",
+  415: "Unsupported Media Type",
+  422: "Unprocessable Content",
+  429: "Too Many Requests",
+  500: "Internal Server Error",
+  501: "Not Implemented",
+  502: "Bad Gateway",
+  503: "Service Unavailable",
+  504: "Gateway Timeout",
+};
+
+/** A status chip's tone (always paired with an icon and text, never colour alone). */
+export const TONE_CHIP = {
+  success: "bg-success/15 text-success",
+  info: "bg-info/15 text-info",
+  warning: "bg-warning/15 text-warning",
+  error: "bg-destructive/[0.12] text-destructive",
+  muted: "bg-muted text-muted-foreground",
+} as const;
 
 /** The filled primary pill (Run ▸), as on the Automations page. */
 export const PRIMARY_BUTTON =

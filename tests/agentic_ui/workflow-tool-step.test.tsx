@@ -227,6 +227,9 @@ describe("tool step inspector", () => {
   it("shows required arguments; optional ones are added, filled and removed", async () => {
     const onChange = renderForm({ tool: { source: "mcp", name: "tavily-search" }, args: { query: "x" } });
     expect(await screen.findByText("Query")).toBeTruthy();
+    // An argument's description is one tap away, behind the (i) beside its name.
+    expect(screen.queryByText("Search query.")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "About Query" }));
     expect(screen.getByText("Search query.")).toBeTruthy();
     expect(screen.queryByText("Max results")).toBeNull();
 

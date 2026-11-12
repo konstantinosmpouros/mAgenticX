@@ -2,8 +2,7 @@ import * as React from "react";
 import { Check, ChevronDown, X } from "lucide-react";
 
 import { cn } from "@/shared/lib/utils";
-import { MarkdownRenderer } from "@/shared/ui/markdownRenderer";
-import { hasContent } from "@/features/workflows/lib/format";
+import { Response } from "@/shared/ui/ai-elements/response";
 import {
   formatNumber,
   humanizeKey,
@@ -11,9 +10,8 @@ import {
   recordColumns,
   valueShape,
 } from "@/features/workflows/lib/valueView";
-import { CopyJsonButton } from "./JsonView";
 
-/** Markdown at a panel's scale: the chat renderer's headings brought down to body size. */
+/** Markdown at a panel's scale: the chat's Response with its headings brought down to body size. */
 const MARKDOWN_CLASS =
   "text-[13px] leading-6 text-foreground [&_h1]:mb-2 [&_h1]:mt-4 [&_h1]:text-[15px] [&_h1]:font-semibold [&_h2]:mb-1.5 [&_h2]:mt-3.5 [&_h2]:text-[14px] [&_h2]:font-semibold [&_h3]:mb-1 [&_h3]:mt-3 [&_h3]:text-[13px] [&_h3]:font-semibold [&_li]:my-0 [&_p]:mb-2 [&_ul]:mb-2 [&_ul]:pl-5 [&_ol]:mb-2 [&_ol]:pl-5";
 
@@ -30,7 +28,8 @@ export function MarkdownBlock({ text }: { text: string }) {
     const measure = () => setFull(element.scrollHeight);
     measure();
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
-    observer?.observe(element.firstElementChild ?? element);
+    // The rendered markdown root (Response wraps it in a `display: contents` box).
+    observer?.observe(element.querySelector(".chat-markdown") ?? element);
     return () => observer?.disconnect();
   }, [text]);
   const overflows = full > FOLDED_HEIGHT + 24;
@@ -43,7 +42,7 @@ export function MarkdownBlock({ text }: { text: string }) {
           className="min-w-0 overflow-hidden break-words transition-[max-height] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] [overflow-wrap:anywhere] motion-reduce:transition-none"
           style={overflows ? { maxHeight: open ? full : FOLDED_HEIGHT } : undefined}
         >
-          <MarkdownRenderer content={text} className={MARKDOWN_CLASS} />
+          <Response className={MARKDOWN_CLASS}>{text}</Response>
         </div>
         <div
           aria-hidden
@@ -250,44 +249,5 @@ function Items({ items, depth }: { items: readonly unknown[]; depth: number }) {
         </button>
       ) : null}
     </div>
-  );
-}
-
-type ValueViewProps = {
-  value: unknown;
-  /** The small heading; the copy button sits beside it. */
-  title: string;
-  /** Shown when there is nothing to show. */
-  emptyText?: string;
-  /** Top-level keys left out of the view (shown elsewhere, e.g. a rendered answer). */
-  hideKeys?: readonly string[];
-  className?: string;
-};
-
-/**
- * A run value as people read it — labelled fields, rendered text, chips,
- * small tables and numbered items, never raw JSON — with a copy button for
- * the exact payload. Used for a step's input and output and what it saved.
- */
-export function ValueView({ value, title, emptyText = "Nothing here.", hideKeys, className }: ValueViewProps) {
-  const readable = React.useMemo(() => {
-    if (!hideKeys?.length || typeof value !== "object" || value === null || Array.isArray(value)) return value;
-    return Object.fromEntries(Object.entries(value).filter(([key]) => !hideKeys.includes(key)));
-  }, [value, hideKeys]);
-  const empty = !hasContent(readable);
-  // Everything it holds is shown elsewhere (hidden keys): nothing to add here.
-  if (empty && hasContent(value)) return null;
-  return (
-    <section className={cn("min-w-0", className)} aria-label={title}>
-      <div className="mb-2 flex min-h-[1.75rem] items-center justify-between gap-2">
-        <h4 className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{title}</h4>
-        {hasContent(value) ? <CopyJsonButton value={value} label={`Copy ${title.toLowerCase()}`} /> : null}
-      </div>
-      {empty ? (
-        <p className="rounded-xl bg-muted/30 px-3 py-2.5 text-xs italic text-muted-foreground">{emptyText}</p>
-      ) : (
-        <Readable value={readable} depth={0} />
-      )}
-    </section>
   );
 }

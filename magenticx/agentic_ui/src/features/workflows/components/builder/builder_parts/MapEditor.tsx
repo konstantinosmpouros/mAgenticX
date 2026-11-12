@@ -2,9 +2,8 @@ import * as React from "react";
 import { Plus, Trash2 } from "lucide-react";
 
 import type { WorkflowMapValueKind, WorkflowTemplatePath } from "@/shared/lib/types";
-import { ICON_BUTTON, INPUT_SM, SMALL_BUTTON } from "@/features/workflows/lib/builder/consts";
+import { ADD_BUTTON, ICON_BUTTON, INPUT_SM } from "@/features/workflows/lib/builder/consts";
 import { LooseValueField } from "./Controls";
-import { EmptyNote } from "./FieldShell";
 import { TemplateField } from "./TemplateField";
 
 type Row = { key: string; value: unknown };
@@ -138,11 +137,12 @@ export function MapEditor({
           </div>
         ))
       ) : (
-        <EmptyNote>{emptyText}</EmptyNote>
+        // Empty: the add action says it all; the empty text stays for screen readers.
+        <p className="sr-only">{emptyText}</p>
       )}
       <button
         type="button"
-        className={SMALL_BUTTON}
+        className={ADD_BUTTON}
         disabled={max !== undefined && rows.length >= max}
         onClick={() => commit([...rows, { key: "", value: valueKind === "string" ? "" : null }])}
       >

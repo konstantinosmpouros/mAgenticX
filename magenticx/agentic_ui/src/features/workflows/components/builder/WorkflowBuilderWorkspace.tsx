@@ -1210,7 +1210,7 @@ export function WorkflowBuilderWorkspace({
             </SheetContent>
           </Sheet>
           <Sheet open={inspectorOpen} onOpenChange={setInspectorOpen}>
-            <SheetContent side="bottom" aria-describedby={undefined} className="h-[75dvh] rounded-t-[1.5rem] p-0">
+            <SheetContent side="bottom" hideClose aria-describedby={undefined} className="h-[75dvh] rounded-t-[1.5rem] p-0">
               <SheetTitle className="sr-only">{selectedNode ? "Edit the step" : "Workflow settings"}</SheetTitle>
               <button
                 type="button"
@@ -1224,7 +1224,7 @@ export function WorkflowBuilderWorkspace({
             </SheetContent>
           </Sheet>
           <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
-            <SheetContent side="bottom" aria-describedby={undefined} className="h-[75dvh] rounded-t-[1.5rem] p-0">
+            <SheetContent side="bottom" hideClose aria-describedby={undefined} className="h-[75dvh] rounded-t-[1.5rem] p-0">
               <SheetTitle className="sr-only">Version history</SheetTitle>
               <button
                 type="button"

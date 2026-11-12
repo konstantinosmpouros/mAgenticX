@@ -9,18 +9,14 @@ import type {
   WorkflowExecution,
 } from "@/shared/lib/types";
 import { DETAIL_TABS, VIEW_MOTION } from "@/features/workflows/lib/consts";
-import {
-  executionStateWrites,
-  formatClock,
-  formatDuration,
-  hasContent,
-} from "@/features/workflows/lib/format";
+import { executionStateWrites, formatClock, formatDuration } from "@/features/workflows/lib/format";
 import { EXECUTION_STATUS_META } from "@/features/workflows/lib/status";
 import { ApprovalCard } from "./ApprovalCard";
 import { KindTile } from "../workflow_parts/KindTile";
 import { StatusChip } from "./StatusChip";
 import { ToolCallList } from "./ToolCallList";
-import { MarkdownBlock, Readable, ValueView } from "./ValueView";
+import { StepInput, StepOutput } from "./StepOutput";
+import { ValueTree } from "./ValueTree";
 
 type ExecutionDetailsProps = {
   execution: WorkflowExecution;
@@ -34,10 +30,6 @@ type ExecutionDetailsProps = {
   /** Hide the title row (the mobile sheet shows its own). */
   hideTitle?: boolean;
 };
-
-/** An llm step's output keys the readable view leaves out once its answer is shown rendered. */
-const TEXT_KEYS = ["text", "messages"] as const;
-const NO_KEYS: readonly string[] = [];
 
 const STATE_EMPTY: Partial<Record<WorkflowExecution["status"], string>> = {
   running: "Nothing saved yet — the step is still running.",
@@ -74,8 +66,8 @@ function StateTab({ execution }: { execution: WorkflowExecution }) {
             <p className="mt-1 text-[11.5px] leading-5 text-muted-foreground">{write.note}</p>
           ) : null}
           {write.hasValue ? (
-            <div className="mt-2 min-w-0">
-              <Readable value={write.value} depth={1} />
+            <div className="-mx-1.5 mt-1.5 min-w-0">
+              <ValueTree value={write.value} label={write.path} />
             </div>
           ) : null}
         </li>
@@ -88,7 +80,8 @@ function StateTab({ execution }: { execution: WorkflowExecution }) {
  * One execution's details: its header (step, Run N when it ran more than once,
  * status, timing, branch), its
  * error, the approval it waits on, and tabs — Input (the resolved config it
- * ran with), Output (streamed text and the output), State (what it saved:
+ * ran with), Output (a summary of what it did per kind, then the rest as a
+ * folding tree or raw JSON — `StepOutput`), State (what it saved:
  * its result, an llm turn, variables), Tool calls (the chat's tool
  * views). The chosen tab is kept when
  * another execution is selected, so stepping through a loop compares like
@@ -105,9 +98,6 @@ export function ExecutionDetails({
 }: ExecutionDetailsProps) {
   const [tab, setTab] = React.useState<WorkflowDetailTab>("output");
   const reduceMotion = useReducedMotion();
-  // The streamed answer is shown rendered above the output: not again among its fields.
-  const outputText = execution.output && typeof execution.output === "object" ? (execution.output as Record<string, unknown>).text : undefined;
-  const hideOutputKeys = execution.text && outputText === execution.text ? TEXT_KEYS : NO_KEYS;
   const meta = EXECUTION_STATUS_META[execution.status];
   const tabsId = React.useId();
   const tablistRef = React.useRef<HTMLDivElement>(null);
@@ -264,29 +254,8 @@ export function ExecutionDetails({
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: VIEW_MOTION.base, ease: VIEW_MOTION.ease }}
           >
-          {tab === "input" ? (
-            <ValueView value={execution.input} title="Input" emptyText="This step ran with no input." />
-          ) : null}
-          {tab === "output" ? (
-            <div className="space-y-4">
-              {execution.text ? (
-                <section aria-label="Response" className="min-w-0">
-                  <h4 className="mb-2 flex min-h-[1.75rem] items-center text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                    Response
-                  </h4>
-                  <MarkdownBlock text={execution.text} />
-                </section>
-              ) : null}
-              {hasContent(execution.output) || !execution.text ? (
-                <ValueView
-                  value={execution.output}
-                  title={execution.text ? "Details" : "Output"}
-                  hideKeys={hideOutputKeys}
-                  emptyText={execution.status === "running" ? "Still running…" : "No output."}
-                />
-              ) : null}
-            </div>
-          ) : null}
+          {tab === "input" ? <StepInput kind={kind} execution={execution} /> : null}
+          {tab === "output" ? <StepOutput kind={kind} execution={execution} /> : null}
           {tab === "state" ? <StateTab execution={execution} /> : null}
           {tab === "tools" ? <ToolCallList calls={execution.toolCalls} /> : null}
           </motion.div>

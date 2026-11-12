@@ -469,7 +469,7 @@
       "description": "What the person is asked, and what they see alongside it.",
       "properties": {
         "message": {
-          "description": "The question shown to the approver",
+          "description": "The question shown to the approver; templates allowed",
           "maxLength": 2000,
           "minLength": 1,
           "title": "Message",

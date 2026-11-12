@@ -1,34 +1,80 @@
 import * as React from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { Info } from "lucide-react";
 
+import { cn } from "@/shared/lib/utils";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 import type {
   WorkflowBuilderIssue,
   WorkflowCasesChange,
+  WorkflowFormField,
   WorkflowNodeDef,
   WorkflowNodeKindInfo,
   WorkflowSpec,
 } from "@/shared/lib/types";
 import { kindMeta, humanizeKind } from "@/features/workflows/lib/kinds";
-import { INPUT, NO_ADVANCED_KINDS } from "@/features/workflows/lib/builder/consts";
+import { REVEAL, REVEAL_REDUCED } from "@/features/workflows/lib/builder/consts";
 import { fieldDomId, slugFromLabel } from "@/features/workflows/lib/builder/ids";
+import { enumLabel, isCustomised, splitInspectorFields } from "@/features/workflows/lib/builder/inspectorLayout";
 import { SCHEDULE_TRIGGER_KIND } from "@/features/workflows/lib/builder/schedule";
 import { templatePaths } from "@/features/workflows/lib/builder/templates";
 import { issueIsOn, kindFields } from "@/features/workflows/lib/builder/validate";
-import { Disclosure, Field, FieldIssues } from "./FieldShell";
+import { Disclosure, FieldIssues } from "./FieldShell";
 import { ScheduleTriggerEditor } from "./ScheduleTriggerEditor";
 import { SchemaForm } from "./SchemaForm";
 
 /**
- * The inspector for one step: what kind it is, its label, its config form
- * (generated from the kind's schema), and its node-level issues
- * (connections, references) on top. The id is never typed: it follows the
- * label when the label is committed (blur, Enter), through the same rename
- * that moves edges and references; it sits in a folded "Advanced" at the
- * end. A schedule trigger gets its own editor in place of the generic form.
- * How a workflow starts is the trigger step on the canvas: another start is
- * another trigger from the palette. Data from earlier steps comes in through
- * each field's own `{ }` picker; variables are written by Set steps. Triggers
- * and the kinds in `NO_ADVANCED_KINDS` leave the Advanced fold out (unless
- * there is an id issue to deal with).
+ * A short enum shown as a quiet pill beside the kind's name — an HTTP step's
+ * method, an LLM step's model: read at a glance, changed in place, without a
+ * labelled dropdown of its own in the form.
+ */
+function HeaderChoice({
+  nodeId,
+  field,
+  value,
+  onChange,
+  invalid,
+}: {
+  nodeId: string;
+  field: WorkflowFormField;
+  value: string;
+  onChange: (value: string) => void;
+  invalid: boolean;
+}) {
+  return (
+    <Select value={value || undefined} onValueChange={onChange}>
+      <SelectTrigger
+        id={fieldDomId(nodeId, `config.${field.key}`)}
+        aria-label={field.label}
+        aria-invalid={invalid || undefined}
+        className={cn(
+          "h-6 w-auto min-w-0 max-w-[11rem] gap-1 rounded-md border-transparent bg-muted/60 px-1.5 py-0 font-mono text-[11px] font-medium text-muted-foreground shadow-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-0 aria-[invalid=true]:text-destructive [&>svg]:h-3 [&>svg]:w-3",
+        )}
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent className="rounded-xl border border-border/60 bg-popover text-popover-foreground shadow-lg">
+        {(field.options ?? []).map((option) => (
+          <SelectItem key={option} value={option} className="rounded-lg font-mono text-[12px]">
+            {enumLabel(option)}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+/**
+ * The inspector for one step. Its header is the step itself: the kind's
+ * glyph and name, a header choice where the kind has one (GET / POST, the
+ * model), and the label as an editable title — so the form below holds only
+ * the settings that shape what the step does. What the kind does, and how
+ * later steps refer to it, sit behind the (i). Settings most steps never
+ * touch fold under "More options" (`lib/builder/inspectorLayout`), with a
+ * count of the ones changed. The id is never typed: it follows the label when
+ * the label is committed (blur, Enter), through the same rename that moves
+ * edges and references. A schedule trigger gets its own editor in place of
+ * the generic form.
  */
 export function NodeInspector({
   node,
@@ -48,24 +94,43 @@ export function NodeInspector({
   onLabel: (label: string) => void;
   onConfig: (config: Record<string, unknown>, cases?: WorkflowCasesChange) => void;
 }) {
+  const reduceMotion = useReducedMotion();
   const meta = kindMeta(node.kind);
   const Glyph = meta.icon;
   const fields = React.useMemo(() => (info ? kindFields(info) : []), [info]);
   const paths = React.useMemo(() => templatePaths(spec, node.id), [spec, node.id]);
-  const isTrigger = info?.isTrigger ?? node.kind.startsWith("trigger.");
   const taken = React.useMemo(
     () => new Set(spec.nodes.map((other) => other.id).filter((id) => id !== node.id)),
     [spec.nodes, node.id],
   );
+  const [aboutOpen, setAboutOpen] = React.useState(false);
   const general = issues
     .filter((issue) => !issueIsOn(issue, "config") || issue.field === "config")
     .filter((issue) => issue.field !== "id" && issue.field !== "label");
   const labelId = fieldDomId(node.id, "label");
   const isSchedule = node.kind === SCHEDULE_TRIGGER_KIND;
   // The schedule trigger's own editor covers its whole config.
-  const mainFields = isSchedule ? [] : fields;
-  const idIssues = issues.filter((i) => i.field === "id");
-  const showAdvanced = !(isTrigger || NO_ADVANCED_KINDS.has(node.kind)) || idIssues.length > 0;
+  const layout = React.useMemo(
+    () => splitInspectorFields(node.kind, isSchedule ? [] : fields, node.config),
+    [node.kind, isSchedule, fields, node.config],
+  );
+  const headerField = layout.header;
+  const headerWhere = headerField ? `config.${headerField.key}` : "";
+  const headerIssues = headerField ? issues.filter((issue) => issueIsOn(issue, headerWhere)) : [];
+  const headerValue = headerField
+    ? typeof node.config[headerField.key] === "string"
+      ? (node.config[headerField.key] as string)
+      : typeof headerField.default === "string"
+        ? headerField.default
+        : (headerField.options?.[0] ?? "")
+    : "";
+  const moreIssues = issues.filter(
+    (issue) =>
+      issue.severity === "error" && layout.more.some((field) => issueIsOn(issue, `config.${field.key}`)),
+  );
+  const moreSet = layout.more.filter((field) => isCustomised(field, node.config)).length;
+  const titleIssues = issues.filter((i) => i.field === "label" || i.field === "id");
+  const kindLabel = info?.label ?? humanizeKind(node.kind);
   // The label as it was when the field took focus: the id follows only a label that changed.
   const labelAtFocus = React.useRef<string | null>(null);
   const commitLabel = () => {
@@ -76,28 +141,103 @@ export function NodeInspector({
     const derived = slugFromLabel(label, node.kind, taken);
     if (derived !== node.id) onRename(derived);
   };
+  const setHeader = (next: string) => {
+    if (!headerField) return;
+    onConfig({ ...node.config, [headerField.key]: next });
+  };
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-start gap-3">
-        <span
-          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl"
-          style={{ background: `hsl(${meta.accent} / 0.12)`, color: `hsl(${meta.accent})` }}
-        >
-          <Glyph className="h-[17px] w-[17px]" aria-hidden />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-primary/80">
-            {info?.label ?? humanizeKind(node.kind)}
-          </p>
-          <h2 className="truncate text-[15px] font-semibold tracking-tight text-foreground">
-            {node.label?.trim() || node.id}
-          </h2>
-          {info?.description ? (
-            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{info.description}</p>
-          ) : null}
+    <div className="space-y-6">
+      <header className="space-y-2">
+        <h2 className="sr-only">{node.label?.trim() || node.id}</h2>
+        <div className="flex items-start gap-3">
+          <span
+            className="mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl ring-1 ring-inset"
+            style={{
+              background: `hsl(${meta.accent} / 0.12)`,
+              color: `hsl(${meta.accent})`,
+              ["--tw-ring-color" as string]: `hsl(${meta.accent} / 0.22)`,
+            }}
+          >
+            <Glyph className="h-[18px] w-[18px]" aria-hidden />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex min-h-6 min-w-0 items-center gap-1.5">
+              <p
+                className="truncate text-[10.5px] font-semibold uppercase tracking-[0.14em]"
+                style={{ color: `hsl(${meta.accent})` }}
+              >
+                {kindLabel}
+              </p>
+              {headerField ? (
+                <HeaderChoice
+                  nodeId={node.id}
+                  field={headerField}
+                  value={headerValue}
+                  onChange={setHeader}
+                  invalid={headerIssues.some((issue) => issue.severity === "error")}
+                />
+              ) : null}
+              <button
+                type="button"
+                onClick={() => setAboutOpen((value) => !value)}
+                aria-expanded={aboutOpen}
+                aria-controls={`${labelId}-about`}
+                aria-label={`About ${kindLabel}`}
+                className={cn(
+                  "relative flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-muted-foreground/70 transition-colors after:absolute after:-inset-2.5 after:content-[''] hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+                  aboutOpen && "text-primary",
+                )}
+              >
+                <Info className="h-3.5 w-3.5" aria-hidden />
+              </button>
+            </div>
+            <input
+              id={labelId}
+              aria-label="Label"
+              value={node.label ?? ""}
+              onChange={(event) => onLabel(event.target.value)}
+              onFocus={() => {
+                labelAtFocus.current = node.label ?? "";
+              }}
+              onBlur={commitLabel}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  commitLabel();
+                  event.currentTarget.blur();
+                }
+              }}
+              maxLength={120}
+              placeholder={kindLabel}
+              aria-invalid={titleIssues.some((issue) => issue.severity === "error") || undefined}
+              className="-ml-1.5 mt-0.5 w-[calc(100%+0.375rem)] rounded-lg border border-transparent bg-transparent px-1.5 py-0.5 text-[17px] font-semibold tracking-tight text-foreground transition-[border-color,background-color,box-shadow] placeholder:text-muted-foreground/60 hover:border-border/60 focus-visible:border-primary/50 focus-visible:bg-background/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 aria-[invalid=true]:border-destructive/60"
+            />
+          </div>
         </div>
-      </div>
+        <AnimatePresence initial={false}>
+          {aboutOpen ? (
+            <motion.div
+              key="about"
+              id={`${labelId}-about`}
+              {...(reduceMotion ? REVEAL_REDUCED : REVEAL)}
+              className="space-y-1 pl-[3.25rem] text-xs leading-relaxed text-muted-foreground"
+            >
+              {info?.description ? <p>{info.description}</p> : null}
+              <p>
+                Later steps read its result as{" "}
+                <code className="break-all rounded bg-muted/70 px-1 py-px font-mono text-[11px] text-foreground/85">
+                  nodes.{node.id}
+                </code>
+                ; that name follows the label.
+              </p>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+        <div id={fieldDomId(node.id, "id")} tabIndex={-1} className="pl-[3.25rem] empty:hidden">
+          <FieldIssues issues={[...titleIssues, ...headerIssues]} />
+        </div>
+      </header>
 
       {general.length ? (
         <div
@@ -109,32 +249,6 @@ export function NodeInspector({
         </div>
       ) : null}
 
-      <Field
-        label="Label"
-        htmlFor={labelId}
-        hint="What the canvas and the run view call this step."
-        issues={issues.filter((i) => i.field === "label")}
-      >
-        <input
-          id={labelId}
-          value={node.label ?? ""}
-          onChange={(event) => onLabel(event.target.value)}
-          onFocus={() => {
-            labelAtFocus.current = node.label ?? "";
-          }}
-          onBlur={commitLabel}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              commitLabel();
-            }
-          }}
-          maxLength={120}
-          placeholder={info?.label ?? node.id}
-          className={INPUT}
-        />
-      </Field>
-
       {isSchedule ? (
         <ScheduleTriggerEditor
           nodeId={node.id}
@@ -145,10 +259,10 @@ export function NodeInspector({
       ) : null}
 
       {info ? (
-        mainFields.length ? (
+        layout.main.length ? (
           <SchemaForm
             nodeId={node.id}
-            fields={mainFields}
+            fields={layout.main}
             config={node.config}
             onChange={onConfig}
             issues={issues}
@@ -163,22 +277,24 @@ export function NodeInspector({
         </p>
       )}
 
-      {showAdvanced ? (
+      {info && layout.more.length ? (
         <Disclosure
           id={fieldDomId(node.id, "advanced")}
-          title="Advanced"
-          defaultOpen={idIssues.length > 0}
-          issueCount={idIssues.filter((issue) => issue.severity === "error").length}
+          title="More options"
+          defaultOpen={moreIssues.length > 0}
+          issueCount={moreIssues.length}
+          setCount={moreSet}
         >
-          <div id={fieldDomId(node.id, "id")} tabIndex={-1}>
-            <p className="text-xs text-muted-foreground">
-              Internal id: <span className="break-all font-mono text-foreground/80">{node.id}</span>
-            </p>
-            <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground/80">
-              It follows the label automatically.
-            </p>
-            <FieldIssues issues={idIssues} />
-          </div>
+          <SchemaForm
+            nodeId={node.id}
+            fields={layout.more}
+            config={node.config}
+            onChange={onConfig}
+            issues={issues}
+            paths={paths}
+            barePaths={paths}
+            spec={spec}
+          />
         </Disclosure>
       ) : null}
     </div>

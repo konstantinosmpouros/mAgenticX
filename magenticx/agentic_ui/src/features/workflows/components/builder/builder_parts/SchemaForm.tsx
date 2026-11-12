@@ -9,9 +9,17 @@ import type {
   WorkflowTemplatePath,
   WorkflowToolInfo,
 } from "@/shared/lib/types";
+import { Segmented } from "@/shared/ui/segmented";
 import { useWorkflowTools } from "@/features/workflows/hooks/useWorkflowTools";
 import { INPUT } from "@/features/workflows/lib/builder/consts";
 import { fieldDomId } from "@/features/workflows/lib/builder/ids";
+import {
+  SEGMENTED_MAX_OPTIONS,
+  enumLabel,
+  fieldLabel,
+  fieldUnit,
+  mapAddLabel,
+} from "@/features/workflows/lib/builder/inspectorLayout";
 import { asCases, asRules } from "@/features/workflows/lib/builder/schemaForm";
 import { asToolRef, findTool, pruneArgs } from "@/features/workflows/lib/builder/toolArgs";
 import { issueIsOn } from "@/features/workflows/lib/builder/validate";
@@ -56,26 +64,41 @@ function NumberInput({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
   const placeholder = typeof field.default === "number" ? `${field.default} (default)` : undefined;
+  const unit = fieldUnit(field.key);
   return (
-    <input
-      id={id}
-      type="number"
-      inputMode={field.integer ? "numeric" : "decimal"}
-      step={field.integer ? 1 : "any"}
-      min={field.minimum ?? field.exclusiveMinimum}
-      max={field.maximum ?? field.exclusiveMaximum}
-      value={text}
-      placeholder={placeholder}
-      onChange={(event) => {
-        const next = event.target.value;
-        setText(next);
-        if (!next.trim()) onChange(undefined);
-        else if (Number.isFinite(Number(next))) onChange(Number(next));
-      }}
-      aria-invalid={invalid || undefined}
-      aria-describedby={describedBy}
-      className={cn(INPUT, "tabular-nums")}
-    />
+    <div className="relative">
+      <input
+        id={id}
+        type="number"
+        inputMode={field.integer ? "numeric" : "decimal"}
+        step={field.integer ? 1 : "any"}
+        min={field.minimum ?? field.exclusiveMinimum}
+        max={field.maximum ?? field.exclusiveMaximum}
+        value={text}
+        placeholder={placeholder}
+        onChange={(event) => {
+          const next = event.target.value;
+          setText(next);
+          if (!next.trim()) onChange(undefined);
+          else if (Number.isFinite(Number(next))) onChange(Number(next));
+        }}
+        aria-invalid={invalid || undefined}
+        aria-describedby={describedBy}
+        className={cn(
+          INPUT,
+          "tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
+          unit && "pr-11",
+        )}
+      />
+      {unit ? (
+        <span
+          className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-muted-foreground"
+          aria-hidden
+        >
+          {unit}
+        </span>
+      ) : null}
+    </div>
   );
 }
 
@@ -139,7 +162,10 @@ export function SchemaForm({
   const pickedTool = tools.data ? findTool(tools.data.tools, toolRef) : null;
   const pickTool = (tool: WorkflowToolInfo) => {
     if (!toolField) return;
-    const next: Record<string, unknown> = { ...config, [toolField.key]: { source: tool.source, name: tool.name } };
+    const next: Record<string, unknown> = {
+      ...config,
+      [toolField.key]: { source: tool.source, name: tool.name },
+    };
     if (argsField) {
       // Keep the values of the arguments the new tool also takes.
       const kept = pruneArgs(config[argsField.key], tool);
@@ -201,7 +227,15 @@ export function SchemaForm({
               />
             );
             return (
-              <Field key={field.key} label={field.label} htmlFor={id} required={field.required} hint={hint} issues={direct} issuesId={issuesId}>
+              <Field
+                key={field.key}
+                label={field.label}
+                htmlFor={id}
+                required={field.required}
+                hint={hint}
+                issues={direct}
+                issuesId={issuesId}
+              >
                 {control}
               </Field>
             );
@@ -213,7 +247,9 @@ export function SchemaForm({
                 label={field.label}
                 htmlFor={id}
                 required={field.required}
-                hint={[hint, "Tab indents; Esc, then Tab, leaves the editor."].filter(Boolean).join(" ")}
+                hint={[hint, "Tab indents; Esc, then Tab, leaves the editor."]
+                  .filter(Boolean)
+                  .join(" ")}
                 issues={direct}
                 issuesId={issuesId}
               >
@@ -231,14 +267,21 @@ export function SchemaForm({
             return (
               <Field
                 key={field.key}
-                label={field.label}
+                label={fieldLabel(field.key, field.label)}
                 htmlFor={id}
                 required={field.required}
                 hint={[hint, rangeHint(field)].filter(Boolean).join(" ") || null}
                 issues={direct}
                 issuesId={issuesId}
               >
-                <NumberInput id={id} value={value} field={field} onChange={(next) => set(field.key, next)} invalid={invalid} describedBy={direct.length ? issuesId : undefined} />
+                <NumberInput
+                  id={id}
+                  value={value}
+                  field={field}
+                  onChange={(next) => set(field.key, next)}
+                  invalid={invalid}
+                  describedBy={direct.length ? issuesId : undefined}
+                />
               </Field>
             );
           case "boolean":
@@ -254,16 +297,49 @@ export function SchemaForm({
             );
           case "enum": {
             if (field === memoryField && hasConversation) return null;
-            const current = typeof value === "string" ? value : typeof field.default === "string" ? field.default : "";
+            const current =
+              typeof value === "string"
+                ? value
+                : typeof field.default === "string"
+                  ? field.default
+                  : "";
+            const options = field.options ?? [];
+            // A short choice (JSON / text, all / any) reads better as a segmented control than a dropdown.
+            if (options.length > 1 && options.length <= SEGMENTED_MAX_OPTIONS) {
+              return (
+                <Field
+                  key={field.key}
+                  label={field.label}
+                  required={field.required}
+                  hint={hint}
+                  issues={direct}
+                  issuesId={issuesId}
+                >
+                  <Segmented
+                    idPrefix={id}
+                    size="sm"
+                    ariaLabel={field.label}
+                    value={current || options[0]}
+                    options={options.map((option) => ({ id: option, label: enumLabel(option) }))}
+                    onChange={(next) => set(field.key, next)}
+                  />
+                </Field>
+              );
+            }
             return (
-              <Field key={field.key} label={field.label} htmlFor={id} required={field.required} hint={hint} issues={direct} issuesId={issuesId}>
+              <Field
+                key={field.key}
+                label={field.label}
+                htmlFor={id}
+                required={field.required}
+                hint={hint}
+                issues={direct}
+                issuesId={issuesId}
+              >
                 <ChoiceSelect
                   id={id}
                   value={current}
-                  options={(field.options ?? []).map((option) => ({
-                    value: option,
-                    label: option === field.default ? `${option} (default)` : option,
-                  }))}
+                  options={options.map((option) => ({ value: option, label: enumLabel(option) }))}
                   onChange={(next) => set(field.key, next)}
                   invalid={invalid}
                   describedBy={direct.length ? issuesId : undefined}
@@ -272,12 +348,22 @@ export function SchemaForm({
             );
           }
           case "object": {
-            const record = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+            const record =
+              value && typeof value === "object" && !Array.isArray(value)
+                ? (value as Record<string, unknown>)
+                : {};
             return (
-              <fieldset key={field.key} className="space-y-3 rounded-2xl border border-border/60 bg-muted/15 p-3.5">
+              <fieldset
+                key={field.key}
+                className="space-y-3 rounded-2xl border border-border/60 bg-muted/15 p-3.5"
+              >
                 <legend className="px-1 text-xs font-semibold text-foreground/85">
                   {field.label}
-                  {field.required ? <span className="ml-0.5 text-destructive/80" aria-hidden>*</span> : null}
+                  {field.required ? (
+                    <span className="ml-0.5 text-destructive/80" aria-hidden>
+                      *
+                    </span>
+                  ) : null}
                 </legend>
                 <SchemaForm
                   nodeId={nodeId}
@@ -290,7 +376,11 @@ export function SchemaForm({
                   spec={spec}
                   prefix={where}
                 />
-                {direct.length ? <Field label="" issues={direct}>{null}</Field> : null}
+                {direct.length ? (
+                  <Field label="" issues={direct}>
+                    {null}
+                  </Field>
+                ) : null}
               </fieldset>
             );
           }
@@ -300,8 +390,11 @@ export function SchemaForm({
                 <RulesEditor
                   nodeId={nodeId}
                   field={where}
+                  joiner={config.mode === "any" ? "or" : "and"}
                   rules={asRules(value)}
-                  onChange={(rules) => set(field.key, rules.length || field.required ? rules : undefined)}
+                  onChange={(rules) =>
+                    set(field.key, rules.length || field.required ? rules : undefined)
+                  }
                   paths={barePaths}
                   issues={own}
                   min={field.minItems ?? 0}
@@ -311,7 +404,12 @@ export function SchemaForm({
             );
           case "cases":
             return (
-              <Field key={field.key} label="Cases" required={field.required} hint="Tried in order; the first whose rules hold picks its branch.">
+              <Field
+                key={field.key}
+                label="Cases"
+                required={field.required}
+                hint="Tried top to bottom: the first case whose rules hold picks its branch. When none does, the step takes the default branch."
+              >
                 <CasesEditor
                   nodeId={nodeId}
                   field={where}
@@ -327,11 +425,19 @@ export function SchemaForm({
             // A Set step's variables (`"x-widget": "assign"`): any name, the
             // ones other Set steps write offered while typing.
             return (
-              <Field key={field.key} label={field.label} required={field.required} hint={hint} issues={own}>
+              <Field
+                key={field.key}
+                label={field.label}
+                required={field.required}
+                hint={hint}
+                issues={own}
+              >
                 <MapEditor
                   id={id}
                   value={value}
-                  onChange={(next) => set(field.key, Object.keys(next).length || field.required ? next : undefined)}
+                  onChange={(next) =>
+                    set(field.key, Object.keys(next).length || field.required ? next : undefined)
+                  }
                   paths={paths}
                   keySuggestions={spec ? variableNames(spec, nodeId) : []}
                   keyPlaceholder="variable"
@@ -361,7 +467,12 @@ export function SchemaForm({
             );
           case "context":
             return (
-              <Field key={field.key} label="Data from earlier steps" issues={own} issuesId={issuesId}>
+              <Field
+                key={field.key}
+                label="Data from earlier steps"
+                issues={own}
+                issuesId={issuesId}
+              >
                 <ContextField
                   id={id}
                   value={value}
@@ -374,7 +485,9 @@ export function SchemaForm({
             );
           case "thread": {
             const memoryWhere = memoryField ? `${prefix}.${memoryField.key}` : "";
-            const memoryIssues = memoryField ? issues.filter((issue) => issueIsOn(issue, memoryWhere)) : [];
+            const memoryIssues = memoryField
+              ? issues.filter((issue) => issueIsOn(issue, memoryWhere))
+              : [];
             const storedMemory = memoryField ? config[memoryField.key] : undefined;
             return (
               <Field key={field.key} label="Conversation" issues={[...memoryIssues, ...own]}>
@@ -403,7 +516,14 @@ export function SchemaForm({
           }
           case "tool":
             return (
-              <Field key={field.key} label={field.label} htmlFor={id} required={field.required} issues={own} issuesId={issuesId}>
+              <Field
+                key={field.key}
+                label={field.label}
+                htmlFor={id}
+                required={field.required}
+                issues={own}
+                issuesId={issuesId}
+              >
                 <ToolField
                   id={id}
                   current={toolRef}
@@ -418,8 +538,13 @@ export function SchemaForm({
             if (!toolField) return null;
             if (pickedTool) {
               return (
-                <fieldset key={field.key} className="min-w-0 space-y-3 rounded-2xl border border-border/60 bg-muted/15 p-3.5">
-                  <legend className="px-1 text-xs font-semibold text-foreground/85">Arguments</legend>
+                <fieldset
+                  key={field.key}
+                  className="min-w-0 space-y-3 rounded-2xl border border-border/60 bg-muted/15 p-3.5"
+                >
+                  <legend className="px-1 text-xs font-semibold text-foreground/85">
+                    Arguments
+                  </legend>
                   <ToolArgsField
                     key={`${pickedTool.source}:${pickedTool.name}`}
                     nodeId={nodeId}
@@ -449,13 +574,22 @@ export function SchemaForm({
             );
           case "map":
             return (
-              <Field key={field.key} label={field.label} required={field.required} hint={hint} issues={own}>
+              <Field
+                key={field.key}
+                label={field.label}
+                required={field.required}
+                hint={hint}
+                issues={own}
+              >
                 <MapEditor
                   id={id}
                   value={value}
-                  onChange={(next) => set(field.key, Object.keys(next).length || field.required ? next : undefined)}
+                  onChange={(next) =>
+                    set(field.key, Object.keys(next).length || field.required ? next : undefined)
+                  }
                   paths={paths}
                   valueKind={field.valueKind}
+                  addLabel={mapAddLabel(field.key)}
                   emptyText={`No ${field.label.toLowerCase()}.`}
                   max={field.maxProperties}
                 />
@@ -491,11 +625,22 @@ export function SchemaForm({
                 label={field.label}
                 htmlFor={id}
                 required={field.required}
-                hint={hint ?? (field.jsonType || field.strictJson ? "JSON." : "JSON, or text with {{…}} placeholders.")}
+                hint={
+                  hint ??
+                  (field.jsonType || field.strictJson
+                    ? "JSON."
+                    : "JSON, or text with {{…}} placeholders.")
+                }
                 issues={own}
               >
                 {field.jsonType || field.strictJson ? (
-                  <JsonField id={id} value={value} onChange={(next) => set(field.key, next)} jsonType={field.jsonType} invalid={invalid} />
+                  <JsonField
+                    id={id}
+                    value={value}
+                    onChange={(next) => set(field.key, next)}
+                    jsonType={field.jsonType}
+                    invalid={invalid}
+                  />
                 ) : (
                   <LooseValueField
                     id={id}

@@ -118,7 +118,8 @@ export function LooseValueField({
         invalid={invalid}
         describedBy={describedBy}
       />
-      {showKind && text.trim() ? (
+      {showKind && text.trim() && typeof parseLoose(text) !== "string" ? (
+        // Only when the text is taken as something else (a number, a list, an object): plain text needs no note.
         <p className="mt-1 text-[11px] text-muted-foreground">Reads as {describeLoose(parseLoose(text))}.</p>
       ) : null}
     </div>

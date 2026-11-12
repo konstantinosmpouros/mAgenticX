@@ -1,12 +1,6 @@
 import { CalendarDays, Repeat, Timer, type LucideIcon } from "lucide-react";
 
-import type {
-  ScheduleKind,
-  WorkflowContextConfig,
-  WorkflowContextMode,
-  WorkflowMemoryMode,
-  WorkflowSchemaFieldType,
-} from "@/shared/lib/types";
+import type { ScheduleKind, WorkflowContextConfig, WorkflowContextMode, WorkflowMemoryMode, WorkflowSchemaFieldType, WorkflowSchemaItemType } from "@/shared/lib/types";
 
 /**
  * The workflow builder's constants: its controls' classes (the agent
@@ -24,6 +18,13 @@ export const INPUT_SM =
 
 export const SMALL_BUTTON =
   "inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-background/70 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 disabled:cursor-not-allowed disabled:opacity-50";
+
+/**
+ * "Add rule", "Add case", "Add entry": a quiet text action in the accent, not
+ * another bordered box in a form that is already made of fields.
+ */
+export const ADD_BUTTON =
+  "-ml-1.5 inline-flex min-h-[32px] items-center gap-1.5 rounded-lg px-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 disabled:cursor-not-allowed disabled:opacity-40";
 
 export const ICON_BUTTON =
   "flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 disabled:cursor-not-allowed disabled:opacity-40";
@@ -143,6 +144,28 @@ export const SCHEMA_FIELD_TYPES: ReadonlyArray<WorkflowSchemaFieldType> = [
   "object",
 ];
 
+/** What a reply's list field may hold, item by item. */
+export const SCHEMA_ITEM_TYPES: ReadonlyArray<WorkflowSchemaItemType> = ["string", "number", "integer", "boolean"];
+
+/**
+ * The reply builder's one "Type" choice, in words: a JSON type, a text field
+ * with set values ("Choice"), or a list of one kind of value. `parse` splits
+ * it back into the field's `type` / `itemType`.
+ */
+export const SCHEMA_KIND_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
+  { value: "string", label: "Text" },
+  { value: "choice", label: "Choice" },
+  { value: "number", label: "Number" },
+  { value: "integer", label: "Whole number" },
+  { value: "boolean", label: "Yes / no" },
+  { value: "array:string", label: "List of text" },
+  { value: "array:number", label: "List of numbers" },
+  { value: "array:integer", label: "List of whole numbers" },
+  { value: "array:boolean", label: "List of yes / no" },
+  { value: "array", label: "List (anything)" },
+  { value: "object", label: "Object (anything)" },
+];
+
 /** A structured-output property name: an identifier. */
 export const SCHEMA_FIELD_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
 
@@ -161,13 +184,6 @@ export const TEMPLATE_CHIP_INVALID =
 export const TEMPLATE_CHIP_SOURCE = "min-w-0 max-w-[7rem] flex-shrink truncate text-primary/70";
 export const TEMPLATE_CHIP_SEP = "flex-shrink-0 text-primary/40";
 
-/**
- * Kinds whose inspector leaves out the folded "Advanced" (the internal id),
- * as triggers do: their result is rarely read by id — a join's or set's is
- * reached through the picker, wait / end have none worth reading. An id
- * issue still shows it, so the problem can be seen.
- */
-export const NO_ADVANCED_KINDS: ReadonlySet<string> = new Set(["join", "set", "wait", "end"]);
 
 /** How long the tool step's tool list (`GET /v1/workflows/tools`) is reused before it is asked for again (ms). */
 export const WORKFLOW_TOOLS_STALE_MS = 5 * 60 * 1000;
@@ -177,3 +193,15 @@ export const TOOL_GROUP_BUILTIN = "Built-in";
 
 /** The tool picker's group for a gateway tool whose server is not known. */
 export const TOOL_GROUP_MCP = "MCP";
+
+/** Enter / exit for the small things a field reveals (its hint, a folded section). */
+export const REVEAL = {
+  initial: { opacity: 0, y: -4 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.2, ease: "easeOut" } },
+  exit: { opacity: 0, y: -2, transition: { duration: 0.13, ease: "easeIn" } },
+} as const;
+export const REVEAL_REDUCED = {
+  initial: { opacity: 0 },
+  animate: { opacity: 1, transition: { duration: 0.01 } },
+  exit: { opacity: 0, transition: { duration: 0.01 } },
+} as const;

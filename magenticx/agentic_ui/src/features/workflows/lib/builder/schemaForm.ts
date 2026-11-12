@@ -1,7 +1,6 @@
 import type {
   WorkflowFormField,
   WorkflowMapValueKind,
-  WorkflowMatchMode,
   WorkflowRouterCase,
   WorkflowRule,
   WorkflowRuleOp,
@@ -275,10 +274,6 @@ export function fieldsFromSchema(schema: Schema, root: Schema = schema): Workflo
   return Object.entries(properties).map(([key, raw]) => fieldFor(key, raw, root, required.has(key)));
 }
 
-export const MATCH_MODES: ReadonlyArray<{ value: WorkflowMatchMode; label: string }> = [
-  { value: "all", label: "All rules hold" },
-  { value: "any", label: "Any rule holds" },
-];
 
 /** Rules as stored (anything malformed read as an empty rule, so it can be fixed). */
 export const asRules = (value: unknown): WorkflowRule[] =>

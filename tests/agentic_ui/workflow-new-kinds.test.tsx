@@ -16,6 +16,11 @@ import { WorkflowSettings } from "@/features/workflows/components/builder/builde
 import { TooltipProvider } from "@/shared/ui/tooltip";
 import type { WorkflowNodeKindInfo, WorkflowRunEvent, WorkflowSpec } from "@/shared/lib/types";
 
+// Streamdown pulls in KaTeX's CSS, which the test runner cannot load: the reply renders as plain text here.
+vi.mock("@/shared/ui/ai-elements/response", () => ({
+  Response: ({ children }: { children?: unknown }) => <div>{String(children ?? "")}</div>,
+}));
+
 /**
  * The four step kinds added after the first catalogue — `llm`, `set`, `wait`,
  * `code` — and the catalogue's `available` / `unavailableReason`: each kind's
@@ -315,6 +320,8 @@ describe("x-widget forms", () => {
     const onChange = vi.fn();
     renderForm("end", { keep: ["count", "gone"] }, workflow, onChange);
     expect(screen.getByText("Keep for the next run")).toBeInTheDocument();
+    // Its explanation is behind the (i) beside the label.
+    fireEvent.click(screen.getByRole("button", { name: "About Keep for the next run" }));
     expect(screen.getByText("These variables start the next run with this run's values.")).toBeInTheDocument();
     const list = screen.getByRole("list", { name: "Variables to keep" });
     const boxes = within(list).getAllByRole("checkbox");

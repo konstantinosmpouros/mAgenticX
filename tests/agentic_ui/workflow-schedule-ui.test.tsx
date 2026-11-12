@@ -198,7 +198,7 @@ describe("schedule editor ↔ node config", () => {
     };
     const writes = renderEditor(initial);
     expect(radio("Cron")).toHaveAttribute("aria-checked", "true");
-    const expr = screen.getByLabelText(/Cron expression/) as HTMLInputElement;
+    const expr = screen.getByLabelText(/^Cron expression/) as HTMLInputElement;
     expect(expr.value).toBe("0 9 * * 1-5");
     expect(screen.getByRole("button", { name: "Weekdays at 09:00" })).toHaveAttribute(
       "aria-pressed",

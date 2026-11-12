@@ -142,3 +142,13 @@ export function outputSummary(output: unknown, text?: string | null): string {
 
 const hasValue = (value: unknown): boolean =>
   value !== null && value !== undefined && value !== "" && !(Array.isArray(value) && !value.length);
+
+/** A folded branch's preview: `{12 keys}`, `[30 items]`. */
+export function branchPreview(value: object): string {
+  if (Array.isArray(value)) return `[${value.length} item${value.length === 1 ? "" : "s"}]`;
+  const keys = Object.keys(value).length;
+  return `{${keys} key${keys === 1 ? "" : "s"}}`;
+}
+
+/** Whether a string is an http(s) URL (shown truncated, whole on hover). */
+export const isHttpUrl = (text: string): boolean => /^https?:\/\/\S+$/.test(text);

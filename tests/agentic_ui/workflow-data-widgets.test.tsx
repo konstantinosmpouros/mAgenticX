@@ -246,10 +246,38 @@ describe("structured output builder", () => {
   it("opens a schema it can't show in JSON, with a note", () => {
     const nested = { type: "object", properties: { a: { type: "object", properties: { b: { type: "string" } } } } };
     renderForm(graph({ summarize: { output: "json", json_schema: nested } }), "summarize");
-    expect(screen.getByText(/opens as JSON/)).toBeInTheDocument();
+    expect(screen.getByText(/Nested fields: edited as JSON Schema/)).toBeInTheDocument();
     const editor = screen.getByLabelText(/^Reply format/) as HTMLTextAreaElement;
     expect(JSON.parse(editor.value)).toEqual(nested);
     expect(screen.getByRole("button", { name: "Use the builder" })).toBeDisabled();
+  });
+
+  it("shows a field with set values as Choice and a list of text as List of text", () => {
+    const shaped = {
+      type: "object",
+      required: ["status", "reasons"],
+      properties: {
+        status: { type: "string", enum: ["healthy", "watch", "at_risk"] },
+        reasons: { type: "array", items: { type: "string" } },
+      },
+    };
+    const fields = schemaToFields(shaped);
+    expect(fields).toEqual([
+      { name: "status", type: "string", description: "", required: true, options: ["healthy", "watch", "at_risk"] },
+      { name: "reasons", type: "array", description: "", required: true, itemType: "string" },
+    ]);
+    expect(fieldsToSchema(fields!)).toEqual({ ...shaped, additionalProperties: false });
+    // A list of objects is still more than the builder shows.
+    expect(schemaToFields({ type: "object", properties: { a: { type: "array", items: { type: "object" } } } })).toBeNull();
+
+    const { onChange } = renderForm(graph({ summarize: { output: "json", json_schema: shaped } }), "summarize");
+    expect(screen.queryByText(/edited as JSON Schema/)).toBeNull();
+    expect(screen.getByLabelText("Reply field 1 allowed values")).toHaveValue("healthy, watch, at_risk");
+    fireEvent.change(screen.getByLabelText("Reply field 1 allowed values"), { target: { value: "ok, bad" } });
+    expect((lastConfig(onChange).json_schema as { properties: Record<string, unknown> }).properties.status).toEqual({
+      type: "string",
+      enum: ["ok", "bad"],
+    });
   });
 
   it("is hidden while the step answers in text", () => {
@@ -315,7 +343,7 @@ describe("checks", () => {
 });
 
 describe("inspector: the id follows the label", () => {
-  it("renames on blur, rewriting references, and shows the id under Advanced", () => {
+  it("renames on blur, rewriting references, and shows the new name behind the (i)", () => {
     let spec = graph({
       calc: { inputs: { s: "{{nodes.summarize.output.text}}" } },
       extract: { thread: "summarize" },
@@ -360,9 +388,9 @@ describe("inspector: the id follows the label", () => {
     expect(configOf(spec, "extract").thread).toBe("syntomi_perilipsi");
     expect(spec.edges.some((edge) => edge.source === "syntomi_perilipsi")).toBe(true);
 
-    fireEvent.click(screen.getByRole("button", { name: /^Advanced/ }));
-    expect(screen.getByText("syntomi_perilipsi", { selector: "span" })).toBeInTheDocument();
-    expect(screen.getByText(/Internal id:/)).toBeInTheDocument();
+    // The header's (i) comes first, before any field's own.
+    fireEvent.click(screen.getAllByRole("button", { name: /^About / })[0]);
+    expect(screen.getByText("nodes.syntomi_perilipsi")).toBeInTheDocument();
   });
 
   it("does not rename when the label is committed unchanged", () => {
@@ -377,5 +405,57 @@ describe("inspector: the id follows the label", () => {
     fireEvent.keyDown(label, { key: "Enter" });
     fireEvent.blur(label);
     expect(onRename).not.toHaveBeenCalled();
+  });
+});
+
+describe("inspector: a router's cases", () => {
+  const routerSpec = (): WorkflowSpec => ({
+    version: 1,
+    name: "Route",
+    inputs: [],
+    nodes: [
+      node("start", "trigger.manual"),
+      node(
+        "route",
+        "router",
+        {
+          cases: [
+            {
+              name: "ok",
+              mode: "all",
+              rules: [
+                { path: "input.status", op: "eq", value: 200 },
+                { path: "input.ok", op: "exists", value: null },
+              ],
+            },
+          ],
+        },
+        "Route",
+      ),
+    ],
+    edges: [{ id: "e1", source: "start", target: "route" }],
+  });
+
+  it("reads each case as a sentence: how its rules combine, then AND between them", () => {
+    const spec = routerSpec();
+    const onConfig = vi.fn();
+    render(
+      <NodeInspector
+        node={spec.nodes[1]}
+        info={info("router")}
+        spec={spec}
+        issues={[]}
+        onRename={vi.fn()}
+        onLabel={vi.fn()}
+        onConfig={onConfig}
+      />,
+    );
+    const mode = screen.getByRole("radiogroup", { name: "Case 1: how its rules combine" });
+    expect(within(mode).getByRole("radio", { name: "All" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByText("and")).toBeInTheDocument();
+    expect(screen.getByText(/Otherwise, the/)).toBeInTheDocument();
+
+    fireEvent.click(within(mode).getByRole("radio", { name: "Any" }));
+    expect(onConfig.mock.lastCall?.[0].cases[0].mode).toBe("any");
   });
 });

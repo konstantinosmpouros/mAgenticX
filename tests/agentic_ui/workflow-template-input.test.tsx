@@ -302,23 +302,32 @@ describe("data from earlier steps in a field", () => {
     expect(onConfig.mock.lastCall?.[0]).toMatchObject({ url: "https://example.com/{{nodes.ask.output.text}}" });
   });
 
-  it("leaves out Advanced on a trigger", () => {
+  it("leaves out More options on a trigger", () => {
     renderInspector(linear(), "start");
-    expect(screen.queryByRole("button", { name: /^Advanced/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^More options/ })).toBeNull();
   });
 
-  it("keeps Advanced (the internal id only) on a step others read by id", () => {
+  it("says how later steps read a step behind its (i), not in a fold of its own", () => {
     renderInspector(linear(), "fetch");
-    const advanced = screen.getByRole("button", { name: /^Advanced/ });
-    expect(advanced).toHaveAccessibleName(/^Advanced$/);
-    fireEvent.click(advanced);
-    expect(screen.getByText("fetch")).toBeInTheDocument();
+    expect(screen.queryByText("nodes.fetch")).toBeNull();
+    // The header's (i) comes first, before any field's own.
+    fireEvent.click(screen.getAllByRole("button", { name: /^About / })[0]);
+    expect(screen.getByText("nodes.fetch")).toBeInTheDocument();
     expect(screen.queryByText(/Save to a variable/)).toBeNull();
   });
 
-  it("hides it on an end step too", () => {
+  it("folds an HTTP step's rarely used settings under More options, and its method in the header", () => {
+    renderInspector(linear(), "fetch");
+    expect(screen.getByRole("combobox", { name: "Method" })).toBeInTheDocument();
+    expect(screen.queryByText("Headers")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /^More options/ }));
+    expect(screen.getByText("Headers")).toBeInTheDocument();
+    expect(screen.getByText("Timeout")).toBeInTheDocument();
+  });
+
+  it("has no More options on an end step", () => {
     renderInspector(linear(), "done");
-    expect(screen.queryByRole("button", { name: /^Advanced/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^More options/ })).toBeNull();
   });
 
   it("offers a looped step run by run after a loop, and finds a later run by search", () => {
