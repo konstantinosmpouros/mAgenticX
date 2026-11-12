@@ -4,7 +4,7 @@ import { useControllableState } from "@radix-ui/react-use-controllable-state";
 import { Badge } from "@/shared/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/shared/ui/collapsible";
 import { cn } from "@/shared/lib/utils";
-import { BrainIcon, ChevronDownIcon, DotIcon } from "lucide-react";
+import { ChevronDownIcon, DotIcon } from "lucide-react";
 import type { ComponentProps, ComponentType, ReactNode } from "react";
 import { createContext, memo, useContext, useMemo } from "react";
 
@@ -71,7 +71,6 @@ export const ChainOfThoughtHeader = memo(
           )}
           {...props}
         >
-          <BrainIcon className="size-4" />
           <span className="flex flex-1 items-center gap-1 text-left">
             {children ?? "Chain of Thought"}
             <ChevronDownIcon

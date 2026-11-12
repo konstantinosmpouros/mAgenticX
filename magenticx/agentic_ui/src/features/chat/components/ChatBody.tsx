@@ -14,6 +14,7 @@ import { TaskNoticeRow } from "./message_parts/TaskNoticeRow";
 import { TaskSidePanel } from "./message_parts/RunSidePanels";
 
 import { findStreamAnchor, streamScrollTarget } from "@/features/chat/lib/streamScroll";
+import { groupAnswers } from "@/features/chat/lib/answerGroups";
 
 // Distance (px) of the newest REAL content below the fold before the
 // jump-to-bottom button appears.
@@ -264,6 +265,10 @@ export default function ChatBody({
   React.useEffect(() => {
     committedIdsRef.current = messages.map((m) => m.id);
   }, [messages]);
+
+  // The assistant messages that answer one user turn together (an orchestrator's
+  // reply plus one reply per finished background task): one action bar each.
+  const answerGroups = React.useMemo(() => groupAnswers(messages), [messages]);
 
   // The rail lists the user's questions; a wake-up's notice row (plan 41) is
   // not one.
@@ -814,6 +819,23 @@ export default function ChatBody({
                 ? (branchSelections[parentId] ?? 0)
                 : (branchSelections[branchRootKey] ?? 0);
 
+              // A grouped answer's bar switches between alternatives of the
+              // whole answer: the siblings of its first message.
+              const answerGroup = answerGroups.get(message.id);
+              const groupParentId = answerGroup?.group.head.parentMessageId ?? null;
+              const groupBranchData = answerGroup
+                ? {
+                    parentId: groupParentId,
+                    options: groupParentId
+                      ? branchChildrenMap[groupParentId]
+                      : branchChildrenMap[branchRootKey],
+                    selectionIndex: groupParentId
+                      ? (branchSelections[groupParentId] ?? 0)
+                      : (branchSelections[branchRootKey] ?? 0),
+                    onSelectBranch: handleSelectBranch,
+                  }
+                : undefined;
+
               return (
                 <div
                   key={rowKeys[index]}
@@ -868,6 +890,8 @@ export default function ChatBody({
                       selectionIndex: branchSelection,
                       onSelectBranch: handleSelectBranch,
                     }}
+                    answerGroup={answerGroup}
+                    groupBranchData={groupBranchData}
                   />
                   {compactingMessageId === message.id ? (
                     <CompactionDivider trigger="manual" status="running" />

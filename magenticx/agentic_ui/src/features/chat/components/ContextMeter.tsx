@@ -97,7 +97,17 @@ function ContextRing({
       className={cn("h-[18px] w-[18px] shrink-0 -rotate-90", pulsing && "animate-pulse motion-reduce:animate-none")}
       aria-hidden
     >
-      <circle cx="12" cy="12" r={RADIUS} fill="none" strokeWidth="3" className="stroke-muted" />
+      {/* The track: a faded muted-foreground, not `muted`, which is nearly the
+          hover surface's colour and vanished when the sidebar row was hovered. */}
+      <circle
+        cx="12"
+        cy="12"
+        r={RADIUS}
+        fill="none"
+        strokeWidth="3"
+        strokeOpacity={0.35}
+        className="stroke-muted-foreground"
+      />
       <circle
         cx="12"
         cy="12"

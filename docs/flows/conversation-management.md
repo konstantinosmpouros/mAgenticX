@@ -139,6 +139,20 @@ The original message is preserved. The user can navigate between branches using 
 
 `handleRetryAiMessage(message)` calls the inference start endpoint with `mode: "retry"` and the AI `targetMessageId`. The bridge validates that the target is an AI message, uses its parent user message as the run parent, and creates only a new AI placeholder sibling plus the run. No new user message is created for retry.
 
+### One Action Bar per Answer
+
+An orchestrator that starts background tasks answers in several runs: its reply, then one more reply each time a task finishes (the wake-up, parented on a hidden `task_notification` row). Each run stays its own message in the tree, but the chat treats them as one **answer group** (`features/chat/lib/answerGroups.ts`: consecutive AI messages with only task notices between them) and shows a single action bar, on the group's last message. Its actions target the right member:
+
+| Action | Target | Why |
+| --- | --- | --- |
+| Try again | the group's **first** message | Regenerates the whole answer from the user's message; the old answer, notices included, stays on the previous branch. Retrying a later member would redo only the part after the previous task finished |
+| Fork | the **last** message | The fork copies the path up to it, so every part of the answer is kept |
+| Copy | every member, joined | The answer reads as one text |
+| Like / dislike, read aloud, report | the last message | The final answer, after every task |
+| Branch switcher | the first message's siblings | The alternatives a Try again created |
+
+Earlier members show nothing under their text; their background tasks stay visible in the task tree inside the message.
+
 ### Branches and Durable Checkpoint Threads
 
 Each branch is backed by its own durable LangGraph checkpoint thread in the agents-service `agent_runtime` database, recorded on the AI message as `checkpoint_thread_id`. `create_inference_run_record(mode=...)` allocates the thread per mode:

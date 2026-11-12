@@ -5,6 +5,7 @@ import type { Agent, MessageOut, RunTimeline, ThinkingState } from "@/shared/lib
 import type { LucideIcon } from "lucide-react";
 import { Check, X as CloseIcon } from "lucide-react";
 import { AIActionBar, UserActionBar } from "./message_parts/ActionBars";
+import { answerGroupText, type AnswerGroupPlace } from "@/features/chat/lib/answerGroups";
 import { MessageAttachments } from "./message_parts/MessageAttachments";
 import { MessageContent } from "./message_parts/Content";
 import { PlanSidePanel, SubagentsSidePanel } from "./message_parts/RunSidePanels";
@@ -56,12 +57,19 @@ type ChatMessageProps = {
   onLoadAttachment?: (attachment: any, message: MessageOut) => Promise<Blob>;
   onPreviewAttachment: (attachment: any, message: MessageOut) => void;
   onImageClick: (url: string) => void;
-  branchData: {
-    parentId: string | null;
-    options?: MessageOut[];
-    selectionIndex: number;
-    onSelectBranch?: (parentId: string | null, branchIndex: number) => void;
-  };
+  branchData: BranchData;
+  /** The answer group this assistant message belongs to (lib/answerGroups). */
+  answerGroup?: AnswerGroupPlace;
+  /** The branch switcher the group's bar shows: the alternatives of the whole
+   *  answer, which a "Try again" creates at the group's first message. */
+  groupBranchData?: BranchData;
+};
+
+type BranchData = {
+  parentId: string | null;
+  options?: MessageOut[];
+  selectionIndex: number;
+  onSelectBranch?: (parentId: string | null, branchIndex: number) => void;
 };
 
 export function ChatMessage({
@@ -104,6 +112,8 @@ export function ChatMessage({
   onPreviewAttachment,
   onImageClick,
   branchData,
+  answerGroup,
+  groupBranchData,
 }: ChatMessageProps) {
   const isUser = message.sender === "user";
   const isAi = message.sender === "ai";
@@ -149,6 +159,18 @@ export function ChatMessage({
 
   const planForPanel = !isStreamingThisMessage && timeline?.terminal ? timeline.plan : null;
   const subagentCount = !isStreamingThisMessage && timeline?.terminal ? timeline.subagentCount : 0;
+
+  // One bar per answer group, on its last message (lib/answerGroups): Try again
+  // regenerates the whole answer from its first message, Copy takes every part,
+  // Fork and the rest act on this (last) message so nothing is left out.
+  const group = isAi && answerGroup && answerGroup.group.members.length > 1 ? answerGroup : null;
+  const carriesActionBar = !group || group.isTail;
+  const groupHead = group?.group.head;
+  const handleGroupRetry =
+    onRetryMessage && groupHead ? () => onRetryMessage(groupHead) : onRetryMessage;
+  const handleGroupCopy = group
+    ? (_content: string, messageId: string) => onCopy(answerGroupText(group.group), messageId)
+    : onCopy;
 
   const timestampLabel = useMemo(
     () =>
@@ -256,25 +278,27 @@ export function ChatMessage({
               </div>
             ) : (
               !isStreamingThisMessage &&
-              showActionBar && (
+              showActionBar &&
+              // An earlier part of a grouped answer has no bar of its own.
+              carriesActionBar && (
                 <div className="flex w-full flex-wrap items-center gap-2">
                   <AIActionBar
                     message={message}
                     showMessageTokenUsage={showMessageTokenUsage}
                     copiedId={copiedId}
-                    onCopy={onCopy}
+                    onCopy={handleGroupCopy}
                     onLike={onLike}
                     onDislike={onDislike}
                     onReportMessage={onReportMessage}
                     conversationIsReported={conversationIsReported}
-                    onRetryMessage={onRetryMessage}
+                    onRetryMessage={handleGroupRetry}
                     onForkMessage={onForkMessage}
                     onShareMessage={onShareMessage}
                     onReadAloud={onReadAloud}
                     speakingMessageId={speakingMessageId}
                     readOnly={readOnly}
                     isStreaming={isStreaming}
-                    branchControls={branchData}
+                    branchControls={group ? (groupBranchData ?? branchData) : branchData}
                     agentName={aiAgent.name}
                     AgentIcon={aiAgent.Icon}
                     timestampLabel={timestampLabel}
