@@ -213,6 +213,8 @@ function renderUsage(message: MessageOut) {
     </TooltipProvider>,
   );
   const trigger = screen.getByLabelText(/^Token usage:/);
+  // A tooltip opens on focus only when the user tabbed there.
+  fireEvent.keyDown(window, { key: "Tab" });
   fireEvent.focus(trigger);
   return trigger;
 }

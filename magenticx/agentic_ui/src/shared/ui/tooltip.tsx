@@ -2,13 +2,40 @@ import * as React from "react";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 
 import { cn } from "@/shared/lib/utils";
+import { lastInputKind } from "@/shared/lib/focus-return";
 import { RADIX_MOTION } from "@/shared/lib/motion/panels";
 
 const TooltipProvider = TooltipPrimitive.Provider;
 
 const Tooltip = TooltipPrimitive.Root;
 
-const TooltipTrigger = TooltipPrimitive.Trigger;
+/**
+ * A tooltip's trigger that opens on focus only when the focus came from the
+ * keyboard.
+ *
+ * Radix opens a tooltip whenever its trigger is focused. Focus also arrives
+ * without the user aiming at the trigger: a dialog or panel focusing its first
+ * button when it opens, a dialog or menu handing focus back to the button that
+ * opened it, the window regaining focus after a file picker or a new tab. Each
+ * of those popped a tooltip nobody hovered, and it stayed until something else
+ * was hovered. A keyboard user tabbing to the trigger still gets it; a mouse
+ * user gets it on hover, as before. (Radix skips its own open when the focus
+ * event is default-prevented.)
+ */
+const TooltipTrigger = React.forwardRef<
+  React.ElementRef<typeof TooltipPrimitive.Trigger>,
+  React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Trigger>
+>(({ onFocus, ...props }, ref) => (
+  <TooltipPrimitive.Trigger
+    ref={ref}
+    onFocus={(event) => {
+      onFocus?.(event);
+      if (lastInputKind() !== "keyboard") event.preventDefault();
+    }}
+    {...props}
+  />
+));
+TooltipTrigger.displayName = TooltipPrimitive.Trigger.displayName;
 
 const TooltipContent = React.forwardRef<
   React.ElementRef<typeof TooltipPrimitive.Content>,
