@@ -280,6 +280,9 @@ The PDF renderer (`utils/share_export.py`) is a custom in-house builder — no t
 1. **Per-page header:** logo (if present at `utils/assets/logo.png`), export timestamp, page number
 2. **Title block:** conversation title, agent name, export timestamp, horizontal rule
 3. **Messages:** each rendered with sender label (`YOU` / `ASSISTANT`), timestamp, and Markdown-rendered content
+4. **Sources** (plan 42): citation markers print as `[1]`, `[2]` by first appearance, with the cited pages listed at the end
+
+**An answer reads as the chat shows it** (`conversation_turns`): an orchestrator with background tasks answers in several runs, each after a hidden `task_notification` row. The PDF joins consecutive assistant messages into **one** `ASSISTANT` block and draws each notice between them as a quiet line ("Researcher finished · 2m 14s"), never as the user's message. Exporting "this message" (`mode=message`, the id of the answer's last run) takes the whole answer back to the user's question (`_answer_with_question`). An answer's model calls are separate paragraphs: the bridge now joins them with a blank line when it stores the text, and for answers stored before that, the PDF rebuilds the paragraphs from the run's `TEXT_MESSAGE_START` events when they match the stored text exactly. A message's header is kept with its first lines only, so a long first prompt no longer leaves the first page empty.
 
 **Markdown support in PDF:** headings (h1–h6 with scaled sizes), code blocks (dark background, language tag), tables, bullet/task lists, blockquotes, horizontal rules, bold/italic/strikethrough (rendered to plain weight in PDF). Inline links are rendered as plain text.
 

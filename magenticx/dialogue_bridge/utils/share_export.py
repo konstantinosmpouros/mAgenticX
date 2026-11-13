@@ -4,6 +4,7 @@ import re
 import textwrap
 import zlib
 from datetime import datetime, timezone
+from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path
 from collections.abc import Mapping
@@ -32,6 +33,12 @@ _CODE_BG = (245, 245, 247)
 _CODE_INK = (38, 38, 44)
 _DARK_MAGENTA = (122, 31, 92)
 _LOGO_PATH = Path(__file__).resolve().parent / "assets" / "logo.png"
+
+#: Starts a line that is a background task's end inside an answer, drawn as a
+#: quiet note. A control character that `_text_of` removes from every message,
+#: so only the export itself can start a note. Not a whitespace character
+#: (`\x1c` to `\x1f` are, and `lstrip()` would eat the mark before it is seen).
+_NOTICE_MARK = "\x0e"
 
 
 def _messages_from_branch_path(messages: Iterable[MessageTable], branch_path: list[str] | None) -> list[MessageTable]:
@@ -65,9 +72,117 @@ def select_scoped_messages(
             return visible_branch
         return branch
     if mode == "message":
-        target = branch[-1]
-        return branch[-2:] if len(branch) >= 2 and branch[-2].sender == "user" else [target]
+        return _answer_with_question(branch)
     return branch
+
+
+def _is_notice(message: MessageTable) -> bool:
+    """A background task's wake-up row: a ``user`` row in the tree, never the user's words."""
+    return message.kind == "task_notification"
+
+
+def _answer_with_question(branch: list[MessageTable]) -> list[MessageTable]:
+    """The answer that ends at the branch's last message, whole, with the question it answers.
+
+    An orchestrator with background tasks answers in several runs (its reply,
+    then one reply per finished task, each after a task notice); the chat shows
+    them as one answer whose action bar sits on the last one. Exporting "this
+    message" walks back over those runs and notices to the user's question.
+    """
+    start = len(branch) - 1
+    while start > 0 and (branch[start - 1].sender == "ai" or _is_notice(branch[start - 1])):
+        start -= 1
+    if start > 0 and branch[start - 1].sender == "user":
+        start -= 1
+    return branch[start:]
+
+
+@dataclass
+class _Turn:
+    """One block of the document: the user's message, or a whole answer.
+
+    An answer's runs are joined into one block (as the chat shows them), with
+    a quiet line where a background task finished between them.
+    """
+
+    sender: str
+    created_at: datetime | None
+    content: str
+    attachments: list = field(default_factory=list)
+
+
+def _notice_line(message: MessageTable) -> str:
+    """"Researcher finished · 2m 14s" for a task notice, as the chat's marker reads."""
+    notice = message.task_notice if isinstance(message.task_notice, dict) else {}
+    name = str(notice.get("name") or "A background task").replace("-", " ").replace("_", " ").strip()
+    name = name[:1].upper() + name[1:]
+    verb = {"error": "failed", "cancelled": "was stopped"}.get(str(notice.get("status")), "finished")
+    duration = notice.get("duration_ms")
+    if isinstance(duration, (int, float)) and duration >= 0:
+        seconds = int(duration // 1000)
+        took = f"{seconds // 60}m {seconds % 60}s" if seconds >= 60 else f"{seconds}s"
+        return f"{_NOTICE_MARK}{name} {verb} · {took}"
+    return f"{_NOTICE_MARK}{name} {verb}"
+
+
+def _paragraphs_from_events(message: MessageTable) -> str | None:
+    """An answer's text rebuilt from its run's events, one paragraph per model call.
+
+    Answers stored before the bridge separated model calls hold their progress
+    updates and final text run together ("…sources.The first searches…"). The
+    events still mark where each call's text began (``TEXT_MESSAGE_START``), so
+    the paragraphs can be recovered. Only the top-level text counts (a
+    sub-agent's arrives inside ``SUBAGENT_EVENT``). ``None`` when the events
+    cannot vouch for the stored text.
+    """
+    events = getattr(message, "raw_events", None)
+    if message.sender != "ai" or not isinstance(events, list):
+        return None
+    parts: list[str] = []
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        kind = event.get("type")
+        if kind == "TEXT_MESSAGE_START":
+            parts.append("")
+        elif kind in ("TEXT_MESSAGE_CONTENT", "TEXT_MESSAGE_CHUNK"):
+            if not parts:
+                parts.append("")
+            parts[-1] += str(event.get("delta") or "")
+    rebuilt = "\n\n".join(part.strip() for part in parts if part.strip())
+    stored = message.content or ""
+    # Use it only when it is the same text with breaks added, nothing else.
+    if not rebuilt or re.sub(r"\s+", "", rebuilt) != re.sub(r"\s+", "", stored):
+        return None
+    return rebuilt
+
+
+def _text_of(message: MessageTable) -> str:
+    """A message's text for the document: an answer's model calls as paragraphs,
+    and the notice mark removed (only the export draws notes)."""
+    text = _paragraphs_from_events(message) or message.content or ""
+    return text.replace(_NOTICE_MARK, " ")
+
+
+def conversation_turns(messages: list[MessageTable]) -> list[_Turn]:
+    """The scoped messages as document blocks: each user message alone; each
+    answer — consecutive assistant messages with only task notices between
+    them — joined into one block."""
+    turns: list[_Turn] = []
+    for message in messages:
+        if _is_notice(message):
+            if turns and turns[-1].sender == "ai":
+                turns[-1].content = f"{turns[-1].content}\n\n{_notice_line(message)}".strip()
+            continue
+        shareable = [item for item in (message.attachments or []) if is_shareable(item)]
+        last = turns[-1] if turns else None
+        if message.sender == "ai" and last is not None and last.sender == "ai":
+            last.content = f"{last.content}\n\n{_text_of(message)}".strip()
+            last.created_at = message.created_at or last.created_at
+            last.attachments.extend(shareable)
+            continue
+        turns.append(_Turn(message.sender, message.created_at, _text_of(message), list(shareable)))
+    return turns
 
 
 def conversation_pdf_filename(conversation: ConversationTable, mode: PdfExportMode) -> str:
@@ -94,11 +209,12 @@ def render_conversation_pdf(
     writer.add_meta_row("Exported", exported_at)
     writer.add_rule()
 
-    if not messages:
+    turns = conversation_turns(messages)
+    if not turns:
         writer.add_paragraph("No messages were available for this export.", size=11, color=_INK_SOFT)
-    texts, cited = number_citations([message.content or "" for message in messages], sources or {})
-    for index, (message, text) in enumerate(zip(messages, texts), start=1):
-        writer.add_message(index, message, content=text)
+    texts, cited = number_citations([turn.content for turn in turns], sources or {})
+    for index, (turn, text) in enumerate(zip(turns, texts), start=1):
+        writer.add_message(index, turn, content=text)
     if cited:
         writer.add_rule()
         writer.add_paragraph("Sources", size=11, color=_DARK_MAGENTA)
@@ -233,20 +349,23 @@ class _PdfDocument:
             self._text(line, self.margin_x, self.y, size, color=color)
             self.y -= self.leading
 
-    def add_message(self, index: int, message: MessageTable, *, content: str | None = None) -> None:
+    def add_message(self, index: int, message: _Turn, *, content: str | None = None) -> None:
         is_ai = message.sender == "ai"
         sender = "Assistant" if is_ai else "You"
         role_color = _DARK_MAGENTA if is_ai else _INK
         created = message.created_at.strftime("%b %d, %Y · %H:%M") if message.created_at else ""
 
-        blocks = _markdown_blocks(message.content or "" if content is None else content)
-        attachments = [item for item in (message.attachments or []) if is_shareable(item)]
+        blocks = _markdown_blocks(message.content if content is None else content)
+        attachments = message.attachments
         if attachments:
             attachment_names = ", ".join(_clean_text(item.file_name) for item in attachments)
             blocks.append(_MarkdownBlock("paragraph", f"Attachments: {attachment_names}"))
 
-        estimated_height = 38 + sum(block.estimated_lines for block in blocks) * self.leading
-        self._ensure_space(min(estimated_height, self.page_height - 200))
+        # Keep the header with the message's first lines, not with all of it: a
+        # long message reserving its whole height left the page before it empty
+        # (the first page, under the title, when the first prompt was long).
+        first_lines = sum(block.estimated_lines for block in blocks[:3]) if blocks else 1
+        self._ensure_space(38 + min(first_lines, 4) * self.leading)
 
         role_label = sender.upper()
         self._text(role_label, self.margin_x, self.y, 9.5, color=role_color)
@@ -276,6 +395,14 @@ class _PdfDocument:
     def _render_markdown_block(self, block: "_MarkdownBlock") -> None:
         if block.kind == "blank":
             self.y -= 6
+            return
+        if block.kind == "notice":
+            # A background task's end between an answer's parts: quiet, like
+            # the chat's marker, never read as part of the answer's text.
+            self._ensure_space(self.leading + 10)
+            self.y -= 2
+            self._text(block.text, self.margin_x, self.y, 8.5, color=_INK_FAINT)
+            self.y -= self.leading + 2
             return
         if block.kind == "heading":
             level = (block.data or {}).get("level", 1)
@@ -502,6 +629,11 @@ def _markdown_blocks(value: str) -> list[_MarkdownBlock]:
 
         if not line.strip():
             blocks.append(_MarkdownBlock("blank", ""))
+            i += 1
+            continue
+
+        if stripped.startswith(_NOTICE_MARK):
+            blocks.append(_MarkdownBlock("notice", stripped[len(_NOTICE_MARK):].strip()))
             i += 1
             continue
 

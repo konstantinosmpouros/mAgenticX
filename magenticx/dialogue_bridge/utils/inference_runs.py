@@ -712,6 +712,12 @@ class InferenceRunRuntime:
             self.thoughts.append(f"[tool] {event.get('toolCallName') or 'tool'}")
         elif event_type == "THINKING_END":
             self.thinking_end = time.perf_counter()
+        elif event_type == "TEXT_MESSAGE_START":
+            # Each model call's text is its own paragraph (a progress update,
+            # then the answer): joined without a break they ran together as
+            # "…sources.The first searches…" in Copy and the PDF.
+            if self.content.strip():
+                self.content = self.content.rstrip() + "\n\n"
         elif event_type in _TEXT_DELTA_TYPES:
             self.content += str(event.get("delta") or "")
             # Top-level text is the main agent's (a sub-agent's arrives wrapped
